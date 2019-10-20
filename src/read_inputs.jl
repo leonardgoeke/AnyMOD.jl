@@ -126,7 +126,7 @@ function convertReadIn(ReadIn_df::DataFrame,FileName_str::String,Set_arr::Array{
 	ReadInColAll_tup = tuple(names(ReadIn_df)...)
 
 	# drop irrelevant column that do not relate to a set or an operator
-	foreach(col ->  DataFrames.delete!(ReadIn_df, col), setdiff(ReadInColAll_tup,vcat(SetNames_arr[1],SetNames_arr[2],OprNames_arr[1])))
+	foreach(col ->  DataFrames.select!(ReadIn_df, DataFrames.Not(col)), setdiff(ReadInColAll_tup,vcat(SetNames_arr[1],SetNames_arr[2],OprNames_arr[1])))
 	ReadInCol_tup = tuple(names(ReadIn_df)...)
 
 	# XXX drop unrequired rows and convert missing values
