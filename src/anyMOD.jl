@@ -45,13 +45,10 @@ module anyMOD
     export createConstraint!, createLimitConstraints!, controllCapaConstraints!
 
     # XXX runs code an example problem at first use to improve precompilation
-    println("Package is being precompiled based on an example problem. This might take up to 20 minutes, but will speed-up future use.")
-    function __init__()
-      @suppress begin
-         anyM = anyModel("examples/precompile","output"; startTime = DateTime(0.0), reportLvl = 0, errCheckLvl = 0, errWrtLvl = 0)
-         addVariables!(anyM)
-         addConstraints!(anyM)
-         setObjective!(:costs,anyM)
-      end
+   @suppress begin
+      anyM = anyModel("examples/precompile","output"; startTime = DateTime(0.0), reportLvl = 0, errCheckLvl = 0, errWrtLvl = 0)
+      addVariables!(anyM)
+      addConstraints!(anyM)
+      setObjective!(:costs,anyM)
    end
 end
