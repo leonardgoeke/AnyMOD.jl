@@ -46,7 +46,7 @@ module anyMOD
 
     # XXX runs code an example problem at first use to improve precompilation
    @suppress begin
-      anyM = anyModel("examples/precompile","output"; startTime = DateTime(0.0), reportLvl = 0, errCheckLvl = 0, errWrtLvl = 0)
+      anyM = anyModel("examples/precompile","examples"; startTime = DateTime(0.0), reportLvl = 0, errCheckLvl = 0, errWrtLvl = 0)
       addVariables!(anyM)
       addConstraints!(anyM)
       setObjective!(:costs,anyM)
