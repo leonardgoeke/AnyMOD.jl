@@ -1,0 +1,9 @@
+carrier_1,carrier_2,timestep_dispatch,timestep_invest,region_dispatch,region_invest
+electricity,,4,1,1,2
+heat,districtHeat,3,1,2,2
+heat,decentHeat,3,1,2,2
+gas,naturalGas,2,1,1,1
+gas,synthGas,2,1,1,1
+coal,,1,1,1,1
+hydrogen,,1,1,1,1
+infeas,,1,1,1,1

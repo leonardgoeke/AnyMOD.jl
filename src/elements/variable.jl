@@ -1,79 +1,296 @@
 
-function createAllVariables(Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable})
+function addVariables!(anyM::anyModel)
 
-    Variable_dic = Dict{Symbol,VarElement}()
+    anyM.variables = Dict{Symbol,VarElement}()
 
-    # <editor-fold desc="investment variables
+    # <editor-fold desc="investment variables>
+    # XXX prepares limit parameters by adding zero columns
+    prepareLimitParameter!(anyM)
 
-    # create invest and capacity variables
-    createVariable(:invest, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement})
-    createVariable(:capacity, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement})
+    # XXX create invest and capacity variables
+    createVariable!(:invest,   anyM)
+    createVariable!(:capacity, anyM)
 
     # creates variables for actually commissioned capacities in case decommissioning is enabled
-    if DecommMethod != :none createVariable(:commissioned, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Variable_dic::Dict{Symbol,VarElement}) end
-
+    if anyM.options.decomm != :none createVariable!(:commissioned, anyM) end
+    produceMessage(anyM.options,anyM.report, 2," - Created investment related variables")
     # </editor-fold>
 
     # <editor-fold desc="dispatch variables"
 
     # XXX pre-sets parameter on dispatch level (in the course, mode variables are created and written into parameter dictionary)
-    presetDispatchParameter(Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement})
+    prepareDispatchParameter!(anyM)
+    produceMessage(anyM.options,anyM.report, 2," - Performed pre-setting of dispatch related parameters")
 
     # XXX creates dispatch variables for technologies, trade and exchange
-    createVariable(:dispatch, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement})
-    createVariable(:exchange, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement})
-    createVariable(:trade, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Variable_dic::Dict{Symbol,VarElement})
-
+    createVariable!(:techDispatch, anyM)
+    createVariable!(:exchange, anyM)
+    createVariable!(:trade, anyM)
+    produceMessage(anyM.options,anyM.report, 2," - Created dispatch related variables")
     # </editor-fold>
 
-    return Variable_dic, Parameter_dic
+    produceMessage(anyM.options,anyM.report, 1," - Created all variables")
 end
 
-# XXX create variables
-struct VarElement
-    name::Symbol
-    dim::Tuple
-    grp::Tuple
-    data::IndexedTable
+createVariable!(name::Symbol, anyM::anyModel) = createVariable!(Val{name}(), anyM::anyModel)
 
-    function VarElement(name::Symbol, dim::Tuple, grp::Tuple, data::IndexedTable)
-        return new(name,dim,grp,data)
+# <editor-fold desc="pre-setting and mode related stuff"
+
+# XXX extends limits parameters with zero values for all unset columns, necessary to set limits right
+function prepareLimitParameter!(anyM::anyModel)
+    # filter limit constraints and loops
+    for limitPar in filter(x -> any(occursin.(("Low", "Up", "Fix"),string(x))), collect(keys(anyM.parameter)))
+        parameter_obj = anyM.parameter[limitPar]
+        # creates an empty dummy table and defines an array of zeros as a missing values
+        empty_tab = table(fill(Int32[],length(parameter_obj.dim))... ; names = parameter_obj.dim)
+        missVal_tup = tuple(fill(convert(Int32,0), length(parameter_obj.dim))...)
+        # performs joint to add zero columns
+        join_tup = tuple(filter(x -> x != :val, collect(colnames(parameter_obj.data)))...)
+        anyM.parameter[limitPar].data = reindex(joinMissing(parameter_obj.data, empty_tab, join_tup, join_tup, :left, missVal_tup),parameter_obj.dim)
     end
 end
 
-createVariable(name::Symbol, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement}) =
-                                        createVariable(Val{name}(), Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement})
-createVariable(name::Symbol, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Variable_dic::Dict{Symbol,VarElement}) =
-                                        createVariable(Val{name}(), Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Variable_dic::Dict{Symbol,VarElement})
-createVariable(name::Symbol, Variable_dic::Dict{Symbol,VarElement}) = createVariable(Val{name}(), Variable_dic::Dict{Symbol,VarElement})
+# XXX replaces anyM.parameter values orginally read-in with fixed value on potential dispatch levels and identifies cases where modes are used
+# done to avoid potential inconsistencies (for example different values efficiency on hourly and daily level)
+function prepareDispatchParameter!(anyM::anyModel)
+
+    # <editor-fold desc="initialize and define variables"
+    # maps parameters to pre-setting types
+    preTypePar_dic = Dict(y => filter(x -> isdefined(anyM.parameter[x],:presetLvl) && anyM.parameter[x].presetLvl == y, keys(anyM.parameter)) for y in (:reference, :lowest, :highest, :carrier, :exchange, :trade))
+
+    # creates dictionaries with carriers and their temporal and spatial dispatch level
+    cLvlTs_dic, cLvlR_dic = [Dict(zip(DB.select(anyM.mapping[:C_lvl],:C),DB.select(anyM.mapping[:C_lvl],dim))) for dim in (:lvlTsDis, :lvlRDis)]
+
+    # counts number of modes per tech to identify ill defined values later
+    techM_tab = filter(r -> r.M != [0],anyM.mapping[:TechInfo])
+    techCntM_dic = convert(Dict{Int32,Int32},Dict(x => length(DB.select(filter(y -> y.Te == x,techM_tab),:M)[1]) for x in unique(DB.select(techM_tab,:Te))))
+
+    # creates dictionary that assigns combination of supordinate dispatch timestep and dispatch level to dispatch timesteps
+    allLvlTsDis_arr = unique(DB.select(anyM.mapping[:C_lvl],:lvlTsDis))
+    tsSupDisLvl_dic = Dict((x[1], x[2]) => convert(Array{Int32,1},anyM.sets[:Ts][x[1],:lvl] == x[2] ? [x[1]] : getChildren(x[1],anyM.sets[:Ts],false,x[2])) for x in Iterators.product(anyM.supDis.step,allLvlTsDis_arr))
+
+    # creates dictionary that assigns combination of investment region and dispatch level to dispatch region
+    allRInv_arr = unique(union(DB.select(anyM.mapping[:capaConv],(:R_inv)),DB.select(anyM.mapping[:capaSt],(:R_inv))))
+    allLvlR_arr = unique(union(DB.select(anyM.mapping[:C_lvl],:lvlRDis),DB.select(anyM.mapping[:C_lvl],:lvlRInv)))
+    rInvLvl_dic = Dict((x[1], x[2]) => convert(Int32,anyM.sets[:R][x[1],:lvl] <= x[2] ? x[1] : getHeritanceLine(x[1],anyM.sets[:R],x[2])) for x in Iterators.product(allRInv_arr,allLvlR_arr))
+
+    # filter relevant technology data and dictionary to save mode related entries
+    techAll_tab = DB.select(anyM.mapping[:TechInfo],(:refLvl,:allCar,:M,:Te))
+    # </editor-fold>
+
+    # <editor-fold desc="creates dimensions relevant for pre-setting depending on the used preset levels"
+    presetDim_dic = Dict{Symbol,IndexedTable}()
+    newHerit_dic = Dict{Symbol,Tuple}()
+    # assignes type of presetting level to each used parameter
+    parPreset_dic = Dict(x => anyM.parameter[x].presetLvl for x in filter(x -> isdefined(anyM.parameter[x],:presetLvl),keys(anyM.parameter)))
+
+    # dimensions for all exchange variables
+    if :exchange in values(parPreset_dic)
+        # find all carriers that can be exchanged and adds their dispatch level to capacity table
+        lvlTsDisC_dic = Dict(car => DB.select(filter(r -> r.C == car,anyM.mapping[:C_lvl]),:lvlTsDis)[1] for car in unique(DB.select(anyM.variables[:capaExc].data,:C)))
+        capaDispLvl_tab = IT.transform(DB.select(anyM.variables[:capaExc].data,DB.Not(All(:var))), :lvlTs => DB.select(anyM.variables[:capaExc].data, :C => r -> lvlTsDisC_dic[r]))
+
+        # flattens table based on this supordinate dispatch timesteps
+        presetDim_dic[:exchange] = DB.flatten(DB.select(IT.transform(DB.select(capaDispLvl_tab,DB.Not(All(:lvlTs))),:Ts_dis => DB.select(capaDispLvl_tab,(:Ts_supDis,:lvlTs) => x -> tsSupDisLvl_dic[(x.Ts_supDis, x.lvlTs)])),DB.Not(All(:Ts_supDis))),:Ts_dis)
+    end
+
+    # dimensions for all trade variables
+    if :trade in values(parPreset_dic)
+        presetDim_dic[:trade] = rmvDummyCol(reindex(addDummyCol(expandSetColumns(DB.rename(DB.select(anyM.mapping[:C_lvl],(:C,:lvlTsDis,:lvlRDis)),:lvlTsDis => :Ts_dis,:lvlRDis => :R_dis),(:Ts_dis,:R_dis),anyM.sets)),(:Ts_dis,:R_dis,:C)))
+    end
+
+    # dimensions for technology variables on reference level
+    if :reference in values(parPreset_dic)
+        # gets reference levels of all technologies that actually convert something
+        techRef_tab = DB.select(filter(r -> (:use in keys(r.allCar) && :gen in keys(r.allCar))  || :stIntIn in keys(r.allCar) || :stIntOut in keys(r.allCar), techAll_tab),DB.Not(All(:allCar)))
+        techRefJoinLvl_tab = DB.select(IT.transform(techRef_tab,:lvlTs => map(x -> x.Ts, DB.select(techRef_tab,:refLvl)),:lvlR => map(x -> x.R, DB.select(techRef_tab,:refLvl))),DB.Not(All(:refLvl)))
+        # expands to all actual dispatch timesteps on reference level with and without mode dimension
+        techRefDisp_tab = expandInvestToDisp(DB.join(techRefJoinLvl_tab,anyM.variables[:capaConv].data; lkey = :Te, rkey = :Te, rselect = DB.Not(All(:var)), how = :inner),tsSupDisLvl_dic,rInvLvl_dic,false)
+
+        presetDim_dic[:reference_mode], presetDim_dic[:reference] = [DB.flatten(techRefDisp_tab,:M), DB.select(techRefDisp_tab,DB.Not(All(:M)))]
+        newHerit_dic[:reference] = (:Ts_dis => :up, :R_dis => :up)
+
+        for type in (:use, :gen)
+            teC_tab = flatten(IT.transform(DB.select(anyM.mapping[:TechInfo],(:Te,)),:C => DB.select(anyM.mapping[:TechInfo],:allCar => x -> type in keys(x) ? getproperty(x,type) : Int32[])),:C)
+            presetDim_dic[Symbol(:reference_mode_,type)], presetDim_dic[Symbol(:reference_,type)] = [join(presetDim_dic[Symbol(:reference,x)],teC_tab; lkey = (:Te,), rkey = (:Te,), how = :left) for x in ("_mode", "")]
+        end
+    end
+
+    # dimensions for technology variables on the lowest level (spatial and temporal) any variable is defined
+    if :lowest in values(parPreset_dic)
+        # gets lowest dispatch levels for technlogy and joins with acutal capacity data
+        techConvAll_tab = filter(r -> !isempty(intersect(keys(r.allCar),(:use,:gen))),techAll_tab)
+        # finds smallest temporal and spatial resolution among generated and used carriers
+        tsLvl_arr, rLvl_arr = [DB.select(techConvAll_tab,:allCar => r -> maximum(map(z -> dic[z],vcat(map(x -> getproperty(r,x),intersect(keys(r),(:gen,:use)))...)))) for dic in (cLvlTs_dic,cLvlR_dic)]
+        # ensures resolution found above is a least as detailed as the reference level
+        tsLvl_arr, rLvl_arr = [max.(map(x -> x.Ts, DB.select(techConvAll_tab,:refLvl)),tsLvl_arr), max.(map(x -> x.R, DB.select(techConvAll_tab,:refLvl)),rLvl_arr)]
+
+        invLowDisLvl_tab = DB.join(IT.transform(DB.select(techConvAll_tab,DB.Not(All(:allCar,:refLvl))),:lvlTs => tsLvl_arr, :lvlR => rLvl_arr),anyM.variables[:capaConv].data; lkey = :Te, rkey = :Te, rselect = DB.Not(All(:var)), how = :inner)
+        # expands to all actual dispatch timesteps on reference level with and without mode dimension
+        dispVar_tab = expandInvestToDisp(invLowDisLvl_tab,tsSupDisLvl_dic,rInvLvl_dic)
+        presetDim_dic[:lowest_mode], presetDim_dic[:lowest] = [DB.flatten(dispVar_tab,:M), DB.select(dispVar_tab,DB.Not(All(:M)))]
+        newHerit_dic[:lowest] = (:Ts_dis => :avg_any, :R_dis => :avg_any)
+    end
+
+    # dimensions for technology variables on the level of each individual carrier
+    if :carrier in values(parPreset_dic)
+        # seperates between storage parameters and non-storage parameters
+        for str in (true, false)
+            carType_tup = str ? (:stExtIn, :stExtOut) : (:gen,:use) # differentiation between storage and no-storage, because different carriers are relevant
+            techCar_tab =  IT.transform(DB.select(techAll_tab,DB.Not(All(:allCar))),:C => DB.select(techAll_tab,:allCar => r -> unique(vcat(map(x -> getproperty(r,x),intersect(keys(r),carType_tup))...))))
+            techCarFlat_tab = DB.flatten(techCar_tab,:C)
+            # create table of all combinations on carrier level, but at least on reference level (other conflicts emerge when writing constraints)
+            techCarLvl_tab = IT.transform(techCarFlat_tab, :lvlTs    => DB.select(techCarFlat_tab,(:C,:refLvl) => r -> convert(Int32,max(r.refLvl == nothing ? 0 : r.refLvl[:Ts],cLvlTs_dic[r.C]))),
+                                                                      :lvlR     => DB.select(techCarFlat_tab,(:C,:refLvl) => r -> convert(Int32,max(r.refLvl == nothing ? 0 : r.refLvl[:R],cLvlR_dic[r.C]))))
+
+            # expands to all actual dispatch timesteps on reference level with and without mode dimension
+            join_tup = str ? (:C,:Te) : (:Te,)
+            dispVar_tab =  expandInvestToDisp(DB.join(DB.select(techCarLvl_tab,DB.Not(All(:refLvl))),anyM.variables[str ? :capaStIn : :capaConv].data;
+                                                                                                lkey = join_tup, rkey = join_tup, rselect = DB.Not(All(:var)), how = :inner),tsSupDisLvl_dic,rInvLvl_dic)
+            presetDim_dic[Symbol(:carrier_mode,str ? :_st : "")], presetDim_dic[Symbol(:carrier,str ? :_st : "")] = [DB.flatten(dispVar_tab,:M), DB.select(dispVar_tab,DB.Not(All(:M)))]
+        end
+        newHerit_dic[:carrier] = tuple()
+    end
+
+    # dimensions for technology variables on the finest level on the use or generation side suitable
+    for type in (:gen, :use)
+        presetLvl_sym = Symbol(:all, uppercase(string(type)[1]), string(type)[2:end])
+        if presetLvl_sym in values(parPreset_dic)
+            # filter technologies with multiple fuels
+            teC_tab = filter(r -> type in keys(r.allCar) && length(r.allCar[type]) > 1,anyM.mapping[:TechInfo]) |> y -> IT.transform(DB.select(y,(:Te,:invLvl,:M)),:C => map(x -> sort(x[type]), DB.select(y,:allCar)))
+            teC2_tab = IT.transform(DB.select(teC_tab,DB.Not(All(:invLvl))),:lvlR_inv => map(x -> x.R, DB.select(teC_tab,:invLvl)))
+
+            # get dispatch resolution per technology defined for all carriers
+            srtDispVar_tab = DB.groupby(DB.filter(r -> r.varType == type, anyM.mapping[:dispVar]), (:lvlTs, :lvlR, :Te), usekey = false; select = :C) do y
+                NamedTuple{(:C,)}(tuple(Array(sort(y))))
+            end
+
+            # filters technologies with multiple fuels
+            dispAllC_tab = DB.join(teC2_tab, srtDispVar_tab, ; lkey = (:Te,:C), rkey = (:Te,:C), how = :inner)
+            dispMergeAllC_tab  = IT.transform(DB.select(dispAllC_tab,DB.Not(All(:lvlTs,:lvlR))),:lvl => map(z -> (z.lvlTs, z.lvlR), rows(DB.select(dispAllC_tab,(:lvlTs, :lvlR)))))
+
+            # finds finest resolution suited (e.g. no "crossing")
+            finReso_tab = DB.groupby(dispMergeAllC_tab, (:C,:Te, :lvlR_inv, :M), usekey = false; select = :lvl) do y
+                filt1_arr = filter(x -> !(any(map(z -> (x[1] > z[1] && x[2] < z[2]) || (x[2] > z[2] && x[1] < z[1]), y))),y) # filters cases where resolutions "cross"
+                filt2_arr = filter(x -> !(any(map(z -> (x[1] <= z[1] && x[2] < z[2]) || (x[1] < z[1] && x[2] <= z[2]), filt1_arr))), filt1_arr) # filters dominated cases from remaining entries
+                return NamedTuple{(:lvlTs,:lvlR)}(tuple(filt2_arr[1][1], filt2_arr[1][2]))
+            end
+
+            # adds investment region and timesteps to table
+            invReso_tab = IT.transform(DB.select(finReso_tab,DB.Not(All(:lvlR_inv))),:R_inv => DB.select(finReso_tab,(:lvlR_inv) => x -> anyM.sets[:R][anyM.sets[:R][:,:lvl] .== x,:idx]),
+                                                                                                                                            :Ts_supDis => fill(anyM.supDis.step ,length(finReso_tab)))
+            # adds investment timesteps to table and expands
+            addTsInv_tab = join(flatten(flatten(invReso_tab,:R_inv),:Ts_supDis),DB.select(anyM.variables[:capaConv].data,DB.Not(All(:var))); lkey = (:Ts_supDis, :R_inv, :Te), rkey = (:Ts_supDis, :R_inv, :Te), how = :inner)
+            techRefDisp_tab = flatten(expandInvestToDisp(reindex(addTsInv_tab,(:Te,)), tsSupDisLvl_dic, rInvLvl_dic, false),:C)
+
+            presetDim_dic[Symbol(presetLvl_sym,:_mode)], presetDim_dic[presetLvl_sym] = [DB.flatten(techRefDisp_tab,:M), DB.select(techRefDisp_tab,DB.Not(All(:M)))]
+            newHerit_dic[presetLvl_sym] = tuple()
+        end
+    end
+
+    # </editor-fold>
+
+    # <editor-fold desc="excute sub-processes to preset"
+    # initializes dictionaries for pre-setting process
+    modeParameter_dic = Dict{Symbol,Union{Nothing,IndexedTable}}() # saves all mode dependant dimensions
+    report_dic = Dict{Symbol,DataFrame}() # stores reporting of individual processes
+
+    # performs parallel pre-setting process fo each paramter
+    @sync begin
+        for par in keys(parPreset_dic)
+            @async begin
+                preKey_sym = (:M in colnames(anyM.parameter[par].data)) ?  Symbol(parPreset_dic[par],:_mode) : parPreset_dic[par] # adds "_mode" to key being looked up in presetDim_dic, if case is mode dependant
+                if parPreset_dic[par] == :exchange  # in case of trade and exchange reset gets called without tech/mode dictionary
+                    newParameter, modeParameter_dic[par], report_dic[par] =  fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options))
+                elseif parPreset_dic[par] == :trade
+                    # adds id column, if non existing so far or rewrites values, to avoid zeroes outside of aggregated variables in this column
+                    if :id in colnames(anyM.parameter[par].data)
+                        # creates an default value for all entries without unspecified ids to avoid problems latter in code when aggregating trade variables
+                        idCol_arr = DB.select(anyM.parameter[par].data,:id)
+                        newIdCol_arr = convert(Array{Int32,1},map(x -> x != 0 ? x : maximum(idCol_arr) +1, DB.select(anyM.parameter[par].data,:id)))
+                    else
+                        newIdCol_arr = convert(Array{Int32,1},fill(1,length(anyM.parameter[par].data)))
+                    end
+                    anyM.parameter[par].data = IT.transform(anyM.parameter[par].data, :id => newIdCol_arr)
+                    newParameter, modeParameter_dic[par], report_dic[par] =  fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options))
+                else
+                    if parPreset_dic[par] == :carrier  # in case of carrier preset dim can differ depending on if it is a storage/non-storage case
+                        preKey_sym = occursin("St", String(par)) || par in (:stInflow,:stDis) ? Symbol(preKey_sym,:_st) : preKey_sym
+                        newParameter, modeParameter_dic[par], report_dic[par] =  fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic))
+                    elseif parPreset_dic[par] == :reference # in case of reference preset, dim can differ depending on if parameter addresses gen/use side and is therefore dependant on carrier (like ratios) or not (like efficiency)
+                        preKey_sym = :C in anyM.parameter[par].dim ? Symbol(preKey_sym, occursin("Gen", String(par)) ? :_gen : use ) : preKey_sym
+                        newParameter, modeParameter_dic[par], report_dic[par] =
+                                            fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic, newHerit_dic[parPreset_dic[par]]))
+                    else
+                        newParameter, modeParameter_dic[par], report_dic[par] =
+                                            fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic, newHerit_dic[parPreset_dic[par]]))
+                    end
+                end
+                # either deletes parameter completely, if fetch returned no newParameter or replaces object entirely if something was returned
+                isnothing(newParameter) ?  Base.delete!(anyM.parameter,x) : anyM.parameter[par] = newParameter
+                produceMessage(anyM.options,anyM.report, 3," - Performed pre-setting of $(par) parameter")
+            end
+        end
+    end
+
+    # merges different reports of subprocesses into main report again
+    anyM.report = vcat(anyM.report,values(report_dic)...)
+    # </editor-fold>
+
+    # <editor-fold desc="merges all modes cases to one table"
+    # filter tech/mode combinations from mapping
+    techWithMode_tab = DB.flatten(DB.select(filter(r -> r.M != Int32[0],anyM.mapping[:TechInfo]),(:M,:Te)),:M)
+    # assinges dispatch variables to groups of capacity constraints
+    assConvRestr_dic = Dict(:in => :use, :out => :gen)
+
+    # merges entries of all parameter entries with modes specified into one mapping table, that is used to create dispatch variables later
+    modDim_tup = (:Ts_dis, :Ts_inv, :R_dis, :C, :Te, :M, :cnstrType)
+    allModesMerged_tab = table(Int32[], Int32[], Int32[], Int32[], Int32[], Int32[], Symbol[], names = modDim_tup)
+    for parMode in keys(modeParameter_dic)
+        if !isnothing(modeParameter_dic[parMode])
+            # adds all respective carriers, if parameter itself is not mode dependant (case for availabity for example)
+            if !(:C in anyM.parameter[parMode].dim)
+                # assigns combination of technology and in/out to array of relevant carrier
+                relTe_tab = DB.select(DB.filter(r -> r.Te in unique(DB.select(modeParameter_dic[parMode],:Te)),anyM.mapping[:TechInfo]),(:Te,:allCar))
+                teCar_dic = Dict((assConvRestr_dic[b] in keys(a.allCar)) ? (a.Te,b) => getproperty(a.allCar,assConvRestr_dic[b]) : nothing => nothing                                                                                    for a = rows(relTe_tab), b = intersect((:in,:out),anyM.parameter[parMode].modeDep))
+                # extends table according to dictionary written earlier
+                modeParameter_dic[parMode] = DB.flatten(IT.transform(modeParameter_dic[parMode],:C => map(x -> teCar_dic[(x.Te, x.cnstrType)],DB.select(modeParameter_dic[parMode],(:Te,:cnstrType)))),:C)
+            end
+            allModesMerged_tab = joinMissing(allModesMerged_tab,modeParameter_dic[parMode],modDim_tup,modDim_tup,:outer,(convert(Int32,0),))
+        end
+    end
+
+    anyM.mapping[:modeCases] = allModesMerged_tab
+    # </editor-fold>
+end
+# </editor-fold>
 
 # <editor-fold desc="creation of investment variables"
 # XXX creates investment variables,
 # variables are not created if invest is limited to zero or if invest depends on other variable (this can be the case for storage output and size, then the relation is directly written into the table)
-function createVariable(name::Val{:invest}, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement})
+function createVariable!(name::Val{:invest}, anyM::anyModel)
 
-    # <editor-fold desc="XXX initialization"
+    # <editor-fold desc="initialization"
     # reads data from inputs
 
     # initializes assignments and data
     invTypes_dic = Dict(:invConv => :invConv, :invStIn => :invSt, :invStOut => :invSt, :invStSize => :invSt, :invExc => :invExc)
-    invTypeRatio_tup = (:invStIn => :stInToConv, :invStOut => :stOutToStIn, :invStSize => :stSizeToStIn)
+    invTypeRatio_tup = (:invStIn => :stInToConv, :invStOut => :stOutToStIn, :invStSize => :sizeToStIn)
 
-    dimConv_tup = colnames(Mapping_dic[:invConv])
-    dimSt_tup   = colnames(Mapping_dic[:invSt])
+    dimConv_tup = colnames(anyM.mapping[:invConv])
+    dimSt_tup   = colnames(anyM.mapping[:invSt])
 
-    defPar_tup = tuple(collect(keys(Parameter_dic))...)
+    defPar_tup = tuple(collect(keys(anyM.parameter))...)
     removeTab_dic = Dict{Symbol,Array{IndexedTable,1}}(x => [] for x in keys(invTypes_dic))
 
     # </editor-fold>
 
-    # <editor-fold desc="XXX identify cases of restricted invesment"
-    # filters and saves invest variables that are fixed to zero
-    # filters cases where expansion is fixed to zero
+    # <editor-fold desc="identify cases of restricted invesment"e
+    # filters cases where investment is fixed to zero
     for invVar in keys(invTypes_dic)
         varFix_sym = Symbol(invVar,:Fix)
         if varFix_sym in defPar_tup
-            push!(removeTab_dic[invVar], DB.select(filter(r -> r.val == 0, matchSetParameter(Mapping_dic[invTypes_dic[invVar]], Parameter_dic[varFix_sym], Set_dic)),DB.Not(All(:val))))
+            push!(removeTab_dic[invVar], DB.select(filter(r -> r.val == 0, matchSetParameter(anyM.report,anyM.mapping[invTypes_dic[invVar]], anyM.parameter[varFix_sym], anyM.sets,anyM.options.scale.compDig)),DB.Not(All(:val))))
         end
     end
 
@@ -81,22 +298,22 @@ function createVariable(name::Val{:invest}, Set_dic::Dict{Symbol,DataFrame}, Par
     stRatio_dic = Dict{Symbol,IndexedTable}()
     for invRatio in invTypeRatio_tup
         if invRatio[2] in defPar_tup
-            rmvTab_tab = filter(r -> r.val != 0, matchSetParameter(Mapping_dic[invTypes_dic[invRatio[1]]], Parameter_dic[invRatio[2]], Set_dic))
+            rmvTab_tab = filter(r -> r.val != 0, matchSetParameter(anyM.report,anyM.mapping[invTypes_dic[invRatio[1]]], anyM.parameter[invRatio[2]], anyM.sets,anyM.options.scale.compDig))
             push!(removeTab_dic[invRatio[1]], DB.select(rmvTab_tab,DB.Not(All(:val))))
             stRatio_dic[invRatio[1]] = rmvTab_tab
 
             # writes a report, if limits (upper/lower/fixed) on the storage expansion were ignored due to the ratios provided
             if !isempty(rmvTab_tab)
-                limVal_tab = matchLimitParameter(IT.transform(rmvTab_tab,:var => fill(nothing,length(rmvTab_tab))::Array{Nothing,1}),invRatio[1],Set_dic,Parameter_dic,false)
+                limVal_tab, dmy = matchLimitParameter(IT.transform(rmvTab_tab,:var => fill(nothing,length(rmvTab_tab))::Array{Nothing,1}),invRatio[1],anyM)
                 if limVal_tab != nothing
                     uniOver_arr = unique(DB.select(limVal_tab,:Te))
                     for i in uniOver_arr
                         if invRatio[1] == :invStIn
-                            push!(Report_df,(1,:var,:invest,"in at least one case for $(createFullString(i,Set_dic[:Te])) limits (fixed/lower and/or upper) for storage input were ignored since an conversion/storage input ratio was provided"))
+                            push!(anyM.report,(1,:variable,:investment,"in at least one case for $(createFullString(i,anyM.sets[:Te])) limits (fixed/lower and/or upper) for storage input were ignored since an conversion/storage input ratio was provided"))
                         elseif invRatio[1] == :invStOut
-                            push!(Report_df,(2,:var,:invest,"in at least one case for $(createFullString(i,Set_dic[:Te])) limits (fixed/lower and/or upper) for storage output were ignored since an input/output ratio was provided"))
+                            push!(anyM.report,(2,:variable,:investment,"in at least one case for $(createFullString(i,anyM.sets[:Te])) limits (fixed/lower and/or upper) for storage output were ignored since an input/output ratio was provided"))
                         elseif invRatio[1] == :invStSizeFix
-                            push!(Report_df,(1,:var,:invest,"in at least one case for $(createFullString(i,Set_dic[:Te])) limits (fixed/lower and/or upper) for storage size were ignored since an input/size ratio was provided"))
+                            push!(anyM.report,(1,:variable,:investment,"in at least one case for $(createFullString(i,anyM.sets[:Te])) limits (fixed/lower and/or upper) for storage size were ignored since an input/size ratio was provided"))
                         end
                     end
                 end
@@ -105,9 +322,9 @@ function createVariable(name::Val{:invest}, Set_dic::Dict{Symbol,DataFrame}, Par
     end
     # </editor-fold>
 
-    # <editor-fold desc="XXX creates variables and adds expressions for dependant investment"
+    # <editor-fold desc="creates variables and adds expressions for dependant investment"
     # removes all entries filtered earlier and create all variables for table
-    invVar_tab = Dict(x => createVarTable(removeEntries(removeTab_dic[x],Mapping_dic[invTypes_dic[x]]),nothing,string(x)) for x in keys(invTypes_dic))
+    invVar_tab = Dict(x => createInvVar(anyM.optModel,removeEntries(removeTab_dic[x],anyM.mapping[invTypes_dic[x]]),nothing,string(x),anyM.options.scale.upInv) for x in keys(invTypes_dic))
 
     # XXX add entries where investment is defined via a ratio, (loop sorted to start with input, because it affects subsequents entries)
     for rmvRatio in sort(collect(keys(stRatio_dic)))
@@ -121,89 +338,86 @@ function createVariable(name::Val{:invest}, Set_dic::Dict{Symbol,DataFrame}, Par
 
     # XXX add entries where investment is interpolated between periods, because some investments level are above supordinate dispatch level
     # gets supordinate dispatch timesteps
-    lvlSupDis_int = maximum(Mapping_dic[:C_lvl].columns.lvlTsInv)
-    supDis_arr = Set_dic[:Ts][Set_dic[:Ts][:,:lvl] .== lvlSupDis_int ,:idx]
 
     # creates dictionary of all timesteps used for investment and their "year" starting at zero
-    tsYear_dic = Dict(zip(supDis_arr,collect(0:ShortInvest_int:(length(supDis_arr)-1)*ShortInvest_int)))
-    remInvTs_arr = vcat(map(x -> Set_dic[:Ts][Set_dic[:Ts][:,:lvl] .== x,:idx],filter(x -> x != lvlSupDis_int,unique(Mapping_dic[:C_lvl].columns.lvlTsInv)))...)
+    tsYear_dic = Dict(zip(anyM.supDis.step,collect(0:anyM.options.shortInvest:(length(anyM.supDis.step)-1)*anyM.options.shortInvest)))
+    remInvTs_arr = vcat(map(x -> anyM.sets[:Ts][anyM.sets[:Ts][:,:lvl] .== x,:idx],filter(x -> x != anyM.supDis.lvl,unique(anyM.mapping[:C_lvl].columns.lvlTsInv)))...)
 
     # adds other investment timesteps to dictionary
     for invIdx in remInvTs_arr
-        tsYear_dic[invIdx] = tsYear_dic[getChildren(invIdx,Set_dic[:Ts],false,lvlSupDis_int)[1]]
+        tsYear_dic[invIdx] = tsYear_dic[getChildren(invIdx,anyM.sets[:Ts],false,anyM.supDis.lvl)[1]]
     end
 
-    # filters technologies with investment timesteps above supordinate dispatch level
-    otherTech_arr = DB.select(filter(r -> r.invLvl.Ts != lvlSupDis_int,Mapping_dic[:TechInfo]),(:Te))
+    otherTech_arr = DB.select(filter(r -> r.invLvl.Ts != anyM.supDis.lvl,anyM.mapping[:TechInfo]),(:Te)) # filters technologies with investment timesteps above supordinate dispatch level
     # assigns supordinate dispatch timesteps to higher investment steps
-    invSupTs_dic = Dict(x => (InterCapaMethod == :linear ?
-                                filter(y -> tsYear_dic[y] == tsYear_dic[x] || (Set_dic[:Ts][x,:sub_id] == 1 ? false : (tsYear_dic[y] > tsYear_dic[x-1] && tsYear_dic[y] <= tsYear_dic[x])),supDis_arr)
-                                        : filter(y -> tsYear_dic[y] == tsYear_dic[x],supDis_arr)) for x in remInvTs_arr)
+    invSupTs_dic = Dict(x => (anyM.options.interCapa == :linear ? #
+                                filter(y -> tsYear_dic[y] == tsYear_dic[x] || (anyM.sets[:Ts][x,:sub_id] == 1 ? false : (tsYear_dic[y] > tsYear_dic[x-1] && tsYear_dic[y] <= tsYear_dic[x])),collect(anyM.supDis.step))
+                                        : filter(y -> tsYear_dic[y] == tsYear_dic[x],collect(anyM.supDis.step))) for x in remInvTs_arr)
+    cntInvSupTs_dic = Dict(x => convert(Int32,length(invSupTs_dic[x])) for x in keys(invSupTs_dic)) # assign number of assigned supordinate dispatch timesteps to higher investment steps
 
-    # assigns number of assigned supordinate dispatch timesteps to higher investment steps
-    cntInvSupTs_dic = Dict(x => convert(Int16,length(invSupTs_dic[x])) for x in keys(invSupTs_dic))
-
+    # performs actaul interpolation
     for invVar in keys(invTypes_dic)
         if invVar != :invExc    filtInvVar_tab = filter(r -> r.Te in otherTech_arr,invVar_tab[invVar])
-        else                    filtInvVar_tab = filter(s -> DB.select(filter(r -> r.C == s.C,Mapping_dic[:C_lvl]),:lvlTsInv)[1] != lvlSupDis_int,invVar_tab[invVar]) end
+        else                    filtInvVar_tab = filter(s -> DB.select(filter(r -> r.C == s.C,anyM.mapping[:C_lvl]),:lvlTsInv)[1] != anyM.supDis.lvl,invVar_tab[invVar]) end
 
         if isempty(filtInvVar_tab) continue end
         # gets array of supordinate dispatch timestep and its length for each row
-        subDisTs_arr::Union{Array{Int16,1},Array{Array{Int16,1},1}} = DB.select(filtInvVar_tab,:Ts_inv => x -> invSupTs_dic[x])
-        cntSubDisTs_arr::Array{Float64,1} = DB.select(filtInvVar_tab,:Ts_inv => x -> cntInvSupTs_dic[x])
+        subDisTs_arr = convert(Union{Array{Int32,1},Array{Array{Int32,1},1}}, DB.select(filtInvVar_tab,:Ts_inv => x -> invSupTs_dic[x]))
+        cntSubDisTs_arr = convert(Array{Float64,1}, DB.select(filtInvVar_tab,:Ts_inv => x -> cntInvSupTs_dic[x]))
         # adds arrays to table and uses them to finally comput investment expression
         joinVar_tab  = DB.flatten(IT.transform(filtInvVar_tab,:Ts_inv2 => subDisTs_arr,:factor => cntSubDisTs_arr),:Ts_inv2)
         joinVarNew_tab = DB.rename(DB.select(joinVar_tab,DB.Not(All(:Ts_inv))),:Ts_inv2 => :Ts_inv)
-        finalVar_tab = IT.transform(DB.select(joinVarNew_tab,DB.Not(All(:var,:factor))), :var => DB.select(joinVarNew_tab,(:var, :factor) => x -> x.var/x.factor)::Array{GenericAffExpr{Float64,VariableRef},1})
+        finalVar_tab = IT.transform(DB.select(joinVarNew_tab,DB.Not(All(:var,:factor))), :var => DB.select(joinVarNew_tab,(:var, :factor) => x -> x.var*round(1/x.factor,digits = anyM.options.scale.compDig)))
 
         # removes manipulated entries from original table and merges remaing files with new entries for final table
-        colName_tup = colnames(Mapping_dic[invTypes_dic[invVar]])
+        colName_tup = colnames(anyM.mapping[invTypes_dic[invVar]])
         invVar_tab[invVar] = DB.merge(finalVar_tab, DB.join(invVar_tab[invVar], table(rows(filtInvVar_tab)); lkey = colName_tup, rkey = colName_tup, how = :anti))
     end
 
-    # XXX finally adds data to variable dictionary
+    # </editor-fold>
+
+    # <editor-fold desc="finds required aggregations and creates variable objects"
     for invVar in keys(invTypes_dic)
-        dim_tup = colnames(Mapping_dic[invTypes_dic[invVar]])
-        Variable_dic[invVar] = VarElement(invVar, dim_tup, (:invest,), reindex(invVar_tab[invVar],dim_tup))
+        invData_tab = invVar_tab[invVar]
+        dim_tup = colnames(anyM.mapping[invTypes_dic[invVar]])
+        anyM.variables[invVar] = VarElement(invVar, dim_tup, reindex(invData_tab,dim_tup))
     end
     # </editor-fold>
+
+    produceMessage(anyM.options,anyM.report, 3," - Created investment variables")
 end
 
 # XXX creates variables for capacities installed
 # variables are only created if capacity is not limited to zero and, in case of non-investment technologies, if residual capacities are specified
-function createVariable(name::Val{:capacity}, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement})
+function createVariable!(name::Val{:capacity}, anyM::anyModel)
 
-    # <editor-fold desc="XXX initialization"
-    # reads data from inputs
-
-    # initializes assignments and data
+    # <editor-fold desc="initialization"
     capaTypes_dic = Dict(:capaConv => :capaConv, :capaStIn => :capaSt, :capaStOut => :capaSt, :capaStSize => :capaSt, :capaExc => :capaExc)
-    capaTypeRatio_tup = (:capaStIn => :stInToConv, :capaStOut => :stOutToStIn, :capaStSize => :stSizeToStIn)
+    capaTypeRatio_tup = (:capaStIn => :stInToConv, :capaStOut => :stOutToStIn, :capaStSize => :sizeToStIn)
+    dimSt_tup = colnames(anyM.mapping[:capaSt])
 
-    dimSt_tup = colnames(Mapping_dic[:capaSt])
-
-    defPar_tup = tuple(collect(keys(Parameter_dic))...)
+    defPar_tup = tuple(collect(keys(anyM.parameter))...)
     removeTab_dic = Dict{Symbol,Array{IndexedTable,1}}(x => [] for x in keys(capaTypes_dic))
 
     # seperates capacity variables relating to stock and non-stock technologies
-    stockTech_arr = DB.select(filter(r -> r.type == 0,Mapping_dic[:TechData]),:Te)
-    stockConv_tab = filter(r -> r.Te in stockTech_arr, Mapping_dic[:capaConv])
-    stockSt_tab = filter(r -> r.Te in stockTech_arr, Mapping_dic[:capaSt])
+    stockTech_arr = DB.select(filter(r -> r.type == 0,anyM.mapping[:TechData]),:Te)
+    stockConv_tab = filter(r -> r.Te in stockTech_arr, anyM.mapping[:capaConv])
+    stockSt_tab = filter(r -> r.Te in stockTech_arr, anyM.mapping[:capaSt])
 
-    noStock_dic = Dict(x => filter(r -> !(r.Te in stockTech_arr), Mapping_dic[x]) for x in (:capaConv,:capaSt))
-    noStock_dic[:capaExc] = Mapping_dic[:capaExc]
+    noStock_dic = Dict(x => filter(r -> !(r.Te in stockTech_arr), anyM.mapping[x]) for x in (:capaConv,:capaSt))
+    noStock_dic[:capaExc] = anyM.mapping[:capaExc]
     # </editor-fold>
 
-    # <editor-fold desc="XXX handling of stock technologies"
+    # <editor-fold desc="handling of stock technologies"
 
     # filters stock technologies with residual values provided and saves these in dictionary
-    stockData_dic::Dict{Symbol,Union{Nothing,IndexedTable}} = Dict(x => checkResiCapa(Symbol(x,:Resi),occursin("Conv",string(x)) ? stockConv_tab : stockSt_tab,defPar_tup, Set_dic ,Parameter_dic)
-                                                                                                                                    for x in filter(x -> x != :capaExc,collect(keys(capaTypes_dic))))
+    stockData_dic = convert(Dict{Symbol,Union{Nothing,IndexedTable}},Dict(x => checkResiCapa(Symbol(x,:Resi),occursin("Conv",string(x)) ? stockConv_tab : stockSt_tab,defPar_tup, anyM)
+                                                                                                                                    for x in filter(x -> x != :capaExc,collect(keys(capaTypes_dic)))))
     stockData_dic[:capaExc] = nothing
     # reports if storage input to conversion ratio was provided for stock technologies
     if :stInToConv in defPar_tup
-        for i in intersect(stockTech_arr,DB.select(Parameter_dic[:stInToConv].data,:Te))
-            push!(Report_df,(2,:var,:stockStorage,"$(createFullString(i,Set_dic[:Te])) is a technology without investment and a ratio for conversion to input storage capacity was provided, this is not supported and values were ignored"))
+        for i in intersect(stockTech_arr,DB.select(anyM.parameter[:stInToConv].data,:Te))
+            push!(anyM.report,(2,:variable,:stockStorage,"$(createFullString(i,anyM.sets[:Te])) is a technology without investment and a ratio for conversion to input storage capacity was provided, this is not supported and values were ignored"))
         end
     end
 
@@ -214,7 +428,7 @@ function createVariable(name::Val{:capacity}, Set_dic::Dict{Symbol,DataFrame}, P
         if !isempty(stockTab_tab)
             withoutIn_tab = DB.join(stockTab_tab,stockData_dic[:capaStIn]; lkey = dimSt_tup, rkey = dimSt_tup,how =:anti)
             for i in unique(DB.select(withoutIn_tab,:Te))
-                push!(Report_df,(2,:var,:stockStorage,"$(createFullString(i,Set_dic[:Te])) is a technology with storage, but without investment and has residual capacities for storage output and/or size, but not for storage input, it was ignored as a result"))
+                push!(anyM.report,(2,:variable,:stockStorage,"$(createFullString(i,anyM.sets[:Te])) is a technology with storage, but without investment and has residual capacities for storage output and/or size, but not for storage input, it was ignored as a result"))
             end
         end
     end
@@ -222,12 +436,12 @@ function createVariable(name::Val{:capacity}, Set_dic::Dict{Symbol,DataFrame}, P
     # search for ratios provided for storage of stock technologies and report on their usage (similar to hardcoded example above for the storage input to conversion ratio)
     if stockData_dic[:capaStIn] != nothing
         fltStockStIn_tab = DB.select(stockData_dic[:capaStIn],DB.Not(All(:val)))
-        unmatchedTech_dic = Dict{Symbol,Array{Int16,1}}()
+        unmatchedTech_dic = Dict{Symbol,Array{Int32,1}}()
         for stockRatio in (:stOutToStIn => :capaStOut, :sizeToStIn => :capaStSize)
             if stockRatio[1] in defPar_tup
                 # checks if input ratio was provided for stock technologies
                 ratioVal_tab = DB.join((l,r) -> (val = l.var * r.val,),DB.rename(stockData_dic[:capaStIn],:val => :var),
-                                            filter(r -> r.val != 0,matchSetParameter(fltStockStIn_tab,Parameter_dic[stockRatio[1]],Set_dic)); lkey = dimSt_tup, rkey = dimSt_tup,how =:inner)
+                                    filter(r -> r.val != 0,matchSetParameter(anyM.report, fltStockStIn_tab, anyM.parameter[stockRatio[1]], anyM.sets,anyM.options.scale.compDig)); lkey = dimSt_tup, rkey = dimSt_tup,how =:inner)
 
                 # uses ratios where no stock data was provided and reports on it
                 ratioUsed_tab = DB.join(ratioVal_tab,stockData_dic[stockRatio[2]]; lkey = dimSt_tup, rkey = dimSt_tup,how =:anti)
@@ -238,7 +452,7 @@ function createVariable(name::Val{:capacity}, Set_dic::Dict{Symbol,DataFrame}, P
                 unusedRatio_int = length(ratioVal_tab) - length(ratioUsed_tab)
                 if unusedRatio_int != 0
                     reportCase_str = occursin("Out",string(stockRatio[1])) ? "output capacity" : "size"
-                    push!(Report_df,(2,:var,:stockStorage,"in $(unusedRatio_int) case(s) a ratio and a residual capacity were provided to control the storage $reportCase_str of a technology with storage, but without investment, in these case the residual capacity is used"))
+                    push!(anyM.report,(2,:variable,:stockStorage,"in $(unusedRatio_int) case(s) a ratio and a residual capacity were provided to control the storage $reportCase_str of a technology with storage, but without investment, in these cases the residual capacity is used"))
                 end
             end
         end
@@ -247,230 +461,219 @@ function createVariable(name::Val{:capacity}, Set_dic::Dict{Symbol,DataFrame}, P
         for tech in keys(unmatchedTech_dic)
             typeError_str = (tech == :stOutToStIn) ? "size" : "output capacity"
             for i in unmatchedTech_dic[tech]
-                push!(Report_df,(2,:var,:stockStorage,"$(createFullString(i,Set_dic[:Te])) is technology with storage, but without investment, but storage $typeError_str were not specified in any way, hence the technology was ignored"))
+                push!(anyM.report,(2,:variable,:stockStorage,"$(createFullString(i,anyM.sets[:Te])) is technology with storage, but without investment, but storage $typeError_str were not specified in any way, hence the technology was ignored"))
             end
         end
     end
     # </editor-fold>
 
-    # <editor-fold desc="XXX handling of investment technologies"
+    # <editor-fold desc="handling of investment technologies"
     # filters and removes non-stock variables that are fixed to zero, if any storage type (input,output,size) is fixed to zero remove whole storage
 
     # filters cases where expansion is fixed to zero
     for capVar in keys(capaTypes_dic)
         varFix_sym = Symbol(capVar,:Fix)
-        if varFix_sym in defPar_tup push!(removeTab_dic[capVar], DB.select(filter(r -> r.val == 0, matchSetParameter(Mapping_dic[capaTypes_dic[capVar]], Parameter_dic[varFix_sym], Set_dic)),DB.Not(All(:val)))) end
+        if varFix_sym in defPar_tup
+            push!(removeTab_dic[capVar], DB.select(filter(r -> r.val == 0, matchSetParameter(anyM.report, anyM.mapping[capaTypes_dic[capVar]], anyM.parameter[varFix_sym], anyM.sets,anyM.options.scale.compDig)),DB.Not(All(:val))))
+        end
     end
-
     # </editor-fold>
 
+    # <editor-fold desc="finds required aggregations and creates variable objects"
     # creates final variable table by merging data for stock and non-stock values and add to dictionary afterwards
-    capaVar_dic = Dict(x => reindex(createVarTable(removeEntries(removeTab_dic[x],noStock_dic[capaTypes_dic[x]]),stockData_dic[x],string(x)),colnames(Mapping_dic[capaTypes_dic[x]])) for x in keys(capaTypes_dic))
-    for capaVar in keys(capaTypes_dic)
-        dim_tup = colnames(Mapping_dic[capaTypes_dic[capaVar]])
-        Variable_dic[capaVar] = VarElement(capaVar, dim_tup, (:invest,), reindex(capaVar_dic[capaVar],dim_tup))
+    capaVar_dic = Dict(x => reindex(createInvVar(anyM.optModel,removeEntries(removeTab_dic[x],noStock_dic[capaTypes_dic[x]]),stockData_dic[x],string(x),anyM.options.scale.upInv),colnames(anyM.mapping[capaTypes_dic[x]]))
+                                                                                                                                                                                                    for x in keys(capaTypes_dic))
+    for capaVar in keys(capaVar_dic)
+        capaData_tab = capaVar_dic[capaVar]
+        dim_tup = colnames(capaData_tab,DB.Not(:var))
+        anyM.variables[capaVar] = VarElement(capaVar, dim_tup, reindex(capaData_tab,dim_tup))
     end
+    # </editor-fold>
+    produceMessage(anyM.options,anyM.report, 3," - Created capacity variables")
 end
 
 # XXX creates new variable every invesment variable to reflect commissioned value
-function createVariable(name::Val{:commissioned}, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Variable_dic::Dict{Symbol,VarElement})
+function createVariable!(name::Val{:commissioned}, anyM::anyModel)
 
-    dimConv_tup, dimSt_tup, dimExc_tup = [Variable_dic[x].dim for x in (:capaConv, :capaStIn, :capaExc)]
+    # specific definitons required for cases where ratio among capacities of installed capacities is to be preserved within commissioned capacities
+    dimConv_tup, dimSt_tup, dimExc_tup = [anyM.variables[x].dim for x in (:capaConv, :capaStIn, :capaExc)]
+    defPar_tup = tuple(collect(keys(anyM.parameter))...)
+    contrRatio_dic = Dict(:capaStIn => (ratio = :stInToConv, contr = :Conv), :capaStOut => (ratio = :stOutToStIn, contr = :StIn), :capaStSize => (ratio = :sizeToStIn, contr = :StIn))
 
-    defPar_tup = tuple(collect(keys(Parameter_dic))...)
+    for capaVar in (:capaExc, :capaConv, :capaStIn, :capaStOut, :capaStSize)
 
-    # XXX creates commissioned capacity variables for conversion and exchange
-    Variable_dic[:capaCommConv] = VarElement(:capaCommConv, dimConv_tup, (:invest,), createVarTable(DB.select(Variable_dic[:capaConv].data,DB.Not(All(:var))),nothing,string(:capaCommConv)))
-    Variable_dic[:capaCommExc]  = VarElement(:capaCommExc,  dimExc_tup, (:invest,),  createVarTable(DB.select(Variable_dic[:capaExc].data,DB.Not(All(:var))),nothing,string(:capaCommExc)))
+        if !(capaVar in keys(anyM.variables)) continue end
+        comm_sym = Symbol(replace(string(capaVar),"capa" => "capaComm"))
 
-    # XXX creates commissioned capacity variables for storage
-    # if storage investment is controlle via a ratio, the same needs to apply for decommissioning, dic defines how this is done
-    contrRatio_dic = Dict(:StIn => (ratio = :stInToConv, contr = :Conv), :StOut => (ratio = :stOutToStIn, contr = :StIn), :StSize => (ratio = :sizeToStIn, contr = :StIn))
+        # filter installed capacites that are only created to control a limit on installed capacities and create commissioning variable for remainging
+        commCapa_tab = anyM.variables[capaVar].data[setdiff(collect(1:length(anyM.variables[capaVar].data)),collect(keys(anyM.aggVar[capaVar])))]
 
-    for typ in sort(collect(keys(contrRatio_dic)))
-        capaVar_tab = DB.select(Variable_dic[Symbol(:capa,typ)].data,DB.Not(All(:var)))
-        varName_sym = Symbol(:capaComm,typ)
-
-        # checks if parameter ratio is defined controlling the investment for specific storage type
-        if contrRatio_dic[typ].ratio in defPar_tup
-            # finds cases were storage investment is controlled via ratio and creates functions based on ratio value and controll variable
-            relJoin_tup = typ == :StIn ? dimConv_tup : dimSt_tup
-            capaVarRatioVal_tab = matchSetParameter(capaVar_tab, Parameter_dic[contrRatio_dic[typ].ratio], Set_dic)
-            if !(:C in relJoin_tup)
-                capaVarRatio_tab = DB.join((l,r) -> (C = l.C, var = l.val * r.var),capaVarRatioVal_tab,Variable_dic[Symbol(:capaComm,contrRatio_dic[typ].contr)].data; lkey = relJoin_tup, rkey = relJoin_tup, how = :inner)
-            else
-                capaVarRatio_tab = DB.join((l,r) -> (var = l.val * r.var,),capaVarRatioVal_tab,Variable_dic[Symbol(:capaComm,contrRatio_dic[typ].contr)].data; lkey = relJoin_tup, rkey = relJoin_tup, how = :inner)
+        # <editor-fold desc="filter cases were capacity is controlled by ratio"
+        # e.g. if installed capacity of stOut is controlled by stIn relation must be preserved within commissioned capacities
+        if capaVar in (keys(contrRatio_dic))
+            # checks if anyM.parameter ratio is defined controlling the investment for specific storage type
+            if contrRatio_dic[capaVar].ratio in defPar_tup
+                # finds cases were storage investment is controlled via ratio and creates functions based on ratio value and controll variable
+                relJoin_tup = capaVar == :capaStIn ? dimConv_tup : dimSt_tup
+                capaVarRatioVal_tab = matchSetParameter(anyM.report,commCapa_tab, anyM.parameter[contrRatio_dic[capaVar].ratio], anyM.sets, anyM.options.scale.compDig)
+                if !(:C in relJoin_tup)
+                    capaVarRatio_tab = DB.join((l,r) -> (C = l.C, var = l.val * r.var),capaVarRatioVal_tab,anyM.variables[Symbol(:capaComm,contrRatio_dic[capaVar].contr)].data; lkey = relJoin_tup, rkey = relJoin_tup, how = :inner)
+                else
+                    capaVarRatio_tab = DB.join((l,r) -> (var = l.val * r.var,),capaVarRatioVal_tab,anyM.variables[Symbol(:capaComm,contrRatio_dic[capaVar].contr)].data; lkey = relJoin_tup, rkey = relJoin_tup, how = :inner)
+                end
+                # replaces ratio controlled entries with original entries
+                commCapa_tab = rmvDummyCol(DB.join(addDummyCol(commCapa_tab),capaVarRatio_tab; lkey = dimSt_tup, rkey = dimSt_tup, how = :anti))
             end
-
-            capaVarNoRatio_tab = createVarTable(rmvDummyCol(DB.join(addDummyCol(capaVar_tab),capaVarRatio_tab; lkey = dimSt_tup, rkey = dimSt_tup, how = :anti)),nothing,string(varName_sym))
-
-            Variable_dic[varName_sym] = VarElement(varName_sym,dimSt_tup,(:dispatch,), DB.reindex(DB.merge(capaVarNoRatio_tab,capaVarRatio_tab),dimSt_tup))
-        else
-            Variable_dic[varName_sym] = VarElement(varName_sym,dimSt_tup,(:dispatch,), createVarTable(capaVar_tab,nothing,string("capaComm",typ)))
         end
+        # </editor-fold>
+
+        # <editor-fold desc="finds required aggregations due to limit constraints"
+        dim_tup = colnames(commCapa_tab,DB.Not(:var))
+        # finds provided limit constraints that can not be related to an existing variable
+        relPar_arr = collect(intersect(keys(anyM.parameter), map(x -> Symbol(comm_sym,x),(:Fix, :Low, :Up))))
+        noVarYet_tab = missDimLimits(DB.select(commCapa_tab,DB.Not(All(:var))),relPar_arr,anyM)
+        # performs aggregation among all variable dimensions, entries for limit constraints that would not be controlled via aggregation are removed
+        newVar_tab, anyM.aggVar[comm_sym] = aggregateSetTable(DB.select(commCapa_tab,DB.Not(All(:var))), dim_tup, tuple(), anyM.sets, noVarYet_tab, true)
+
+        # merges any variables that have to be additionaly created for limit constraints
+        if !(isnothing(newVar_tab))
+            commCapa_tab = DB.merge(commCapa_tab, createInvVar(anyM.optModel, newVar_tab, nothing, String(comm_sym), anyM.options.scale.upInv))
+        end
+        # </editor-fold>
+
+        # XXX creates commissioned capacity variables for conversion and exchange
+        varComm_tab = reindex(createInvVar(anyM.optModel,commCapa_tab,nothing,string(comm_sym),anyM.options.scale.upInv),dim_tup)
+        anyM.variables[comm_sym] = VarElement(comm_sym, dim_tup, varComm_tab)
     end
+
+    produceMessage(anyM.options,anyM.report, 3," - Created commissioned variables")
 end
 # </editor-fold>
 
-# <editor-fold desc="pre-setting and mode related stuff"
-# XXX replaces parameter values orginally read-in with fixed value on potential dispatch levels and identifies cases where modes are used
-# done to avoid potential inconsistencies (for example different values efficiency on hourly and daily level)
-function presetDispatchParameter(Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement})
+# <editor-fold desc="creation of dispatch variables"
+# XXX creates all dispatch variables
 
+# XXX create dispatch variables of technologies
+function createVariable!(name::Val{:techDispatch}, anyM::anyModel)
 
-    # <editor-fold desc="initialize and define variables"
-    # maps parameters to pre-setting types
-    preTypePar_dic = Dict(y => filter(x -> isdefined(Parameter_dic[x],:presetLvl) && Parameter_dic[x].presetLvl == y, keys(Parameter_dic)) for y in (:reference, :lowest, :highest, :carrier, :exchange, :trade))
+    # XXX initializes variables
+    # assigns capacity to types of dispatch variables
+    capaType_dic = Dict(:capaConv => (:use, :gen), :capaStIn => (:stIntIn, :stExtIn), :capaStOut => (:stIntOut, :stExtOut), :capaStSize => (:stSize,))
+    # assigns types of dispatch variables to group
+    typeGrp_dic = Dict(:gen => :out, :use => :in, :stIntIn => :stIn, :stExtIn => :stIn, :stIntOut => :stOut, :stExtOut => :stOut, :stSize => :stSize)
+    allDim_tup = (:Ts_dis, :Ts_inv, :R_dis, :C, :Te, :M)
 
-    # creates dictionaries with carriers and their temporal and spatial dispatch level
-    cLvlTs_dic, cLvlR_dic = [Dict(zip(DB.select(Mapping_dic[:C_lvl],:C),DB.select(Mapping_dic[:C_lvl],dim))) for dim in (:lvlTsDis, :lvlRDis)]
+	varTabDic_dic = Dict{Symbol,Dict{Symbol,IndexedTable}}() # stores dictionaries of dimension tables returned from subfunction
+	aggDicDic_dic = Dict{Symbol,Dict{Symbol,Dict{Int64,BitSet}}}() # stores dictionaries of aggregation dictionaries returned from subfunction
+	report_dic = Dict{Symbol,DataFrame}() # stores reporting of individual function calls
 
-    # counts number of modes per tech to identify ill defined values later
-    techM_tab = filter(r -> r.M != [0],Mapping_dic[:TechInfo])
-    techCntM_dic::Dict{Int16,Int16} = Dict(x => length(DB.select(filter(y -> y.Te == x,techM_tab),:M)[1]) for x in unique(DB.select(techM_tab,:Te)))
+	# XXX obtains tables of required dispatch entries and dictionaries of aggregations
+	for capa in keys(capaType_dic)
+		if isempty(anyM.variables[capa].data) continue end
+		capaMapping_tab = filter(r -> r.varType in capaType_dic[capa],anyM.mapping[:dispVar])
+		varTabDic_dic[capa], report_dic[capa] = getTechByCapa(capa, capaType_dic[capa], anyM.variables[capa].data, capaMapping_tab, anyM)
+	end
 
-    # creates dictionary that assigns combination of supordinate dispatch timestep and dispatch level to dispatch timesteps
-    supDis_arr = Set_dic[:Ts][Set_dic[:Ts][:,:lvl] .== maximum(Mapping_dic[:C_lvl].columns.lvlTsInv) ,:idx]
-    allLvlTsDis_arr = unique(DB.select(Mapping_dic[:C_lvl],:lvlTsDis))
-    tsSupDisLvl_dic = Dict((x[1], x[2]) => convert(Array{Int16,1},Set_dic[:Ts][x[1],:lvl] == x[2] ? [x[1]] : getChildren(x[1],Set_dic[:Ts],false,x[2])) for x in Iterators.product(supDis_arr,allLvlTsDis_arr))
+	# XXX writes actual variable objects and saves aggregations to model structure
+	for grp in keys(varTabDic_dic), type in keys(varTabDic_dic[grp])
 
-    # creates dictionary that assigns combination of investment region and dispatch level to dispatch region
-    allRInv_arr = unique(union(DB.select(Mapping_dic[:capaConv],(:R_inv)),DB.select(Mapping_dic[:capaSt],(:R_inv))))
-    allLvlR_arr = unique(union(DB.select(Mapping_dic[:C_lvl],:lvlRDis),DB.select(Mapping_dic[:C_lvl],:lvlRInv)))
-    rInvLvl_dic = Dict((x[1], x[2]) => convert(Int16,Set_dic[:R][x[1],:lvl] <= x[2] ? x[1] : getHeritanceLine(x[1],Set_dic[:R],x[2])) for x in Iterators.product(allRInv_arr,allLvlR_arr))
-
-    # filter relevant technology data and dictionary to save mode related entries
-    techAll_tab = DB.select(Mapping_dic[:TechInfo],(:refLvl,:allCar,:M,:Te))
-    ModeParameter_dic = Dict{Symbol,IndexedTable}()
-
-    # </editor-fold>
-
-    # <editor-fold desc="pre-setting for exchange and trade parameters"
-    if !isempty(preTypePar_dic[:exchange])
-        # find all carriers that can be exchanged and adds their dispatch level to capacity table
-        lvlTsDisC_dic = Dict(car => DB.select(filter(r -> r.C == car,Mapping_dic[:C_lvl]),:lvlTsDis)[1] for car in unique(DB.select(Variable_dic[:capaExc].data,:C)))
-        capaDispLvl_tab = IT.transform(DB.select(Variable_dic[:capaExc].data,DB.Not(All(:var))),:lvlTs => DB.select(Variable_dic[:capaExc].data,:C => r -> lvlTsDisC_dic[r]))
-
-        # flattens table based on this supordinate dispatch timesteps
-        exc_tab = DB.flatten(DB.select(IT.transform(DB.select(capaDispLvl_tab,DB.Not(All(:lvlTs))),:Ts_dis => DB.select(capaDispLvl_tab,(:Ts_supDis,:lvlTs) => x -> tsSupDisLvl_dic[(x.Ts_supDis, x.lvlTs)])),DB.Not(All(:Ts_supDis))),:Ts_dis)
-
-        foreach(x -> resetParameter(exc_tab,x,Set_dic,Parameter_dic),preTypePar_dic[:exchange])
-    end
-
-    if !isempty(preTypePar_dic[:trade])
-        trd_tab = rmvDummyCol(reindex(addDummyCol(expandSetColumns(DB.rename(DB.select(Mapping_dic[:C_lvl],(:C,:lvlTsDis,:lvlRDis)),:lvlTsDis => :Ts_dis,:lvlRDis => :R_dis),(:Ts_dis,:R_dis),Set_dic)),(:Ts_dis,:R_dis,:C)))
-        foreach(x -> resetParameter(trd_tab,x,Set_dic,Parameter_dic),preTypePar_dic[:trade])
-    end
-    # </editor-fold>
-
-    # <editor-fold desc=" pre-setting for technology parameters"
-
-    # XXX pre-setting on reference level
-    if !isempty(preTypePar_dic[:reference])
-        # gets reference levels of all technologies that actually convert something
-        techRef_tab = DB.select(filter(r -> :use in keys(r.allCar) && :gen in keys(r.allCar), techAll_tab),DB.Not(All(:allCar)))
-        techRefJoinLvl_tab = DB.select(IT.transform(techRef_tab,:lvlTs => map(x -> x.Ts, DB.select(techRef_tab,:refLvl)),:lvlR => map(x -> x.R, DB.select(techRef_tab,:refLvl))),DB.Not(All(:refLvl)))
-        # expands to all actual dispatch timesteps on reference level with and without mode dimension
-        techRefDisp_tab = expandInvestToDisp(DB.join(techRefJoinLvl_tab,Variable_dic[:capaConv].data; lkey = :Te, rkey = :Te, rselect = DB.Not(All(:var)), how = :inner),tsSupDisLvl_dic,rInvLvl_dic,false)
-        refM_tab, refNoM_tab = [DB.flatten(techRefDisp_tab,:M), DB.select(techRefDisp_tab,DB.Not(All(:M)))]
-
-        for x in preTypePar_dic[:reference]
-            resetParameter((:M in colnames(Parameter_dic[x].data)) ? refM_tab : refNoM_tab, x , Set_dic, Parameter_dic, ModeParameter_dic, techCntM_dic, (:Ts_dis => :up, :R_dis => :up))
-        end
-    end
-
-    # XXX pre-setting on highest or lowest level across all conversion parameters
-    if !isempty(preTypePar_dic[:lowest])
-        # gets lowest dispatch levels for technlogy and joins with acutal capacity data
-    	techConvAll_tab = filter(r -> !isempty(intersect(keys(r.allCar),(:use,:gen))),techAll_tab)
-        tsLvl_arr, rLvl_arr = [DB.select(techConvAll_tab,:allCar => r -> maximum(map(z -> dic[z],vcat(map(x -> getproperty(r,x),intersect(keys(r),(:gen,:use)))...)))) for dic in (cLvlTs_dic,cLvlR_dic)]
-        invLowDisLvl_tab = DB.join(IT.transform(DB.select(techConvAll_tab,DB.Not(All(:allCar,:refLvl))),:lvlTs => tsLvl_arr, :lvlR => rLvl_arr),Variable_dic[:capaConv].data; lkey = :Te, rkey = :Te, rselect = DB.Not(All(:var)), how = :inner)
-        # expands to all actual dispatch timesteps on reference level with and without mode dimension
-        dispVar_tab = expandInvestToDisp(invLowDisLvl_tab,tsSupDisLvl_dic,rInvLvl_dic)
-        lowM_tab, lowNoM_tab = [DB.flatten(dispVar_tab,:M), DB.select(dispVar_tab,DB.Not(All(:M)))]
-
-        for x in preTypePar_dic[:lowest]
-            resetParameter((:M in colnames(Parameter_dic[x].data)) ? lowM_tab : lowNoM_tab, x, Set_dic, Parameter_dic, ModeParameter_dic, techCntM_dic,(:Ts_dis => :avg_any, :R_dis => :avg_any))
-        end
-    end
-
-    # XXX pre-setting on the respective level of each carrier
-    if !isempty(preTypePar_dic[:carrier])
-        # seperates between storage parameters and non-storage parameters
-        for str in (true, false)
-            carType_tup = str ? (:stExtIn, :stExtOut) : (:gen,:use) # differentiation between storage and no-storage, because different carriers are relevant
-            techCar_tab =  IT.transform(DB.select(techAll_tab,DB.Not(All(:allCar))),:C => DB.select(techAll_tab,:allCar => r -> unique(vcat(map(x -> getproperty(r,x),intersect(keys(r),carType_tup))...))))
-            techCarFlat_tab = DB.flatten(techCar_tab,:C)
-            # create table of all combinations on carrier level, but at least on reference level (other conflicts emerge when writing equations)
-            techCarLvl_tab = IT.transform(techCarFlat_tab, :lvlTs    => DB.select(techCarFlat_tab,(:C,:refLvl) => r -> convert(Int16,max(r.refLvl == nothing ? 0 : r.refLvl[:Ts],cLvlTs_dic[r.C]))),
-                                                                      :lvlR     => DB.select(techCarFlat_tab,(:C,:refLvl) => r -> convert(Int16,max(r.refLvl == nothing ? 0 : r.refLvl[:R],cLvlR_dic[r.C]))))
-
-            # expands to all actual dispatch timesteps on reference level with and without mode dimension
-    		join_tup = str ? (:C,:Te) : (:Te,)
-            dispVar_tab =  expandInvestToDisp(DB.join(DB.select(techCarLvl_tab,DB.Not(All(:refLvl))),Variable_dic[str ? :capaStIn : :capaConv].data; lkey = join_tup, rkey = join_tup, rselect = DB.Not(All(:var)), how = :inner),tsSupDisLvl_dic,rInvLvl_dic)
-            carM_tab, carNoM_tab = [DB.flatten(dispVar_tab,:M), DB.select(dispVar_tab,DB.Not(All(:M)))]
-
-            for x in filter(x -> !str || (occursin("St",string(x)) || string(x)[1:2] == "st"), preTypePar_dic[:carrier])
-                resetParameter((:M in colnames(Parameter_dic[x].data)) ? carM_tab : carNoM_tab, x, Set_dic, Parameter_dic, ModeParameter_dic, techCntM_dic)
-            end
-        end
-    end
-    # </editor-fold>
-
-    # <editor-fold desc="merges all modes cases to one table"
-    # filter tech/mode combinations from mapping
-    techWithMode_tab = DB.flatten(DB.select(filter(r -> r.M != Int16[0],Mapping_dic[:TechInfo]),(:M,:Te)),:M)
-    # assinges dispatch variables to groups of capacity constraints
-    assConvRestr_dic = Dict(:in => :use, :out => :gen)
-
-    # merges entries of all parameter entrie with modes specified into one mapping table, that is used to create dispatch variables later
-    modDim_tup = (:Ts_dis, :R_dis, :C, :Te, :M, :cnstrType)
-    allModesMerged_tab = table(Int16[], Int16[], Int16[], Int16[], Int16[], Symbol[], names = modDim_tup)
-    modeDim_tup = (:Ts_dis, :R_dis, :C, :Te)
-    for parMode in keys(ModeParameter_dic)
-        # adds all respective carriers, if parameter itself is not mode dependant (case for availabity for example)
-        if !(:C in Parameter_dic[parMode].dim)
-            # assigns combination of technology and in/out to array of relevant carrier
-            relTe_tab = DB.select(DB.filter(r -> r.Te in unique(DB.select(ModeParameter_dic[parMode],:Te)),Mapping_dic[:TechInfo]),(:Te,:allCar))
-            teCar_dic = Dict((assConvRestr_dic[b] in keys(a.allCar)) ? (a.Te,b) => getproperty(a.allCar,assConvRestr_dic[b]) : nothing => nothing
-                                                                                                            for a = rows(relTe_tab), b = intersect((:in,:out),Parameter_dic[parMode].modeDep))
-            # extends table according to dictionary written earlier
-            ModeParameter_dic[parMode] = DB.flatten(IT.transform(ModeParameter_dic[parMode],:C => map(x -> teCar_dic[(x.Te, x.cnstrType)],DB.select(ModeParameter_dic[parMode],(:Te,:cnstrType)))),:C)
+        # internal storage variables should only be created, if a corresponding gen/use variable exists
+        if type == :stIntIn
+            varType_tab = join(varTabDic_dic[grp][type], varTabDic_dic[:capaConv][:gen]; lkey = allDim_tup, rkey = allDim_tup, how = :inner)
+        elseif type == :stIntOut
+            varType_tab = join(varTabDic_dic[grp][type], varTabDic_dic[:capaConv][:use]; lkey = allDim_tup, rkey = allDim_tup, how = :inner)
+        else
+            varType_tab = varTabDic_dic[grp][type]
         end
 
-        allModesMerged_tab = DB.select(joinMissing(allModesMerged_tab,ModeParameter_dic[parMode],modDim_tup,modDim_tup,:outer,(convert(Int16,0),)),DB.Not(All(:Ts_inv)))
+		var_tab = createDispVar(anyM.optModel, varType_tab, String(type), anyM.sets[:Ts], anyM.supDis, anyM.options.scale.upDisp, anyM.options.scale.compDig)
+		anyM.variables[type] = VarElement(type, allDim_tup, var_tab)
+		produceMessage(anyM.options,anyM.report, 3," - Created dispatch variables for $(type)")
     end
-
-    Mapping_dic[:modeCases] = allModesMerged_tab
-    # </editor-fold>
 end
 
+# XXX creates all exchange variables
+function createVariable!(name::Val{:exchange}, anyM::anyModel)
+
+    # XXX initializes variables
+    if isempty(anyM.variables[:capaExc].data) return end
+    excDim_tup = (:Ts_dis, :R_a, :R_b, :C)
+
+    # XXX create entries for original exchange variables
+    # find all carriers that can be exchanged and adds their dispatch level to capacity table
+    lvlTsDisC_dic = Dict(car => DB.select(filter(r -> r.C == car,anyM.mapping[:C_lvl]),:lvlTsDis)[1] for car in unique(DB.select(anyM.variables[:capaExc].data,:C)))
+    capaDispLvl_tab = IT.reindex(IT.transform(DB.select(anyM.variables[:capaExc].data,DB.Not(All(:var))),:lvlTs => DB.select(anyM.variables[:capaExc].data,:C => r -> lvlTsDisC_dic[r])),(:R_a, :R_b))
+
+    # creates dictionary that assigns all actual dispatch timestep to combination of supordinate dispatch timesteps and dispatch level, expand and flattens variable table based on this
+    tempSupDisLvl_dic = Dict((x.Ts_supDis, x.lvlTs) => anyM.sets[:Ts][x.Ts_supDis,:lvl] == x.lvlTs ? [x.Ts_supDis] : getChildren(x.Ts_supDis,anyM.sets[:Ts],false,x.lvlTs) for x in DB.unique(DB.select(capaDispLvl_tab,(:Ts_supDis, :lvlTs))))
+    exc_tab = DB.flatten(IT.transform(DB.select(capaDispLvl_tab,DB.Not(All(:Ts_supDis,:lvlTs))),:Ts_dis => DB.select(capaDispLvl_tab,(:Ts_supDis,:lvlTs) => x -> tempSupDisLvl_dic[(x.Ts_supDis, x.lvlTs)])),:Ts_dis)
+    excFilter_tab = filter(r -> r.R_a != r.R_b,exc_tab)
+    excRename_tab = DB.merge(DB.rename(excFilter_tab,:R_a => :R_from,:R_b => :R_to),DB.rename(excFilter_tab,:R_b => :R_from,:R_a => :R_to))
+
+    # XXX adds further entries for aggregation and limits
+    # adds entries to be used for aggregations (e.g. synthGas can be exchanged => creates aggregated variables on gas level, so this exchange is accounted for in the gas level)
+    excMerg_tab = addAggVar(excRename_tab, anyM.sets, anyM.mapping)
+
+    assSupDis_dic = assignSupDis(unique(DB.select(excRename_tab,:Ts_dis)),anyM.sets[:Ts],anyM.supDis.lvl)
+    excFullAddSup_tab = IT.transform(excMerg_tab,:Ts_supDis => DB.select(excRename_tab,:Ts_dis => x -> assSupDis_dic[x]))
+
+    # XXX create actual variable object
+    excVar_tab = reindex(createDispVar(anyM.optModel,excFullAddSup_tab,"exchange",anyM.sets[:Ts],anyM.supDis,anyM.options.scale.upDisp,anyM.options.scale.compDig),(:Ts_dis, :R_from, :R_to, :C))
+    anyM.variables[:exchange] = VarElement(:exchange,(:Ts_dis,:R_from,:R_to,:C),excVar_tab)
+    produceMessage(anyM.options,anyM.report, 3," - Created exchange variables")
+end
+
+# XXX creates all trade variables
+function createVariable!(name::Val{:trade}, anyM::anyModel)
+    for type in (:Buy, :Sell)
+        if Symbol(:trd,type,:Prc) in keys(anyM.parameter)
+            #  XXX gets initial entries from checking where a price for buying or selling is defined
+            trdVar_tab = DB.select(anyM.parameter[Symbol(:trd,type,:Prc)].data,DB.Not(All(:val)))
+            getSupDis_dic = assignSupDis(unique(DB.select(trdVar_tab,:Ts_dis)),anyM.sets[:Ts],anyM.supDis.lvl) # adds supordinate dispatch timestep to trade entries
+
+            # XXX adds entries to be used for aggregations (e.g. synthGas can be bought/sold => creates aggregated variables on gas level, so this is accounted for in the gas level)
+            trdFull_tab =  addAggVar(trdVar_tab, anyM.sets, anyM.mapping)
+
+            # adds supordinate dispatch timesteps again to table
+            assSupDis_dic = assignSupDis(unique(DB.select(trdFull_tab,:Ts_dis)),anyM.sets[:Ts],anyM.supDis.lvl)
+            dim_tup = tuple(filter(r -> r != :var,collect(colnames(trdFull_tab)))...)
+            trdFullAddSup_tab = reindex(IT.transform(trdFull_tab,:Ts_supDis => DB.select(trdFull_tab,:Ts_dis => x -> assSupDis_dic[x])),dim_tup)
+
+            # XXX create actual variable object
+            anyM.variables[Symbol(:trade,type)] =
+                VarElement(Symbol(:trade,type),(:Ts_dis, :R_dis, :C, :id),createDispVar(anyM.optModel,trdFullAddSup_tab,string("trd",type),anyM.sets[:Ts],anyM.supDis,anyM.options.scale.upDisp,anyM.options.scale.compDig))
+        end
+    end
+    produceMessage(anyM.options,anyM.report, 3," - Created trade variables")
+end
+
+# </editor-fold>
+
+# <editor-fold desc="collection of subfunctions"
 # XXX sets parameter data to values that could be matched with input table
-function resetParameter(newData_tab::IndexedTable,par_sym::Symbol,Set_dic::Dict{Symbol,DataFrame},Parameter_dic::Dict{Symbol,ParElement},
-                                                ModeParameter_dic::Union{Nothing,Dict{Symbol,IndexedTable}}=nothing,techCntM_dic::Union{Nothing,Dict{Int16,Int16}}=nothing, newInherit_tup::Tuple = ())
+function resetParameter(newData_tab::IndexedTable, parameter::ParElement, sets::Dict{Symbol,DataFrame}, techInfo::IndexedTable, options::modOptions, techCntM_dic::Union{Nothing,Dict{Int32,Int32}} = nothing, newInherit_tup::Tuple = ())
+    # gets dimension of search tables and parameter without mode
+    dimNoM_tup = tuple(filter(x -> x != :M ,collect(parameter.dim))...)
+    modeParameter = nothing
+    # creates empty report, that entries are written to within subprocess
+    report = DataFrame(type = Int32[], group = Symbol[], instance = Symbol[],  message = String[])
 
+    if !(:M in colnames(newData_tab)) || unique(DB.select(newData_tab,:M)) == Int32[0]
+        # in case modes are not being searched for just directly set data
+        matchData_tab = matchSetParameter(report, newData_tab, parameter, sets, options.scale.compDig)
+        parameter.data = reindex(matchData_tab,tuple(intersect(colnames(matchData_tab),dimNoM_tup)...))
+    else
+        # looks up original table without applying default values
+        matchData1_tab = matchSetParameter(report,newData_tab,parameter,sets, options.scale.compDig,:val,false)
 
-    # if, inherit is already set to new value, this indicates parameter was already reset and function can be skipped
-    if Parameter_dic[par_sym].inherit != newInherit_tup
+        # filter returned table by weather a mode was specified
+        noMode_tab = DB.filter(r -> r.M == 0,matchData1_tab)
+        mode_tab = DB.filter(r -> r.M != 0,matchData1_tab)
 
-        # gets dimension of search tables and parameter without mode
-        dimNoM_tup = tuple(filter(x -> x != :M ,collect(Parameter_dic[par_sym].dim))...)
+        # groups mode related data for further analysis
+        resDim_tup = tuple(filter(x -> x != :M ,intersect(parameter.dim,colnames(matchData1_tab)))...)
 
-        if !(:M in colnames(newData_tab)) || unique(DB.select(newData_tab,:M)) == Int16[0]
-            # in case modes are not being searched for just directly set data
-            matchData_tab = matchSetParameter(newData_tab,Parameter_dic[par_sym],Set_dic)
-            Parameter_dic[par_sym].data = reindex(matchData_tab,tuple(intersect(colnames(matchData_tab),dimNoM_tup)...))
-        else
-
-            # looks up original table without applying default values
-            matchData1_tab = matchSetParameter(newData_tab,Parameter_dic[par_sym],Set_dic,:val,false)
-
-            # filter returned table by weather a mode was specified
-            noMode_tab = DB.filter(r -> r.M == 0,matchData1_tab)
-            mode_tab = DB.filter(r -> r.M != 0,matchData1_tab)
-
-            # groups mode related data for further analysis
-            resDim_tup = tuple(filter(x -> x != :M ,intersect(Parameter_dic[par_sym].dim,colnames(matchData1_tab)))...)
+        if !isempty(mode_tab)
 
             modeGrp_tab = DB.groupby(mode_tab, resDim_tup, usekey = false; select = (:val, :M, :Te)) do y
                 NamedTuple{(:M,:val,:cntM)}(length(unique(y.val)) == 1 ? tuple(Array(y.M),y.val[1],length(y.M)) : tuple(Array(y.M),Array(y.val),length(y.M)))
@@ -481,7 +684,7 @@ function resetParameter(newData_tab::IndexedTable,par_sym::Symbol,Set_dic::Dict{
             if length(modeGrp_tab) > length(modeGrpDef_tab)
                 missTechM_tab = DB.groupby(length,DB.join(modeGrp_tab,modeGrpDef_tab; lkey = resDim_tup, rkey = resDim_tup, how = :anti),:Te)
                 for row in rows(missTechM_tab)
-                    push!(Report_df,(2, :modes, par_sym, "parameter data was not specified for all modes in $(row.length) cases for $(createFullString(row.Te,Set_dic[:Te],true)), existing values were ignored"))
+                    push!(report,(2, :modes, parameter.name, "parameter data was not specified for all modes in $(row.length) cases for $(createFullString(row.Te,sets[:Te],true)), existing values were ignored"))
                 end
             end
 
@@ -490,7 +693,7 @@ function resetParameter(newData_tab::IndexedTable,par_sym::Symbol,Set_dic::Dict{
             if !isempty(noModeDis_tab)
                 disTechM_tab = DB.groupby(length,DB.join(modeGrpDef_tab,noModeDis_tab; lkey = resDim_tup, rkey = resDim_tup, how = :anti),:Te)
                 for row in rows(disTechM_tab)
-                    push!(Report_df,(2, :modes, par_sym, "parameter data was the same for all modes in $(row.length) cases for $(createFullString(row.Te,Set_dic[:Te],true)), no differentiation between modes was applied in these cases"))
+                    push!(report,(2, :modes, parameter.name, "parameter data was the same for all modes in $(row.length) cases for $(createFullString(row.Te,sets[:Te],true)), no differentiation between modes was applied in these cases"))
                 end
                 noMode_tab = DB.merge(noMode_tab,noModeDis_tab)
             end
@@ -499,143 +702,48 @@ function resetParameter(newData_tab::IndexedTable,par_sym::Symbol,Set_dic::Dict{
             finalModeGrp_tab = sort(DB.filter(r -> techCntM_dic[r.Te] == r.cntM, modeGrp_tab))
             leng_arr = DB.select(finalModeGrp_tab,:cntM)
             finalMode_tab = IT.transform(table(vcat(fill.(DB.select(finalModeGrp_tab,DB.Not(All(:cntM,:M,:val))),leng_arr)...)),:M => vcat(DB.select(finalModeGrp_tab,:M)...),:val => vcat(DB.select(finalModeGrp_tab,:val)...))
-
-            # gets all data, where no values where obtained successfully yet and look them up again applying the default value and not specifing the mode anymore
-            # (hence now non mode-specific parameter values for technologies with modes are taken into account => mode-specific parameter values overwrite non-mode specific parameter values)
-            newSearch_tab = table(DB.unique(DB.join(newData_tab,!isempty(finalMode_tab) ? DB.merge(DB.select(noMode_tab,DB.Not(All(:val))),DB.select(finalMode_tab,DB.Not(All(:val)))) : DB.select(noMode_tab,DB.Not(All(:val)));
-                                                                                                                                lkey = resDim_tup, rkey = resDim_tup, lselect = resDim_tup, how = :anti)))
-            if !isempty(newSearch_tab)
-                matchData2_tab = matchSetParameter(IT.transform(newSearch_tab,:M => fill(0,length(newSearch_tab))),Parameter_dic[par_sym],Set_dic)
-                if !isempty(matchData2_tab) noMode_tab = DB.merge(matchData2_tab,noMode_tab) end
-            end
-
-            # returns tables with and without mode data to respective dictionaries, if there is no data for both deletes element
-            if isempty(noMode_tab) && isempty(finalMode_tab)
-                 delete!(Parameter_dic,par_sym); return
-            else
-                Parameter_dic[par_sym].data = reindex(merge(noMode_tab,finalMode_tab),resDim_tup)
-            end
-            # saves all dimensions with a mode to seperate dictionary for later use
-            if !isempty(finalMode_tab)
-                # assinges dispatch variables to a group of dispatch variables
-                assDisGrp_dic = Dict(:gen => (:out,), :use => (:in,), :stIntIn => (:stIn,:stSize), :stExtIn => (:stIn,:stSize), :stIntOut => (:stOut,:stSize), :stExtOut => (:stOut,:stSize))
-                # identifies what kind of capacity restrictions (in,out,stIn,...) apply for each occuring technology to expand table accordingly
-                capaRestr_dic = Dict(x.Te => intersect(Parameter_dic[par_sym].modeDep,union(map(y -> assDisGrp_dic[y],keys(x.allCar))...))
-                                                                                            for x in DB.filter(r -> r.Te in unique(DB.select(finalMode_tab,:Te)),Mapping_dic[:TechInfo]))
-
-                ModeParameter_dic[par_sym] = DB.flatten(IT.transform(DB.select(finalMode_tab,DB.Not(All(:val))),:cnstrType => map(x -> capaRestr_dic[x], DB.select(finalMode_tab,:Te))),:cnstrType)
-            end
-        end
-        # sets new inherit rules and default value
-        Parameter_dic[par_sym].dim = dimNoM_tup
-        Parameter_dic[par_sym].inherit = newInherit_tup
-    end
-end
-# </editor-fold>
-
-# <editor-fold desc="creation of dispatch variables"
-# XXX creates all dispatch variables
-function createVariable(name::Val{:dispatch},Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement})
-
-    # assignes capacity to dispatch variables
-    assCapaDis_dic = Dict(:capaConv => (:use, :gen), :capaStIn => (:stIntIn, :stExtIn), :capaStOut => (:stIntOut, :stExtOut), :capaStSize => (:stSize,))
-    # assinges dispatch variables to a group of dispatch variables
-    assDisGrp_dic = Dict(:gen => :out, :use => :in, :stIntIn => :stIn, :stExtIn => :stIn, :stIntOut => :stOut, :stExtOut => :stOut, :stSize => :stSize)
-
-    # gets table of capacity variables
-    dispVarTab_dic = Dict(x => filter(r -> r.varType in assCapaDis_dic[x],Mapping_dic[:dispVar]) for x in keys(assCapaDis_dic))
-    lvlSupDis_int = maximum(Mapping_dic[:C_lvl].columns.lvlTsInv)
-    dim_tup = (:Ts_dis, :Ts_inv, :R_dis, :C, :Te)
-
-    for varGrp in keys(dispVarTab_dic)
-
-        # creates empty variable object if no capacity variables of this group exist
-        if isempty(Variable_dic[varGrp].data)
-            for var_ in assCapaDis_dic[varGrp] VarElement(var_, dim_tup, (:dispatch,), table()) end
-            continue
+        else
+            finalMode_tab = mode_tab
         end
 
-        # joins capacity variables with dispatch levels
-        key_tup = varGrp == :capaConv ?  (:Te,) : (:C, :Te)
-        varLvl_tab = DB.join(Variable_dic[varGrp].data,table(rows(dispVarTab_dic[varGrp])); lkey = key_tup, rkey = key_tup, lselect = DB.Not(All(:var)), how = :inner)
-
-        # cheks for cases where storage balance is created on the supordiante dispatch level (like one equation per each year)
-        stOnSupDisp = filter(r -> r.lvlTs == lvlSupDis_int,varLvl_tab)
-        if !isempty(stOnSupDisp)
-            for te in unique(DB.select(stOnSupDisp,:Te))
-                push!(Report_df,(2,:eqn,:stBal,"for technology $(createFullString(te,Set_dic[:Te])) storage balance is created on the supordinate dispatch level, i.e. no actual storage can take place"))
-            end
+        # gets all data, where no values where obtained successfully yet and look them up again applying the default value and not specifing the mode anymore
+        # (hence now non mode-specific parameter values for technologies with modes are taken into account => mode-specific parameter values generally overwrite non-mode specific parameter values)
+        newSearch_tab = table(DB.unique(DB.join(newData_tab,!isempty(finalMode_tab) ? DB.merge(DB.select(noMode_tab,DB.Not(All(:val))),DB.select(finalMode_tab,DB.Not(All(:val)))) : DB.select(noMode_tab,DB.Not(All(:val)));
+                                                                                                                            lkey = resDim_tup, rkey = resDim_tup, lselect = resDim_tup, how = :anti)))
+        if !isempty(newSearch_tab)
+            matchData2_tab = matchSetParameter(report,IT.transform(newSearch_tab,:M => convert(Array{Int32,1},fill(0,length(newSearch_tab)))),parameter,sets, options.scale.compDig)
+            if !isempty(matchData2_tab) noMode_tab = DB.merge(matchData2_tab,noMode_tab) end
         end
 
-        # assignes combination of investment or supordinate dispatch index and level to the relevant dispatch timeteps
-        tsSupDisLvl_dic::Dict{Tuple{Int16,Int16},Array{Int16,1}} = Dict((x.Ts_supDis, x.lvlTs) => Set_dic[:Ts][x.Ts_supDis,:lvl] == x.lvlTs ? [x.Ts_supDis] : getChildren(x.Ts_supDis,Set_dic[:Ts],false,x.lvlTs) for x in DB.unique(DB.select(varLvl_tab,(:Ts_supDis, :lvlTs))))
-        rInvLvl_dic::Dict{Tuple{Int16,Int16},Int16}     = Dict((x.R_inv, x.lvlR) => Set_dic[:R][x.R_inv,:lvl] == x.lvlR ? x.R_inv : getHeritanceLine(x.R_inv,Set_dic[:R],x.lvlR) for x in DB.unique(DB.select(varLvl_tab,(:R_inv, :lvlR))))
+        # returns tables with and without mode data to respective dictionaries, if there is no data for both deletes element
+        if isempty(noMode_tab) && isempty(finalMode_tab)
+            return nothing, modeParameter, report
+        else
+            parameter.data = reindex(merge(noMode_tab,finalMode_tab),resDim_tup)
+        end
+        # saves all dimensions with a mode to seperate dictionary for later use
+        if !isempty(finalMode_tab)
+            # assinges dispatch variables to a group of dispatch variables
+            assDisGrp_dic = Dict(:gen => (:out,), :use => (:in,), :stIntIn => (:stIn,:stSize), :stExtIn => (:stIn,:stSize), :stIntOut => (:stOut,:stSize), :stExtOut => (:stOut,:stSize))
+            # identifies what kind of capacity restrictions (in,out,stIn,...) apply for each occuring technology to expand table accordingly
+            capaRestr_dic = Dict(x.Te => intersect(parameter.modeDep,union(map(y -> assDisGrp_dic[y],keys(x.allCar))...))
+                                                                                        for x in DB.filter(r -> r.Te in unique(DB.select(finalMode_tab,:Te)),techInfo))
 
-        for var_ in assCapaDis_dic[varGrp]
-
-            varLvlSub_tab = DB.select(filter(r -> r.varType == var_, varLvl_tab),DB.Not(All(:varType)))
-
-            # adds temporal and regional dispatch timesteps
-            fullVar_tab = reindex(expandInvestToDisp(IT.transform(varLvlSub_tab,:M  => convert(Array{Int16,1},fill(0,length(varLvlSub_tab)))),tsSupDisLvl_dic,rInvLvl_dic,true),dim_tup)
-
-            # filters rows where availability is zero and removes them from table to not generate these constraints
-            rmv_tup = varGrp == :capaConv ? (:Ts_supDis,:C) : (:Ts_supDis,)
-            join_tup = tuple(setdiff(colnames(fullVar_tab),rmv_tup)...)
-            paraAva_sym = Symbol(replace(string(varGrp),"capa" => "ava"))
-            fullVar_tab = DB.join(fullVar_tab,filter(r -> r.val == 0, matchSetParameter(DB.select(fullVar_tab,DB.Not(All(rmv_tup))),Parameter_dic[paraAva_sym],Set_dic)); lkey = join_tup, rkey = join_tup, how = :anti)
-
-
-            # finds cases, where dispatch variables need to be mode specific and replaces them within table
-            if !isempty(Mapping_dic[:modeCases])
-                join_tup = (:Ts_dis, :R_dis, :C, :Te)
-                # filters all modes cases relevant for the respective dispatch variables
-                relModeVar_tab = DB.select(table(rows(DB.filter(r -> r.cnstrType == assDisGrp_dic[var_], Mapping_dic[:modeCases]))),DB.Not(All(:cnstrType)))
-                # identifies relevant modes cases, adds them to all variables table while removing respective old entries without model
-                modeCase_tab = join(fullVar_tab,relModeVar_tab; lkey = join_tup, rkey = join_tup ,how = :inner)
-                fullVar_tab = merge(modeCase_tab,DB.join(fullVar_tab,modeCase_tab; lkey = join_tup, rkey = join_tup, how = :anti))
-            end
-
-            Variable_dic[var_] = VarElement(var_, dim_tup, (:dispatch,), createVarTable(fullVar_tab,nothing,String(var_)))
+            modeParameter = DB.flatten(IT.transform(DB.select(finalMode_tab,DB.Not(All(:val))),:cnstrType => map(x -> capaRestr_dic[x], DB.select(finalMode_tab,:Te))),:cnstrType)
         end
     end
+    # sets new inherit rules and default value
+    parameter.dim = dimNoM_tup
+    parameter.inherit = newInherit_tup
+
+    return parameter, modeParameter, report
 end
 
-# XXX creates all exchange variables
-function createVariable(name::Val{:exchange}, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Mapping_dic::Dict{Symbol,IndexedTable}, Variable_dic::Dict{Symbol,VarElement})
-
-    excDim_tup = (:Ts_dis, :R_a, :R_b, :C)
-
-    # find all carriers that can be exchanged and adds their dispatch level to capacity table
-    lvlTsDisC_dic = Dict(car => DB.select(filter(r -> r.C == car,Mapping_dic[:C_lvl]),:lvlTsDis)[1] for car in unique(DB.select(Variable_dic[:capaExc].data,:C)))
-    capaDispLvl_tab = IT.transform(DB.select(Variable_dic[:capaExc].data,DB.Not(All(:var))),:lvlTs => DB.select(Variable_dic[:capaExc].data,:C => r -> lvlTsDisC_dic[r]))
-
-    # creates dictionary that assigns all actual dispatch timestep to combination of supordinate dispatch timesteps and dispatch level, expand and flattens variable table based on this
-    tempSupDisLvl_dic = Dict((x.Ts_supDis, x.lvlTs) => Set_dic[:Ts][x.Ts_supDis,:lvl] == x.lvlTs ? [x.Ts_supDis] : getChildren(x.Ts_supDis,Set_dic[:Ts],false,x.lvlTs) for x in DB.unique(DB.select(capaDispLvl_tab,(:Ts_supDis, :lvlTs))))
-    exc_tab = DB.flatten(IT.transform(DB.select(capaDispLvl_tab,DB.Not(All(:lvlTs))),:Ts_dis => DB.select(capaDispLvl_tab,(:Ts_supDis,:lvlTs) => x -> tempSupDisLvl_dic[(x.Ts_supDis, x.lvlTs)])),:Ts_dis)
-
-    excVar_tab = reindex(createVarTable(DB.merge(DB.rename(exc_tab,:R_a => :R_from,:R_b => :R_to),DB.rename(exc_tab,:R_b => :R_from,:R_a => :R_to)),nothing,"exchange"),(:Ts_dis,:R_from,:R_to,:C))
-
-    Variable_dic[:exchange] = VarElement(:exchange,(:Ts_dis,:R_from,:R_to,:C),(:dispatch,),excVar_tab)
-end
-
-# XXX creates all trade variables
-function createVariable(name::Val{:trade}, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement}, Variable_dic::Dict{Symbol,VarElement})
-    for typ in (:Buy, :Sell)
-        if Symbol(:trd,typ,:Prc) in keys(Parameter_dic)
-            Variable_dic[Symbol(:trade,typ)] = VarElement(Symbol(:trade,typ),(:Ts_dis, :R_dis, :C, :id) ,(:dispatch,),createVarTable(DB.select(Parameter_dic[Symbol(:trd,typ,:Prc)].data,DB.Not(All(:val))),nothing,string("trd",typ)))
-        end
-    end
-end
-
-# </editor-fold>
-
-# <editor-fold desc="collection of subfunctions"
-
-# XXX checks if residual capacities are provided for the stock technologies in allStockCapa_table
-function checkResiCapa(resiPar_sym::Symbol, stockCapa_tab::IndexedTable, allPar_tup::Tuple, Set_dic::Dict{Symbol,DataFrame}, Parameter_dic::Dict{Symbol,ParElement})
+# XXX obtains residual capacities for technologies
+function checkResiCapa(resiPar_sym::Symbol, stockCapa_tab::IndexedTable, allPar_tup::Tuple, anyM::anyModel)
     if resiPar_sym in allPar_tup
         # search for defined residual values
-        stock_tab = filter(r -> r.val != 0, matchSetParameter(stockCapa_tab, Parameter_dic[resiPar_sym], Set_dic))
+        stock_tab = filter(r -> r.val != 0, matchSetParameter(anyM.report, stockCapa_tab, anyM.parameter[resiPar_sym], anyM.sets, anyM.options.scale.compDig))
         if isempty(stock_tab)
             return nothing
         else
@@ -647,15 +755,197 @@ function checkResiCapa(resiPar_sym::Symbol, stockCapa_tab::IndexedTable, allPar_
     end
 end
 
-# XXX merges variables and fixed residual capacities for stock technologies together into data table
-function createVarTable(setData_tab::IndexedTable,resiData_tab::Union{IndexedTable,Nothing},name_str::String,lowerBound_flt::Float64 = 0.0)
-    info::VariableInfo{Float64,Float64,Float64,Float64} = VariableInfo(true, lowerBound_flt, false, NaN, false, NaN, false, NaN, false, false)
-    buildVar_svar = JuMP.build_variable(error, info::VariableInfo{Float64,Float64,Float64,Float64})
+# XXX determines relevant dimensions for a group of dispatch variables from capacity variables and computes dimension for each group
+function getTechByCapa(capa::Symbol, dispGrp_tup::Tuple, capaData_tab::IndexedTable, capaMapping_tab::IndexedTable, anyM::anyModel)
+
+	dim_tup = (:Ts_dis, :Ts_inv, :R_dis, :C, :Te)
+
+	# creates empty report, that entries are written to within subfunction
+    report = DataFrame(type = Int32[], group = Symbol[], instance = Symbol[],  message = String[])
+	# empty dictionary for all variable table and aggregations written in subfunction
+	varTab_dic = Dict{Symbol,IndexedTable}()
+	aggDic_dic = Dict{Symbol,Dict{Int64,BitSet}}()
+
+	# <editor-fold desc= XXX creates relevant dimension of dispatch variables from existing capacity variables>
+	# joins capacity variables with dispatch levels to get dispatch variables needed for technologies
+	key_tup = capa == :capaConv ?  (:Te,) : (:C, :Te)
+	varLvlTech_tab = DB.join(capaData_tab, table(rows(capaMapping_tab)); lkey = key_tup, rkey = key_tup, lselect = DB.Not(All(:var)), how = :inner)
+
+	# gets dispatch variables irrespective of technology created for the energy balance
+	noTech_tab = filter(r -> r.Te == 0, capaMapping_tab)
+	uniReg_arr = Dict(x => anyM.sets[:R][anyM.sets[:R][:,:lvl] .== x, :idx] for x in unique(DB.select(noTech_tab,:lvlR)))
+	varLvlEnerGrp_tab = IT.transform(noTech_tab,:Ts_supDis => fill(anyM.supDis.step,length(noTech_tab)),
+																					:Ts_inv => fill(convert(Int32,0),length(noTech_tab)),
+																						:R_inv => map(x -> uniReg_arr[x],DB.select(noTech_tab,:lvlR)))
+
+	# filters out dispatch variables for energy balances, that are superfluous, because no capacities can be related to these
+	# (e.g. there is a carrier that can only be stored by a stock technology and capacities only exist in certain regions, creating a variable for regions without capacity would lead to an uncontrolled variable)
+	varLvlEnerFlat_tab = flatten(flatten(varLvlEnerGrp_tab,:Ts_supDis),:R_inv)
+	uniqueTech_tab = unique(DB.select(varLvlTech_tab,(:C,:Ts_supDis,:R_inv)))
+
+	varLvlEner_tab = DB.filter(r -> !isempty(intersect(map(x -> (C = r.C, Ts_supDis = r.Ts_supDis, R_inv = x),vcat(r.R_inv, getChildren(r.R_inv,anyM.sets[:R],true))),uniqueTech_tab)), varLvlEnerFlat_tab)
+
+	# merges both tables of dispatch variables
+	varLvl_tab = DB.merge(varLvlTech_tab,varLvlEner_tab)
+
+	# cheks for cases where storage balance is created on the subordinate dispatch level (like one constraint per each year)
+	stOnSupDisp = filter(r -> r.lvlTs == anyM.supDis.lvl,varLvl_tab)
+	if capa == :capaStSize && !isempty(stOnSupDisp)
+		for te in unique(DB.select(stOnSupDisp,:Te))
+			push!(report,(2,:constraint,:storageBalance,"for technology $(createFullString(te,anyM.sets[:Te])) storage balance will be created on the supordinate dispatch level, i.e. no actual storage can take place"))
+		end
+	end
+	# </editor-fold>
+
+	# <editor-fold desc= XXX creates table of actual dispatch variables for each group>
+	# assignes combination of investment or supordinate dispatch index and level to the relevant dispatch timeteps
+	unconvDic = Dict((x.Ts_supDis, x.lvlTs) => anyM.sets[:Ts][x.Ts_supDis,:lvl] == x.lvlTs ? [x.Ts_supDis] : getChildren(x.Ts_supDis,anyM.sets[:Ts],false,x.lvlTs) for x in DB.unique(DB.select(varLvl_tab,(:Ts_supDis, :lvlTs))))
+	tsSupDisLvl_dic = convert(Dict{Tuple{Int32,Int32},Array{Int32,1}},unconvDic)
+	unconvDic2 = Dict((x.R_inv, x.lvlR) => anyM.sets[:R][x.R_inv,:lvl] == x.lvlR ? x.R_inv : getHeritanceLine(x.R_inv,anyM.sets[:R],x.lvlR) for x in DB.unique(DB.select(varLvl_tab,(:R_inv, :lvlR))))
+	rInvLvl_dic = convert(Dict{Tuple{Int32,Int32},Int32},unconvDic2)
+
+	for type in dispGrp_tup
+		varTab_dic[type] = getTechByGrp(capa, type, varLvl_tab, tsSupDisLvl_dic, rInvLvl_dic, anyM)
+	end
+	# </editor-fold>
+
+	return varTab_dic, report
+end
+
+# XXX determines relevant dimensions for a specific type of dispatch variables
+function getTechByGrp(capa::Symbol, type::Symbol, varLvl_tab::IndexedTable ,tsSupDisLvl_dic::Dict{Tuple{Int32,Int32},Array{Int32,1}}, rInvLvl_dic::Dict{Tuple{Int32,Int32},Int32}, anyM::anyModel)
+
+	report = DataFrame(type = Int32[], group = Symbol[], instance = Symbol[],  message = String[])
+	dim_tup = (:Ts_dis, :Ts_inv, :R_dis, :C, :Te)
+	varLvlSub_tab = DB.select(filter(r -> r.varType == type, varLvl_tab),DB.Not(All(:varType)))
+    typeGrp_dic = Dict(:gen => :out, :use => :in, :stIntIn => :stIn, :stExtIn => :stIn, :stIntOut => :stOut, :stExtOut => :stOut, :stSize => :stSize)
+
+	# <editor-fold desc= XXX extends table and filters were availability is zero>
+	# adds temporal and regional dispatch timesteps
+	fullVar_tab = expandInvestToDisp(IT.transform(varLvlSub_tab,:M  => convert(Array{Int32,1},fill(0,length(varLvlSub_tab)))),tsSupDisLvl_dic,rInvLvl_dic,false)
+
+	# filters rows where availability is zero and removes them from table to not generate these constraints
+	rmv_tup = capa == :capaConv ? (:C,) : tuple()
+	join_tup = tuple(setdiff(colnames(fullVar_tab),rmv_tup)...)
+	paraAva_sym = Symbol(replace(string(capa),"capa" => "ava"))
+	filtVar_tab = rmvDummyCol(DB.join(addDummyCol(fullVar_tab),filter(r -> r.val == 0.0,
+		matchSetParameter(report,DB.select(fullVar_tab,DB.Not(All(rmv_tup))),anyM.parameter[paraAva_sym],anyM.sets, anyM.options.scale.compDig)); lkey = join_tup, rkey = join_tup, how = :anti))
+	# </editor-fold>
+
+	# <editor-fold desc= XXX finds cases, where dispatch variables need to be mode specific and replaces them within table>
+	if !isempty(anyM.mapping[:modeCases])
+        join_tup = (:Ts_dis, :Ts_inv, :R_dis, :C, :Te)
+
+        # filters all modes cases relevant for the respective dispatch variables
+        relModeVar_tab = DB.select(table(rows(DB.filter(r -> r.cnstrType == typeGrp_dic[type], anyM.mapping[:modeCases]))),DB.Not(All(:cnstrType)))
+        # identifies relevant modes cases, adds them to all variables table while removing respective old entries without model
+        modeCase_tab = DB.join(filtVar_tab, relModeVar_tab; lkey = join_tup, rkey = join_tup ,how = :inner)
+
+        # in case of conversion variables (use and gen) dispatch variables exist on many temporal and spatial levels, therefore, if a variable on a upper level is mode-dependant, so most be those on lower levels
+        if  capa == :capaConv
+        	# filters entries, that might be mode controlled, because a variable on different temporal/spatial level is mode dependant
+        	relEntr_tab = rows(DB.select(modeCase_tab,(:Ts_inv, :C, :Te))) |> (y -> filter(r -> (Ts_inv = r.Ts_inv, C= r.C, Te= r.Te) in y, filtVar_tab))
+
+            # goes step-by-step over variables below mode controlled levels and ensures they are mode depedant as well
+            while true
+                # filters relevant entries that are not yet mode controlled
+                maybeModeCase_tab = rmvDummyCol(DB.join(addDummyCol(relEntr_tab), modeCase_tab; lkey = (:Ts_dis, :Ts_inv, :R_dis, :C, :Te), rkey = (:Ts_dis, :Ts_inv, :R_dis, :C, :Te), how = :anti))
+                if isempty(maybeModeCase_tab) break end
+
+                # determines which mode dependant variables should actually be controlled as the sum of mode dependant variables on lower levels
+                grpInter_tup = (((:Ts_inv, :Te, :Ts_dis) => (:Ts_inv, :Te)), (:C, :R_dis))
+                dmy, addModes_tab = aggregateSetTable(maybeModeCase_tab, (:Ts_dis, :Ts_inv, :R_dis, :C, :Te, :M), grpInter_tup, anyM.sets, modeCase_tab)
+                if isempty(addModes_tab) break end
+
+                grpNewMode_tab = DB.groupby(flatten(DB.select(addModes_tab, (:M,:aggVar)),:aggVar),(:aggVar), usekey = false, select = :M) do x
+        				NamedTuple{(:M,)}(tuple(Array(x)))
+                end
+        		newModeCase_tab = DB.select(flatten(join(IT.transform(maybeModeCase_tab,:aggVar => collect(1:length(maybeModeCase_tab))),grpNewMode_tab; lkey = :aggVar,rkey = :aggVar, how = :inner),:M),DB.Not(All(:aggVar)))
+        		modeCase_tab = DB.merge(newModeCase_tab,modeCase_tab)
+        	end
+        end
+        # adds mode relevant cases to all variables table while removing respective old entries without model
+        filtVar_tab = DB.merge(modeCase_tab,DB.join(filtVar_tab,modeCase_tab; lkey = join_tup, rkey = join_tup, how = :anti))
+	end
+	# </editor-fold>
+
+	# <editor-fold desc= XXX adds entries for limit constraints and peforms aggregation>
+	# filters all limit parameters of relevance for the respective type of dispatch variable
+
+    # adds supordinate dispatch timesteps again to table
+    assSupDis_dic = assignSupDis(unique(DB.select(filtVar_tab,:Ts_dis)),anyM.sets[:Ts],anyM.supDis.lvl)
+    fitlVarAddSup_tab = DB.reindex(IT.transform(filtVar_tab,:Ts_supDis => DB.select(filtVar_tab,:Ts_dis => x -> assSupDis_dic[x])),(:Ts_dis, :Ts_inv, :R_dis, :C, :Te, :M))
+
+	# </editor-fold>
+	return fitlVarAddSup_tab
+end
+
+# XXX creates a investment variable for all rows in setData_tab, rows that also appear in resiData_tab are merge to the resulting table, but instead of variable these rows a fixed number
+function createInvVar(optModel::Model,setData_tab::IndexedTable,resiData_tab::Union{IndexedTable,Nothing},name_str::String,upBd_flt::Union{Nothing,Float64})
+
+    # adds an upper bound to all variables if provided within the options
+    if isnothing(upBd_flt)
+        info = VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)
+    else
+        info = VariableInfo(true, 0.0, true, upBd_flt, false, NaN, false, NaN, false, false)
+    end
+
+    buildVar_svar = JuMP.build_variable(error, info)
+
+    # creates variables and might merge residual values
     if resiData_tab != nothing
-        var_tab = IT.transform(setData_tab, :var => [JuMP.add_variable(global_mod::Model, JuMP.build_variable(error, info::VariableInfo{Float64,Float64,Float64,Float64}),name_str::String) for i = 1:length(setData_tab)]::Array{VariableRef,1})
+        var_tab = IT.transform(setData_tab, :var => [JuMP.add_variable(optModel::Model, JuMP.build_variable(error, info),name_str) for i = 1:length(setData_tab)])
         return DB.merge(DB.rename(resiData_tab, :val => :var),var_tab)
     else
-        return IT.transform(setData_tab, :var => [JuMP.add_variable(global_mod::Model, buildVar_svar, name_str::String) for i = 1:length(setData_tab)]::Array{VariableRef,1})
+        return IT.transform(setData_tab, :var => [JuMP.add_variable(optModel::Model, buildVar_svar, name_str::String) for i = 1:length(setData_tab)])
+    end
+end
+
+# XXX creates all dispatch variables, if a upper bound for dispatch variables is provided these are scaled
+function createDispVar(optModel::Model,setData_tab::IndexedTable,name_str::String,timeTree_df::DataFrame,supDis::NamedTuple{(:lvl,:step,:dic),Tuple{Int32,Tuple{Vararg{Int32,N} where N},Dict{Tuple{Int32,Int32},Float64}}},upBd_flt::Union{Nothing,Float64},rdDig_int::Int64)
+
+    if isnothing(upBd_flt) # creates all variables without any upper bound
+        buildVar_svar = JuMP.build_variable(error, VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false))
+        return IT.transform(setData_tab, :var => [JuMP.add_variable(optModel, buildVar_svar, name_str::String) for i = 1:length(setData_tab)])
+    else # scales the provided upper bound and creates variables
+        upBb_arr = round.(DB.select(addScaling(IT.transform(setData_tab,:upBd => fill(upBd_flt,length(setData_tab))),:upBd,timeTree_df,supDis),:upBd);digits = rdDig_int)
+        return IT.transform(setData_tab, :var => [JuMP.add_variable(optModel, JuMP.build_variable(error, VariableInfo(true, 0.0, true, upBb_arr[i], false, NaN, false, NaN, false, false)), name_str) for i = 1:length(setData_tab)])
+    end
+end
+
+# XXX adds additional dispatch for trade and exchange variables
+function addAggVar(var_tab::IndexedTable,sets::Dict{Symbol,DataFrame},mapping::Dict{Symbol,IndexedTable})
+
+    uniC_arr = unique(DB.select(var_tab,:C))
+
+    # assigns to each carriers an array of carriers, that require seperate aggregation variables
+    parC_dic = Dict{Int32,Array{Int32,1}}()
+    for x in uniC_arr
+        if isempty(values(parC_dic))
+            parC_dic[x] = filter(y -> !(y in uniC_arr),getindex.(getHeritanceLine(x,sets[:C]),1))
+        else # ensures a carrier is only assigned once
+            parC_dic[x] = filter(y -> !(y in union(uniC_arr,values(parC_dic)...)),getindex.(getHeritanceLine(x,sets[:C]),1))
+        end
+    end
+
+    if !isempty(union(values(parC_dic)...))
+        # extends orginal table by carriers to aggregate and their respective spatial and temporal level
+        lvlTs_dic, lvlR_dic = [Dict(x => getproperty.(filter(r -> r.C == x,mapping[:C_lvl]),type)[1] for x in union(values(parC_dic)...)) for type in (:lvlTsDis, :lvlRDis)]
+        varAgg_tab = flatten(IT.transform(var_tab,:C => map(x -> parC_dic[x],DB.select(var_tab,:C))),:C)
+        varAggLvl_tab = IT.transform(varAgg_tab,:lvlTs => map(x -> lvlTs_dic[x], DB.select(varAgg_tab,:C)),:lvlR => map(x -> lvlR_dic[x], DB.select(varAgg_tab,:C)))
+
+        # rewrites columns to values for carrier being aggregated
+        for col in intersect(colnames(varAggLvl_tab),(:Ts_dis,:R_from,:R_to))
+            setName_sym = Symbol(split(String(col),"_")[1])
+            set_df = sets[setName_sym]
+            lvl = Symbol(:lvl,setName_sym)
+            varAggLvl_tab = IT.transform(varAggLvl_tab,
+                                col => DB.select(varAggLvl_tab,(col,lvl) => x -> set_df[getproperty(x,col),:lvl] == getproperty(x,lvl) ? getproperty(x,col) : getindex.(getHeritanceLine(getproperty(x,col),set_df,getproperty(x,lvl)),1)))
+        end
+
+        return merge(var_tab,DB.select(varAggLvl_tab,DB.Not(All(intersect(colnames(varAggLvl_tab),(:lvlTs,:lvlR))...))))
+    else
+        return var_tab
     end
 end
 # </editor-fold>

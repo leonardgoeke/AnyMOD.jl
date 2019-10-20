@@ -25,7 +25,7 @@ function lookupTupleTree(Input_arr::Union{Array,String},Tree_df::DataFrame, Save
     SearchVal_tup = Tuple(filter(x -> !isempty(x),Input_arr))
     SearchLvl_tup = Tuple(findall(Input_arr .!= "")) .+ (StartLvl_int - 1)
 
-    Upper_id = Int16[]
+    Upper_id = Int32[]
 
     # loops over subsequent levels
     for (index,i) in enumerate(SearchLvl_tup)
@@ -47,7 +47,7 @@ function lookupTupleTree(Input_arr::Union{Array,String},Tree_df::DataFrame, Save
     (UseLookup_boo && writeDic) ? (if Upper_id != false SaveLookupSub_dic[Lookup_tup] = Upper_id end; return Upper_id, SaveLookupSub_dic) : (return Upper_id)
 end
 
-# XXX initalizes dictionary that saves lookups in tree
+# XXX initializes dictionary that saves lookups in tree
 function initializeLookup(size_int::Integer)
     Ini_arr = Array{Union{Bool,String}}(undef,size_int)
     Ini_arr .= false
@@ -166,73 +166,117 @@ function joinMissing(leftData_tab::IndexedTable, rightData_tab::IndexedTable, le
     return joinData_tab
 end
 
-# XXX aggregates input table among columns specified in aggCol_tup, uses dictionaries to speed this up according to grpInter_tup
+# XXX aggregates input table among columns specified in aggCol_tup, uses dictionaries to speed this up according to grpInter_tup, also checks, if entries potAgg_tab can be defined via aggregation and if yes, return them too
 # the aggregation process is speeded-up by saving the location of set combinations that were already looked up to a dictionary
 # grpInter_tup provides tuples that defines for what combination of sets dictionaries are created (e.g. ((:Ts_dis, :Te), (:R_dis, :C)) saves looked up Ts_dis/Te and R_dis/C combinations to dictionaries)
 # these dictionaries can also be nested indicated by a pair ( e.g. (((:Ts_inv, :Te, :Ts_dis) => (:Ts_inv, :Te))) saves looks-up for Ts_inv/Te and uses these to look-up and save Ts_inv/Te/Ts_dis
-# WARNING unreasonable grpInter_tup can lead to wrong results (e.g.  (((:Ts_inv, :Te) => (:Ts_inv, :Te, :Ts_dis))) )
-function aggregateSetTable(aggData_tab::IndexedTable,aggCol_tup::Tuple,grpInter_tup::Tuple,Set_dic::Dict{Symbol,DataFrame},rmvRedu_boo::Bool=true,selfAss_boo::Bool=true)
+# WARNING unreasonable grpInter_tup can lead to wrong results (e.g.  (((:Ts_inv, :Te) => (:Ts_inv, :Te, :Ts_dis)))
+function aggregateSetTable(inData_tab::IndexedTable, aggCol_tup::Tuple, grpInter_tup::Tuple, sets::Dict{Symbol,DataFrame}, potAgg_tab::Union{IndexedTable,Nothing})
 
-	# creates dictionary of dictionaries that assigns potential rows for aggregation for the respectiv dimension
-	idxChildRows_dic = Dict{Symbol,Dict{Int16,BitSet}}()
-
-	for col in colnames(aggData_tab)
-		searchCol_arr = DB.select(aggData_tab,col)
-		searchVal_arr = unique(searchCol_arr)
-
-		# if column is not aggregated  children of key value appear (these are
-		if col in aggCol_tup
-			# if column is aggregated, occurrence of all children is assigned (and of row itself if enabled, disabling makes sense if aggregation is only done for one row)
-			if selfAss_boo
-				idxChild_dic = Dict(x => vcat(x,intersect(searchVal_arr,getChildren(x,Set_dic[Symbol(split(string(col),"_")[1])],true))...) for x in searchVal_arr)
-			else
-				idxChild_dic = Dict(x => intersect(searchVal_arr,getChildren(x,Set_dic[Symbol(split(string(col),"_")[1])],true)) for x in searchVal_arr)
-			end
-
-			idxChildRows_dic[col] = Dict(x => BitSet(sort(findall([j in idxChild_dic[x] for j in searchCol_arr]))) for x in keys(idxChild_dic))
-		else
-			# if column is not aggregated, only occurrence of set itself is assigned
-			idxChildRows_dic[col] = Dict(x => BitSet(sort(findall(x .== searchCol_arr))) for x in searchVal_arr)
-		end
+	# <editor-fold desc="initialization of variables"
+	idxChildRows_dic = Dict{Symbol,Dict{Int32,BitSet}}()
+	# adds potential aggregations at the end of table if provided
+	newVar_tab = nothing
+	if isnothing(potAgg_tab)
+		aggData_tab = DB.select(inData_tab,aggCol_tup)
+	else
+		aggData_tab = table(vcat(rows(DB.select(inData_tab,aggCol_tup)),rows(DB.select(potAgg_tab,aggCol_tup))))
 	end
+	# </editor-fold>
 
-	# XXX searches for potential aggregations by building the intersection of all potential aggregation rows
+	# <editor-fold desc="create dictionaries in each dimension that assign rows suited for aggregation to each value"
+	for col in aggCol_tup
+		# entries that other entries can be aggregated to
+		searchCol_arr = DB.select(aggData_tab,col)
+		searchVal_arr = BitSet(unique(searchCol_arr))
+		# entries that can be aggregated to others => hence entries from potential aggregation are not included!
+		findCol_arr = DB.select(inData_tab,col)
+
+		setName = Symbol(split(string(col),"_")[1])
+
+		# to every unique value in column the value itself and its children are assigned
+		idxChild_dic = Dict(x => vcat(x,intersect(searchVal_arr,BitSet(getChildren(x,sets[setName],true)))...) for x in searchVal_arr)
+
+		# to everything occuring in values, the rows where it appears are assigned
+		childrenRow_dic = Dict(x => BitSet(sort(findall(y -> y == x,findCol_arr))) for x in unique(vcat(values(idxChild_dic)...)))
+		# for each unique value in column the rows with children are assigned
+		idxChildRows_dic[col] = Dict(x => union(map(y -> childrenRow_dic[y],idxChild_dic[x])...) for x in keys(idxChild_dic))
+	end
+	# </editor-fold>
+
+	# <editor-fold desc="finds aggregation by intersecting suited rows in each dimension"
 	# for speedup already computed intersection between certain combination of sets are stored within dictionaries accoring to groupings provided
-
 	# creates dictionary based on grouping provided
-	if isempty(grpInter_tup) grpInter_tup = tuple(colnames(aggData_tab)) end
-	saveInter_dic = Dict(x => Dict{Tuple{Vararg{Int16}},BitSet}() for x in vcat(map(x -> mixedTupToTup(x),grpInter_tup)...))
+	if isempty(grpInter_tup) grpInter_tup = tuple(aggCol_tup) end
+	saveInter_dic = Dict(x => Dict{Tuple{Vararg{Int32}},BitSet}() for x in vcat(map(x -> mixedTupToTup(x),grpInter_tup)...))
 
 	# creates actual lookups
 	aggRow_arr = map(rows(aggData_tab)) do row
-		return intersect([lookupIntersect(row, grp,saveInter_dic,idxChildRows_dic) for grp in tuple(grpInter_tup...)]...)
+		# creates first intersection
+		inter = lookupIntersect(row, grpInter_tup[1],saveInter_dic,idxChildRows_dic)
+		if length(inter) == 1 return BitSet() end
+		# creates remaining intersections
+		for grp in grpInter_tup[2:end]
+			inter = intersect(inter,lookupIntersect(row, grp,saveInter_dic,idxChildRows_dic))
+			if length(inter) == 1 return BitSet() end # returns empty bitset in case rows only assigns itself
+		end
+  		return inter
 	end
 
 	# filters assignemnts of rows to itself
 	allAgg_arr = collect(zip(collect(1:length(aggRow_arr)),aggRow_arr))
-	relAgg_arr = filter(x -> length(x[2]) > 1, allAgg_arr)
+	relAgg_arr = filter(x -> !(isempty(x[2])), allAgg_arr)
 	relAggRmv_dic = Dict(map(x -> (x[1],setdiff(x[2],x[1])) ,relAgg_arr))
+	# </editor-fold>
 
-
-	# remove redundant values from aggregation arrays
+	# <editor-fold desc="remove redundant values from aggregation and return results"
 	# e.g. yearly aggregation would so far aggregate weekly and hourly values, but hourly values would be redundant since they are included in weekly numbers, so they are filtered here
-	if rmvRedu_boo
-		for usedKey in keys(relAggRmv_dic)
-			rmvKey_set = intersect(keys(relAggRmv_dic),relAggRmv_dic[usedKey])
-			if !isempty(rmvKey_set)
-				relAggRmv_dic[usedKey] = setdiff(relAggRmv_dic[usedKey], Set(vcat(map(x -> collect(relAggRmv_dic[x]), collect(rmvKey_set))...)))
-			end
+	allKey_arr = BitSet(collect(keys(relAggRmv_dic)))
+	for usedKey in allKey_arr
+		rmvKey_set = intersect(allKey_arr,relAggRmv_dic[usedKey])
+		if !isempty(rmvKey_set)
+			relAggRmv_dic[usedKey] = setdiff(relAggRmv_dic[usedKey], Set(vcat(map(x -> collect(relAggRmv_dic[x]), collect(rmvKey_set))...)))
 		end
 	end
 
-	return relAggRmv_dic
+	# returns values, if no potential aggregations were provided
+	if isnothing(potAgg_tab)
+		return relAggRmv_dic, nothing
+	else
+        # filters actual aggregation to potential and adds BitSet of corresponding rows in variable table
+        potAggId_arr = sort(intersect(collect(keys(relAggRmv_dic)),collect(length(inData_tab)+1:(length(inData_tab)+length(potAgg_tab)))))
+        actAgg_tab = IT.transform(potAgg_tab[potAggId_arr .- length(inData_tab)],:aggVar => map(x -> relAggRmv_dic[x],potAggId_arr))
+		if isempty(actAgg_tab) return relAggRmv_dic, actAgg_tab end
+        # removes aggregations from potential table from output dictionary
+        for y in potAggId_arr delete!(relAggRmv_dic, y) end
+		return relAggRmv_dic, actAgg_tab
+	end
+	# </editor-fold>
+end
+
+# XXX merges all tables within input dictionary
+function mergeDicTable(table_dic::Dict{Symbol,IndexedTable},outerJoin_boo::Bool=true)
+	if isempty(table_dic) return nothing end
+	keys_arr = collect(keys(table_dic))
+	mergeTable_tab = table_dic[keys_arr[1]]
+	joinCol_tup = tuple(filter(x -> !(x in keys_arr), collect(colnames(mergeTable_tab)))...)
+
+	for restKey in keys_arr[2:end]
+		if outerJoin_boo
+			mergeTable_tab = DB.join(mergeTable_tab, table_dic[restKey]; lkey = joinCol_tup, rkey = joinCol_tup, how = :outer)
+		else
+			mergeTable_tab = merge(mergeTable_tab, table_dic[restKey])
+		end
+	end
+
+	return mergeTable_tab
 end
 
 # XXX expands table columns by replacing level entry with all sets on the respective level, therefore expCol_tup assigns columns to sets
-function expandSetColumns(expData_tab::IndexedTable,expCol_tup::Tuple,Set_dic::Dict{Symbol,DataFrame},returnM::Bool = false)
+function expandSetColumns(expData_tab::IndexedTable,expCol_tup::Tuple,sets::Dict{Symbol,DataFrame},returnM::Bool = false)
 	for ex in expCol_tup
 		set = Symbol(split(String(ex),"_")[1])
-		expData_tab = flatten(IT.transform(expData_tab,ex => DB.select(expData_tab,ex => r -> Set_dic[set][Set_dic[set][:,:lvl] .== r,:idx])),ex)
+		expData_tab = flatten(IT.transform(expData_tab,ex => DB.select(expData_tab,ex => r -> sets[set][sets[set][:,:lvl] .== r,:idx])),ex)
 	end
 	# returns one version with mode column flattend and one without this column at all
 	if returnM
@@ -243,7 +287,7 @@ function expandSetColumns(expData_tab::IndexedTable,expCol_tup::Tuple,Set_dic::D
 end
 
 # XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding investment regions and supordinate dispatch steps to full dispatch table
-function expandInvestToDisp(inData_tab::IndexedTable,temp_dic::Dict{Tuple{Int16,Int16},Array{Int16,1}},reg_dic::Dict{Tuple{Int16,Int16},Int16},preserveTsSupDis::Bool = false)
+function expandInvestToDisp(inData_tab::IndexedTable,temp_dic::Dict{Tuple{Int32,Int32},Array{Int32,1}},reg_dic::Dict{Tuple{Int32,Int32},Int32},preserveTsSupDis::Bool = false)
     # adds regional timesteps and check if this causes non-unique values (spatial investment level can be below dispatch level)
 	inReg_tab = table(unique(IT.transform(DB.select(inData_tab,DB.Not(All(:R_inv,:lvlR))),:R_dis => DB.select(inData_tab,(:R_inv, :lvlR) => x -> reg_dic[(x[1],x[2])]))))
 
@@ -253,6 +297,16 @@ function expandInvestToDisp(inData_tab::IndexedTable,temp_dic::Dict{Tuple{Int16,
 	else
 		return DB.select(flatten(IT.transform(DB.select(inReg_tab,DB.Not(:lvlTs)),:Ts_dis => DB.select(inReg_tab,(:Ts_supDis, :lvlTs) => x -> temp_dic[(x[1],x[2])])),:Ts_dis),DB.Not(:Ts_supDis)) # teuer
 	end
+end
+
+# XXX adds scaling factor to capacity field of input table
+function addScaling(add_tab::IndexedTable,capField_sym::Symbol,timeTree_df::DataFrame,supDis::NamedTuple{(:lvl,:step,:dic),Tuple{Int32,Tuple{Vararg{Int32,N} where N},Dict{Tuple{Int32,Int32},Float64}}})
+    tsDisLvl_dic = Dict(x => x == 0 ? 1 : timeTree_df[x,:lvl] for x in unique(DB.select(add_tab,:Ts_dis)))
+    addLvl_tab = IT.transform(add_tab,:lvl => map(x -> tsDisLvl_dic[x],DB.select(add_tab,:Ts_dis)))
+	aboveSupScale_flt = maximum(values(supDis.dic)) * length(supDis.step) # scaling value used for variables above the superordinate dispatch level
+	addScaled_tab = IT.transform(DB.select(addLvl_tab,DB.Not(All(:lvl,capField_sym))),capField_sym
+							=> DB.select(addLvl_tab,(capField_sym,:Ts_supDis,:lvl) => x -> getproperty(x,capField_sym)* (supDis.lvl > x.lvl ? aboveSupScale_flt : supDis.dic[(x.Ts_supDis,x.lvl)])))
+    return addScaled_tab
 end
 
 # XXX removes all entries occuring in remove array from input table
@@ -272,114 +326,81 @@ function renameTable(inData_tab::IndexedTable,newNames_tup::Array)
 	renameData_tab = DB.rename(inData_tab,curNames_tup[i] => newNames_tup[i] for i in 1:min(length(curNames_tup),length(newNames_tup)))
 	return renameData_tab
 end
-
 # </editor-fold>
 
 # <editor-fold desc="reporting of calculation progress and error handling"
-using Dates
-const global Start_date = now()
-const global Start_str = Dates.format(now(),"yyyymmddHHMM")
 
 # XXX return elapsed time since Start_date
-function getElapsed()
-    ElapSec_per = Dates.value(floor(now() - Start_date,Dates.Second(1)))
+function getElapsed(start::DateTime)
+    ElapSec_per = Dates.value(floor(now() - start,Dates.Second(1)))
     if ElapSec_per < 3600*24
-        Elap_str = Dates.format(DateTime(2015,01,01,Int(floor(ElapSec_per / 3600)),Int(floor(ElapSec_per % 60)),ElapSec_per % 60), "HH:MM:SS")
+        Elap_str = Dates.format(DateTime(2015,01,01,Int(floor(ElapSec_per / 3600)),Int(floor(ElapSec_per % 3600/ 60)),ElapSec_per % 60), "HH:MM:SS")
     else
-        Elap_str = Dates.format(DateTime(2015,01,Int(floor(ElapSec_per / (3600*24))),Int(floor(ElapSec_per / 3600)),Int(floor(ElapSec_per / 60)),ElapSec_per % 60), "dd:HH:MM:SS")
+        Elap_str = Dates.format(DateTime(2015,01,Int(floor(ElapSec_per / (3600*24))),Int(floor(ElapSec_per % (3600*24) / 3600)),Int(floor(ElapSec_per % 3600/ 60)),ElapSec_per % 60), "dd:HH:MM:SS")
     end
     return Elap_str
 end
 
 # XXX teste for errors so far and optional writes report file, even if no serious errrors occured yet
-function errorTest(writeReporting::Bool = false)
+function errorTest(report::DataFrame,options::modOptions,writeReporting::Bool = false)
     ErrStatus_dic = Dict(1 => :green, 2 => :yellow,3 => :red)
-    if any(Report_df.type .== 3)
-        CSV.write("$OutputFolder_str/reporting_$Start_str.csv",  insertcols!(Report_df[!,2:end], 1, :errStatus => map(x -> ErrStatus_dic[x],Report_df[!,:type])))
-        print(" - Errors encountered! Wrote reporting_$Start_str.csv for details!")
+    if any(report.type .== 3)
+        CSV.write("$(options.outDir)/reporting_$(options.outStamp).csv",  insertcols!(report[!,2:end], 1, :errStatus => map(x -> ErrStatus_dic[x],report[!,:type])))
+		printstyled(" - Errors encountered! Wrote reporting_$(options.outStamp).csv for details!"; color = :light_red)
         error()
     else
-        if writeReporting && nrow(Report_df) > 0
-            CSV.write("$OutputFolder_str/reporting_$Start_str.csv",  insertcols!(Report_df[!,2:end], 1, :errStatus => map(x -> ErrStatus_dic[x],Report_df[!,:type])))
-            println(" - No errors and ",length(Report_df.type .== 2)," warning(s) encountered. Wrote reporting_$Start_str.csv for details!")
+		numWarn = length(findall(report.type .== 2))
+        if writeReporting && nrow(report) > 0
+            CSV.write("$(options.outDir)/reporting_$(options.outStamp).csv",  insertcols!(report[!,2:end], 1, :errStatus => map(x -> ErrStatus_dic[x],report[!,:type])))
+			printstyled(" - No errors and $numWarn warnings encountered. Wrote reporting_$(options.outStamp).csv for details! \n"; color = numWarn > 0 ? :light_yellow : :light_green)
         else
-            println(" - No errors and ",length(Report_df.type .== 2)," warning(s) encountered.")
+			printstyled(" - No errors and $numWarn warnings encountered. \n"; color = numWarn > 0 ? :light_yellow : :light_green)
         end
     end
 end
 
 # XXX produces a output message and tests for errors accordingly to globally set reporting values
-function produceMessage(CurrentLevel_int::Int64,fixedString::String,dynamicString::Any="")
-    if ReportingLevel_int >= CurrentLevel_int ErrorCheckLevel_int >= CurrentLevel_int ? print(getElapsed(), fixedString, dynamicString) : println(getElapsed(), fixedString, dynamicString) end
-    if ErrorCheckLevel_int >= CurrentLevel_int errorTest(ErrorWriteLevel_int >= CurrentLevel_int) end
+function produceMessage(options::modOptions,report::DataFrame,currentLvl::Int64,fixedString::String,dynamicString::Any="")
+	sty_dic = Dict(1 => :bold, 2 => :normal, 3 => :light_black)
+
+	sty_dic[currentLvl]
+    if options.reportLvl >= currentLvl
+		options.errCheckLvl >= currentLvl ? printstyled(options.name, getElapsed(options.startTime), fixedString, dynamicString; color = sty_dic[currentLvl]) :
+															printstyled(options.name,getElapsed(options.startTime), fixedString, dynamicString, "\n"; color = sty_dic[currentLvl])
+	end
+    if options.errCheckLvl >= currentLvl errorTest(report,options,options.errWrtLvl >= currentLvl) end
 end
 # </editor-fold>
 
 # <editor-fold desc="reporting of results"
 
-# XXX compute a subset of infeasible equations
-function printIIS(model_obj::JuMP.Model,Set_dic::Dict{Symbol,DataFrame},Equation_dic::Dict{Symbol,EqnElement})
+# XXX compute a subset of infeasible constraints
+function printIIS(anyM::anyModel)
 
     # computes iis
-    Gurobi.compute_conflict(model_obj.moi_backend.optimizer.model)
+    Gurobi.compute_conflict(anyM.optModel.moi_backend.optimizer.model)
 
-    if model_obj.moi_backend.optimizer.model.inner.conflict != 0 return end
-    # loops over equation tables to find equations within iis
-    for eqnObj in values(Equation_dic)
-        allConstr_arr = findall(DB.select(eqnObj.data,:eqn =>  x -> MOI.get(model_obj.moi_backend, Gurobi.ConstraintConflictStatus(), x.index)))
-        # prints equations within iis
+    if anyM.optModel.moi_backend.optimizer.model.inner.conflict != 0 return end
+    # loops over constraint tables to find constraints within iis
+    for eqnObj in values(anyM.constraints)
+		if eqnObj.name == :objEqn continue end
+        allConstr_arr = findall(DB.select(eqnObj.data,:eqn =>  x -> MOI.get(anyM.optModel.moi_backend, Gurobi.ConstraintConflictStatus(), x.index)))
+        # prints constraints within iis
         if !isempty(allConstr_arr)
-            println("$(length(allConstr_arr)) of IIS in $(eqnObj.name) equations.")
+            println("$(length(allConstr_arr)) of IIS in $(eqnObj.name) constraints.")
             colSet_dic = Dict(x => Symbol(split(string(x),"_")[1]) for x in eqnObj.dim)
             for iisConstr in allConstr_arr
                 row_tup = eqnObj.data[iisConstr]
-                dimStr_arr = map(x -> getproperty(row_tup,x) == 0 ?  "" : string(x,": ",createFullString(getproperty(row_tup,x), Set_dic[colSet_dic[x]],true)),collect(keys(colSet_dic)))
-                println("$(join(filter(x -> x != "",dimStr_arr),", ")), equation: $(row_tup.eqn)")
+                dimStr_arr = map(x -> getproperty(row_tup,x) == 0 ?  "" : string(x,": ",createFullString(getproperty(row_tup,x), anyM.sets[colSet_dic[x]],true)),collect(keys(colSet_dic)))
+                println("$(join(filter(x -> x != "",dimStr_arr),", ")), constraint: $(row_tup.eqn)")
             end
         end
     end
 end
 
-# TODO konvertierung von spaltennamen besser, funktion für tabellen schöner, gucken ob schneller geht
-function print_object(print_obj,Set_dic::Dict{Symbol,DataFrame},write_csv::Bool=true)
-    cntCol_int = length(print_obj.dim)
-    colNam_arr = colnames(print_obj.data)
-
-    print_tab = table()
-
-    for i = 1:cntCol_int
-        lookUp_sym = Symbol(split(String(colNam_arr[i]),"_")[1])
-        print_tab = IT.transform(print_tab,colNam_arr[i] => DB.select(print_obj.data,colNam_arr[i] => x -> x != 0 ? Set_dic[lookUp_sym][x,:val] : ""))
-    end
-
-    for i = cntCol_int+1:length(colNam_arr)
-            print_tab = IT.transform(print_tab, colNam_arr[i] => DB.select(print_obj.data,i))
-    end
-    if write_csv CSV.write("$(OutputFolder_str)/$(print_obj.name).csv",  print_tab) end
-    return print_tab
-end
-
-function print_object(print_obj::IndexedTable,Set_dic::Dict{Symbol,DataFrame},name::String="table",write_csv::Bool=true)
-    colNam_arr = colnames(print_obj)
-    cntCol_int = length(colNam_arr)
-
-    print_tab = table()
-
-    for i = 1:cntCol_int
-        lookUp_sym = Symbol(split(String(colNam_arr[i]),"_")[1])
-        if lookUp_sym in (:val,:var,:eqn,:varExp,:exp,:resi,:dispVar,:capaVar,:varIn,:varOut)
-            print_tab = IT.transform(print_tab,lookUp_sym => map(x -> string('"',x,'"'), DB.select(print_obj,i)))
-        else
-            print_tab = IT.transform(print_tab,colNam_arr[i] => DB.select(print_obj,colNam_arr[i] => x -> x != 0 ? createFullString(x,Set_dic[lookUp_sym]) : ""))
-        end
-    end
-
-    if write_csv CSV.write("$(OutputFolder_str)/$(name).csv",  print_tab) end
-    return print_tab
-end
-
 # XXX returns a structured string of set name, if index and data tree is provided
 function createFullString(setIdx_int,Tree_df::DataFrame,writeLvl_boo::Bool=true)
+	if setIdx_int == 0  return "entry" end
 	setLvl_int = Tree_df[setIdx_int,:lvl]
 	setVal_int = writeLvl_boo ? string(Tree_df[setIdx_int,:val]," (lvl ",Tree_df[setIdx_int,:lvl] ,")") : Tree_df[setIdx_int,:val]
 
@@ -390,24 +411,62 @@ function createFullString(setIdx_int,Tree_df::DataFrame,writeLvl_boo::Bool=true)
 	end
 	return carStr_str
 end
+
+# XXX prints any AbstractModelElement
+function printObject(print_obj::AbstractModelElement,sets::Dict{Symbol,DataFrame},options::modOptions,filterFunc::Union{Nothing,Function} = nothing, printZero::Bool = false)
+	# initialize
+	colNam_arr = colnames(print_obj.data)
+    cntCol_int = length(colNam_arr)
+    print_tab = table()
+
+	# filters values according to filter function,
+	dataTable = isnothing(filterFunc) ? print_obj.data : DB.filter(filterFunc,print_obj.data)
+
+	# converts variable column to value of variable
+	if :var in colNam_arr
+		dataTable = DB.select(IT.transform(dataTable,:val => map(x -> value(x), DB.select(dataTable,:var))),DB.Not(All(:var)))
+	end
+
+	# resets these to reflect changes above
+	colNam_arr = colnames(dataTable)
+	cntCol_int = length(colNam_arr)
+
+	# removes entries where value is zero
+	if !(printZero) && :val in colNam_arr dataTable = DB.filter(r -> r.val != 0.0, dataTable) end
+
+    for i = 1:cntCol_int
+        lookUp_sym = Symbol(split(String(colNam_arr[i]),"_")[1])
+		if !(lookUp_sym in keys(sets))
+			if lookUp_sym == :eqn
+				print_tab = IT.transform(print_tab,lookUp_sym => string.(DB.select(dataTable,i)))
+			else
+				print_tab = IT.transform(print_tab,lookUp_sym => DB.select(dataTable,i))
+			end
+        else
+            print_tab = IT.transform(print_tab,colNam_arr[i] => DB.select(dataTable,colNam_arr[i] => x -> x != 0 ? createFullString(x,sets[lookUp_sym]) : ""))
+        end
+    end
+
+    CSV.write("$(options.outDir)/$(print_obj.name)_$(options.outStamp).csv",  print_tab)
+end
 # </editor-fold>
 
 # <editor-fold desc="miscellaneous data processing"
 # XXX builds intersection of rows matching the current one in cases where a subdictionary is used according to the named tuple provided, belongs to aggregateSetTable
-function lookupIntersect(row::NamedTuple,grp::T,saveInter_dic::Dict,idxChildRows_dic::Dict{Symbol,Dict{Int16,BitSet}}) where T <: Pair
+function lookupIntersect(row::NamedTuple,grp::T,saveInter_dic::Dict,idxChildRows_dic::Dict{Symbol,Dict{Int32,BitSet}}) where T <: Pair
 	lookup_tup = tuple(collect(getproperty(row,j) for j in grp[1])...)
 
 	if lookup_tup in keys(saveInter_dic[grp[1]]) # take value directly from dictionary
 		ele_arr = saveInter_dic[grp[1]][lookup_tup]
 	else # compute value and write to dictionary
-		ele_arr = intersect(lookupIntersect(row,grp[2],saveInter_dic::Dict,idxChildRows_dic::Dict{Symbol,Dict{Int16,BitSet}}),idxChildRows_dic[grp[1][end]][getproperty(row,grp[1][end])]) # lookup subdictionary
+		ele_arr = intersect(lookupIntersect(row,grp[2],saveInter_dic::Dict,idxChildRows_dic::Dict{Symbol,Dict{Int32,BitSet}}),idxChildRows_dic[grp[1][end]][getproperty(row,grp[1][end])]) # lookup subdictionary
 		saveInter_dic[grp[1]][lookup_tup] = ele_arr
 	end
 	return ele_arr
 end
 
 # XXX builds intersection of rows matching the current one in cases where no subdictionary is used, belongs to aggregateSetTable
-function lookupIntersect(row::NamedTuple,grp::T,saveInter_dic::Dict,idxChildRows_dic::Dict{Symbol,Dict{Int16,BitSet}}) where T <: Tuple
+function lookupIntersect(row::NamedTuple,grp::T,saveInter_dic::Dict,idxChildRows_dic::Dict{Symbol,Dict{Int32,BitSet}}) where T <: Tuple
 	lookup_tup = tuple(collect(getproperty(row,j) for j in grp)...)
 
 	if lookup_tup in keys(saveInter_dic[grp]) # take value directly from dictionary
@@ -419,14 +478,90 @@ function lookupIntersect(row::NamedTuple,grp::T,saveInter_dic::Dict,idxChildRows
 	return ele_arr
 end
 
+# XXX creates a dictionary that assigns each dispatch timestep inputed to its supordinate dispatch timestep
+function assignSupDis(inputSteps_arr::Array{Int32,1},timeTree_df::DataFrame,supordinateLvl_int::Int32)
+
+	assSup_dic = Dict{Int32,Int32}()
+
+	# assigns zero node to itself
+	if 0 in inputSteps_arr
+		assSup_dic[0] = 0
+		inputSteps_arr = filter(r -> r != 0, inputSteps_arr)
+	end
+
+	# assigns entries on or above subordinate dispatch level to itselfs
+	aboveSupDis_arr = filter(z -> timeTree_df[z,:lvl] <= supordinateLvl_int, inputSteps_arr)
+	for x in aboveSupDis_arr assSup_dic[x] = x end
+	inputSteps_arr = setdiff(inputSteps_arr,aboveSupDis_arr)
+
+	# assigns remaining entries
+	for x in inputSteps_arr
+		assSup_dic[x] = getHeritanceLine(x,timeTree_df,supordinateLvl_int)[1][1]
+	end
+
+	return assSup_dic
+end
+
 # XXX writes all tuples occuring in a tuple of pairs and tuples
 mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  x
 
 # XXX returns dataframe columns without value column
 removeVal(input_df::DataFrame) = filter(x -> x != :val,names(input_df))
 
+# XXX filters variables defined for aggregation
+filterAgg(varTab::IndexedTable,aggIdx::Array{Int64,1}) = varTab[setdiff(1:length(varTab),aggIdx)]
+
 # XXX returns all types within union type statement (taken from https://github.com/JuliaLang/julia/issues/14695#issuecomment-377662648)
 Base.collect(t::Union{Type, DataType, Union{}}) = _collect(t, [])
 _collect(t::Type, list) = t<:Union{} ? push!(list, t) : _collect(t.b, push!(list, t.a))
 _collect(t::Union{DataType,Core.TypeofBottom}, list) = push!(list, t)
 # </editor-fold>
+
+
+function drawNodeTree(Tree_df::DataFrame,distance)
+	Tree_df = Tree_df[1:end-1,:]
+	nodes_int = nrow(Tree_df)+1
+
+    # create vertical position and labels from input tree
+    LocY_arr = append!(float(Tree_df[:lvl]),0)
+    NodeLabel_arr = append!(copy(Tree_df[:val]),[""])
+
+    # horizontal position is computed in a two step process
+    LocX_arr = zeros(Float64, nodes_int)
+
+    # first step, filter all nodes at end of a respective branch and sort them correctly
+    LowLvl_df = Tree_df[setdiff(Tree_df[:idx],Tree_df[:pare]),:]
+    LowLvl_df = LowLvl_df[map(y -> findall(x->x==y, LowLvl_df[:,:idx])[1],deepSort(convert(Array{Int64,1},LowLvl_df[:,:idx]),Tree_df)),:]
+
+    # set position of starting node
+    LocX_arr[LowLvl_df[1,:idx]] = 0
+
+    # sets distance from next node on the left depending on if they are part of the same subtree
+    for (index, lowNode) in Iterators.drop(enumerate(eachrow(LowLvl_df)),1)
+        if lowNode[:pare] == LowLvl_df[index-1,:pare] distance_fl =0.1 else distance_fl =0.2 end
+        LocX_arr[lowNode[:idx]] = LocX_arr[LowLvl_df[index-1,:idx]] + distance_fl
+    end
+
+    # second step, remaining horizontal nodes are place in the middle of their children
+    HighLvl_df = Tree_df[intersect(Tree_df[:idx],Tree_df[:pare]),:]
+
+    for highNode in reverse(eachrow(HighLvl_df))
+        children_arr = Tree_df[Tree_df[:pare] .== highNode[:idx],:idx]
+        LocX_arr[highNode[:idx]] = Statistics.mean(LocX_arr[children_arr])
+    end
+
+    LocX_arr[end] = Statistics.mean(LocX_arr[Tree_df[findall(Tree_df[:,:lvl] .== 1),:idx]])
+
+    # draw final tree
+    Tree_gra = SimpleDiGraph(nodes_int)
+
+    for rowTree in eachrow(Tree_df)
+        # 0 node in Tree_df becomes last node in graph, because there is 0 node within the plots
+        if rowTree[:pare] == 0 pare_int = nodes_int else pare_int = rowTree[:pare] end
+        add_edge!(Tree_gra, rowTree[:idx], pare_int)
+    end
+
+    Tree_pl = gplot(Tree_gra, LocX_arr, LocY_arr, nodelabel=NodeLabel_arr,  nodelabeldist=distance, nodelabelangleoffset=π/4, NODELABELSIZE = 2, EDGELINEWIDTH=0.05)
+
+    draw(SVG("mygraph.svg", 4cm, 4cm), Tree_pl)
+end

@@ -2,3 +2,18 @@ name = "anyMOD"
 uuid = "16ed6a40-d4c3-11e9-1e10-59384530c1b4"
 authors = ["lgo <lgo@wip.tu-berlin.de>"]
 version = "0.1.0"
+
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
+IndexedTables = "6deec6e2-d858-57c5-ab9b-e6ca5bd20e43"
+JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
+JuliaDB = "a93385a2-3734-596a-9a66-3cfbb77141e6"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
+TableReader = "70df011a-6618-58d7-8e16-3cf9e384cb47"

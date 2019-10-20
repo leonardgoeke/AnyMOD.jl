@@ -1,0 +1,9 @@
+errStatus,group,instance,message
+green,mapping,CarrierLevel,carrier gas (lvl 1) inherited resolution from children
+green,mapping,CarrierLevel,carrier heat (lvl 1) inherited resolution from children
+green,inheritance,invExcFix,inheritance via :R_a => :sum_any created 3 new data row(s) and assigned 0 new value(s)
+green,inheritance,invExcFix,inheritance via :R_b => :sum_any created 6 new data row(s) and assigned 3 new value(s)
+green,inheritance,capaExcUp,inheritance via :R_a => :sum_any created 3 new data row(s) and assigned 0 new value(s)
+green,inheritance,capaExcUp,inheritance via :R_b => :sum_any created 6 new data row(s) and assigned 3 new value(s)
+green,inheritance,capaExcResi,inheritance via :R_a => :sum_any created 3 new data row(s) and assigned 0 new value(s)
+green,inheritance,capaExcResi,inheritance via :R_b => :sum_any created 6 new data row(s) and assigned 3 new value(s)
