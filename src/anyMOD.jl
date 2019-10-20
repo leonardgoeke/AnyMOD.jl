@@ -2,25 +2,6 @@ __precompile__()
 module anyMOD
 
     # XXX import packages
-    using Distributed
-
-    # overwrite the distributed printing message to remove "from worker" part, based on this post by TsurHerman: https://discourse.julialang.org/t/any-way-to-remove-from-worker/23604
-    Distributed.redirect_worker_output(ident, stream) = begin
-       @async while !eof(stream)
-           line = readline(stream)
-           if startswith(line, "      From worker ")
-               # stdout's of "additional" workers started from an initial worker on a host are not available
-               # on the master directly - they are routed via the initial worker's stdout.
-               parts = split(line,":")
-               printstyled(join(parts[2:end]...), "\n"; color = :light_black)
-           else
-               printstyled(line, "\n"; color = :light_black)
-           end
-       end
-    end
-
-    # be default adds 6 processes
-    addprocs(6)
     using Reexport, IndexedTables, DataFrames, TableReader, MathOptInterface, Statistics, LinearAlgebra, Dates, CSV, Suppressor
     @reexport using JuliaDB, JuMP
 

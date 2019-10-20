@@ -196,41 +196,37 @@ function prepareDispatchParameter!(anyM::anyModel)
     report_dic = Dict{Symbol,DataFrame}() # stores reporting of individual processes
 
     # performs parallel pre-setting process fo each paramter
-    @sync begin
-        for par in keys(parPreset_dic)
-            @async begin
-                preKey_sym = (:M in colnames(anyM.parameter[par].data)) ?  Symbol(parPreset_dic[par],:_mode) : parPreset_dic[par] # adds "_mode" to key being looked up in presetDim_dic, if case is mode dependant
-                if parPreset_dic[par] == :exchange  # in case of trade and exchange reset gets called without tech/mode dictionary
-                    newParameter, modeParameter_dic[par], report_dic[par] =  fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options))
-                elseif parPreset_dic[par] == :trade
-                    # adds id column, if non existing so far or rewrites values, to avoid zeroes outside of aggregated variables in this column
-                    if :id in colnames(anyM.parameter[par].data)
-                        # creates an default value for all entries without unspecified ids to avoid problems latter in code when aggregating trade variables
-                        idCol_arr = DB.select(anyM.parameter[par].data,:id)
-                        newIdCol_arr = convert(Array{Int32,1},map(x -> x != 0 ? x : maximum(idCol_arr) +1, DB.select(anyM.parameter[par].data,:id)))
-                    else
-                        newIdCol_arr = convert(Array{Int32,1},fill(1,length(anyM.parameter[par].data)))
-                    end
-                    anyM.parameter[par].data = IT.transform(anyM.parameter[par].data, :id => newIdCol_arr)
-                    newParameter, modeParameter_dic[par], report_dic[par] =  fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options))
-                else
-                    if parPreset_dic[par] == :carrier  # in case of carrier preset dim can differ depending on if it is a storage/non-storage case
-                        preKey_sym = occursin("St", String(par)) || par in (:stInflow,:stDis) ? Symbol(preKey_sym,:_st) : preKey_sym
-                        newParameter, modeParameter_dic[par], report_dic[par] =  fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic))
-                    elseif parPreset_dic[par] == :reference # in case of reference preset, dim can differ depending on if parameter addresses gen/use side and is therefore dependant on carrier (like ratios) or not (like efficiency)
-                        preKey_sym = :C in anyM.parameter[par].dim ? Symbol(preKey_sym, occursin("Gen", String(par)) ? :_gen : use ) : preKey_sym
-                        newParameter, modeParameter_dic[par], report_dic[par] =
-                                            fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic, newHerit_dic[parPreset_dic[par]]))
-                    else
-                        newParameter, modeParameter_dic[par], report_dic[par] =
-                                            fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic, newHerit_dic[parPreset_dic[par]]))
-                    end
-                end
-                # either deletes parameter completely, if fetch returned no newParameter or replaces object entirely if something was returned
-                isnothing(newParameter) ?  Base.delete!(anyM.parameter,x) : anyM.parameter[par] = newParameter
-                produceMessage(anyM.options,anyM.report, 3," - Performed pre-setting of $(par) parameter")
+    for par in keys(parPreset_dic)
+        preKey_sym = (:M in colnames(anyM.parameter[par].data)) ?  Symbol(parPreset_dic[par],:_mode) : parPreset_dic[par] # adds "_mode" to key being looked up in presetDim_dic, if case is mode dependant
+        if parPreset_dic[par] == :exchange  # in case of trade and exchange reset gets called without tech/mode dictionary
+            newParameter, modeParameter_dic[par], report_dic[par] =  resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options)
+        elseif parPreset_dic[par] == :trade
+            # adds id column, if non existing so far or rewrites values, to avoid zeroes outside of aggregated variables in this column
+            if :id in colnames(anyM.parameter[par].data)
+                # creates an default value for all entries without unspecified ids to avoid problems latter in code when aggregating trade variables
+                idCol_arr = DB.select(anyM.parameter[par].data,:id)
+                newIdCol_arr = convert(Array{Int32,1},map(x -> x != 0 ? x : maximum(idCol_arr) +1, DB.select(anyM.parameter[par].data,:id)))
+            else
+                newIdCol_arr = convert(Array{Int32,1},fill(1,length(anyM.parameter[par].data)))
+            end
+            anyM.parameter[par].data = IT.transform(anyM.parameter[par].data, :id => newIdCol_arr)
+            newParameter, modeParameter_dic[par], report_dic[par] =  resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options)
+        else
+            if parPreset_dic[par] == :carrier  # in case of carrier preset dim can differ depending on if it is a storage/non-storage case
+                preKey_sym = occursin("St", String(par)) || par in (:stInflow,:stDis) ? Symbol(preKey_sym,:_st) : preKey_sym
+                newParameter, modeParameter_dic[par], report_dic[par] =  resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic)
+            elseif parPreset_dic[par] == :reference # in case of reference preset, dim can differ depending on if parameter addresses gen/use side and is therefore dependant on carrier (like ratios) or not (like efficiency)
+                preKey_sym = :C in anyM.parameter[par].dim ? Symbol(preKey_sym, occursin("Gen", String(par)) ? :_gen : use ) : preKey_sym
+                newParameter, modeParameter_dic[par], report_dic[par] =
+                                            resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic, newHerit_dic[parPreset_dic[par]])
+            else
+                newParameter, modeParameter_dic[par], report_dic[par] =
+                                            resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic, newHerit_dic[parPreset_dic[par]])
             end
         end
+        # either deletes parameter completely, if resetParameter returned no newParameter or replaces object entirely if something was returned
+        isnothing(newParameter) ?  Base.delete!(anyM.parameter,x) : anyM.parameter[par] = newParameter
+        produceMessage(anyM.options,anyM.report, 3," - Performed pre-setting of $(par) parameter")
     end
 
     # merges different reports of subprocesses into main report again
