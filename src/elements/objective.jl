@@ -9,7 +9,7 @@ function setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyMode
 
     # XXX create empty variables table for objective variables
     anyM.variables[:objVar] = VarElement(:objVar,tuple(),table(Symbol[], Symbol[], VariableRef[]; names = (:group,:name,:var)))
-    anyM.constraints[:objEqn] = CnsElement(:objEqn,tuple(),table(Symbol[], Symbol[], ConstraintRef[]; names = (:group,:name,:var)))
+    anyM.constraints[:objEqn] = CnsElement(:objEqn,tuple(),table(Symbol[], Symbol[], ConstraintRef[]; names = (:group,:name,:eqn)))
 
 
     # XXX create variables and constraints required for specified objectives
@@ -39,10 +39,10 @@ function createObjective!(objGrp::Val{:costs},anyM::anyModel)
     tsR_tab = DB.flatten(DB.flatten(table([anyM.supDis.step],[allRInv_arr];names = (:Ts_supDis,:R_inv)),:Ts_supDis),:R_inv)
 
     # looks up  created table with discount rates and computes full discount factors from that
-    rateVal_tab = reindex(matchSetParameter(anyM.report,tsR_tab,anyM.parameter[:rateDisc],anyM.sets,anyM.options.scale.compDig,:itrRate),(:Ts_supDis,:R_inv))
+    rateVal_tab = reindex(matchSetParameter(anyM.report,tsR_tab,anyM.parameter[:rateDisc],anyM.sets,anyM.options.digits.comp,:itrRate),(:Ts_supDis,:R_inv))
     val_arr = map(allRInv_arr) do y
         discFc_arr = vcat(1,(1 ./ (1 .+ DB.select(DB.filter(r -> r.R_inv == y,rateVal_tab),:itrRate)[2:end])).^anyM.options.shortInvest)
-        return map(x -> prod(discFc_arr[1:x]),1:length(discFc_arr))
+        return map(x -> prod(discFc_arr[1:x]), 1:length(discFc_arr))
     end
 
     anyM.parameter[:discFac] = ParElement(DataFrame(Ts = repeat(collect(anyM.supDis.step),length(allRInv_arr)), R = sort(repeat(allRInv_arr,length(anyM.supDis.step))), val = vcat(val_arr...)),
@@ -61,18 +61,18 @@ function createObjective!(objGrp::Val{:costs},anyM::anyModel)
 
             # adds lifetime (if an economic lifetime is defined, this is used)
             if Symbol(:lifeEco,capaItr) in keys(anyM.parameter)
-                lftm_tab = matchSetParameter(anyM.report, invVar_tab, anyM.parameter[Symbol(:lifeEco,capaItr)], anyM.sets, anyM.options.scale.compDig, :life)
+                lftm_tab = matchSetParameter(anyM.report, invVar_tab, anyM.parameter[Symbol(:lifeEco,capaItr)], anyM.sets, anyM.options.digits.comp, :life)
                 if length(lftm_tab) < length(invVar_tab)
                     newSearch_tab = DB.join(invVar_tab,lftm_tab; lkey = dim_tup, rkey = dim_tup, how = :anti)
-                    lftm_tab = DB.merge(matchSetParameter(anyM.report, newSearch_tab, anyM.parameter[Symbol(:life,capaItr)], anyM.sets, anyM.options.scale.compDig, :life), lftm_tab)
+                    lftm_tab = DB.merge(matchSetParameter(anyM.report, newSearch_tab, anyM.parameter[Symbol(:life,capaItr)], anyM.sets, anyM.options.digits.comp, :life), lftm_tab)
                 end
             else
-                lftm_tab = matchSetParameter(anyM.report, invVar_tab, anyM.parameter[Symbol(:life,capaItr)], anyM.sets, anyM.options.scale.compDig, :life)
+                lftm_tab = matchSetParameter(anyM.report, invVar_tab, anyM.parameter[Symbol(:life,capaItr)], anyM.sets, anyM.options.digits.comp, :life)
             end
 
             # adds investment cost and respective interest rate
-            invCost_tab = matchSetParameter(anyM.report, lftm_tab, anyM.parameter[Symbol(:costInv,capaItr)], anyM.sets, anyM.options.scale.compDig, :invCost)
-            itrRate_tab = matchSetParameter(anyM.report, invCost_tab, anyM.parameter[Symbol(:rateInv,capaItr)], anyM.sets, anyM.options.scale.compDig, :itrRate)
+            invCost_tab = matchSetParameter(anyM.report, lftm_tab, anyM.parameter[Symbol(:costInv,capaItr)], anyM.sets, anyM.options.digits.comp, :invCost)
+            itrRate_tab = matchSetParameter(anyM.report, invCost_tab, anyM.parameter[Symbol(:rateInv,capaItr)], anyM.sets, anyM.options.digits.comp, :itrRate)
 
             # compute annuity costs and periods where it is payed
             annCost_arr = DB.select(itrRate_tab,:invCost) .* ((1 .+ DB.select(itrRate_tab,:itrRate)) .^ DB.select(itrRate_tab,:life) .* DB.select(itrRate_tab,:itrRate)) ./ ((1 .+ DB.select(itrRate_tab,:itrRate)) .^ DB.select(itrRate_tab,:life) .- 1)
@@ -83,11 +83,11 @@ function createObjective!(objGrp::Val{:costs},anyM::anyModel)
             # joins discount factors, in case of exchange costs the average of both regions is used, computes expression based on it
             if capaItr != :Exc
                 discFac_tab = DB.rename(DB.join(annCost2_tab,anyM.parameter[:discFac].data; lkey = (:R_inv, :Ts_supDis), rkey = (:R_inv, :Ts_supDis), how = :inner),:val => :disFac)
-                push!(costInvExpr_arr,dot(DB.select(discFac_tab,:var),DB.select(discFac_tab,:disFac) .* DB.select(discFac_tab,:costAnn))*anyM.options.scale.cost)
+                push!(costInvExpr_arr,dot(DB.select(discFac_tab,:var), round.(DB.select(discFac_tab,:disFac) .* DB.select(discFac_tab,:costAnn), digits = anyM.options.digits.comp)))
             else
                 discFac1_tab = DB.rename(DB.join(annCost2_tab,anyM.parameter[:discFac].data; lkey = (:R_inv, :Ts_supDis), rkey = (:R_inv, :Ts_supDis), how = :inner),:val => :disFacA)
                 discFac_tab = DB.rename(DB.join(discFac1_tab,anyM.parameter[:discFac].data; lkey = (:R_b, :Ts_supDis), rkey = (:R_inv, :Ts_supDis), how = :inner),:val => :disFacB)
-                push!(costInvExpr_arr,dot(DB.select(discFac_tab,:var),(0.5*DB.select(discFac_tab,:disFacA) .+  0.5*DB.select(discFac_tab,:disFacA)) .* DB.select(discFac_tab,:oprCost))*anyM.options.scale.cost)
+                push!(costInvExpr_arr,dot(DB.select(discFac_tab,:var), round.((0.5*DB.select(discFac_tab,:disFacA) .+  0.5*DB.select(discFac_tab,:disFacA)) .* DB.select(discFac_tab,:oprCost), digits = anyM.options.digits.comp)))
             end
         end
     end
@@ -102,15 +102,15 @@ function createObjective!(objGrp::Val{:costs},anyM::anyModel)
     for capaItr in (:Conv,:StIn,:StOut,:StSize,:Exc)
         if Symbol(:costOpr,capaItr) in keys(anyM.parameter)
             # matches variables with cost parameter
-            oprCost_tab = matchSetParameter(anyM.report, anyM.variables[Symbol(capaTyp_sym,capaItr)].data, anyM.parameter[Symbol(:costOpr,capaItr)], anyM.sets, anyM.options.scale.compDig, :oprCost)
+            oprCost_tab = matchSetParameter(anyM.report, anyM.variables[Symbol(capaTyp_sym,capaItr)].data, anyM.parameter[Symbol(:costOpr,capaItr)], anyM.sets, anyM.options.digits.comp, :oprCost)
             # joins discount factors, in case of exchange costs the average of both regions is used, computes expression based on it
             if capaItr != :Exc
                 discFac_tab = DB.rename(DB.join(oprCost_tab,anyM.parameter[:discFac].data; lkey = (:R_inv, :Ts_supDis), rkey = (:R_inv, :Ts_supDis), how = :inner),:val => :disFac)
-                push!(costOprExpr_arr,dot(DB.select(discFac_tab,:var),DB.select(discFac_tab,:disFac) .* DB.select(discFac_tab,:oprCost))*anyM.options.scale.cost)
+                push!(costOprExpr_arr, dot(DB.select(discFac_tab,:var), round.(DB.select(discFac_tab,:disFac) .* DB.select(discFac_tab,:oprCost) , digits = anyM.options.digits.comp)))
             else
                 discFac1_tab = DB.rename(DB.join(oprCost_tab,anyM.parameter[:discFac].data; lkey = (:R_a, :Ts_supDis), rkey = (:R_inv, :Ts_supDis), how = :inner),:val => :disFacA)
                 discFac_tab = DB.rename(DB.join(discFac1_tab,anyM.parameter[:discFac].data; lkey = (:R_b, :Ts_supDis), rkey = (:R_inv, :Ts_supDis), how = :inner),:val => :disFacB)
-                push!(costOprExpr_arr,dot(DB.select(discFac_tab,:var),(0.5*DB.select(discFac_tab,:disFacA) .+  0.5*DB.select(discFac_tab,:disFacA)) .* DB.select(discFac_tab,:oprCost))*anyM.options.scale.cost)
+                push!(costOprExpr_arr, dot(DB.select(discFac_tab,:var), round.((0.5*DB.select(discFac_tab,:disFacA) .+  0.5*DB.select(discFac_tab,:disFacA)) .* DB.select(discFac_tab,:oprCost) , digits = anyM.options.digits.comp)))
             end
         end
     end
@@ -130,7 +130,7 @@ function createObjective!(objGrp::Val{:costs},anyM::anyModel)
             # changes inheritance rules to assign a value to the upper node, if it is the same for all lower nodes
             anyM.parameter[Symbol(:costVar,capaItr)].inherit = (:Ts_inv => :uni_full, :Ts_dis => :uni_full, :R_dis => :uni_full, :C  => :uni_full, :Te => :uni_full)
             # tries to assign parameters on variables that are defined via aggregation (dimensions of aggregation constraint = dimensions of aggregated variables)
-            aggVar_tab = matchSetParameter(anyM.report, DB.select(anyM.constraints[Symbol(:agg,capaItr)].data,DB.Not(All(:eqn))), anyM.parameter[Symbol(:costVar,capaItr)], anyM.sets, anyM.options.scale.compDig, :costVar)
+            aggVar_tab = matchSetParameter(anyM.report, DB.select(anyM.constraints[Symbol(:agg,capaItr)].data,DB.Not(All(:eqn))), anyM.parameter[Symbol(:costVar,capaItr)], anyM.sets, anyM.options.digits.comp, :costVar)
 
             # finally joins variables and paramters in cases where assignment to aggregated variables was successfull
             aggFull_tab = DB.join(aggVar_tab,anyM.variables[varNam_sym].data; lkey = varDim_tup, rkey = varDim_tup, how = :inner)
@@ -152,17 +152,17 @@ function createObjective!(objGrp::Val{:costs},anyM::anyModel)
 
             # XXX perform ordinary join for whatever remains and merges results
             anyM.parameter[Symbol(:costVar,capaItr)].inherit = (:R_dis => :avg_any,:Ts_dis => :avg_any)
-            noAggFull_tab = matchSetParameter(anyM.report,noAggVar_tab,anyM.parameter[Symbol(:costVar,capaItr)],anyM.sets,anyM.options.scale.compDig,:costVar)
+            noAggFull_tab = matchSetParameter(anyM.report,noAggVar_tab,anyM.parameter[Symbol(:costVar,capaItr)],anyM.sets,anyM.options.digits.comp,:costVar)
             varCostFull_tab = DB.merge(aggFull_tab,noAggFull_tab)
 
             # XXX joins discount factors to variable costs, in case of exchange costs the average of both regions is used, computes expression based on it
             if capaItr != :Exc
-                discFac_tab = matchSetParameter(anyM.report,DB.rename(varCostFull_tab,:R_dis => :R_inv),anyM.parameter[:discFac],anyM.sets,anyM.options.scale.compDig,:discFac)
-                push!(costGenExpr_arr,dot(DB.select(discFac_tab,:var),DB.select(discFac_tab,:discFac) .* DB.select(discFac_tab,:costVar))*anyM.options.scale.cost)
+                discFac_tab = matchSetParameter(anyM.report,DB.rename(varCostFull_tab,:R_dis => :R_inv),anyM.parameter[:discFac],anyM.sets,anyM.options.digits.comp,:discFac)
+                push!(costGenExpr_arr,dot(DB.select(discFac_tab,:var), round.(DB.select(discFac_tab,:discFac) .* DB.select(discFac_tab,:costVar)/1000, sigdigits = anyM.options.digits.comp)))
             else
-                discFac1_tab = DB.rename(matchSetParameter(anyM.report,DB.rename(varCostFull_tab,:R_a => :R_inv),anyM.parameter[:discFac],anyM.sets,anyM.options.scale.compDig,:discFacA),:R_inv => :R_a)
-                discFac_tab = matchSetParameter(anyM.report,DB.rename(varCostFull_tab,:R_b => :R_inv),anyM.parameter[:discFac],anyM.sets,anyM.options.scale.compDig,:discFacA)
-                push!(costOprExpr_arr,dot(DB.select(discFac_tab,:var),(0.5*DB.select(discFac_tab,:disFacA) .+  0.5*DB.select(discFac_tab,:disFacA)) .* DB.select(discFac_tab,:costVar))*anyM.options.scale.cost)
+                discFac1_tab = DB.rename(matchSetParameter(anyM.report,DB.rename(varCostFull_tab,:R_a => :R_inv),anyM.parameter[:discFac],anyM.sets,anyM.options.digits.comp,:discFacA),:R_inv => :R_a)
+                discFac_tab = matchSetParameter(anyM.report,DB.rename(varCostFull_tab,:R_b => :R_inv),anyM.parameter[:discFac],anyM.sets,anyM.options.digits.comp,:discFacA)
+                push!(costOprExpr_arr,dot(DB.select(discFac_tab,:var), round.((0.5*DB.select(discFac_tab,:disFacA) .+  0.5*DB.select(discFac_tab,:disFacA)) .* DB.select(discFac_tab,:costVar)/1000, sigdigits = anyM.options.digits.comp)))
             end
         end
     end
@@ -179,8 +179,8 @@ function createObjective!(objGrp::Val{:costs},anyM::anyModel)
             # adds trade variables with prices
             trdPrc_tab = DB.join(anyM.variables[Symbol(:trade,trdItr)].data,anyM.parameter[Symbol(:trd,trdItr,:Prc)].data;lkey = joinDim_tup,rkey = joinDim_tup, how = :inner)
             # adds discount factors
-            discFac_tab = matchSetParameter(anyM.report,DB.rename(trdPrc_tab,:val => :prc,:R_dis => :R_inv),anyM.parameter[:discFac],anyM.sets,anyM.options.scale.compDig,:discFac)
-            push!(costTrdExpr_arr,dot(DB.select(discFac_tab,:var),DB.select(discFac_tab,:discFac) .* DB.select(discFac_tab,:prc)) * anyM.options.scale.cost * (trdItr == :Sell ? -1 : 1))
+            discFac_tab = matchSetParameter(anyM.report,DB.rename(trdPrc_tab,:val => :prc,:R_dis => :R_inv),anyM.parameter[:discFac],anyM.sets,anyM.options.digits.comp,:discFac)
+            push!(costTrdExpr_arr,dot(DB.select(discFac_tab,:var), round.(DB.select(discFac_tab,:discFac) .* DB.select(discFac_tab,:prc) /1000 * (trdItr == :Sell ? -1 : 1), sigdigits = anyM.options.digits.comp)))
         end
     end
     if !isempty(costTrdExpr_arr) exprCost_dic[:totCostTrd] = costTrdExpr_arr end
@@ -190,14 +190,21 @@ function createObjective!(objGrp::Val{:costs},anyM::anyModel)
     # <editor-fold desc="creates cost variables and constraints to define them"
 
     # XXX create costs variables and adds them table of object variables
-    info = VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)
-    infoTrd = VariableInfo(false, NaN, false, NaN, false, NaN, false, NaN, false, false) # trade costs do not have a lower limit of zero, because sell revenues can exceed costs
+    if isnothing(anyM.options.bound.cost)
+        info = VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)
+        infoTrd = VariableInfo(false, NaN, false, NaN, false, NaN, false, NaN, false, false)
+    else
+        costBound_flt = anyM.options.bound.cost * length(anyM.supDis.step) * size(anyM.sets[:R],2) * anyM.options.scale.cost
+        info = VariableInfo(true, 0.0, true, costBound_flt, false, NaN, false, NaN, false, false)
+        infoTrd = VariableInfo(true, - costBound_flt, true, costBound_flt, false, NaN, false, NaN, false, false) # trade costs do not have a lower limit of zero, because sell revenues can exceed costs
+    end
+
     objVar_arr = [JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, name == :totCostTrd ? infoTrd : info),string(name)) for name in keys(exprCost_dic)]
     append!(rows(anyM.variables[:objVar].data),(group = fill(:costs,length(objVar_arr)), name = collect(keys(exprCost_dic)), var = objVar_arr))
 
     # XXX creates constraints defining cost variables and adds them to table of object constraints
-    objEqn_arr = [@constraint(anyM.optModel, objVar_arr[idx] == sum(exprCost_dic[name])) for (idx, name) in enumerate(keys(exprCost_dic))]
-    append!(rows(anyM.constraints[:objEqn].data),(group = fill(:costs,length(objEqn_arr)), name = collect(keys(exprCost_dic)), var = objEqn_arr))
+    objEqn_arr = [@constraint(anyM.optModel, objVar_arr[idx] == sum(exprCost_dic[name]) * anyM.options.scale.cost) for (idx, name) in enumerate(keys(exprCost_dic))]
+    append!(rows(anyM.constraints[:objEqn].data),(group = fill(:costs,length(objEqn_arr)), name = collect(keys(exprCost_dic)), eqn = objEqn_arr))
 
     produceMessage(anyM.options,anyM.report, 2," - Created variables and constraints for cost objective")
 

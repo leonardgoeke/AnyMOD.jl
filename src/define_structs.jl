@@ -94,7 +94,9 @@ struct modOptions
 	decomm::Symbol
 	interCapa::Symbol
 	shortInvest::Int64
-	scale::NamedTuple{(:readDig,:compDig,:cost,:limit,:upInv,:upDisp),Tuple{Int64,Int64,Float64,Float64,Union{Nothing,Float64},Union{Nothing,Float64}}}
+	digits::NamedTuple{(:read,:comp),Tuple{Int64,Int64}}
+	scale::NamedTuple{(:cost,:ener,:capa,:ems),Tuple{Float64,Float64,Float64,Float64}}
+	bound::NamedTuple{(:inv,:disp, :cost),Tuple{Union{Nothing,Float64},Union{Nothing,Float64},Union{Nothing,Float64}}}
 	# reporting related options
 	reportLvl::Int64
 	errCheckLvl::Int64
@@ -124,8 +126,8 @@ mutable struct anyModel
 
 		# XXX sets whole options object from specified directories, defaults and args
 		# creates named tuple of default value for options
-		defOpt_ntup = (name = "", csvDelim = ",", outStamp = Dates.format(now(),"yyyymmddHHMM"), decomm = :none, interCapa = :linear, shortInvest = 5,
-										scale = (readDig = 3, compDig = 3, cost = 0.001, limit = 1, upInv = 10000.0, upDisp = 10000.0), reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, startTime = now())
+		defOpt_ntup = (name = "", csvDelim = ",", outStamp = Dates.format(now(),"yyyymmddHHMM"), decomm = :none, interCapa = :linear, shortInvest = 5, digits = (read = 3, comp = 3),
+										scale = (cost = 1, ener = 1, capa = 1, ems = 1000), bound = (inv = nothing, disp = nothing, cost = nothing), reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, startTime = now())
 
 		# checks if any non-existing option values were provided via args
 		undef_tup = filter(x -> !(x in keys(defOpt_ntup)), collect(map(x -> x[1],collect(args))))

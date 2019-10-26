@@ -45,7 +45,7 @@ function readInData(anyM::anyModel)
 	# read-in parameter files and convert their content
 	for parFile in Files_dic["par"]
 		ParData_df = convertReadIn(readcsv(parFile;delim = anyM.options.csvDelim[1]),parFile,Set_arr,SetLongShort_dic,anyM.report,sets)
-		SaveLookup_dic, ParameterTemp_dic = writeParameter(ParData_df,sets, ParameterTemp_dic, SetLongShort_dic, parFile, anyM.report, anyM.options.scale.readDig, SaveLookup_dic)
+		SaveLookup_dic, ParameterTemp_dic = writeParameter(ParData_df,sets, ParameterTemp_dic, SetLongShort_dic, parFile, anyM.report, anyM.options.digits.read, SaveLookup_dic)
 		produceMessage(anyM.options,anyM.report, 3," - Read-in parameter file: ",parFile)
 	end
 	produceMessage(anyM.options,anyM.report, 2," - Read-in all parameter files ")

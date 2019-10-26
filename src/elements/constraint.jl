@@ -52,8 +52,8 @@ function createLimitConstraints!(anyM::anyModel)
     end
 
     # XXX seperately creates emissions constraints
-    allUse_tab = matchSetParameter(anyM.report,anyM.variables[:use].data,anyM.parameter[:emissionFac],anyM.sets,anyM.options.scale.compDig)
-    allUseEm_tab = reindex(IT.transform(DB.select(allUse_tab,DB.Not(All(:val,:var,:Ts_supDis))),:var => DB.select(allUse_tab,(:var,:val) => x -> x.val * x.var / 1e6)), anyM.parameter[:emissionFac].dim)
+    allUse_tab = matchSetParameter(anyM.report,anyM.variables[:use].data,anyM.parameter[:emissionFac],anyM.sets,anyM.options.digits.comp)
+    allUseEm_tab = reindex(IT.transform(DB.select(allUse_tab,DB.Not(All(:val,:var,:Ts_supDis))),:var => DB.select(allUse_tab,(:var,:val) => x -> round(x.val / 1e6, sigdigits = anyM.options.digits.comp)  * x.var )), anyM.parameter[:emissionFac].dim)
     emEntry_tab = collectLimitConstraints(allUseEm_tab, :emission, Int32[], anyM)
     if !(isnothing(emEntry_tab)) limitTab_dic[:emission] = emEntry_tab end
 
@@ -64,19 +64,29 @@ function createLimitConstraints!(anyM::anyModel)
         limitTab_tab = limitTab_dic[varName]
         crtLimits_tup = intersect(colnames(limitTab_tab),(:Low,:Up,:Fix))
 
+        # determines scaling parameter for limit type
+        if occursin("capa", string(varName))
+            scaler = anyM.options.scale.capa
+        elseif varName == :emission
+            scaler = anyM.options.scale.ems
+        else
+            scaler = anyM.options.scale.ener
+        end
+
         # creates a table per existing limit type and writes to an array
         for type in (:Low, :Up, :Fix)
+
             if type in crtLimits_tup
                 subLim_tab = DB.dropmissing(DB.select(limitTab_tab,DB.Not(All(tuple(setdiff(crtLimits_tup,[type])...)))))
                 if type == :Low
                     eqnTable_dic[type] = IT.transform(DB.select(subLim_tab, DB.Not(All(:var,type))),:eqn => DB.select(subLim_tab,(type,:var)
-                                                                                                => x -> @constraint(anyM.optModel, x.Low * anyM.options.scale.limit <= sum(x.var) * anyM.options.scale.limit )))
+                                                                                    => x -> @constraint(anyM.optModel, round(x.Low * scaler, digits = anyM.options.digits.comp) <= sum(x.var) * scaler )))
                 elseif type == :Up
                     eqnTable_dic[type] = IT.transform(DB.select(subLim_tab, DB.Not(All(:var,type))),:eqn => DB.select(subLim_tab,(type,:var)
-                                                                                                => x -> @constraint(anyM.optModel, x.Up * anyM.options.scale.limit >= sum(x.var) * anyM.options.scale.limit)))
+                                                                                    => x -> @constraint(anyM.optModel, round(x.Up * scaler, digits = anyM.options.digits.comp) >= sum(x.var) * scaler)))
                 else
                     eqnTable_dic[type] = IT.transform(DB.select(subLim_tab, DB.Not(All(:var,type))),:eqn => DB.select(subLim_tab,(type,:var)
-                                                                                                => x -> @constraint(anyM.optModel, x.Fix * anyM.options.scale.limit == sum(x.var) * anyM.options.scale.limit)))
+                                                                                    => x -> @constraint(anyM.optModel, round(x.Fix * scaler, digits = anyM.options.digits.comp) == sum(x.var) * scaler)))
                 end
             end
         end
@@ -138,7 +148,7 @@ function controllCapaConstraints!(anyM::anyModel)
         groupCol_tup = tuple(replace(collect(invVar.dim),:Ts_inv => :Ts_supDis)...)
 
         # extends the investment variable table to include dispatch timesteps within lifetime of the respective expansion
-        lftm_tab = reindex(matchSetParameter(anyM.report,invVar.data,anyM.parameter[Symbol(:life,capaItr)],anyM.sets,anyM.options.scale.compDig,:life),invVar.dim)
+        lftm_tab = reindex(matchSetParameter(anyM.report,invVar.data,anyM.parameter[Symbol(:life,capaItr)],anyM.sets,anyM.options.digits.comp,:life),invVar.dim)
         invTsup_arr = DB.select(lftm_tab,(:Ts_inv,:life) => x -> filter(y -> (tsYear_dic[y] > tsYear_dic[x.Ts_inv]-anyM.options.shortInvest) && (tsYear_dic[y] <= tsYear_dic[x.Ts_inv]+x.life),collect(anyM.supDis.step)))
 
         invVarExt_tab = DB.rename(DB.flatten(IT.transform(invVar.data,:Ts_supDis => invTsup_arr)),:var => :inv)
@@ -175,7 +185,7 @@ function controllCapaConstraints!(anyM::anyModel)
 
         # joins residual capacities to table and write constraint
         if Symbol(:capa,capaItr,:Resi) in keys(anyM.parameter)
-            capaVarFull_tab = joinMissing(capaVarAll_tab, matchSetParameter(anyM.report,DB.select(capaVarAll_tab,groupCol_tup),anyM.parameter[Symbol(:capa,capaItr,:Resi)],anyM.sets,anyM.options.scale.compDig,:resi),groupCol_tup,groupCol_tup,:left,(0,GenericAffExpr{Float64,VariableRef}(),GenericAffExpr{Float64,VariableRef}(),0.0))
+            capaVarFull_tab = joinMissing(capaVarAll_tab, matchSetParameter(anyM.report,DB.select(capaVarAll_tab,groupCol_tup),anyM.parameter[Symbol(:capa,capaItr,:Resi)],anyM.sets,anyM.options.digits.comp,:resi),groupCol_tup,groupCol_tup,:left,(0,GenericAffExpr{Float64,VariableRef}(),GenericAffExpr{Float64,VariableRef}(),0.0))
         else
             capaVarFull_tab = IT.transform(capaVarAll_tab,:resi => fill(0.0,length(capaVarAll_tab)))
         end
@@ -237,8 +247,8 @@ function createConstraint!(name::Val{:commission},anyM::anyModel)
             if resiPar_sym in keys(anyM.parameter)
                 # adds residual capacities for current and previous year to table
                 commJoinResi_tab = DB.select(commInvVar_tab,DB.Not(All(:commPrev,:commNow,:invNow)))
-                commResiNow_tab = matchSetParameter(anyM.report,commJoinResi_tab,anyM.parameter[resiPar_sym],anyM.sets,anyM.options.scale.compDig,:valNow)
-                commResiPrev_tab = matchSetParameter(anyM.report,DB.rename(DB.select(commJoinResi_tab,DB.Not(All(:Ts_supDis))),:Ts_supDisPrev => :Ts_supDis),anyM.parameter[resiPar_sym],anyM.sets,anyM.options.scale.compDig,:valPrev)
+                commResiNow_tab = matchSetParameter(anyM.report,commJoinResi_tab,anyM.parameter[resiPar_sym],anyM.sets,anyM.options.digits.comp,:valNow)
+                commResiPrev_tab = matchSetParameter(anyM.report,DB.rename(DB.select(commJoinResi_tab,DB.Not(All(:Ts_supDis))),:Ts_supDisPrev => :Ts_supDis),anyM.parameter[resiPar_sym],anyM.sets,anyM.options.digits.comp,:valPrev)
                 # filter entries where residual increase and adds to them to table
                 commResiBoth_tab = DB.join((l,r) ->  (Ts_supDis = l.Ts_supDis, deltaResi = l.valNow > r.valPrev ? (l.valNow - r.valPrev) : 0.0),commResiNow_tab,commResiPrev_tab;lkey = dimPrev_tup, rkey = dim_tup, how = :inner)
                 commResiDelta_tab = DB.filter(r -> r.deltaResi != 0.0, commResiBoth_tab)
@@ -281,14 +291,14 @@ function createConstraint!(name::Val{:enerBal},anyM::anyModel)
     if :exchange in keys(anyM.variables)
         if :lossExc in keys(anyM.parameter)
             # find entries with exchange losses, repeat matches with switched to/from and joint to variable table
-            excLoss_tab = matchSetParameter(anyM.report,DB.rename(DB.select(anyM.variables[:exchange].data,DB.Not(All(:var))),:R_to => :R_a,:R_from => :R_b),anyM.parameter[:lossExc],anyM.sets,anyM.options.scale.compDig,:val,false)
+            excLoss_tab = matchSetParameter(anyM.report,DB.rename(DB.select(anyM.variables[:exchange].data,DB.Not(All(:var))),:R_to => :R_a,:R_from => :R_b),anyM.parameter[:lossExc],anyM.sets,anyM.options.digits.comp,:val,false)
             excLossTwice_tab = DB.merge(DB.rename(excLoss_tab,:R_b => :R_from,:R_a => :R_to),DB.rename(excLoss_tab,:R_a => :R_from,:R_b => :R_to))
 
             excVar_tab = joinMissing(anyM.variables[:exchange].data,excLossTwice_tab,(:Ts_supDis,:Ts_dis,:R_from,:R_to,:C), (:Ts_supDis,:Ts_dis,:R_from,:R_to,:C), :left, (0.0,))
 
             # groups exchange variables by from regions and includes losses (= exchange requires more input in source region than is transferred to the taraget region)
             excFromGrp_tab = JuliaDB.groupby(excVar_tab, (:Ts_supDis, :Ts_dis, :R_from, :C), usekey = false; select = (:var,:val)) do y
-                NamedTuple{(:excFrom,)}(tuple(sum(dot(y.var,  round.(1 ./ (1 .- y.val), digits = anyM.options.scale.compDig )))))
+                NamedTuple{(:excFrom,)}(tuple(sum(dot(y.var,  round.(1 ./ (1 .- y.val), digits = anyM.options.digits.comp )))))
             end
         else
             # groups exchange variables by from regions
@@ -324,7 +334,7 @@ function createConstraint!(name::Val{:enerBal},anyM::anyModel)
 
     # <editor-fold desc="adds parameter"
     # adds demand parameter, since these are provided in MW they are scaled to MWh
-    demand_tab = matchSetParameter(anyM.report,DB.select(eqnVar1_tab,(:Ts_supDis,:Ts_dis,:R_dis,:C)),anyM.parameter[:demand],anyM.sets,anyM.options.scale.compDig,:dem)
+    demand_tab = matchSetParameter(anyM.report,DB.select(eqnVar1_tab,(:Ts_supDis,:Ts_dis,:R_dis,:C)),anyM.parameter[:demand],anyM.sets,anyM.options.digits.comp,:dem)
     demandScaled_tab = addScaling(demand_tab,:dem,anyM.sets[:Ts],anyM.supDis)
 
     push!(joinMiss_arr,0.0)
@@ -400,7 +410,7 @@ function createConstraint!(name::Val{:convBal},anyM::anyModel)
     convBal_tab = expandSetColumns(DB.join(convBalDim_tab,allCapaConv_tab;lkey = :Te, rkey = :Te, how = :inner),(:Ts_dis,:R_dis), anyM.sets)
 
     # joins conversion efficiencies, defines also entries where mode need to be specified explicitly
-    convBalEff_tab = matchSetParameter(anyM.report,convBal_tab,anyM.parameter[:effConv],anyM.sets,anyM.options.scale.compDig,:eff,false)
+    convBalEff_tab = matchSetParameter(anyM.report,convBal_tab,anyM.parameter[:effConv],anyM.sets,anyM.options.digits.comp,:eff,false)
 
     # adds empty mode column if non-existing within efficiencies
     if !(:M in colnames(convBalEff_tab)) convBalEff_tab = IT.transform(convBalEff_tab,:M => fill(convert(Int32,0),length(convBalEff_tab))) end
@@ -471,10 +481,10 @@ function createConstraint!(name::Val{:stBal},anyM::anyModel)
                                             DB.join(anyM.variables[Symbol(:stInt,type)].data,sizeVarNoM_tab; lkey = joinKey_tup, rkey = joinKey_tup, lselect = DB.Not(All(:Ts_supDis)), how = :inner))
 
         # joins efficiency parameter and creates expression
-        allVarEff_tab = matchSetParameter(anyM.report,allVar_tab,anyM.parameter[Symbol(:effSt,type)],anyM.sets,anyM.options.scale.compDig,:eff,false)
+        allVarEff_tab = matchSetParameter(anyM.report,allVar_tab,anyM.parameter[Symbol(:effSt,type)],anyM.sets,anyM.options.digits.comp,:eff,false)
 
         allVarExpr_tab = sort(IT.transform(DB.select(allVarEff_tab,DB.Not(All(:eff,:var))),:var => type == :In ? DB.select(allVarEff_tab,(:eff,:var) => x -> x.eff*x.var)
-                                                                                                               : DB.select(allVarEff_tab,(:eff,:var) => x -> x.var*round(1/x.eff,digits = anyM.options.scale.compDig))))
+                                                                                                               : DB.select(allVarEff_tab,(:eff,:var) => x -> x.var*round(1/x.eff,digits = anyM.options.digits.comp))))
         # replaces mode value with zero where size is not mode controlled
         if !isempty(anyM.mapping[:modeCases])
             modeSizeInOut_dic = convert(Dict{Tuple{Int32,Int32},Int32}, Dict((x.C, x.M) => (x.C, x.M) in modeCarSize_arr ? x.M : 0 for x in unique(DB.select(allVar_tab,(:C,:M)))))
@@ -496,15 +506,15 @@ function createConstraint!(name::Val{:stBal},anyM::anyModel)
 
     # adds discharge factor on nextSize Variable, since values are provided per hour factors need to be scaled accordingly
     if disDef_boo
-        sizeAllVarDis_tab = joinMissing(sizeAllVarEff_tab,matchSetParameter(anyM.report,DB.select(sizeVar_tab,DB.Not(All(:size))),anyM.parameter[:stDis],anyM.sets,anyM.options.scale.compDig,:stDis,false), joinKeyM_tup, joinKeyM_tup, :left,(0.0,))
+        sizeAllVarDis_tab = joinMissing(sizeAllVarEff_tab,matchSetParameter(anyM.report,DB.select(sizeVar_tab,DB.Not(All(:size))),anyM.parameter[:stDis],anyM.sets,anyM.options.digits.comp,:stDis,false), joinKeyM_tup, joinKeyM_tup, :left,(0.0,))
         sizeAllVarScale_tab = addScaling(IT.transform(sizeAllVarDis_tab,:scale => fill(1.0,length(sizeAllVarDis_tab))),:scale,anyM.sets[:Ts],anyM.supDis)
-        sizeAllVarFac_tab = IT.transform(sizeAllVarScale_tab,:nextSize => DB.select(sizeAllVarScale_tab,(:nextSize, :stDis, :scale) => x -> x.nextSize * round(1/(1-x.stDis^x.scale),digits = anyM.options.scale.compDig)))
+        sizeAllVarFac_tab = IT.transform(sizeAllVarScale_tab,:nextSize => DB.select(sizeAllVarScale_tab,(:nextSize, :stDis, :scale) => x -> x.nextSize * round(1/(1-x.stDis^x.scale),digits = anyM.options.digits.comp)))
         sizeAllVarEff_tab = DB.select(sizeAllVarFac_tab,DB.Not(All(:stDis,:scale)))
     end
 
     # adds inflows parameter, since values are provided per hour factors need to be scaled accordingly
     if infDef_boo
-        sizeAllVarInf_tab = joinMissing(sizeAllVarEff_tab,matchSetParameter(anyM.report,DB.select(sizeVar_tab,DB.Not(All(:size))),anyM.parameter[:stInflow],anyM.sets,anyM.options.scale.compDig,:stInf,false), joinKeyM_tup, joinKeyM_tup, :left,(0.0,))
+        sizeAllVarInf_tab = joinMissing(sizeAllVarEff_tab,matchSetParameter(anyM.report,DB.select(sizeVar_tab,DB.Not(All(:size))),anyM.parameter[:stInflow],anyM.sets,anyM.options.digits.comp,:stInf,false), joinKeyM_tup, joinKeyM_tup, :left,(0.0,))
         sizeAllVarEff_tab = addScaling(sizeAllVarInf_tab,:stInf,anyM.sets[:Ts],anyM.supDis) # adds scaling since inflows are provided in MW
     end
 
@@ -549,7 +559,7 @@ function createConstraint!(name::Val{:capaRestr},anyM::anyModel)
         excVarFull_tab =  DB.reindex(DB.merge([DB.select(DB.join(excDisVar_tab,anyM.variables[:capaExc].data; lkey = (:Ts_supDis, x, :C), rkey = (:Ts_supDis, :R_a, :C), rselect = DB.Not(All(:R_b)) ,how = :inner),DB.Not(All(:R_a)))
                                                                                                                                                                     for x in (:R_from,:R_to)]...),(:Ts_dis,:R_from,:R_to,:C))
         # adds availability of exchange capacity (matchSetParameter has to be called twice, because both "sides", from and to need to be checked)
-        excAvaOnce_tab = matchSetParameter(anyM.report,DB.rename(excVarFull_tab,:R_to => :R_a,:R_from => :R_b),anyM.parameter[:avaExc],anyM.sets,anyM.options.scale.compDig,:ava,false)
+        excAvaOnce_tab = matchSetParameter(anyM.report,DB.rename(excVarFull_tab,:R_to => :R_a,:R_from => :R_b),anyM.parameter[:avaExc],anyM.sets,anyM.options.digits.comp,:ava,false)
         excAva_tab = DB.merge(DB.rename(excAvaOnce_tab,:R_b => :R_from,:R_a => :R_to),DB.rename(excAvaOnce_tab,:R_a => :R_from,:R_b => :R_to))
 
         # since exchange capacities are provided in MW, but energy in MWh, scaling factor is added to exchange capacity
@@ -568,7 +578,7 @@ end
 function createConstraint!(name::Val{:limitTrd},anyM::anyModel)
     for type in (:Buy, :Sell)
         if Symbol(:trd,type,:Cap) in keys(anyM.parameter)
-            eqn_tab = matchSetParameter(anyM.report,anyM.variables[Symbol(:trade,type)].data, anyM.parameter[Symbol(:trd,type,:Cap)], anyM.sets, anyM.options.scale.compDig, :cap, false)
+            eqn_tab = matchSetParameter(anyM.report,anyM.variables[Symbol(:trade,type)].data, anyM.parameter[Symbol(:trd,type,:Cap)], anyM.sets, anyM.options.digits.comp, :cap, false)
 
             # adds scaling to trade capacities
             eqnScaled_tab = addScaling(eqn_tab,:cap,anyM.sets[:Ts],anyM.supDis)
@@ -720,7 +730,7 @@ function matchLimitParameter(varData_tab::IndexedTable, limName_sym::Symbol, any
         searchPar_sym = Symbol(limName_sym,consType)
         if searchPar_sym in defPar_tup
             allPar_tab = DB.rename(anyM.parameter[searchPar_sym].data, :val => consType)
-            matchedPar_tab = matchSetParameter(anyM.report, search_tab, anyM.parameter[searchPar_sym], anyM.sets, anyM.options.scale.compDig)
+            matchedPar_tab = matchSetParameter(anyM.report, search_tab, anyM.parameter[searchPar_sym], anyM.sets, anyM.options.digits.comp)
             if !isempty(matchedPar_tab)
                 matchedPar_dic[consType] = DB.rename(DB.join(addDummyCol(search_tab),matchedPar_tab; lkey = searchCol_tup, rkey = searchCol_tup, lselect = searchCol_tup, rselect = :val, how = :inner), :val => consType)
                 allPar_dic[consType] = DB.join(allPar_tab, matchedPar_dic[consType]; lkey = searchCol_tup, rkey = searchCol_tup, how = :anti)
@@ -857,11 +867,11 @@ function createRestr!(cnstr_ntup::NamedTuple,cnstr_tab::IndexedTable,anyM::anyMo
 
     # adds availability parameter
     disVar2_tab = reindex(disVar_tab,parDim_tup)
-    varAva_tab = IT.transform(disVar2_tab,:ava => DB.select(matchSetParameter(anyM.report,DB.select(disVar2_tab,parDim_tup),anyM.parameter[avaName_sym],anyM.sets,anyM.options.scale.compDig),:val))
+    varAva_tab = IT.transform(disVar2_tab,:ava => DB.select(matchSetParameter(anyM.report,DB.select(disVar2_tab,parDim_tup),anyM.parameter[avaName_sym],anyM.sets,anyM.options.digits.comp),:val))
 
     # adds efficiency parameter in case capacity constraints addresses generation
     if cnstr_ntup.type == :out
-        varAva_tab = IT.transform(varAva_tab,:ava => DB.select(varAva_tab,:ava).*DB.select(matchSetParameter(anyM.report,DB.select(varAva_tab,parDim_tup),anyM.parameter[:effConv],anyM.sets,anyM.options.scale.compDig),:val))
+        varAva_tab = IT.transform(varAva_tab,:ava => DB.select(varAva_tab,:ava).*DB.select(matchSetParameter(anyM.report,DB.select(varAva_tab,parDim_tup),anyM.parameter[:effConv],anyM.sets,anyM.options.digits.comp),:val))
     end
     # </editor-fold>
 
@@ -872,7 +882,7 @@ function createRestr!(cnstr_ntup::NamedTuple,cnstr_tab::IndexedTable,anyM::anyMo
     grpDim2_tup = tuple(filter(x -> !(x in (:M,:Ts_dis)),vcat(:Ts_supDis,parDim_tup...))...)
     # smallest availability among dispatch variables is obtained too expand the the final capacity constraint to avoid numerical trouble
     disVarGrp1_tab = DB.groupby(varAva_tab,tuple(vcat(grpDim_tup...,:id)...), usekey = false, select = (:disVar,:ava)) do x
-        NamedTuple{(:disVar,:ava,:maxAva)}(tuple(Array(x.disVar),Array(x.ava),maximum(x.ava)))
+        NamedTuple{(:disVar,:ava)}(tuple(Array(x.disVar),Array(x.ava)))
     end
     rSelNot_tup = cnstr_ntup.type in (:in,:out) ? (:C,:lvlTs,:id) : (:lvlTs,:id)
 
@@ -880,9 +890,9 @@ function createRestr!(cnstr_ntup::NamedTuple,cnstr_tab::IndexedTable,anyM::anyMo
     allVarFinal_tab = DB.join(disVarGrp1_tab,capaVarGrp_tab; lkey = grpDim2_tup, rkey = grpDim2_tup, lselect = DB.Not(All(:id)), rselect = DB.Not(All(rSelNot_tup)), how = :inner)
     allVarFinalRe_tab = DB.reindex(allVarFinal_tab,grpDim_tup)
 
-    dispVarComp_tab = IT.transform(DB.select(allVarFinalRe_tab,DB.Not(All(:disVar,:ava,:maxAva,:capaVar,:scale))),
-                                                    :disp => DB.select(allVarFinalRe_tab,(:disVar,:ava,:maxAva) => x -> dot(x.disVar,round.((1/x.ava), digits = anyM.options.scale.compDig))),
-                                                    :capa => DB.select(allVarFinalRe_tab,(:capaVar,:scale,:maxAva) => x -> x.capaVar*round(x.scale, digits = anyM.options.scale.compDig)))
+    dispVarComp_tab = IT.transform(DB.select(allVarFinalRe_tab,DB.Not(All(:disVar,:ava,:capaVar,:scale))),
+                                                    :disp => DB.select(allVarFinalRe_tab,(:disVar,:ava) => x -> dot(x.disVar,round.((1/x.ava), digits = anyM.options.digits.comp))),
+                                                    :capa => DB.select(allVarFinalRe_tab,(:capaVar,:scale) => x -> x.capaVar*round(x.scale, digits = anyM.options.digits.comp)))
 
     # create final constraints and write object
     fullData_tab = IT.transform(DB.select(dispVarComp_tab,grpDim_tup), :eqn => DB.select(dispVarComp_tab,(:disp,:capa) => x -> @constraint(anyM.optModel, x.disp <= x.capa)))

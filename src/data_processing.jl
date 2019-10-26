@@ -413,7 +413,7 @@ function createFullString(setIdx_int,Tree_df::DataFrame,writeLvl_boo::Bool=true)
 end
 
 # XXX prints any AbstractModelElement
-function printObject(print_obj::AbstractModelElement,sets::Dict{Symbol,DataFrame},options::modOptions,filterFunc::Union{Nothing,Function} = nothing, printZero::Bool = false)
+function printObject(print_obj::AbstractModelElement,sets::Dict{Symbol,DataFrame},options::modOptions, threshold::Union{Nothing,Float64} = 0.001, filterFunc::Union{Nothing,Function} = nothing)
 	# initialize
 	colNam_arr = colnames(print_obj.data)
     cntCol_int = length(colNam_arr)
@@ -432,7 +432,7 @@ function printObject(print_obj::AbstractModelElement,sets::Dict{Symbol,DataFrame
 	cntCol_int = length(colNam_arr)
 
 	# removes entries where value is zero
-	if !(printZero) && :val in colNam_arr dataTable = DB.filter(r -> r.val != 0.0, dataTable) end
+	if !(isnothing(threshold)) && :val in colNam_arr dataTable = DB.filter(r -> r.val >= threshold, dataTable) end
 
     for i = 1:cntCol_int
         lookUp_sym = Symbol(split(String(colNam_arr[i]),"_")[1])

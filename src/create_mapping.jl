@@ -17,7 +17,7 @@ function createAllMappings!(anyM::anyModel, SetData_dic::Dict{Symbol,DataFrame},
 	# XXX writes the supordinate dispatch level, the timesteps on this level and number of actual dispatch timesteps assinged to these timesteps to a named tuple
 	supDisLvl_int = maximum(anyM.mapping[:C_lvl].columns.lvlTsInv)
 	supDis_tup = tuple(anyM.sets[:Ts][anyM.sets[:Ts][:,:lvl] .== supDisLvl_int ,:idx]...)
-	supDis_dic = Dict((x[1],x[2]) => round(8760/length(getChildren(x[1],anyM.sets[:Ts],false,x[2])),digits = anyM.options.scale.compDig) for x in Iterators.product(supDis_tup,filter(x -> x >= supDisLvl_int,unique(anyM.sets[:Ts][:,:lvl]))))
+	supDis_dic = Dict((x[1],x[2]) => round(8760/length(getChildren(x[1],anyM.sets[:Ts],false,x[2])),digits = anyM.options.digits.comp) for x in Iterators.product(supDis_tup,filter(x -> x >= supDisLvl_int,unique(anyM.sets[:Ts][:,:lvl]))))
 	anyM.supDis = (lvl = supDisLvl_int, step = supDis_tup, dic = supDis_dic)
 
 	anyM.mapping[:TechInfo] = createMapping(:TechInfo, anyM)
@@ -269,7 +269,7 @@ function createMapping(name::Val{:invConvStExc}, anyM::anyModel)
 	regExc_tab = table(Int32[],Int32[],Int32[], names = (:R_a, :R_b, :C))
 
 	for par in intersect(parExc_tup,keys(anyM.parameter))
-		regExc_tab = merge(regExc_tab,DB.select(matchSetParameter(anyM.report,DB.select(excAll_tab,(:R_a,:R_b,:C)),anyM.parameter[par],anyM.sets,anyM.options.scale.compDig),(:R_a,:R_b,:C)))
+		regExc_tab = merge(regExc_tab,DB.select(matchSetParameter(anyM.report,DB.select(excAll_tab,(:R_a,:R_b,:C)),anyM.parameter[par],anyM.sets,anyM.options.digits.comp),(:R_a,:R_b,:C)))
 	end
 
 	regTsExc_tab = join(excAll_tab,addDummyCol(table(unique(regExc_tab))); lkey = (:R_a,:R_b,:C), rkey = (:R_a,:R_b,:C), rselect = (:R_a,:R_b,:C), how =:inner)
@@ -415,15 +415,13 @@ function createMapping(name::Val{:capaDispRestr}, anyM::anyModel)
 					if j == 2 ([carDisSort_arr[y][1] for y in 1:x], carDisSort_arr[x][2], max(carDisSort_arr[x][3], row.refLvl.R))
 					else ([carDisSort_arr[y][1] for y in 1:x], max(carDisSort_arr[x][2],row.refLvl.Ts), carDisSort_arr[x][3]) end
 				end
-				# filters entries that exceed the reference level
+				# filters entries that are on the reference level or exceed it
 				carIt_arr = carIt_arr[findall(x -> j == 2 ? x[2] > row.refLvl.Ts : x[3] > row.refLvl.R,carIt_arr)]
 				push!(CarConstr_arr, carIt_arr...)
 			end
 
-			# adds balance on reference levels, preferably on use side
-			if side == :use
-				push!(CarConstr_arr,(getproperty(row.allCar,side), row.refLvl.Ts, row.refLvl.R))
-			elseif !(:use in keys(row.allCar))
+			# adds balance on reference levels, if so far no capacity constraint exists
+			if isempty(CarConstr_arr) && (side == :gen || !(:gen in keys(row.allCar)))
 				push!(CarConstr_arr,(getproperty(row.allCar,side), row.refLvl.Ts, row.refLvl.R))
 			end
 
