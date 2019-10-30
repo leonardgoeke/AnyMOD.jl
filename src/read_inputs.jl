@@ -168,24 +168,34 @@ function convertReadIn(ReadIn_df::DataFrame,FileName_str::String,Set_arr::Array{
         for row in eachrow(ReadIn_df[RowsAll_arr,:])
             # append new rows to dataframe
             AddRow_df = row
-            AllInfo_str = reduce(replace, ["all"=>"", "("=>"", ")"=>""], init=lowercase(AddRow_df[col]))
+            AllInfo_str = reduce(replace, ["all"=>"", "("=>"", ")"=>""], init=AddRow_df[col])
 
             if occursin(":",AllInfo_str)
                 AllVal_arr = split(AllInfo_str,":")
                 RplVal_arr = ColValUni_arr[findall(x->x==AllVal_arr[1], ColValUni_arr)[1]:findall(x->x==AllVal_arr[2], ColValUni_arr)[1]]
+
+				# reports if values within all expression could not be matched to sets
+				if length(RplVal_arr) != length(AllVal_arr)
+					push!(report,(2,:par,Symbol(FileName_str),"at least one value within all expression $(AllInfo_str) could not be matched to an existing set"))
+				end
             elseif occursin(",",AllInfo_str)
                 AllVal_arr = split(AllInfo_str,",")
                 RplVal_arr = ColValUni_arr[map(x -> in(x,AllVal_arr),ColValUni_arr)]
+
+				# reports if values within all expression could not be matched to sets
+				if length(RplVal_arr) != length(AllVal_arr)
+					push!(report,(2,:par,Symbol(FileName_str),"at least one value within all expression $(AllInfo_str) could not be matched to an existing set"))
+				end
             else
                 RplVal_arr = ColValUni_arr
             end
+
             for addVal in RplVal_arr
                 AddRow_df[col] = addVal
                 push!(ReadIn_df, [AddRow_df[col] for col in ReadInCol_tup])
             end
         end
         #remove inital rows with all#
-
         deleterows!(ReadIn_df,findall(RowsAll_arr))
     end
 

@@ -6,12 +6,12 @@ function addConstraints!(anyM::anyModel)
     anyM.constraints = Dict{Symbol,CnsElement}()
 
     # XXX investment related constraints
+    # definition of installed capacity
+    controllCapaConstraints!(anyM)
     # all limits on variables (investment, capacity, and dispatch)
     createLimitConstraints!(anyM)
     # aggregate dispatch variables and save aggrations to dictionary
     createConstraint!(:agg,anyM)
-    # definition of installed capacity
-    controllCapaConstraints!(anyM)
     # controlls re- and de-commissioning
     if anyM.options.decomm != :none createConstraint!(:commission,anyM) end
     # ensures production quantities complies with parameter ratios
@@ -130,6 +130,7 @@ function createConstraint!(name::Val{:agg},anyM::anyModel)
         produceMessage(anyM.options,anyM.report, 3," - Created constraints to aggregate $varName variables")
     end
 
+
     produceMessage(anyM.options,anyM.report, 2," - Created constraints to aggregate variables")
 end
 
@@ -195,7 +196,6 @@ function controllCapaConstraints!(anyM::anyModel)
 
         allEqn_tab[capaItr] = reindex(IT.transform(DB.select(capaVarFull_tab,groupColPlusTsInv_tup ),:eqn =>
                                                                             DB.select(capaVarFull_tab,(:var,:inv,:resi) => x -> @constraint(anyM.optModel, x.var == x.inv + x.resi))),groupColPlusTsInv_tup)
-
 
         # </editor-fold>
     end

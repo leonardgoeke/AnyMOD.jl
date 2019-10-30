@@ -60,7 +60,7 @@ mutable struct ParElement <: AbstractModelElement
     end
 end
 
-struct VarElement <: AbstractModelElement
+mutable struct VarElement <: AbstractModelElement
     name::Symbol
     dim::Tuple
     data::IndexedTable

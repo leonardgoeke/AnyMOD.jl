@@ -360,7 +360,7 @@ function createMapping(name::Val{:capaConvStExc}, anyM::anyModel)
 			end
 
 			# create function that loops over supordinate dispatch timesteps and technologies to obtain relevant construction years for storage
-				if anySt_boo
+			if anySt_boo
 				relSupDisTeConstSt_mat = map(x -> getConstTs(x,anyM.supDis.step,anyM.sets[:Ts],relTsInv_dic[x[2]] == anyM.supDis.lvl ? nothing : relTsInv_dic[x[2]]),eachcol(relSupDisTeCarSt_arr))
 				relSupDisTeConstSt_arr = vcat(relSupDisTeConstSt_mat...)
 
@@ -387,6 +387,15 @@ function createMapping(name::Val{:capaConvStExc}, anyM::anyModel)
 	# XXX creates all possible dimension for capacity of exchange
 	uniExc_tab = table(unique(DB.select(anyM.mapping[:invExc],DB.Not(:Ts_inv))))
 	mapCapaExc_tab = rmvDummyCol(DB.reindex(addDummyCol(DB.flatten(IT.transform(uniExc_tab,:Ts_supDis => fill(anyM.supDis.step,length(uniExc_tab))),:Ts_supDis)),(:Ts_supDis,:R_a,:R_b,:C)))
+
+	# XXX filter cases where capacity variables are not existing due to lifetime
+	tsYear_dic = Dict(zip(anyM.supDis.step,convert(Array{Int32,1},collect(0:anyM.options.shortInvest:(length(anyM.supDis.step)-1)*anyM.options.shortInvest))))
+
+	lftmConv_tab = matchSetParameter(anyM.report,mapCapaConv_tab,anyM.parameter[Symbol(:lifeConv)],anyM.sets,anyM.options.digits.comp,:life)
+	mapCapaConv_tab = DB.select(filter(r -> r.Ts_inv == 0 || !(r.life + tsYear_dic[r.Ts_inv] < tsYear_dic[r.Ts_supDis]), lftmConv_tab), DB.Not(All(:life)))
+	# TODO part should be extended to other storage types
+	lftmSt_tab = matchSetParameter(anyM.report,mapCapaSt_tab,anyM.parameter[Symbol(:lifeStIn)],anyM.sets,anyM.options.digits.comp,:life)
+	mapCapaSt_tab = DB.select(filter(r -> r.Ts_inv == 0 || !(r.life + tsYear_dic[r.Ts_inv] < tsYear_dic[r.Ts_supDis]), lftmSt_tab), DB.Not(All(:life)))
 
 	return mapCapaConv_tab, mapCapaSt_tab, mapCapaExc_tab
 end
@@ -425,8 +434,16 @@ function createMapping(name::Val{:capaDispRestr}, anyM::anyModel)
 				push!(CarConstr_arr,(getproperty(row.allCar,side), row.refLvl.Ts, row.refLvl.R))
 			end
 
-			#filter redundant and "dominated" combinations (less or the same carriers, but not more temporal or spatial detail)
+			#  identifies and removes "crossings"
 			CarConstrUni_arr = unique(CarConstr_arr)
+			cross_arr = filter(x -> (any(map(z -> (x[2] > z[2] && x[3] < z[3]) || (x[3] > z[3] && x[2] < z[2]), CarConstrUni_arr))),CarConstrUni_arr)
+			noCross_arr = filter(x -> !(any(map(z -> (x[2] > z[2] && x[3] < z[3]) || (x[3] > z[3] && x[2] < z[2]), CarConstrUni_arr))),CarConstrUni_arr)
+			if !isempty(cross_arr)
+				newEntry_tup = (union(getindex.(cross_arr,1)...), maximum(getindex.(cross_arr,2)),maximum(getindex.(cross_arr,3)))
+				CarConstrUni_arr = unique(vcat(newEntry_tup,noCross_arr))
+			end
+
+			# filter redundant and "dominated" combinations (less or the same carriers, but not more temporal or spatial detail)
 			CarConstrUni_arr2 = map(i -> map(x -> x[i],CarConstrUni_arr),1:3)
 			CarConFilt_arr = filter(CarConstrUni_arr) do x
 							!(any((BitArray(issubset(x[1],y) for y in CarConstrUni_arr2[1]) 		.&
