@@ -891,7 +891,7 @@ function createRestr!(cnstr_ntup::NamedTuple,cnstr_tab::IndexedTable,anyM::anyMo
     allVarFinalRe_tab = DB.reindex(allVarFinal_tab,grpDim_tup)
 
     dispVarComp_tab = IT.transform(DB.select(allVarFinalRe_tab,DB.Not(All(:disVar,:ava,:capaVar,:scale))),
-                                                    :disp => DB.select(allVarFinalRe_tab,(:disVar,:ava) => x -> dot(x.disVar,round.((1/x.ava), digits = anyM.options.digits.comp))),
+                                                    :disp => DB.select(allVarFinalRe_tab,(:disVar,:ava) => x -> dot(x.disVar,map(y -> round((1/y), digits = anyM.options.digits.comp),x.ava))),
                                                     :capa => DB.select(allVarFinalRe_tab,(:capaVar,:scale) => x -> x.capaVar*round(x.scale, digits = anyM.options.digits.comp)))
 
     # create final constraints and write object

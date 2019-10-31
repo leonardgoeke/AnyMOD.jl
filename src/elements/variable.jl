@@ -798,11 +798,11 @@ function getTechByCapa(capa::Symbol, dispGrp_tup::Tuple, capaData_tab::IndexedTa
 	unconvDic = Dict((x.Ts_supDis, x.lvlTs) => anyM.sets[:Ts][x.Ts_supDis,:lvl] == x.lvlTs ? [x.Ts_supDis] : getChildren(x.Ts_supDis,anyM.sets[:Ts],false,x.lvlTs) for x in DB.unique(DB.select(varLvl_tab,(:Ts_supDis, :lvlTs))))
 	tsSupDisLvl_dic = convert(Dict{Tuple{Int32,Int32},Array{Int32,1}},unconvDic)
 	unconvDic2 = Dict((x.R_inv, x.lvlR) => anyM.sets[:R][x.R_inv,:lvl] == x.lvlR ? x.R_inv : getHeritanceLine(x.R_inv,anyM.sets[:R],x.lvlR) for x in DB.unique(DB.select(varLvl_tab,(:R_inv, :lvlR))))
-	rInvLvl_dic = convert(Dict{Tuple{Int32,Int32},Int32},unconvDic2)
+    rInvLvl_dic = convert(Dict{Tuple{Int32,Int32},Int32},unconvDic2)
 
 	for type in dispGrp_tup
-		varTab_dic[type] = getTechByGrp(capa, type, varLvl_tab, tsSupDisLvl_dic, rInvLvl_dic, anyM)
 	end
+    varTab_dic[type] = getTechByGrp(capa, type, varLvl_tab, tsSupDisLvl_dic, rInvLvl_dic, anyM)
 	# </editor-fold>
 
 	return varTab_dic, report

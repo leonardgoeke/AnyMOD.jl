@@ -198,8 +198,7 @@ function defineParameter(options::modOptions,report::DataFrame)
     # exchange (=exchange between explicit regions) parameters
     ParDef_dic[:avaExc]     =   (name = :avaExc,  dim = (:Ts_dis, :R_a, :R_b, :C),      default_val = 1.0,     inherit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any), presetLvl = :exchange)
     ParDef_dic[:lossExc]    =   (name = :lossExc, dim = (:Ts_dis, :R_a, :R_b, :C),      default_val = nothing, inherit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any), presetLvl = :exchange)
-    ParDef_dic[:costExc]    =   (name = :costExc, dim = (:Ts_dis, :R_a, :R_b, :C),      default_val = nothing, inherit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any), presetLvl = :exchange)
-    ParDef_dic[:costVarExc] =   (name = :costVarExc,   dim = (:Ts_dis, :R_a, :R_b, :C), default_val = nothing, inherit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any), presetLvl = :carrier)
+    ParDef_dic[:costVarExc] =   (name = :costVarExc,   dim = (:Ts_dis, :R_a, :R_b, :C), default_val = nothing, inherit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any), presetLvl = :exchange)
 
     # </editor-fold>
 
