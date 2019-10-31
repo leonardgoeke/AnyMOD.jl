@@ -801,8 +801,8 @@ function getTechByCapa(capa::Symbol, dispGrp_tup::Tuple, capaData_tab::IndexedTa
     rInvLvl_dic = convert(Dict{Tuple{Int32,Int32},Int32},unconvDic2)
 
 	for type in dispGrp_tup
+        varTab_dic[type] = getTechByGrp(capa, type, varLvl_tab, tsSupDisLvl_dic, rInvLvl_dic, anyM)
 	end
-    varTab_dic[type] = getTechByGrp(capa, type, varLvl_tab, tsSupDisLvl_dic, rInvLvl_dic, anyM)
 	# </editor-fold>
 
 	return varTab_dic, report
