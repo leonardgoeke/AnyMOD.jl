@@ -615,7 +615,7 @@ function createVariable!(name::Val{:exchange}, anyM::anyModel)
 
     # XXX create actual variable object
     excVar_tab = reindex(createDispVar(anyM.optModel,excFullAddSup_tab,"exchange",anyM.sets[:Ts],anyM.supDis,anyM.options.bound.disp,anyM.options.digits.comp),(:Ts_dis, :R_from, :R_to, :C))
-    anyM.variables[:exchange] = VarElement(:exchange,(:Ts_dis,:R_from,:R_to,:C),excVar_tab)
+    anyM.variables[:exc] = VarElement(:exchange,(:Ts_dis,:R_from,:R_to,:C),excVar_tab)
     produceMessage(anyM.options,anyM.report, 3," - Created exchange variables")
 end
 

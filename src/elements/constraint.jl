@@ -288,13 +288,13 @@ function createConstraint!(name::Val{:enerBal},anyM::anyModel)
     # </editor-fold>
 
     # <editor-fold desc="adds variables from exchange"
-    if :exchange in keys(anyM.variables)
+    if :exc in keys(anyM.variables)
         if :lossExc in keys(anyM.parameter)
             # find entries with exchange losses, repeat matches with switched to/from and joint to variable table
-            excLoss_tab = matchSetParameter(anyM.report,DB.rename(DB.select(anyM.variables[:exchange].data,DB.Not(All(:var))),:R_to => :R_a,:R_from => :R_b),anyM.parameter[:lossExc],anyM.sets,anyM.options.digits.comp,:val,false)
+            excLoss_tab = matchSetParameter(anyM.report,DB.rename(DB.select(anyM.variables[:exc].data,DB.Not(All(:var))),:R_to => :R_a,:R_from => :R_b),anyM.parameter[:lossExc],anyM.sets,anyM.options.digits.comp,:val,false)
             excLossTwice_tab = DB.merge(DB.rename(excLoss_tab,:R_b => :R_from,:R_a => :R_to),DB.rename(excLoss_tab,:R_a => :R_from,:R_b => :R_to))
 
-            excVar_tab = joinMissing(anyM.variables[:exchange].data,excLossTwice_tab,(:Ts_supDis,:Ts_dis,:R_from,:R_to,:C), (:Ts_supDis,:Ts_dis,:R_from,:R_to,:C), :left, (0.0,))
+            excVar_tab = joinMissing(anyM.variables[:exc].data,excLossTwice_tab,(:Ts_supDis,:Ts_dis,:R_from,:R_to,:C), (:Ts_supDis,:Ts_dis,:R_from,:R_to,:C), :left, (0.0,))
 
             # groups exchange variables by from regions and includes losses (= exchange requires more input in source region than is transferred to the taraget region)
             excFromGrp_tab = JuliaDB.groupby(excVar_tab, (:Ts_supDis, :Ts_dis, :R_from, :C), usekey = false; select = (:var,:val)) do y
@@ -303,13 +303,13 @@ function createConstraint!(name::Val{:enerBal},anyM::anyModel)
         else
             # groups exchange variables by from regions
             # groups exchange variables by from regions
-            excFromGrp_tab = JuliaDB.groupby(anyM.variables[:exchange].data, (:Ts_supDis, :Ts_dis, :R_from, :C), usekey = false; select = :var) do y
+            excFromGrp_tab = JuliaDB.groupby(anyM.variables[:exc].data, (:Ts_supDis, :Ts_dis, :R_from, :C), usekey = false; select = :var) do y
                 NamedTuple{(:excFrom,)}(tuple(sum(y)))
             end
         end
 
         # groups exchange variables by to regions
-        excToGrp_tab = JuliaDB.groupby(anyM.variables[:exchange].data, (:Ts_supDis, :Ts_dis, :R_to, :C), usekey = false; select = :var) do y
+        excToGrp_tab = JuliaDB.groupby(anyM.variables[:exc].data, (:Ts_supDis, :Ts_dis, :R_to, :C), usekey = false; select = :var) do y
             NamedTuple{(:excTo,)}(tuple(sum(y)))
         end
         push!(joinMiss_arr,GenericAffExpr{Float64,VariableRef}())
@@ -351,7 +351,7 @@ function createConstraint!(name::Val{:enerBal},anyM::anyModel)
 
     eqnCol_tup = colnames(eqnVar3_tab)
     # creates constraints differently depending on how exchange and trade are applied
-    if :exchange in keys(anyM.variables)
+    if :exc in keys(anyM.variables)
         if :trdBuy in eqnCol_tup && :trdSell in eqnCol_tup
             eqn_arr = DB.select(eqnVar3_tab,(:parentC,:posVar,:negVar,:excTo,:excFrom,:dem,:trdBuy,:trdSell) =>
                             x -> x.parentC ? @constraint(anyM.optModel, sum(x.posVar)+sum(x.excTo)+sum(x.trdBuy) == sum(x.negVar)+sum(x.excFrom)+sum(x.trdSell)+x.dem) :
@@ -553,8 +553,8 @@ function createConstraint!(name::Val{:capaRestr},anyM::anyModel)
     # XXX capacity restrctions for exchange capacities
 
     # joins capacity variable to dispatch variable
-    if :exchange in keys(anyM.variables)
-        excDisVar_tab = DB.rename(anyM.variables[:exchange].data,:var => :excDisp)
+    if :exc in keys(anyM.variables)
+        excDisVar_tab = DB.rename(anyM.variables[:exc].data,:var => :excDisp)
 
         excVarFull_tab =  DB.reindex(DB.merge([DB.select(DB.join(excDisVar_tab,anyM.variables[:capaExc].data; lkey = (:Ts_supDis, x, :C), rkey = (:Ts_supDis, :R_a, :C), rselect = DB.Not(All(:R_b)) ,how = :inner),DB.Not(All(:R_a)))
                                                                                                                                                                     for x in (:R_from,:R_to)]...),(:Ts_dis,:R_from,:R_to,:C))
@@ -652,7 +652,7 @@ function collectLimitConstraints(varData_tab::IndexedTable, limName_sym::Symbol,
     if investLimit_boo
         grpInter_tup = tuple()
     else
-        grpInter_tup = occursin("trade",string(limName_sym)) ? ((:Ts_dis, :R_dis), (:id, :C)) : limName_sym == :exchange ? ((:R_from, :R_to), (:Ts_dis, :C)) : ((:C, :Ts_dis), (:Ts_inv, :Te, :M, :R_dis) => (:Ts_inv, :Te, :M))
+        grpInter_tup = occursin("trade",string(limName_sym)) ? ((:Ts_dis, :R_dis), (:id, :C)) : limName_sym == :exc ? ((:R_from, :R_to), (:Ts_dis, :C)) : ((:C, :Ts_dis), (:Ts_inv, :Te, :M, :R_dis) => (:Ts_inv, :Te, :M))
     end
     # gets limits on aggregation of variables, special case for trade due to "id" column
     if occursin("trade",string(limName_sym))

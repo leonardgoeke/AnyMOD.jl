@@ -129,11 +129,15 @@ function createObjective!(objGrp::Val{:costs},anyM::anyModel)
             # XXX check if variable cost can be assigned to aggregated variables first
             # changes inheritance rules to assign a value to the upper node, if it is the same for all lower nodes
             anyM.parameter[Symbol(:costVar,capaItr)].inherit = (:Ts_inv => :uni_full, :Ts_dis => :uni_full, :R_dis => :uni_full, :C  => :uni_full, :Te => :uni_full)
-            # tries to assign parameters on variables that are defined via aggregation (dimensions of aggregation constraint = dimensions of aggregated variables)
-            aggVar_tab = matchSetParameter(anyM.report, DB.select(anyM.constraints[Symbol(:agg,capaItr)].data,DB.Not(All(:eqn))), anyM.parameter[Symbol(:costVar,capaItr)], anyM.sets, anyM.options.digits.comp, :costVar)
+            if Symbol(:agg,capaItr) in keys(anyM.constraints)
+                # tries to assign parameters on variables that are defined via aggregation (dimensions of aggregation constraint = dimensions of aggregated variables)
+                aggVar_tab = matchSetParameter(anyM.report, DB.select(anyM.constraints[Symbol(:agg,capaItr)].data,DB.Not(All(:eqn))), anyM.parameter[Symbol(:costVar,capaItr)], anyM.sets, anyM.options.digits.comp, :costVar)
 
-            # finally joins variables and paramters in cases where assignment to aggregated variables was successfull
-            aggFull_tab = DB.join(aggVar_tab,anyM.variables[varNam_sym].data; lkey = varDim_tup, rkey = varDim_tup, how = :inner)
+                # finally joins variables and paramters in cases where assignment to aggregated variables was successfull
+                aggFull_tab = DB.join(aggVar_tab,anyM.variables[varNam_sym].data; lkey = varDim_tup, rkey = varDim_tup, how = :inner)
+            else
+                aggFull_tab = anyM.variables[varNam_sym].data
+            end
 
             # XXX removes variables that wer included via the aggregation from further analysis
             if !(isempty(aggVar_tab))
