@@ -25,11 +25,13 @@ module anyMOD
     export prepareLimitParameter!, prepareDispatchParameter!, createVariable!
     export createConstraint!, createLimitConstraints!, controllCapaConstraints!
 
-    # XXX runs code an example problem at first use to improve precompilation
-   @suppress begin
-      anyM = anyModel("examples/precompile","examples"; startTime = DateTime(0.0), reportLvl = 0, errCheckLvl = 0, errWrtLvl = 0)
-      addVariables!(anyM)
-      addConstraints!(anyM)
-      setObjective!(:costs,anyM)
+    # XXX runs code an example problem at first use to improve precompilation, currently deactiviated
+    #=
+    @suppress begin
+        anyM = anyModel("examples/demo","examples"; startTime = DateTime(0.0), reportLvl = 0, errCheckLvl = 0, errWrtLvl = 0)
+        addVariables!(anyM)
+        addConstraints!(anyM)
+        setObjective!(:costs,anyM)
    end
+   =+
 end
