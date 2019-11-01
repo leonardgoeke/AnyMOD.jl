@@ -1,4 +1,8 @@
+"""
+    addVariables!(anyM::anyModel)
 
+Creates all required model variables.
+"""
 function addVariables!(anyM::anyModel)
 
     anyM.variables = Dict{Symbol,VarElement}()
