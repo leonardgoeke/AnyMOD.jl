@@ -132,41 +132,46 @@ function createObjective!(objGrp::Val{:costs},anyM::anyModel)
             if Symbol(:agg,capaItr) in keys(anyM.constraints)
                 # tries to assign parameters on variables that are defined via aggregation (dimensions of aggregation constraint = dimensions of aggregated variables)
                 aggVar_tab = matchSetParameter(anyM.report, DB.select(anyM.constraints[Symbol(:agg,capaItr)].data,DB.Not(All(:eqn))), anyM.parameter[Symbol(:costVar,capaItr)], anyM.sets, anyM.options.digits.comp, :costVar)
-
                 # finally joins variables and paramters in cases where assignment to aggregated variables was successfull
                 aggFull_tab = DB.join(aggVar_tab,anyM.variables[varNam_sym].data; lkey = varDim_tup, rkey = varDim_tup, how = :inner)
-            else
-                aggFull_tab = anyM.variables[varNam_sym].data
-            end
 
-            # XXX removes variables that wer included via the aggregation from further analysis
-            if !(isempty(aggVar_tab))
-                # gets all rows of aggregation table with variables, that variable costs were successfully assigned to
-                varLen_arr = collect(1:length(anyM.variables[varNam_sym].data))
-                varId_tab = IT.transform(anyM.variables[varNam_sym].data,:id => varLen_arr)
-                aggRow_arr = DB.select(DB.join(aggVar_tab,varId_tab; lkey = varDim_tup, rkey = varDim_tup, how = :inner),:id)
-                # use aggregation dictionary to get actual rows of variables in the variables table, that are covered via assiging variables costs to aggregated variables
-                varRowViaAgg_arr = map(x -> anyM.aggVar[Symbol(lowercase(string(capaItr)))][x],aggRow_arr)
-                # obtains remaining variables that are not coverd via assigning values to aggregated variables
-                varLenBit_arr = BitSet(varLen_arr); aggRowBit_arr = BitSet(aggRow_arr)
-                noAggVar_tab = anyM.variables[varNam_sym].data[1 .* setdiff(varLenBit_arr,union(aggRowBit_arr,varRowViaAgg_arr...))]
+                # XXX removes variables that wer included via the aggregation from further analysis
+                if !(isempty(aggVar_tab))
+                    # gets all rows of aggregation table with variables, that variable costs were successfully assigned to
+                    varLen_arr = collect(1:length(anyM.variables[varNam_sym].data))
+                    varId_tab = IT.transform(anyM.variables[varNam_sym].data,:id => varLen_arr)
+                    aggRow_arr = DB.select(DB.join(aggVar_tab,varId_tab; lkey = varDim_tup, rkey = varDim_tup, how = :inner),:id)
+                    # use aggregation dictionary to get actual rows of variables in the variables table, that are covered via assiging variables costs to aggregated variables
+                    varRowViaAgg_arr = map(x -> anyM.aggVar[Symbol(lowercase(string(capaItr)))][x],aggRow_arr)
+                    # obtains remaining variables that are not coverd via assigning values to aggregated variables
+                    varLenBit_arr = BitSet(varLen_arr); aggRowBit_arr = BitSet(aggRow_arr)
+                    noAggVar_tab = anyM.variables[varNam_sym].data[1 .* setdiff(varLenBit_arr,union(aggRowBit_arr,varRowViaAgg_arr...))]
+                else
+                    noAggVar_tab = anyM.variables[varNam_sym].data
+                end
             else
                 noAggVar_tab = anyM.variables[varNam_sym].data
+                aggFull_tab = nothing
             end
 
             # XXX perform ordinary join for whatever remains and merges results
             anyM.parameter[Symbol(:costVar,capaItr)].inherit = (:R_dis => :avg_any,:Ts_dis => :avg_any)
             noAggFull_tab = matchSetParameter(anyM.report,noAggVar_tab,anyM.parameter[Symbol(:costVar,capaItr)],anyM.sets,anyM.options.digits.comp,:costVar)
-            varCostFull_tab = DB.merge(aggFull_tab,noAggFull_tab)
+
+            if aggFull_tab == nothing
+                varCostFull_tab = noAggFull_tab
+            else
+                varCostFull_tab = DB.merge(aggFull_tab,noAggFull_tab)
+            end
 
             # XXX joins discount factors to variable costs, in case of exchange costs the average of both regions is used, computes expression based on it
             if capaItr != :Exc
                 discFac_tab = matchSetParameter(anyM.report,DB.rename(varCostFull_tab,:R_dis => :R_inv),anyM.parameter[:discFac],anyM.sets,anyM.options.digits.comp,:discFac)
                 push!(costGenExpr_arr,dot(DB.select(discFac_tab,:var), round.(DB.select(discFac_tab,:discFac) .* DB.select(discFac_tab,:costVar)/1000, sigdigits = anyM.options.digits.comp)))
             else
-                discFac1_tab = DB.rename(matchSetParameter(anyM.report,DB.rename(varCostFull_tab,:R_a => :R_inv),anyM.parameter[:discFac],anyM.sets,anyM.options.digits.comp,:discFacA),:R_inv => :R_a)
-                discFac_tab = matchSetParameter(anyM.report,DB.rename(varCostFull_tab,:R_b => :R_inv),anyM.parameter[:discFac],anyM.sets,anyM.options.digits.comp,:discFacA)
-                push!(costOprExpr_arr,dot(DB.select(discFac_tab,:var), round.((0.5*DB.select(discFac_tab,:disFacA) .+  0.5*DB.select(discFac_tab,:disFacA)) .* DB.select(discFac_tab,:costVar)/1000, sigdigits = anyM.options.digits.comp)))
+                discFac1_tab = DB.rename(DB.join(varCostFull_tab,anyM.parameter[:discFac].data; lkey = (:R_a, :Ts_supDis), rkey = (:R_inv, :Ts_supDis), how = :inner),:val => :disFacA)
+                discFac_tab = DB.rename(DB.join(discFac1_tab,anyM.parameter[:discFac].data; lkey = (:R_b, :Ts_supDis), rkey = (:R_inv, :Ts_supDis), how = :inner),:val => :disFacB)
+                push!(costGenExpr_arr,dot(DB.select(discFac_tab,:var), round.((0.5*DB.select(discFac_tab,:disFacA) .+  0.5*DB.select(discFac_tab,:disFacA)) .* DB.select(discFac_tab,:costVar)/1000, sigdigits = anyM.options.digits.comp)))
             end
         end
     end
