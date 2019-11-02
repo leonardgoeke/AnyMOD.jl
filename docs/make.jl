@@ -1,8 +1,7 @@
 using Documenter
-using Plots
 using anyMOD
 
-makedocs(sitename="anyMOD",
+makedocs(sitename="anyMOD.jl",
     authors = "Leonard Goeke",
     pages = [
         "Introduction" => "index.md",
@@ -10,4 +9,6 @@ makedocs(sitename="anyMOD",
         ],
     )
 
-deploydocs(repo = "github.com/leonardgoeke/anyMOD", devbranch="dev")
+deploydocs(
+    repo = "github.com/leonardgoeke/anyMOD.jl.git",
+)

@@ -1,7 +1,7 @@
 name = "anyMOD"
 uuid = "16ed6a40-d4c3-11e9-1e10-59384530c1b4"
 authors = ["lgo <lgo@wip.tu-berlin.de>"]
-version = "0.1.0"
+version = "0.7.0"
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
@@ -9,6 +9,7 @@ DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
 Distributed = "8ba89e20-285c-5b6f-9357-94700520ee1b"
 IndexedTables = "6deec6e2-d858-57c5-ab9b-e6ca5bd20e43"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 JuliaDB = "a93385a2-3734-596a-9a66-3cfbb77141e6"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"

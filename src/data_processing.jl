@@ -289,13 +289,13 @@ end
 # XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding investment regions and supordinate dispatch steps to full dispatch table
 function expandInvestToDisp(inData_tab::IndexedTable,temp_dic::Dict{Tuple{Int32,Int32},Array{Int32,1}},reg_dic::Dict{Tuple{Int32,Int32},Int32},preserveTsSupDis::Bool = false)
     # adds regional timesteps and check if this causes non-unique values (spatial investment level can be below dispatch level)
-	inReg_tab = table(unique(IT.transform(DB.select(inData_tab,DB.Not(All(:R_inv,:lvlR))),:R_dis => DB.select(inData_tab,(:R_inv, :lvlR) => x -> reg_dic[(x[1],x[2])]))))
+	inReg2_tab = table(unique(IT.transform(DB.select(inData_tab,DB.Not(All(:R_inv,:lvlR))),:R_dis => DB.select(inData_tab,(:R_inv, :lvlR) => x -> reg_dic[(x[1],x[2])]))))
 
     # adds dispatch timesteps to table and returns
 	if preserveTsSupDis
-		return flatten(IT.transform(DB.select(inReg_tab,DB.Not(:lvlTs)),:Ts_dis => DB.select(inReg_tab,(:Ts_supDis, :lvlTs) => x -> temp_dic[(x[1],x[2])])),:Ts_dis) # teuer
+		return flatten(IT.transform(DB.select(inReg2_tab,DB.Not(:lvlTs)),:Ts_dis => DB.select(inReg2_tab,(:Ts_supDis, :lvlTs) => x -> temp_dic[(x[1],x[2])])),:Ts_dis) # teuer
 	else
-		return DB.select(flatten(IT.transform(DB.select(inReg_tab,DB.Not(:lvlTs)),:Ts_dis => DB.select(inReg_tab,(:Ts_supDis, :lvlTs) => x -> temp_dic[(x[1],x[2])])),:Ts_dis),DB.Not(:Ts_supDis)) # teuer
+		return DB.select(flatten(IT.transform(DB.select(inReg2_tab,DB.Not(:lvlTs)),:Ts_dis => DB.select(inReg2_tab,(:Ts_supDis, :lvlTs) => x -> temp_dic[(x[1],x[2])])),:Ts_dis),DB.Not(:Ts_supDis))
 	end
 end
 
@@ -413,7 +413,7 @@ function createFullString(setIdx_int,Tree_df::DataFrame,writeLvl_boo::Bool=true)
 end
 
 # XXX prints any AbstractModelElement
-function printObject(print_obj::AbstractModelElement,sets::Dict{Symbol,DataFrame},options::modOptions,filterFunc::Union{Nothing,Function} = nothing, printZero::Bool = false)
+function printObject(print_obj::AbstractModelElement,sets::Dict{Symbol,DataFrame},options::modOptions, threshold::Union{Nothing,Float64} = 0.001, filterFunc::Union{Nothing,Function} = nothing)
 	# initialize
 	colNam_arr = colnames(print_obj.data)
     cntCol_int = length(colNam_arr)
@@ -432,7 +432,7 @@ function printObject(print_obj::AbstractModelElement,sets::Dict{Symbol,DataFrame
 	cntCol_int = length(colNam_arr)
 
 	# removes entries where value is zero
-	if !(printZero) && :val in colNam_arr dataTable = DB.filter(r -> r.val != 0.0, dataTable) end
+	if !(isnothing(threshold)) && :val in colNam_arr dataTable = DB.filter(r -> r.val >= threshold, dataTable) end
 
     for i = 1:cntCol_int
         lookUp_sym = Symbol(split(String(colNam_arr[i]),"_")[1])

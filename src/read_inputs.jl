@@ -45,7 +45,7 @@ function readInData(anyM::anyModel)
 	# read-in parameter files and convert their content
 	for parFile in Files_dic["par"]
 		ParData_df = convertReadIn(readcsv(parFile;delim = anyM.options.csvDelim[1]),parFile,Set_arr,SetLongShort_dic,anyM.report,sets)
-		SaveLookup_dic, ParameterTemp_dic = writeParameter(ParData_df,sets, ParameterTemp_dic, SetLongShort_dic, parFile, anyM.report, anyM.options.scale.readDig, SaveLookup_dic)
+		SaveLookup_dic, ParameterTemp_dic = writeParameter(ParData_df,sets, ParameterTemp_dic, SetLongShort_dic, parFile, anyM.report, anyM.options.digits.read, SaveLookup_dic)
 		produceMessage(anyM.options,anyM.report, 3," - Read-in parameter file: ",parFile)
 	end
 	produceMessage(anyM.options,anyM.report, 2," - Read-in all parameter files ")
@@ -126,7 +126,7 @@ function convertReadIn(ReadIn_df::DataFrame,FileName_str::String,Set_arr::Array{
 	ReadInColAll_tup = tuple(names(ReadIn_df)...)
 
 	# drop irrelevant column that do not relate to a set or an operator
-	foreach(col ->  DataFrames.delete!(ReadIn_df, col), setdiff(ReadInColAll_tup,vcat(SetNames_arr[1],SetNames_arr[2],OprNames_arr[1])))
+	foreach(col ->  DataFrames.select!(ReadIn_df, DataFrames.Not(col)), setdiff(ReadInColAll_tup,vcat(SetNames_arr[1],SetNames_arr[2],OprNames_arr[1])))
 	ReadInCol_tup = tuple(names(ReadIn_df)...)
 
 	# XXX drop unrequired rows and convert missing values
@@ -168,24 +168,34 @@ function convertReadIn(ReadIn_df::DataFrame,FileName_str::String,Set_arr::Array{
         for row in eachrow(ReadIn_df[RowsAll_arr,:])
             # append new rows to dataframe
             AddRow_df = row
-            AllInfo_str = reduce(replace, ["all"=>"", "("=>"", ")"=>""], init=lowercase(AddRow_df[col]))
+            AllInfo_str = reduce(replace, ["all"=>"", "("=>"", ")"=>""], init=AddRow_df[col])
 
             if occursin(":",AllInfo_str)
                 AllVal_arr = split(AllInfo_str,":")
                 RplVal_arr = ColValUni_arr[findall(x->x==AllVal_arr[1], ColValUni_arr)[1]:findall(x->x==AllVal_arr[2], ColValUni_arr)[1]]
+
+				# reports if values within all expression could not be matched to sets
+				if length(RplVal_arr) != length(AllVal_arr)
+					push!(report,(2,:par,Symbol(FileName_str),"at least one value within all expression $(AllInfo_str) could not be matched to an existing set"))
+				end
             elseif occursin(",",AllInfo_str)
                 AllVal_arr = split(AllInfo_str,",")
                 RplVal_arr = ColValUni_arr[map(x -> in(x,AllVal_arr),ColValUni_arr)]
+
+				# reports if values within all expression could not be matched to sets
+				if length(RplVal_arr) != length(AllVal_arr)
+					push!(report,(2,:par,Symbol(FileName_str),"at least one value within all expression $(AllInfo_str) could not be matched to an existing set"))
+				end
             else
                 RplVal_arr = ColValUni_arr
             end
+
             for addVal in RplVal_arr
                 AddRow_df[col] = addVal
                 push!(ReadIn_df, [AddRow_df[col] for col in ReadInCol_tup])
             end
         end
         #remove inital rows with all#
-
         deleterows!(ReadIn_df,findall(RowsAll_arr))
     end
 

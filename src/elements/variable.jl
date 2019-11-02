@@ -1,4 +1,8 @@
+"""
+    addVariables!(anyModel)
 
+Creates all required model variables.
+"""
 function addVariables!(anyM::anyModel)
 
     anyM.variables = Dict{Symbol,VarElement}()
@@ -196,41 +200,37 @@ function prepareDispatchParameter!(anyM::anyModel)
     report_dic = Dict{Symbol,DataFrame}() # stores reporting of individual processes
 
     # performs parallel pre-setting process fo each paramter
-    @sync begin
-        for par in keys(parPreset_dic)
-            @async begin
-                preKey_sym = (:M in colnames(anyM.parameter[par].data)) ?  Symbol(parPreset_dic[par],:_mode) : parPreset_dic[par] # adds "_mode" to key being looked up in presetDim_dic, if case is mode dependant
-                if parPreset_dic[par] == :exchange  # in case of trade and exchange reset gets called without tech/mode dictionary
-                    newParameter, modeParameter_dic[par], report_dic[par] =  fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options))
-                elseif parPreset_dic[par] == :trade
-                    # adds id column, if non existing so far or rewrites values, to avoid zeroes outside of aggregated variables in this column
-                    if :id in colnames(anyM.parameter[par].data)
-                        # creates an default value for all entries without unspecified ids to avoid problems latter in code when aggregating trade variables
-                        idCol_arr = DB.select(anyM.parameter[par].data,:id)
-                        newIdCol_arr = convert(Array{Int32,1},map(x -> x != 0 ? x : maximum(idCol_arr) +1, DB.select(anyM.parameter[par].data,:id)))
-                    else
-                        newIdCol_arr = convert(Array{Int32,1},fill(1,length(anyM.parameter[par].data)))
-                    end
-                    anyM.parameter[par].data = IT.transform(anyM.parameter[par].data, :id => newIdCol_arr)
-                    newParameter, modeParameter_dic[par], report_dic[par] =  fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options))
-                else
-                    if parPreset_dic[par] == :carrier  # in case of carrier preset dim can differ depending on if it is a storage/non-storage case
-                        preKey_sym = occursin("St", String(par)) || par in (:stInflow,:stDis) ? Symbol(preKey_sym,:_st) : preKey_sym
-                        newParameter, modeParameter_dic[par], report_dic[par] =  fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic))
-                    elseif parPreset_dic[par] == :reference # in case of reference preset, dim can differ depending on if parameter addresses gen/use side and is therefore dependant on carrier (like ratios) or not (like efficiency)
-                        preKey_sym = :C in anyM.parameter[par].dim ? Symbol(preKey_sym, occursin("Gen", String(par)) ? :_gen : use ) : preKey_sym
-                        newParameter, modeParameter_dic[par], report_dic[par] =
-                                            fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic, newHerit_dic[parPreset_dic[par]]))
-                    else
-                        newParameter, modeParameter_dic[par], report_dic[par] =
-                                            fetch(@spawn resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic, newHerit_dic[parPreset_dic[par]]))
-                    end
-                end
-                # either deletes parameter completely, if fetch returned no newParameter or replaces object entirely if something was returned
-                isnothing(newParameter) ?  Base.delete!(anyM.parameter,x) : anyM.parameter[par] = newParameter
-                produceMessage(anyM.options,anyM.report, 3," - Performed pre-setting of $(par) parameter")
+    for par in keys(parPreset_dic)
+        preKey_sym = (:M in colnames(anyM.parameter[par].data)) ?  Symbol(parPreset_dic[par],:_mode) : parPreset_dic[par] # adds "_mode" to key being looked up in presetDim_dic, if case is mode dependant
+        if parPreset_dic[par] == :exchange  # in case of trade and exchange reset gets called without tech/mode dictionary
+            newParameter, modeParameter_dic[par], report_dic[par] =  resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options)
+        elseif parPreset_dic[par] == :trade
+            # adds id column, if non existing so far or rewrites values, to avoid zeroes outside of aggregated variables in this column
+            if :id in colnames(anyM.parameter[par].data)
+                # creates an default value for all entries without unspecified ids to avoid problems latter in code when aggregating trade variables
+                idCol_arr = DB.select(anyM.parameter[par].data,:id)
+                newIdCol_arr = convert(Array{Int32,1},map(x -> x != 0 ? x : maximum(idCol_arr) +1, DB.select(anyM.parameter[par].data,:id)))
+            else
+                newIdCol_arr = convert(Array{Int32,1},fill(1,length(anyM.parameter[par].data)))
+            end
+            anyM.parameter[par].data = IT.transform(anyM.parameter[par].data, :id => newIdCol_arr)
+            newParameter, modeParameter_dic[par], report_dic[par] =  resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options)
+        else
+            if parPreset_dic[par] == :carrier  # in case of carrier preset dim can differ depending on if it is a storage/non-storage case
+                preKey_sym = occursin("St", String(par)) || par in (:stInflow,:stDis) ? Symbol(preKey_sym,:_st) : preKey_sym
+                newParameter, modeParameter_dic[par], report_dic[par] =  resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic)
+            elseif parPreset_dic[par] == :reference # in case of reference preset, dim can differ depending on if parameter addresses gen/use side and is therefore dependant on carrier (like ratios) or not (like efficiency)
+                preKey_sym = :C in anyM.parameter[par].dim ? Symbol(preKey_sym, occursin("Gen", String(par)) ? :_gen : use ) : preKey_sym
+                newParameter, modeParameter_dic[par], report_dic[par] =
+                                            resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic, newHerit_dic[parPreset_dic[par]])
+            else
+                newParameter, modeParameter_dic[par], report_dic[par] =
+                                            resetParameter(presetDim_dic[preKey_sym], anyM.parameter[par], anyM.sets, anyM.mapping[:TechInfo], anyM.options, techCntM_dic, newHerit_dic[parPreset_dic[par]])
             end
         end
+        # either deletes parameter completely, if resetParameter returned no newParameter or replaces object entirely if something was returned
+        isnothing(newParameter) ?  Base.delete!(anyM.parameter,x) : anyM.parameter[par] = newParameter
+        produceMessage(anyM.options,anyM.report, 3," - Performed pre-setting of $(par) parameter")
     end
 
     # merges different reports of subprocesses into main report again
@@ -290,7 +290,7 @@ function createVariable!(name::Val{:invest}, anyM::anyModel)
     for invVar in keys(invTypes_dic)
         varFix_sym = Symbol(invVar,:Fix)
         if varFix_sym in defPar_tup
-            push!(removeTab_dic[invVar], DB.select(filter(r -> r.val == 0, matchSetParameter(anyM.report,anyM.mapping[invTypes_dic[invVar]], anyM.parameter[varFix_sym], anyM.sets,anyM.options.scale.compDig)),DB.Not(All(:val))))
+            push!(removeTab_dic[invVar], DB.select(filter(r -> r.val == 0, matchSetParameter(anyM.report,anyM.mapping[invTypes_dic[invVar]], anyM.parameter[varFix_sym], anyM.sets,anyM.options.digits.comp)),DB.Not(All(:val))))
         end
     end
 
@@ -298,7 +298,7 @@ function createVariable!(name::Val{:invest}, anyM::anyModel)
     stRatio_dic = Dict{Symbol,IndexedTable}()
     for invRatio in invTypeRatio_tup
         if invRatio[2] in defPar_tup
-            rmvTab_tab = filter(r -> r.val != 0, matchSetParameter(anyM.report,anyM.mapping[invTypes_dic[invRatio[1]]], anyM.parameter[invRatio[2]], anyM.sets,anyM.options.scale.compDig))
+            rmvTab_tab = filter(r -> r.val != 0, matchSetParameter(anyM.report,anyM.mapping[invTypes_dic[invRatio[1]]], anyM.parameter[invRatio[2]], anyM.sets,anyM.options.digits.comp))
             push!(removeTab_dic[invRatio[1]], DB.select(rmvTab_tab,DB.Not(All(:val))))
             stRatio_dic[invRatio[1]] = rmvTab_tab
 
@@ -324,7 +324,7 @@ function createVariable!(name::Val{:invest}, anyM::anyModel)
 
     # <editor-fold desc="creates variables and adds expressions for dependant investment"
     # removes all entries filtered earlier and create all variables for table
-    invVar_tab = Dict(x => createInvVar(anyM.optModel,removeEntries(removeTab_dic[x],anyM.mapping[invTypes_dic[x]]),nothing,string(x),anyM.options.scale.upInv) for x in keys(invTypes_dic))
+    invVar_tab = Dict(x => createInvVar(anyM.optModel,removeEntries(removeTab_dic[x],anyM.mapping[invTypes_dic[x]]),nothing,string(x),anyM.options.bound.inv) for x in keys(invTypes_dic))
 
     # XXX add entries where investment is defined via a ratio, (loop sorted to start with input, because it affects subsequents entries)
     for rmvRatio in sort(collect(keys(stRatio_dic)))
@@ -367,7 +367,7 @@ function createVariable!(name::Val{:invest}, anyM::anyModel)
         # adds arrays to table and uses them to finally comput investment expression
         joinVar_tab  = DB.flatten(IT.transform(filtInvVar_tab,:Ts_inv2 => subDisTs_arr,:factor => cntSubDisTs_arr),:Ts_inv2)
         joinVarNew_tab = DB.rename(DB.select(joinVar_tab,DB.Not(All(:Ts_inv))),:Ts_inv2 => :Ts_inv)
-        finalVar_tab = IT.transform(DB.select(joinVarNew_tab,DB.Not(All(:var,:factor))), :var => DB.select(joinVarNew_tab,(:var, :factor) => x -> x.var*round(1/x.factor,digits = anyM.options.scale.compDig)))
+        finalVar_tab = IT.transform(DB.select(joinVarNew_tab,DB.Not(All(:var,:factor))), :var => DB.select(joinVarNew_tab,(:var, :factor) => x -> x.var*round(1/x.factor,digits = anyM.options.digits.comp)))
 
         # removes manipulated entries from original table and merges remaing files with new entries for final table
         colName_tup = colnames(anyM.mapping[invTypes_dic[invVar]])
@@ -441,7 +441,7 @@ function createVariable!(name::Val{:capacity}, anyM::anyModel)
             if stockRatio[1] in defPar_tup
                 # checks if input ratio was provided for stock technologies
                 ratioVal_tab = DB.join((l,r) -> (val = l.var * r.val,),DB.rename(stockData_dic[:capaStIn],:val => :var),
-                                    filter(r -> r.val != 0,matchSetParameter(anyM.report, fltStockStIn_tab, anyM.parameter[stockRatio[1]], anyM.sets,anyM.options.scale.compDig)); lkey = dimSt_tup, rkey = dimSt_tup,how =:inner)
+                                    filter(r -> r.val != 0,matchSetParameter(anyM.report, fltStockStIn_tab, anyM.parameter[stockRatio[1]], anyM.sets,anyM.options.digits.comp)); lkey = dimSt_tup, rkey = dimSt_tup,how =:inner)
 
                 # uses ratios where no stock data was provided and reports on it
                 ratioUsed_tab = DB.join(ratioVal_tab,stockData_dic[stockRatio[2]]; lkey = dimSt_tup, rkey = dimSt_tup,how =:anti)
@@ -474,14 +474,14 @@ function createVariable!(name::Val{:capacity}, anyM::anyModel)
     for capVar in keys(capaTypes_dic)
         varFix_sym = Symbol(capVar,:Fix)
         if varFix_sym in defPar_tup
-            push!(removeTab_dic[capVar], DB.select(filter(r -> r.val == 0, matchSetParameter(anyM.report, anyM.mapping[capaTypes_dic[capVar]], anyM.parameter[varFix_sym], anyM.sets,anyM.options.scale.compDig)),DB.Not(All(:val))))
+            push!(removeTab_dic[capVar], DB.select(filter(r -> r.val == 0, matchSetParameter(anyM.report, anyM.mapping[capaTypes_dic[capVar]], anyM.parameter[varFix_sym], anyM.sets,anyM.options.digits.comp)),DB.Not(All(:val))))
         end
     end
     # </editor-fold>
 
     # <editor-fold desc="finds required aggregations and creates variable objects"
     # creates final variable table by merging data for stock and non-stock values and add to dictionary afterwards
-    capaVar_dic = Dict(x => reindex(createInvVar(anyM.optModel,removeEntries(removeTab_dic[x],noStock_dic[capaTypes_dic[x]]),stockData_dic[x],string(x),anyM.options.scale.upInv),colnames(anyM.mapping[capaTypes_dic[x]]))
+    capaVar_dic = Dict(x => reindex(createInvVar(anyM.optModel,removeEntries(removeTab_dic[x],noStock_dic[capaTypes_dic[x]]),stockData_dic[x],string(x),anyM.options.bound.inv),colnames(anyM.mapping[capaTypes_dic[x]]))
                                                                                                                                                                                                     for x in keys(capaTypes_dic))
     for capaVar in keys(capaVar_dic)
         capaData_tab = capaVar_dic[capaVar]
@@ -515,7 +515,7 @@ function createVariable!(name::Val{:commissioned}, anyM::anyModel)
             if contrRatio_dic[capaVar].ratio in defPar_tup
                 # finds cases were storage investment is controlled via ratio and creates functions based on ratio value and controll variable
                 relJoin_tup = capaVar == :capaStIn ? dimConv_tup : dimSt_tup
-                capaVarRatioVal_tab = matchSetParameter(anyM.report,commCapa_tab, anyM.parameter[contrRatio_dic[capaVar].ratio], anyM.sets, anyM.options.scale.compDig)
+                capaVarRatioVal_tab = matchSetParameter(anyM.report,commCapa_tab, anyM.parameter[contrRatio_dic[capaVar].ratio], anyM.sets, anyM.options.digits.comp)
                 if !(:C in relJoin_tup)
                     capaVarRatio_tab = DB.join((l,r) -> (C = l.C, var = l.val * r.var),capaVarRatioVal_tab,anyM.variables[Symbol(:capaComm,contrRatio_dic[capaVar].contr)].data; lkey = relJoin_tup, rkey = relJoin_tup, how = :inner)
                 else
@@ -537,12 +537,12 @@ function createVariable!(name::Val{:commissioned}, anyM::anyModel)
 
         # merges any variables that have to be additionaly created for limit constraints
         if !(isnothing(newVar_tab))
-            commCapa_tab = DB.merge(commCapa_tab, createInvVar(anyM.optModel, newVar_tab, nothing, String(comm_sym), anyM.options.scale.upInv))
+            commCapa_tab = DB.merge(commCapa_tab, createInvVar(anyM.optModel, newVar_tab, nothing, String(comm_sym), anyM.options.bound.inv))
         end
         # </editor-fold>
 
         # XXX creates commissioned capacity variables for conversion and exchange
-        varComm_tab = reindex(createInvVar(anyM.optModel,commCapa_tab,nothing,string(comm_sym),anyM.options.scale.upInv),dim_tup)
+        varComm_tab = reindex(createInvVar(anyM.optModel,commCapa_tab,nothing,string(comm_sym),anyM.options.bound.inv),dim_tup)
         anyM.variables[comm_sym] = VarElement(comm_sym, dim_tup, varComm_tab)
     end
 
@@ -586,7 +586,7 @@ function createVariable!(name::Val{:techDispatch}, anyM::anyModel)
             varType_tab = varTabDic_dic[grp][type]
         end
 
-		var_tab = createDispVar(anyM.optModel, varType_tab, String(type), anyM.sets[:Ts], anyM.supDis, anyM.options.scale.upDisp, anyM.options.scale.compDig)
+		var_tab = createDispVar(anyM.optModel, varType_tab, String(type), anyM.sets[:Ts], anyM.supDis, anyM.options.bound.disp, anyM.options.digits.comp)
 		anyM.variables[type] = VarElement(type, allDim_tup, var_tab)
 		produceMessage(anyM.options,anyM.report, 3," - Created dispatch variables for $(type)")
     end
@@ -618,8 +618,8 @@ function createVariable!(name::Val{:exchange}, anyM::anyModel)
     excFullAddSup_tab = IT.transform(excMerg_tab,:Ts_supDis => DB.select(excRename_tab,:Ts_dis => x -> assSupDis_dic[x]))
 
     # XXX create actual variable object
-    excVar_tab = reindex(createDispVar(anyM.optModel,excFullAddSup_tab,"exchange",anyM.sets[:Ts],anyM.supDis,anyM.options.scale.upDisp,anyM.options.scale.compDig),(:Ts_dis, :R_from, :R_to, :C))
-    anyM.variables[:exchange] = VarElement(:exchange,(:Ts_dis,:R_from,:R_to,:C),excVar_tab)
+    excVar_tab = reindex(createDispVar(anyM.optModel,excFullAddSup_tab,"exchange",anyM.sets[:Ts],anyM.supDis,anyM.options.bound.disp,anyM.options.digits.comp),(:Ts_dis, :R_from, :R_to, :C))
+    anyM.variables[:exc] = VarElement(:exchange,(:Ts_dis,:R_from,:R_to,:C),excVar_tab)
     produceMessage(anyM.options,anyM.report, 3," - Created exchange variables")
 end
 
@@ -641,7 +641,7 @@ function createVariable!(name::Val{:trade}, anyM::anyModel)
 
             # XXX create actual variable object
             anyM.variables[Symbol(:trade,type)] =
-                VarElement(Symbol(:trade,type),(:Ts_dis, :R_dis, :C, :id),createDispVar(anyM.optModel,trdFullAddSup_tab,string("trd",type),anyM.sets[:Ts],anyM.supDis,anyM.options.scale.upDisp,anyM.options.scale.compDig))
+                VarElement(Symbol(:trade,type),(:Ts_dis, :R_dis, :C, :id),createDispVar(anyM.optModel,trdFullAddSup_tab,string("trd",type),anyM.sets[:Ts],anyM.supDis,anyM.options.bound.disp,anyM.options.digits.comp))
         end
     end
     produceMessage(anyM.options,anyM.report, 3," - Created trade variables")
@@ -660,11 +660,11 @@ function resetParameter(newData_tab::IndexedTable, parameter::ParElement, sets::
 
     if !(:M in colnames(newData_tab)) || unique(DB.select(newData_tab,:M)) == Int32[0]
         # in case modes are not being searched for just directly set data
-        matchData_tab = matchSetParameter(report, newData_tab, parameter, sets, options.scale.compDig)
+        matchData_tab = matchSetParameter(report, newData_tab, parameter, sets, options.digits.comp)
         parameter.data = reindex(matchData_tab,tuple(intersect(colnames(matchData_tab),dimNoM_tup)...))
     else
         # looks up original table without applying default values
-        matchData1_tab = matchSetParameter(report,newData_tab,parameter,sets, options.scale.compDig,:val,false)
+        matchData1_tab = matchSetParameter(report,newData_tab,parameter,sets, options.digits.comp,:val,false)
 
         # filter returned table by weather a mode was specified
         noMode_tab = DB.filter(r -> r.M == 0,matchData1_tab)
@@ -711,7 +711,7 @@ function resetParameter(newData_tab::IndexedTable, parameter::ParElement, sets::
         newSearch_tab = table(DB.unique(DB.join(newData_tab,!isempty(finalMode_tab) ? DB.merge(DB.select(noMode_tab,DB.Not(All(:val))),DB.select(finalMode_tab,DB.Not(All(:val)))) : DB.select(noMode_tab,DB.Not(All(:val)));
                                                                                                                             lkey = resDim_tup, rkey = resDim_tup, lselect = resDim_tup, how = :anti)))
         if !isempty(newSearch_tab)
-            matchData2_tab = matchSetParameter(report,IT.transform(newSearch_tab,:M => convert(Array{Int32,1},fill(0,length(newSearch_tab)))),parameter,sets, options.scale.compDig)
+            matchData2_tab = matchSetParameter(report,IT.transform(newSearch_tab,:M => convert(Array{Int32,1},fill(0,length(newSearch_tab)))),parameter,sets, options.digits.comp)
             if !isempty(matchData2_tab) noMode_tab = DB.merge(matchData2_tab,noMode_tab) end
         end
 
@@ -743,7 +743,7 @@ end
 function checkResiCapa(resiPar_sym::Symbol, stockCapa_tab::IndexedTable, allPar_tup::Tuple, anyM::anyModel)
     if resiPar_sym in allPar_tup
         # search for defined residual values
-        stock_tab = filter(r -> r.val != 0, matchSetParameter(anyM.report, stockCapa_tab, anyM.parameter[resiPar_sym], anyM.sets, anyM.options.scale.compDig))
+        stock_tab = filter(r -> r.val != 0, matchSetParameter(anyM.report, stockCapa_tab, anyM.parameter[resiPar_sym], anyM.sets, anyM.options.digits.comp))
         if isempty(stock_tab)
             return nothing
         else
@@ -802,10 +802,10 @@ function getTechByCapa(capa::Symbol, dispGrp_tup::Tuple, capaData_tab::IndexedTa
 	unconvDic = Dict((x.Ts_supDis, x.lvlTs) => anyM.sets[:Ts][x.Ts_supDis,:lvl] == x.lvlTs ? [x.Ts_supDis] : getChildren(x.Ts_supDis,anyM.sets[:Ts],false,x.lvlTs) for x in DB.unique(DB.select(varLvl_tab,(:Ts_supDis, :lvlTs))))
 	tsSupDisLvl_dic = convert(Dict{Tuple{Int32,Int32},Array{Int32,1}},unconvDic)
 	unconvDic2 = Dict((x.R_inv, x.lvlR) => anyM.sets[:R][x.R_inv,:lvl] == x.lvlR ? x.R_inv : getHeritanceLine(x.R_inv,anyM.sets[:R],x.lvlR) for x in DB.unique(DB.select(varLvl_tab,(:R_inv, :lvlR))))
-	rInvLvl_dic = convert(Dict{Tuple{Int32,Int32},Int32},unconvDic2)
+    rInvLvl_dic = convert(Dict{Tuple{Int32,Int32},Int32},unconvDic2)
 
 	for type in dispGrp_tup
-		varTab_dic[type] = getTechByGrp(capa, type, varLvl_tab, tsSupDisLvl_dic, rInvLvl_dic, anyM)
+        varTab_dic[type] = getTechByGrp(capa, type, varLvl_tab, tsSupDisLvl_dic, rInvLvl_dic, anyM)
 	end
 	# </editor-fold>
 
@@ -829,7 +829,7 @@ function getTechByGrp(capa::Symbol, type::Symbol, varLvl_tab::IndexedTable ,tsSu
 	join_tup = tuple(setdiff(colnames(fullVar_tab),rmv_tup)...)
 	paraAva_sym = Symbol(replace(string(capa),"capa" => "ava"))
 	filtVar_tab = rmvDummyCol(DB.join(addDummyCol(fullVar_tab),filter(r -> r.val == 0.0,
-		matchSetParameter(report,DB.select(fullVar_tab,DB.Not(All(rmv_tup))),anyM.parameter[paraAva_sym],anyM.sets, anyM.options.scale.compDig)); lkey = join_tup, rkey = join_tup, how = :anti))
+		matchSetParameter(report,DB.select(fullVar_tab,DB.Not(All(rmv_tup))),anyM.parameter[paraAva_sym],anyM.sets, anyM.options.digits.comp)); lkey = join_tup, rkey = join_tup, how = :anti))
 	# </editor-fold>
 
 	# <editor-fold desc= XXX finds cases, where dispatch variables need to be mode specific and replaces them within table>

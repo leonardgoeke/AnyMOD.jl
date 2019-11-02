@@ -1,5 +1,7 @@
 
-[anyMOD.jl](https://github.com/leonardgoeke/anyMOD.jl) is a [Julia](https://julialang.org/) framework to set up large scale linear energy system models with a focus on multi-period capacity expansion. It was developed to address the challenges in modelling high-levels of intermittent generation and sectoral integration.
+<img src="docs/src/assets/schriftzug_plus_logo.png" alt="logo" width="950px"/>
+
+[anyMOD.jl](https://github.com/leonardgoeke/anyMOD.jl) is a [Julia](https://julialang.org/) framework to set up large scale linear energy system models with a focus on multi-period capacity expansion. It was developed to address the challenges in modelling high-levels of intermittent generation and sectoral integration. The documentation can be found here https://leonardgoeke.github.io/anyMOD.jl/dev/.
 
 The framework's key characteristic is, that all sets (time-steps, regions, energy carriers, and technlogies) are each organized within a hierarchical tree structure. This allows for several unique features:
 
@@ -8,3 +10,5 @@ The framework's key characteristic is, that all sets (time-steps, regions, energ
 * Inheritance within the trees can be exploited to dynamically obtain the model's parameters from the input data provided. In case of a technology’s efficiency for instance, parameters can vary by hour, day or be irrespective of time, depending on whether input data was provided hourly, daily or without any temporal dimension specified.
 
 The tool relies on the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package to create optimization problems and uses [JuliaDB](https://juliadb.org/) to store and process their elements.
+
+The current roadmap for development is to extend documentation, speed-up model generation (especially with the release of Julia 1.3) and provide an interface for Julia packages implementing advanced solution methods (decomposition, stochastic). If you have any questions, need help or found a bug, please file a Github issue.
