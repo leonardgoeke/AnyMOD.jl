@@ -1,5 +1,5 @@
 """
-    addVariables!(anyM::anyModel)
+    addVariables!(anyModel)
 
 Creates all required model variables.
 """
