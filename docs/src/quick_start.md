@@ -5,7 +5,7 @@ The example project "demo" is used to introduce the packages’ top-level functi
 
 ```
 using anyMOD
-anyM = anyModel("examples/precompile","output", shortInvest = 10, reportLvl = 3)
+anyM = anyModel("examples/precompile","output"; shortInvest = 10, reportLvl = 3)
 ```
 
 `addVariables!` and `addConstraints!` determine, which optimization variables and constraints the specific model requires and adds them.
