@@ -370,6 +370,69 @@ function produceMessage(options::modOptions,report::DataFrame,currentLvl::Int64,
 	end
     if options.errCheckLvl >= currentLvl errorTest(report,options,options.errWrtLvl >= currentLvl) end
 end
+
+# XXX plots tree graph for input set
+function drawNodeTree(Tree_df::DataFrame, modOptions::modOptions; args...)
+
+	  # sets options files
+		defOpt_ntup = (rgb = (0.251,0.388,0.847), trans = 4.5, dist = (par = 0.1, notPar = 0.12), outName = "graph")
+		undef_tup = filter(x -> !(x in keys(defOpt_ntup)), collect(map(x -> x[1],collect(args))))
+		opt = Dict(filter(x -> !(x[1] in undef_tup),collect(args))...)
+
+		# adds a new dummy top node
+		Tree_df = Tree_df[1:end-1,:]
+		nodes_int = nrow(Tree_df)+1
+
+    # create vertical position and labels from input tree
+    LocY_arr = append!(float(Tree_df[:lvl]),0)
+    NodeLabel_arr = append!(copy(Tree_df[:val]),[""])
+
+    # horizontal position is computed in a two step process
+    LocX_arr = zeros(Float64, nodes_int)
+
+    # first step, filter all nodes at end of a respective branch and sort them correctly
+    LowLvl_df = Tree_df[setdiff(Tree_df[:idx],Tree_df[:pare]),:]
+    LowLvl_df = LowLvl_df[map(y -> findall(x->x==y, LowLvl_df[:,:idx])[1],deepSort(convert(Array{Int64,1},LowLvl_df[:,:idx]),Tree_df)),:]
+
+    # set position of starting node
+    LocX_arr[LowLvl_df[1,:idx]] = 0
+
+    # sets distance from next node on the left depending on if they are part of the same subtree
+    for (index, lowNode) in Iterators.drop(enumerate(eachrow(LowLvl_df)),1)
+      if lowNode[:pare] == LowLvl_df[index-1,:pare] distance_fl = opt[:dist][1] else distance_fl = opt[:dist][2] end
+      LocX_arr[lowNode[:idx]] = LocX_arr[LowLvl_df[index-1,:idx]] + distance_fl
+    end
+
+    # second step, remaining horizontal nodes are place in the middle of their children
+    HighLvl_df = Tree_df[intersect(Tree_df[:idx],Tree_df[:pare]),:]
+
+    for highNode in reverse(eachrow(HighLvl_df))
+      children_arr = Tree_df[Tree_df[:pare] .== highNode[:idx],:idx]
+      LocX_arr[highNode[:idx]] = Statistics.mean(LocX_arr[children_arr])
+    end
+
+    LocX_arr[end] = Statistics.mean(LocX_arr[Tree_df[findall(Tree_df[:,:lvl] .== 1),:idx]])
+
+    # draw final tree
+    Tree_gra = SimpleGraph(nodes_int+1)
+    for rowTree in eachrow(Tree_df)
+      # 0 node in Tree_df becomes last node in graph, because there is 0 node within the plots
+      if rowTree[:pare] == 0 pare_int = nodes_int else pare_int = rowTree[:pare] end
+      add_edge!(Tree_gra, rowTree[:idx], pare_int)
+    end
+
+    color_arr = [RGB24(min(1,opt.RGB[1]*(1+x/opt.trans)),min(1,opt.RGB[2]*(1+x/opt.trans)),min(1,opt.RGB[3]*(1+x/opt.trans))) for x in LocY_arr]
+
+    # add invisible dummy node on right side to avoid text being pushed out of the frame
+    push!(LocX_arr,maximum(LocX_arr)*1.1)
+    push!(LocY_arr,maximum(LocY_arr)*1.2)
+    push!(color,RGB24(0,0,0))
+    push!(NodeLabel_arr,"")
+
+    Tree_pl = gplot(Tree_gra, LocX_arr, LocY_arr, nodelabel=NodeLabel_arr,  nodelabeldist=3, nodelabelangleoffset=π/4, NODELABELSIZE = 7, EDGELINEWIDTH=1, nodefillc = color_arr)
+
+    draw(SVG("$(options.outDir)/$(opt.name)", 28cm, 16cm), Tree_pl)
+end
 # </editor-fold>
 
 # <editor-fold desc="reporting of results"
@@ -516,52 +579,3 @@ Base.collect(t::Union{Type, DataType, Union{}}) = _collect(t, [])
 _collect(t::Type, list) = t<:Union{} ? push!(list, t) : _collect(t.b, push!(list, t.a))
 _collect(t::Union{DataType,Core.TypeofBottom}, list) = push!(list, t)
 # </editor-fold>
-
-
-function drawNodeTree(Tree_df::DataFrame,distance)
-	Tree_df = Tree_df[1:end-1,:]
-	nodes_int = nrow(Tree_df)+1
-
-    # create vertical position and labels from input tree
-    LocY_arr = append!(float(Tree_df[:lvl]),0)
-    NodeLabel_arr = append!(copy(Tree_df[:val]),[""])
-
-    # horizontal position is computed in a two step process
-    LocX_arr = zeros(Float64, nodes_int)
-
-    # first step, filter all nodes at end of a respective branch and sort them correctly
-    LowLvl_df = Tree_df[setdiff(Tree_df[:idx],Tree_df[:pare]),:]
-    LowLvl_df = LowLvl_df[map(y -> findall(x->x==y, LowLvl_df[:,:idx])[1],deepSort(convert(Array{Int64,1},LowLvl_df[:,:idx]),Tree_df)),:]
-
-    # set position of starting node
-    LocX_arr[LowLvl_df[1,:idx]] = 0
-
-    # sets distance from next node on the left depending on if they are part of the same subtree
-    for (index, lowNode) in Iterators.drop(enumerate(eachrow(LowLvl_df)),1)
-        if lowNode[:pare] == LowLvl_df[index-1,:pare] distance_fl =0.1 else distance_fl =0.2 end
-        LocX_arr[lowNode[:idx]] = LocX_arr[LowLvl_df[index-1,:idx]] + distance_fl
-    end
-
-    # second step, remaining horizontal nodes are place in the middle of their children
-    HighLvl_df = Tree_df[intersect(Tree_df[:idx],Tree_df[:pare]),:]
-
-    for highNode in reverse(eachrow(HighLvl_df))
-        children_arr = Tree_df[Tree_df[:pare] .== highNode[:idx],:idx]
-        LocX_arr[highNode[:idx]] = Statistics.mean(LocX_arr[children_arr])
-    end
-
-    LocX_arr[end] = Statistics.mean(LocX_arr[Tree_df[findall(Tree_df[:,:lvl] .== 1),:idx]])
-
-    # draw final tree
-    Tree_gra = SimpleDiGraph(nodes_int)
-
-    for rowTree in eachrow(Tree_df)
-        # 0 node in Tree_df becomes last node in graph, because there is 0 node within the plots
-        if rowTree[:pare] == 0 pare_int = nodes_int else pare_int = rowTree[:pare] end
-        add_edge!(Tree_gra, rowTree[:idx], pare_int)
-    end
-
-    Tree_pl = gplot(Tree_gra, LocX_arr, LocY_arr, nodelabel=NodeLabel_arr,  nodelabeldist=distance, nodelabelangleoffset=π/4, NODELABELSIZE = 2, EDGELINEWIDTH=0.05)
-
-    draw(SVG("mygraph.svg", 4cm, 4cm), Tree_pl)
-end
