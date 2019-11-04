@@ -22,6 +22,7 @@ module anyMOD
     # be default adds 6 processes
     addprocs(6)
     using Reexport, IndexedTables, DataFrames, TableReader, MathOptInterface, Statistics, LinearAlgebra, Dates, CSV, Suppressor
+    using LightGraphs, GraphPlot, Compose, Colors
     @reexport using JuliaDB, JuMP, DataFrames
 
     const MOI = MathOptInterface
