@@ -374,7 +374,7 @@ end
 # XXX plots tree graph for input set
 """
     drawNodeTree(Tree_df::DataFrame, options::modOptions; args...)
-Draw a tree for all nodes provided by via Tree_df data frame and copies it to the out directory. Supported options are:
+Draw a tree for all nodes provided by the set data frame and copies it to the out directory. Supported options are:
 	- `rgb = (0.251,0.388,0.847)`
 	    - Color of nodes.
 	- `trans = 4.5`
