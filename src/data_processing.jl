@@ -379,12 +379,16 @@ Draw a tree for all nodes provided by the set data frame and copies it to the ou
 # Options
 - `rgb = (0.251,0.388,0.847)`
     - Color of nodes.
+
 - `trans = 4.5`
 	- Controls fading of color going further down the tree.
+
 - `wide = fill(1.0,maximum(Tree_df[!,:lvl]))`
 	- Ratio of distances between nodes that have and do not have the same parent (separate on each level).
+
 - `name = "graph"`
 	- Name of the output file.
+	
 - `labelsize = 7`
 	- Size of labels in graph.
 """
