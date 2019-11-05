@@ -46,7 +46,7 @@ createMapping(name::Symbol, anyM::anyModel) = createMapping(Val{name}(), anyM::a
 function createMapping(name::Val{:TechData}, anyM::anyModel, SetData_dic::Dict{Symbol,DataFrame}, SaveLookup_dic::Dict{Symbol,Dict{Tuple,Array}})
 
 	# creates empty data frame for results
-	mapTechCar_tab = table(Array{Int32}[], Array{Int32}[], Array{Int32}[], Array{Int32}[], Int32[], Bool[], Array{Int32}[], Int32[],
+	mapTechCar_tab = IT.table(Array{Int32}[], Array{Int32}[], Array{Int32}[], Array{Int32}[], Int32[], Bool[], Array{Int32}[], Int32[],
 																names=[:cConvIn, :cConvOut, :cStExtIn, :cStExtOut, :type, :daggR, :modes, :Te])
 
 	# determines number of specified technology levels
@@ -135,7 +135,7 @@ end
 function createMapping(name::Val{:C_lvl}, anyM::anyModel, SetData_dic::Dict{Symbol,DataFrame}, SaveLookup_dic::Dict{Symbol,Dict{Tuple,Array}})
 
 	# creates empty data frame for results
-	mapCarRes_tab = table(Int32[], Int32[], Int32[], Int32[], Int32[], names=[:C, :lvlTsDis, :lvlTsInv, :lvlRDis, :lvlRInv])
+	mapCarRes_tab = IT.table(Int32[], Int32[], Int32[], Int32[], Int32[], names=[:C, :lvlTsDis, :lvlTsInv, :lvlRDis, :lvlRInv])
 
     # determines number of specified technology levels
 	LvlCar_arr = [Symbol("carrier_",i) for i in 1:maximum(anyM.sets[:C][:,:lvl])]
@@ -199,7 +199,7 @@ end
 # XXX determines a number of technology characteristics frequently used
 function createMapping(name::Val{:TechInfo}, anyM::anyModel)
 
-	mapTechInfo_tab = table(NamedTuple[], NamedTuple[], Union{Nothing,NamedTuple}[], Bool[], Array{Int32,1}[], Int32[], names=[:allCar, :invLvl, :refLvl, :daggR, :M,:Te])
+	mapTechInfo_tab = IT.table(NamedTuple[], NamedTuple[], Union{Nothing,NamedTuple}[], Bool[], Array{Int32,1}[], Int32[], names=[:allCar, :invLvl, :refLvl, :daggR, :M,:Te])
 
 	for row in rows(anyM.mapping[:TechData])
 		# writes all relevant type of dispatch variables and respective carriers
@@ -229,9 +229,9 @@ end
 # XXX map dimension of capacity investment variables for conversion, storage and exchange
 function createMapping(name::Val{:invConvStExc}, anyM::anyModel)
 
-	mapInvCapaConv_tab = table([], [], Int32[], names=[:Ts_inv, :R_inv, :Te])
-	mapInvCapaSt_tab = table([], [], [], Int32[], names=[:Ts_inv, :R_inv, :C, :Te])
-	mapInvCapaExc_tab = table([], [], [], Int32[], names=[:Ts_inv, :R_a, :R_b, :C])
+	mapInvCapaConv_tab = IT.table([], [], Int32[], names=[:Ts_inv, :R_inv, :Te])
+	mapInvCapaSt_tab = IT.table([], [], [], Int32[], names=[:Ts_inv, :R_inv, :C, :Te])
+	mapInvCapaExc_tab = IT.table([], [], [], Int32[], names=[:Ts_inv, :R_a, :R_b, :C])
 
 	# XXX creates all possible dimension for expansion of conversion and storage capacities
 	for row in rows(filter(r -> r.type != 0,anyM.mapping[:TechData]))
@@ -266,13 +266,13 @@ function createMapping(name::Val{:invConvStExc}, anyM::anyModel)
 
 	# filters combinations of regions where any parameter regarding exchange capacity is provided
 	parExc_tup = (:invExcUp, :invExcLow, :invExcFix, :capaExcUp, :capaExcLow, :capaExcFix, :capaExcResi)
-	regExc_tab = table(Int32[],Int32[],Int32[], names = (:R_a, :R_b, :C))
+	regExc_tab = IT.table(Int32[],Int32[],Int32[], names = (:R_a, :R_b, :C))
 
 	for par in intersect(parExc_tup,keys(anyM.parameter))
 		regExc_tab = merge(regExc_tab,DB.select(matchSetParameter(anyM.report,DB.select(excAll_tab,(:R_a,:R_b,:C)),anyM.parameter[par],anyM.sets,anyM.options.digits.comp),(:R_a,:R_b,:C)))
 	end
 
-	regTsExc_tab = join(excAll_tab,addDummyCol(table(unique(regExc_tab))); lkey = (:R_a,:R_b,:C), rkey = (:R_a,:R_b,:C), rselect = (:R_a,:R_b,:C), how =:inner)
+	regTsExc_tab = join(excAll_tab,addDummyCol(IT.table(unique(regExc_tab))); lkey = (:R_a,:R_b,:C), rkey = (:R_a,:R_b,:C), rselect = (:R_a,:R_b,:C), how =:inner)
 	mapInvCapaExc_tab = rmvDummyCol(DB.reindex(addDummyCol(expandSetColumns(DB.rename(regTsExc_tab,:lvlTsInv => :Ts_inv),(:Ts_inv,),anyM.sets)),(:Ts_inv,:R_a,:R_b,:C)))
 
 	return mapInvCapaConv_tab, mapInvCapaSt_tab, mapInvCapaExc_tab
@@ -284,9 +284,9 @@ function createMapping(name::Val{:capaConvStExc}, anyM::anyModel)
 	typeTech_tab = JuliaDB.groupby(unique,anyM.mapping[:TechData],:type; select=:Te)
 
 	# creates empty tables for results
-	mapCapaConv_tab = table(Int32[], Int32[], Int32[], Int32[], names=[:Ts_inv, :Ts_supDis, :R_inv, :Te])
-	mapCapaSt_tab = table(Int32[], Int32[], Int32[], Int32[], Int32[], names=[:Ts_inv, :Ts_supDis, :R_inv, :C, :Te])
-	mapCapaExc_tab = table(Int32[], Int32[], Int32[], Int32[], names=[:Ts_supDis, :R_a, :R_b, :C])
+	mapCapaConv_tab = IT.table(Int32[], Int32[], Int32[], Int32[], names=[:Ts_inv, :Ts_supDis, :R_inv, :Te])
+	mapCapaSt_tab = IT.table(Int32[], Int32[], Int32[], Int32[], Int32[], names=[:Ts_inv, :Ts_supDis, :R_inv, :C, :Te])
+	mapCapaExc_tab = IT.table(Int32[], Int32[], Int32[], Int32[], names=[:Ts_supDis, :R_a, :R_b, :C])
 
 	# XXX creates all possible dimension for capacity of conversion and storage
 	for row in rows(typeTech_tab)
@@ -373,19 +373,19 @@ function createMapping(name::Val{:capaConvStExc}, anyM::anyModel)
 		# writes concentrated array into table
 		if anyConv_boo
 			mapCapaConv_tab = merge(mapCapaConv_tab,
-				table(relSupDisTeConstReConv_arr[:,1], relSupDisTeConstReConv_arr[:,3], relSupDisTeConstReConv_arr[:,4], relSupDisTeConstReConv_arr[:,2],
+				IT.table(relSupDisTeConstReConv_arr[:,1], relSupDisTeConstReConv_arr[:,3], relSupDisTeConstReConv_arr[:,4], relSupDisTeConstReConv_arr[:,2],
 																																						names=[:Ts_supDis, :Ts_inv, :R_inv, :Te]))
 		end
 
 		if anySt_boo
 		mapCapaSt_tab = merge(mapCapaSt_tab,
-			table(relSupDisTeConstCarReSt_arr[:,1], relSupDisTeConstCarReSt_arr[:,3], relSupDisTeConstCarReSt_arr[:,5],  relSupDisTeConstCarReSt_arr[:,4], relSupDisTeConstCarReSt_arr[:,2],
+			IT.table(relSupDisTeConstCarReSt_arr[:,1], relSupDisTeConstCarReSt_arr[:,3], relSupDisTeConstCarReSt_arr[:,5],  relSupDisTeConstCarReSt_arr[:,4], relSupDisTeConstCarReSt_arr[:,2],
 																																						names=[:Ts_supDis, :Ts_inv, :R_inv, :C, :Te]))
 		end
 	end
 
 	# XXX creates all possible dimension for capacity of exchange
-	uniExc_tab = table(unique(DB.select(anyM.mapping[:invExc],DB.Not(:Ts_inv))))
+	uniExc_tab = IT.table(unique(DB.select(anyM.mapping[:invExc],DB.Not(:Ts_inv))))
 	mapCapaExc_tab = rmvDummyCol(DB.reindex(addDummyCol(DB.flatten(IT.transform(uniExc_tab,:Ts_supDis => fill(anyM.supDis.step,length(uniExc_tab))),:Ts_supDis)),(:Ts_supDis,:R_a,:R_b,:C)))
 
 	# XXX filter cases where capacity variables are not existing due to lifetime
@@ -475,7 +475,7 @@ function createMapping(name::Val{:capaDispRestr}, anyM::anyModel)
 		end
 	end
 
-	return DB.rename(table(capaDispRestr_arr),:1 => :Te, :2 => :cnstrType, :3 => :car, :4 => :lvlTs, :5 => :lvlR)
+	return DB.rename(IT.table(capaDispRestr_arr),:1 => :Te, :2 => :cnstrType, :3 => :car, :4 => :lvlTs, :5 => :lvlR)
 end
 
 # XXX maps all relevant dispatch variables to temporal and spatial levels
@@ -548,7 +548,7 @@ function createMapping(name::Val{:dispVar}, anyM::anyModel)
 
 	# finds unique entries and convert them into a table
 	dispVarUni_arr = unique(dispVar_arr)
-	return table(map(y -> map(x -> x[y],dispVarUni_arr),1:5)...; names = (:varType, :C, :lvlTs, :lvlR, :Te))
+	return IT.table(map(y -> map(x -> x[y],dispVarUni_arr),1:5)...; names = (:varType, :C, :lvlTs, :lvlR, :Te))
 end
 
 # </editor-fold>

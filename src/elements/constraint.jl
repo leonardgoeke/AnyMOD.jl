@@ -253,7 +253,7 @@ function createConstraint!(name::Val{:commission},anyM::anyModel)
                 commResiBoth_tab = DB.join((l,r) ->  (Ts_supDis = l.Ts_supDis, deltaResi = l.valNow > r.valPrev ? (l.valNow - r.valPrev) : 0.0),commResiNow_tab,commResiPrev_tab;lkey = dimPrev_tup, rkey = dim_tup, how = :inner)
                 commResiDelta_tab = DB.filter(r -> r.deltaResi != 0.0, commResiBoth_tab)
             else
-                commResiDelta_tab = table(fill(Int32[],length(dim_tup)+1)...,names = vcat(:deltaResi,dim_tup...))
+                commResiDelta_tab = IT.table(fill(Int32[],length(dim_tup)+1)...,names = vcat(:deltaResi,dim_tup...))
             end
 
             # creates actual constraint and object
@@ -403,7 +403,7 @@ function createConstraint!(name::Val{:convBal},anyM::anyModel)
     convBalTech_tab = DB.select(DB.filter(r -> r.refLvl != nothing && ((:use in keys(r.allCar) && :gen in keys(r.allCar)) || :stIntIn in keys(r.allCar) || :stIntOut in keys(r.allCar)),
                                                                                                                     DB.select(anyM.mapping[:TechInfo],(:Te,:refLvl,:allCar))),DB.Not(All(:allCar)))
 
-    allCapaConv_tab = table(DB.unique(rows(DB.select(anyM.variables[:capaConv].data,(:Ts_inv,:Te)))))
+    allCapaConv_tab = IT.table(DB.unique(rows(DB.select(anyM.variables[:capaConv].data,(:Ts_inv,:Te)))))
 
     # gets levels in conversion balance and expands to actual regions and timesteps
     convBalDim_tab = DB.select(IT.transform(convBalTech_tab,:Ts_dis => map(x -> x.Ts, DB.select(convBalTech_tab,:refLvl)),:R_dis => map(x -> x.R, DB.select(convBalTech_tab,:refLvl))),DB.Not(All(:refLvl)))
@@ -418,7 +418,7 @@ function createConstraint!(name::Val{:convBal},anyM::anyModel)
     # gets alls modes that require a seperate conversion balance
     modeConv_arr = sort(unique(DB.select(convBalEff_tab,:M)))
     # removes mode column to perform correct join with dispach variables below
-    convBalEffNoM_tab = table(DB.unique(DB.select(convBalEff_tab,DB.Not(All(:M,:eff)))))
+    convBalEffNoM_tab = IT.table(DB.unique(DB.select(convBalEff_tab,DB.Not(All(:M,:eff)))))
 
     varInOut_dic = Dict{Symbol,IndexedTable}()
 
@@ -471,7 +471,7 @@ function createConstraint!(name::Val{:stBal},anyM::anyModel)
     modeCarSize_arr = convert(Array{Tuple{Int32,Int32},1},values.(sort(unique(DB.select(sizeBothVar_tab,(:C,:M))))))
 
     varInOut_dic = Dict{Symbol,IndexedTable}()
-    sizeVarNoM_tab = table(DB.unique(DB.select(sizeVar_tab,DB.Not(All(:M,:size)))))
+    sizeVarNoM_tab = IT.table(DB.unique(DB.select(sizeVar_tab,DB.Not(All(:M,:size)))))
     # </editor-fold>
 
     # <editor-fold desc="adds variables for storage in and output to variables for storage level"
@@ -496,7 +496,7 @@ function createConstraint!(name::Val{:stBal},anyM::anyModel)
 
     # merges variables for input and output to size variables
     allVar_tab = joinMissing(varInOut_dic[:In],varInOut_dic[:Out], joinKeyM_tup, joinKeyM_tup, :outer, (0.0,0.0))
-    sizeAllVarEff_tab = DB.join(table(rows(sizeBothVar_tab)),allVar_tab; lkey = joinKeyM_tup, rkey = joinKeyM_tup, how = :inner)
+    sizeAllVarEff_tab = DB.join(IT.table(rows(sizeBothVar_tab)),allVar_tab; lkey = joinKeyM_tup, rkey = joinKeyM_tup, how = :inner)
     # </editor-fold>
 
     # <editor-fold desc="adds additional parameters and create constraint"
@@ -540,8 +540,8 @@ function createConstraint!(name::Val{:capaRestr},anyM::anyModel)
 
     # adds a id column and filters restsrictions where actual capacity exists
     restrId_tab = IT.transform(anyM.mapping[:capaDispRestr],:id => convert(Array{Int32,1},collect(1:length(anyM.mapping[:capaDispRestr]))))
-    restrIdConv_tab = DB.join(restrId_tab,table(DB.unique(DB.select(anyM.mapping[:capaConv],(:Ts_inv,:Te)))); lkey = :Te, rkey = :Te, rselect = :Ts_inv, how = :inner)
-    restrIdSt_tab = DB.join(restrId_tab,table(DB.unique(DB.select(anyM.mapping[:capaSt],(:Ts_inv,:Te)))); lkey = :Te, rkey = :Te, rselect = :Ts_inv, how = :inner)
+    restrIdConv_tab = DB.join(restrId_tab,IT.table(DB.unique(DB.select(anyM.mapping[:capaConv],(:Ts_inv,:Te)))); lkey = :Te, rkey = :Te, rselect = :Ts_inv, how = :inner)
+    restrIdSt_tab = DB.join(restrId_tab,IT.table(DB.unique(DB.select(anyM.mapping[:capaSt],(:Ts_inv,:Te)))); lkey = :Te, rkey = :Te, rselect = :Ts_inv, how = :inner)
 
     # creates named tuple for every type of restriction to be created
     cnstrType_tup = ((type = :out, disVar = (:gen, :stIntIn), capaVar = :Conv), (type = :in, disVar = (:use,:stIntOut), capaVar = :Conv), (type = :stIn, disVar = (:stExtIn, :stIntIn), capaVar = :StIn),
@@ -830,7 +830,7 @@ function createRestr!(cnstr_ntup::NamedTuple,cnstr_tab::IndexedTable,anyM::anyMo
     capaDim_tab = DB.rename(DB.flatten(IT.transform(cnstrCapa_tab,:Ts_supDis => fill(anyM.supDis.step,length(cnstrCapa_tab))),:Ts_supDis),:car => :C)
 
     # joins capacity variables
-    capaVar_tab = DB.rename(DB.join(capaDim_tab,table(rows(anyM.variables[Symbol(capaVar_sym,cnstr_ntup.capaVar)].data)); lkey = joinCapa_tup, rkey = joinCapa_tup, how = :inner),:var => :capaVar)
+    capaVar_tab = DB.rename(DB.join(capaDim_tab,IT.table(rows(anyM.variables[Symbol(capaVar_sym,cnstr_ntup.capaVar)].data)); lkey = joinCapa_tup, rkey = joinCapa_tup, how = :inner),:var => :capaVar)
 
     # adds dispatch regions to table and groups to obtain capacity variables
     lvlRDis_dic = Dict((x.lvlR,x.R_inv) => anyM.sets[:R][x.R_inv,:lvl] == x.lvlR ? x.R_inv : convert(Int32,getHeritanceLine(x.R_inv,anyM.sets[:R],x.lvlR)) for x in DB.unique(DB.select(capaVar_tab,(:lvlR,:R_inv))))

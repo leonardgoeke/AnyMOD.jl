@@ -46,7 +46,7 @@ function prepareLimitParameter!(anyM::anyModel)
     for limitPar in filter(x -> any(occursin.(("Low", "Up", "Fix"),string(x))), collect(keys(anyM.parameter)))
         parameter_obj = anyM.parameter[limitPar]
         # creates an empty dummy table and defines an array of zeros as a missing values
-        empty_tab = table(fill(Int32[],length(parameter_obj.dim))... ; names = parameter_obj.dim)
+        empty_tab = IT.table(fill(Int32[],length(parameter_obj.dim))... ; names = parameter_obj.dim)
         missVal_tup = tuple(fill(convert(Int32,0), length(parameter_obj.dim))...)
         # performs joint to add zero columns
         join_tup = tuple(filter(x -> x != :val, collect(colnames(parameter_obj.data)))...)
@@ -245,7 +245,7 @@ function prepareDispatchParameter!(anyM::anyModel)
 
     # merges entries of all parameter entries with modes specified into one mapping table, that is used to create dispatch variables later
     modDim_tup = (:Ts_dis, :Ts_inv, :R_dis, :C, :Te, :M, :cnstrType)
-    allModesMerged_tab = table(Int32[], Int32[], Int32[], Int32[], Int32[], Int32[], Symbol[], names = modDim_tup)
+    allModesMerged_tab = IT.table(Int32[], Int32[], Int32[], Int32[], Int32[], Int32[], Symbol[], names = modDim_tup)
     for parMode in keys(modeParameter_dic)
         if !isnothing(modeParameter_dic[parMode])
             # adds all respective carriers, if parameter itself is not mode dependant (case for availabity for example)
@@ -371,7 +371,7 @@ function createVariable!(name::Val{:invest}, anyM::anyModel)
 
         # removes manipulated entries from original table and merges remaing files with new entries for final table
         colName_tup = colnames(anyM.mapping[invTypes_dic[invVar]])
-        invVar_tab[invVar] = DB.merge(finalVar_tab, DB.join(invVar_tab[invVar], table(rows(filtInvVar_tab)); lkey = colName_tup, rkey = colName_tup, how = :anti))
+        invVar_tab[invVar] = DB.merge(finalVar_tab, DB.join(invVar_tab[invVar], IT.table(rows(filtInvVar_tab)); lkey = colName_tup, rkey = colName_tup, how = :anti))
     end
 
     # </editor-fold>
@@ -701,14 +701,14 @@ function resetParameter(newData_tab::IndexedTable, parameter::ParElement, sets::
             # filters data where distinct mode data is provided for all modes and expends resulting table again
             finalModeGrp_tab = sort(DB.filter(r -> techCntM_dic[r.Te] == r.cntM, modeGrp_tab))
             leng_arr = DB.select(finalModeGrp_tab,:cntM)
-            finalMode_tab = IT.transform(table(vcat(fill.(DB.select(finalModeGrp_tab,DB.Not(All(:cntM,:M,:val))),leng_arr)...)),:M => vcat(DB.select(finalModeGrp_tab,:M)...),:val => vcat(DB.select(finalModeGrp_tab,:val)...))
+            finalMode_tab = IT.transform(IT.table(vcat(fill.(DB.select(finalModeGrp_tab,DB.Not(All(:cntM,:M,:val))),leng_arr)...)),:M => vcat(DB.select(finalModeGrp_tab,:M)...),:val => vcat(DB.select(finalModeGrp_tab,:val)...))
         else
             finalMode_tab = mode_tab
         end
 
         # gets all data, where no values where obtained successfully yet and look them up again applying the default value and not specifing the mode anymore
         # (hence now non mode-specific parameter values for technologies with modes are taken into account => mode-specific parameter values generally overwrite non-mode specific parameter values)
-        newSearch_tab = table(DB.unique(DB.join(newData_tab,!isempty(finalMode_tab) ? DB.merge(DB.select(noMode_tab,DB.Not(All(:val))),DB.select(finalMode_tab,DB.Not(All(:val)))) : DB.select(noMode_tab,DB.Not(All(:val)));
+        newSearch_tab = IT.table(DB.unique(DB.join(newData_tab,!isempty(finalMode_tab) ? DB.merge(DB.select(noMode_tab,DB.Not(All(:val))),DB.select(finalMode_tab,DB.Not(All(:val)))) : DB.select(noMode_tab,DB.Not(All(:val)));
                                                                                                                             lkey = resDim_tup, rkey = resDim_tup, lselect = resDim_tup, how = :anti)))
         if !isempty(newSearch_tab)
             matchData2_tab = matchSetParameter(report,IT.transform(newSearch_tab,:M => convert(Array{Int32,1},fill(0,length(newSearch_tab)))),parameter,sets, options.digits.comp)
@@ -769,7 +769,7 @@ function getTechByCapa(capa::Symbol, dispGrp_tup::Tuple, capaData_tab::IndexedTa
 	# <editor-fold desc= XXX creates relevant dimension of dispatch variables from existing capacity variables>
 	# joins capacity variables with dispatch levels to get dispatch variables needed for technologies
 	key_tup = capa == :capaConv ?  (:Te,) : (:C, :Te)
-	varLvlTech_tab = DB.join(capaData_tab, table(rows(capaMapping_tab)); lkey = key_tup, rkey = key_tup, lselect = DB.Not(All(:var)), how = :inner)
+	varLvlTech_tab = DB.join(capaData_tab, IT.table(rows(capaMapping_tab)); lkey = key_tup, rkey = key_tup, lselect = DB.Not(All(:var)), how = :inner)
 
 	# gets dispatch variables irrespective of technology created for the energy balance
 	noTech_tab = filter(r -> r.Te == 0, capaMapping_tab)
@@ -837,7 +837,7 @@ function getTechByGrp(capa::Symbol, type::Symbol, varLvl_tab::IndexedTable ,tsSu
         join_tup = (:Ts_dis, :Ts_inv, :R_dis, :C, :Te)
 
         # filters all modes cases relevant for the respective dispatch variables
-        relModeVar_tab = DB.select(table(rows(DB.filter(r -> r.cnstrType == typeGrp_dic[type], anyM.mapping[:modeCases]))),DB.Not(All(:cnstrType)))
+        relModeVar_tab = DB.select(IT.table(rows(DB.filter(r -> r.cnstrType == typeGrp_dic[type], anyM.mapping[:modeCases]))),DB.Not(All(:cnstrType)))
         # identifies relevant modes cases, adds them to all variables table while removing respective old entries without model
         modeCase_tab = DB.join(filtVar_tab, relModeVar_tab; lkey = join_tup, rkey = join_tup ,how = :inner)
 

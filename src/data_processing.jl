@@ -180,7 +180,7 @@ function aggregateSetTable(inData_tab::IndexedTable, aggCol_tup::Tuple, grpInter
 	if isnothing(potAgg_tab)
 		aggData_tab = DB.select(inData_tab,aggCol_tup)
 	else
-		aggData_tab = table(vcat(rows(DB.select(inData_tab,aggCol_tup)),rows(DB.select(potAgg_tab,aggCol_tup))))
+		aggData_tab = IT.table(vcat(rows(DB.select(inData_tab,aggCol_tup)),rows(DB.select(potAgg_tab,aggCol_tup))))
 	end
 	# </editor-fold>
 
@@ -289,7 +289,7 @@ end
 # XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding investment regions and supordinate dispatch steps to full dispatch table
 function expandInvestToDisp(inData_tab::IndexedTable,temp_dic::Dict{Tuple{Int32,Int32},Array{Int32,1}},reg_dic::Dict{Tuple{Int32,Int32},Int32},preserveTsSupDis::Bool = false)
     # adds regional timesteps and check if this causes non-unique values (spatial investment level can be below dispatch level)
-	inReg2_tab = table(unique(IT.transform(DB.select(inData_tab,DB.Not(All(:R_inv,:lvlR))),:R_dis => DB.select(inData_tab,(:R_inv, :lvlR) => x -> reg_dic[(x[1],x[2])]))))
+	inReg2_tab = IT.table(unique(IT.transform(DB.select(inData_tab,DB.Not(All(:R_inv,:lvlR))),:R_dis => DB.select(inData_tab,(:R_inv, :lvlR) => x -> reg_dic[(x[1],x[2])]))))
 
     # adds dispatch timesteps to table and returns
 	if preserveTsSupDis

@@ -50,7 +50,7 @@ mutable struct ParElement <: AbstractModelElement
         # filters only used coulumns, renames them accordingly and converts to table
         paraData_df = paraData_df[:,collect(keys(NewCol_dic))]
         DataFrames.rename!(paraData_df,NewCol_dic)
-        writeData_tab = JuliaDB.table(paraData_df)
+        writeData_tab = DB.table(paraData_df)
 
         new_obj = new(paraDef_ntup.name,paraDef_ntup.dim,paraDef_ntup.default_val,paraDef_ntup.inherit,writeData_tab)
         # defines on which level parameter is presetted and which capacity restrictions are affected by different modes for all dispatch parameters, where this is specified

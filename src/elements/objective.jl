@@ -8,8 +8,8 @@ function setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyMode
     end
 
     # XXX create empty variables table for objective variables
-    anyM.variables[:objVar] = VarElement(:objVar,tuple(),table(Symbol[], Symbol[], VariableRef[]; names = (:group,:name,:var)))
-    anyM.constraints[:objEqn] = CnsElement(:objEqn,tuple(),table(Symbol[], Symbol[], ConstraintRef[]; names = (:group,:name,:eqn)))
+    anyM.variables[:objVar] = VarElement(:objVar,tuple(),IT.table(Symbol[], Symbol[], VariableRef[]; names = (:group,:name,:var)))
+    anyM.constraints[:objEqn] = CnsElement(:objEqn,tuple(),IT.table(Symbol[], Symbol[], ConstraintRef[]; names = (:group,:name,:eqn)))
 
 
     # XXX create variables and constraints required for specified objectives
@@ -36,7 +36,7 @@ function createObjective!(objGrp::Val{:costs},anyM::anyModel)
     # <editor-fold desc="compute discount factors"
     # gets all relevant supordinate dispatch timesteps and regions and creates a table of them
     allRInv_arr = vcat(map(x -> anyM.sets[:R][anyM.sets[:R][:,:lvl] .== x,:idx],unique(DB.select(anyM.mapping[:C_lvl],:lvlRInv)))...)
-    tsR_tab = DB.flatten(DB.flatten(table([anyM.supDis.step],[allRInv_arr];names = (:Ts_supDis,:R_inv)),:Ts_supDis),:R_inv)
+    tsR_tab = DB.flatten(DB.flatten(IT.table([anyM.supDis.step],[allRInv_arr];names = (:Ts_supDis,:R_inv)),:Ts_supDis),:R_inv)
 
     # looks up  created table with discount rates and computes full discount factors from that
     rateVal_tab = reindex(matchSetParameter(anyM.report,tsR_tab,anyM.parameter[:rateDisc],anyM.sets,anyM.options.digits.comp,:itrRate),(:Ts_supDis,:R_inv))

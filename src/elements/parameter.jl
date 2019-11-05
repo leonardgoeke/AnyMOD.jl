@@ -231,7 +231,7 @@ function matchSetParameter(report::DataFrame, srcSetIn_tab::IndexedTable, parame
 
     # removes sets the parameter is not specified for from search table and condenses search table accordingly
     redunSrc_tup = setdiff(searchCol_tup,colnames(paraData_tab))
-    searchSet_tab = isempty(redunSrc_tup) ? srcSetIn_tab : table(DB.unique(DB.select(srcSetIn_tab,DB.Not(All(redunSrc_tup...)))))
+    searchSet_tab = isempty(redunSrc_tup) ? srcSetIn_tab : IT.table(DB.unique(DB.select(srcSetIn_tab,DB.Not(All(redunSrc_tup...)))))
 
     srcCol_tup = colnames(searchSet_tab)
     searchSet_tab = addDummyCol(searchSet_tab)
@@ -290,7 +290,7 @@ function matchSetParameter(report::DataFrame, srcSetIn_tab::IndexedTable, parame
 
     # expands table again by rows
     if !isempty(redunSrc_tup)
-        paraMatch_tab = DB.join(paraMatch_tab, table(rows(srcSetIn_tab)); lkey = srcCol_tup, rkey = srcCol_tup, how =:inner)
+        paraMatch_tab = DB.join(paraMatch_tab, IT.table(rows(srcSetIn_tab)); lkey = srcCol_tup, rkey = srcCol_tup, how =:inner)
     end
 
     return DB.rename(paraMatch_tab,:val => newCol_sym)
@@ -319,7 +319,7 @@ function inheritParameter(heritType::Union{Val{:sum_full},Val{:sum_any},Val{:avg
     # dimensions not involved in inheritance propcess
     noHeritSet_tup = tuple(setdiff(collect(colNam_tup),[:val,herit_par[1]])...)
 
-    newData_tab = table(NamedTuple{colNam_tup}((fill(Int32[],length(colNam_tup)-1)...,Float64[])), pkey = vcat(heritSet_sym,noHeritSet_tup...))
+    newData_tab = IT.table(NamedTuple{colNam_tup}((fill(Int32[],length(colNam_tup)-1)...,Float64[])), pkey = vcat(heritSet_sym,noHeritSet_tup...))
 
     # gets all children of unmatched ids to filter relevant part of tree
     childrenUnmatch_arr = unique(vcat(map(x -> getChildren(x,sets[heritSetShort_sym],true),unmatch_arr)...))
