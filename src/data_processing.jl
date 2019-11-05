@@ -372,43 +372,57 @@ function produceMessage(options::modOptions,report::DataFrame,currentLvl::Int64,
 end
 
 # XXX plots tree graph for input set
-function drawNodeTree(Tree_df::DataFrame, modOptions::modOptions; args...)
+"""
+    drawNodeTree(Tree_df::DataFrame, options::modOptions; args...)
+Draw a tree for all nodes provided by via Tree_df data frame and copies it to the out directory. Supported options are:
+	- `rgb = (0.251,0.388,0.847)`
+	    - Color of nodes.
+	- `trans = 4.5`
+		- Controls fading of color going further down the tree.
+	- `wide = fill(1.0,maximum(Tree_df[!,:lvl]))`
+		- Ratio of distances between nodes that have and do not have the same parent (separate on each level).
+	- `name = "graph"`
+		- Name of the output file.
+	- `labelsize = 7`
+		- Size of labels in graph.
+"""
+function drawNodeTree(Tree_df::DataFrame, options::modOptions; args...)
 
-	  # sets options files
-		defOpt_ntup = (rgb = (0.251,0.388,0.847), trans = 4.5, dist = (par = 0.1, notPar = 0.12), outName = "graph")
-		undef_tup = filter(x -> !(x in keys(defOpt_ntup)), collect(map(x -> x[1],collect(args))))
-		opt = Dict(filter(x -> !(x[1] in undef_tup),collect(args))...)
+  	# sets options files
+	defOpt_ntup = Dict(:rgb => (0.251,0.388,0.847), :trans => 4.5, :wide => fill(1.0,maximum(Tree_df[!,:lvl])), :name => "graph", :labelsize => 7)
+	opt = merge(args,Dict(x => defOpt_ntup[x] for x in filter(x -> !(x in keys(args)), collect(keys(defOpt_ntup)))))
 
-		# adds a new dummy top node
-		Tree_df = Tree_df[1:end-1,:]
-		nodes_int = nrow(Tree_df)+1
+	# adds a new dummy top node
+	Tree_df = Tree_df[1:end-1,:]
+	nodes_int = nrow(Tree_df)+1
+	idxPos_dic = Dict(zip(Tree_df[:,:idx], 1:(nodes_int-1)))
 
     # create vertical position and labels from input tree
-    LocY_arr = append!(float(Tree_df[:lvl]),0)
-    NodeLabel_arr = append!(copy(Tree_df[:val]),[""])
+    LocY_arr = append!(float(Tree_df[!,:lvl]),0)
+    NodeLabel_arr = append!(copy(Tree_df[!,:val]),[""])
 
     # horizontal position is computed in a two step process
     LocX_arr = zeros(Float64, nodes_int)
 
     # first step, filter all nodes at end of a respective branch and sort them correctly
-    LowLvl_df = Tree_df[setdiff(Tree_df[:idx],Tree_df[:pare]),:]
-    LowLvl_df = LowLvl_df[map(y -> findall(x->x==y, LowLvl_df[:,:idx])[1],deepSort(convert(Array{Int64,1},LowLvl_df[:,:idx]),Tree_df)),:]
+    LowLvl_df = Tree_df[isempty.(Tree_df[!,:children]),:]
+    LowLvl_df = LowLvl_df[map(y -> findall(x -> x == y, LowLvl_df[:,:idx])[1],deepSort(convert(Array{Int64,1},LowLvl_df[:,:idx]),Tree_df)),:]
 
     # set position of starting node
     LocX_arr[LowLvl_df[1,:idx]] = 0
 
     # sets distance from next node on the left depending on if they are part of the same subtree
     for (index, lowNode) in Iterators.drop(enumerate(eachrow(LowLvl_df)),1)
-      if lowNode[:pare] == LowLvl_df[index-1,:pare] distance_fl = opt[:dist][1] else distance_fl = opt[:dist][2] end
-      LocX_arr[lowNode[:idx]] = LocX_arr[LowLvl_df[index-1,:idx]] + distance_fl
+		if lowNode[:pare] == LowLvl_df[index-1,:pare] distance_fl = opt[:wide][lowNode[:lvl]] else distance_fl = 1 end
+		LocX_arr[idxPos_dic[lowNode[:idx]]] = LocX_arr[idxPos_dic[LowLvl_df[index-1,:idx]]] + distance_fl
     end
 
     # second step, remaining horizontal nodes are place in the middle of their children
-    HighLvl_df = Tree_df[intersect(Tree_df[:idx],Tree_df[:pare]),:]
+    HighLvl_df = Tree_df[false .== isempty.(Tree_df[!,:children]),:]
 
     for highNode in reverse(eachrow(HighLvl_df))
-      children_arr = Tree_df[Tree_df[:pare] .== highNode[:idx],:idx]
-      LocX_arr[highNode[:idx]] = Statistics.mean(LocX_arr[children_arr])
+		children_arr = map(x -> idxPos_dic[x] ,Tree_df[Tree_df[!,:pare] .== highNode[:idx],:idx])
+		LocX_arr[idxPos_dic[highNode[:idx]]] = Statistics.mean(LocX_arr[children_arr])
     end
 
     LocX_arr[end] = Statistics.mean(LocX_arr[Tree_df[findall(Tree_df[:,:lvl] .== 1),:idx]])
@@ -417,21 +431,21 @@ function drawNodeTree(Tree_df::DataFrame, modOptions::modOptions; args...)
     Tree_gra = SimpleGraph(nodes_int+1)
     for rowTree in eachrow(Tree_df)
       # 0 node in Tree_df becomes last node in graph, because there is 0 node within the plots
-      if rowTree[:pare] == 0 pare_int = nodes_int else pare_int = rowTree[:pare] end
-      add_edge!(Tree_gra, rowTree[:idx], pare_int)
+      if rowTree[:pare] == 0 pare_int = nodes_int else pare_int = idxPos_dic[rowTree[:pare]] end
+      add_edge!(Tree_gra, idxPos_dic[rowTree[:idx]], pare_int)
     end
 
-    color_arr = [RGB24(min(1,opt.RGB[1]*(1+x/opt.trans)),min(1,opt.RGB[2]*(1+x/opt.trans)),min(1,opt.RGB[3]*(1+x/opt.trans))) for x in LocY_arr]
+    color_arr = [RGB24(min(1,opt[:rgb][1]*(1+x/opt[:trans])),min(1,opt[:rgb][2]*(1+x/opt[:trans])),min(1,opt[:rgb][3]*(1+x/opt[:trans]))) for x in LocY_arr]
 
     # add invisible dummy node on right side to avoid text being pushed out of the frame
     push!(LocX_arr,maximum(LocX_arr)*1.1)
     push!(LocY_arr,maximum(LocY_arr)*1.2)
-    push!(color,RGB24(0,0,0))
+    push!(color_arr,RGB24(1,1,1))
     push!(NodeLabel_arr,"")
 
-    Tree_pl = gplot(Tree_gra, LocX_arr, LocY_arr, nodelabel=NodeLabel_arr,  nodelabeldist=3, nodelabelangleoffset=π/4, NODELABELSIZE = 7, EDGELINEWIDTH=1, nodefillc = color_arr)
+    Tree_pl = gplot(Tree_gra, LocX_arr, LocY_arr, nodelabel=NodeLabel_arr,  nodelabeldist=3, nodelabelangleoffset= π/4, NODELABELSIZE = opt[:labelsize], EDGELINEWIDTH=1, nodefillc = color_arr)
 
-    draw(SVG("$(options.outDir)/$(opt.name)", 28cm, 16cm), Tree_pl)
+    draw(SVG("$(options.outDir)/$(opt[:name]).svg", 28cm, 16cm), Tree_pl)
 end
 # </editor-fold>
 
