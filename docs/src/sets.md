@@ -2,9 +2,7 @@
 All model sets are created based on a table from a corresponding csv file. To organize sets within a hierarchical tree structure, each level of the tree corresponds to a column in the table. By writing a set name into a column, a node is created on the respective level of the table. If several set names are written into the same row, these nodes are connected via an edge of the tree. The reserved keyword `all` is a placeholder for all nodes defined on the respective level and facilitates the creation of large trees.
 
 The input tables for `carrier` and `technology` have additional columns to define further attributes of nodes as documented below. To document the purpose of these columns, the set tables of the example model and their corresponding trees are listed below. All plots were created using the [`drawNodeTree`](@ref) function.
-
-Timestep
-=================
+## Timestep
 All timesteps within the model are provided by the `set_timestep.csv` file.
 
 | timestep_1 | timestep_2 | timestep_3 | timestep_4 |
@@ -22,10 +20,7 @@ All timesteps within the model are provided by the `set_timestep.csv` file.
 Here the `all` keyword is used to avoid the repetition of the day/4-hour step/hour part of the table for each year. The example also demonstrates, that node names are not unique, because different nodes on the same level can be named `d001`, for example. The plot below obviously only shows a section of the corresponding tree.
 
 ![](assets/timestep.svg)
-
-Region
-=================
-
+## Region
 Regions are defined within the `set_region.csv` file.
 
 | region_1 | region_2  |
@@ -36,11 +31,8 @@ Regions are defined within the `set_region.csv` file.
 | West     | WestSouth |
 
 The table leads to the following simple tree.
-
 ![](assets/region.svg)
-
-Carrier
-=================
+## Carrier
 All carriers within the model are provided by the `set_carrier.csv` file.
 
 | carrier_1   | carrier_2    | timestep_dispatch | timestep_invest | region_dispatch | region_invest |
@@ -60,9 +52,7 @@ In addition to the carrier tree itself, the file also defines the carrier-specif
 The resolution of carriers without a separate row in the input table is set to the coarsest resolution of all its children.
 
 ![](assets/carrier.svg)
-
-Technology
-=================
+## Technology
 Technologies are defined within the `set_technology.csv` file. Only nodes at the end of a branch correspond to an actual technology and all other nodes are used to enable inheritance of parameters and setting of limits. Referring to the table below for example, any availability parameter provided for `solar` would ultimately be inherited by `openspace`, `photovoltaic` and `solarThermal`. Furthermore, any limit on the installed capacites of `rooftop` would apply to the **sum** of `photovoltaic` and `solarThermal` capacities.
 
 | technology_1 | technology_2 | technology_3 | mode               | carrier\_conversion\_in | carrier\_conversion\_out           | carrier\_stored\_in | carrier\_stored\_out | technology\_type | region\_disaggregate |
