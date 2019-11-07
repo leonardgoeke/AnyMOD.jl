@@ -578,7 +578,7 @@ function evaluateReso(report::DataFrame,startIdx_arr::Array{Int32,1},parent_tab:
 			maxReso_dic = Dict(y => minimum(map(x -> getproperty(x.columns,y)[1],RelChildrenTab_arr)) for y in allRelCol_arr)
 			return maxReso_dic
 		end
-	# checks if existing resoltuion is flawed
+	# checks if existing resolution is flawed
 	else
 		for childIdx in allChildrenIdx_arr
 			child_tab = filter(r -> r.C == childIdx, mapCarRes_tab)

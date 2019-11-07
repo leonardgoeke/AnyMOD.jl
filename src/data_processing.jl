@@ -374,7 +374,7 @@ end
 # XXX plots tree graph for input set
 """
     drawNodeTree(Tree_df::DataFrame, options::modOptions; args...)
-Draw a tree for all nodes provided by the set data frame and copies it to the out directory.
+Draw a tree for all nodes provided by the set data frame and copies it to the output directory defined within options.
 
 # Options and default values:
 - `rgb = (0.251,0.388,0.847)`
@@ -491,6 +491,16 @@ function createFullString(setIdx_int,Tree_df::DataFrame,writeLvl_boo::Bool=true)
 	return carStr_str
 end
 
+"""
+    printObject(print_obj::AbstractModelElement,sets::Dict{Symbol,DataFrame},options::modOptions)
+Prints the data table of a model element (parameter, variable or equation) as a csv-File to the output directory defined within options.
+
+# Options and default values:
+- `threshold = 0.001`
+    - Variables or parameter with a value below the threshold will not be included in output table. Set to `nothing`, if all values should be included.
+- `filterFunc::Union{Nothing,Function} = nothing`
+    - Defines a function to filter only certain entries of data table of the element for output.
+"""
 # XXX prints any AbstractModelElement
 function printObject(print_obj::AbstractModelElement,sets::Dict{Symbol,DataFrame},options::modOptions, threshold::Union{Nothing,Float64} = 0.001, filterFunc::Union{Nothing,Function} = nothing)
 	# initialize
