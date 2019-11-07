@@ -491,6 +491,7 @@ function createFullString(setIdx_int,Tree_df::DataFrame,writeLvl_boo::Bool=true)
 	return carStr_str
 end
 
+# XXX prints any AbstractModelElement
 """
     printObject(print_obj::AbstractModelElement,sets::Dict{Symbol,DataFrame},options::modOptions)
 Prints the data table of a model element (parameter, variable or equation) as a csv-File to the output directory defined within options.
@@ -501,7 +502,6 @@ Prints the data table of a model element (parameter, variable or equation) as a 
 - `filterFunc::Union{Nothing,Function} = nothing`
     - Defines a function to filter only certain entries of data table of the element for output.
 """
-# XXX prints any AbstractModelElement
 function printObject(print_obj::AbstractModelElement,sets::Dict{Symbol,DataFrame},options::modOptions, threshold::Union{Nothing,Float64} = 0.001, filterFunc::Union{Nothing,Function} = nothing)
 	# initialize
 	colNam_arr = colnames(print_obj.data)
