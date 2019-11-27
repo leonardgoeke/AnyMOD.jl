@@ -38,6 +38,6 @@ setObjective!(:costs,anyM)
 Finally, the JuMP model object of is be passed to a solver. Afterwards, the value of optimization variables can be printed to csv files via the `printObject` command.
 ```
 using Gurobi
-JuMP.optimize!(anyM.optModel,with_optimizer(Gurobi.Optimizer, OutputFlag=1))
-printObject(anyM.sets.variables[:capaConv],anyM.sets , anyM.options)
+JuMP.optimize!(anyM.optModel,with_optimizer(Gurobi.Optimizer, OutputFlag=1, Method = 1))
+printObject(anyM.variables[:capaConv],anyM.sets , anyM.options)
 ```
