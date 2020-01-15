@@ -13,4 +13,4 @@ gasBoiler,,,,gas,heat,,,mature,no,
 hydro,,,,,,electricity,electricity,stock,no,
 electrolysis,,,,electricity,hydrogen,,,emerging,no,
 methanation,,,,hydrogen,gas < synthGas; heat < districtHeat,,,emerging,no,ignores captured carbon as a necessary input
-fuelCell,,,,hydrogen,electricity; heat,,,emerging,no,
+fuelCell,,,,hydrogen,electricity; heat < districtHeat,,,emerging,no,
