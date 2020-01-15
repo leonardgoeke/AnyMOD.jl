@@ -1,12 +1,13 @@
 timestep_1,region_1,region_2,technology_1,technology_2,technology_3,parameter,value,comment
+2020,,,,,,rateDisc,0,
 ,,,,,,rateDisc,0.02,sets default value for discount rate
-"all(2030,2040)",West,WestSouth,,,,rateDisc,0.015,sets specific discount rate for West < WestSouth and 2030 and 2040
-"all(2030,2040)",East,,,,,rateDisc,0.03,sets specific discount rate for East and 2030 and 2040
-,,,,,,rateInvConv,0.02,
-,,,,,,rateInvStIn,0.02,
-,,,,,,rateInvStOut,0.02,
-,,,,,,rateInvStSize,0.02,
-,,,,,,rateInvExc,0.02,
+2030,West,WestSouth,,,,rateDisc,0.015,sets specific discount rate for West < WestSouth and 2030 and 2040
+2030,East,,,,,rateDisc,0.03,sets specific discount rate for East and 2030 and 2040
+,,,,,,rateExpConv,0.02,
+,,,,,,rateExpStIn,0.02,
+,,,,,,rateExpStOut,0.02,
+,,,,,,rateExpStSize,0.02,
+,,,,,,rateExpExc,0.02,
 all,East,EastNorth,wind,,,capaConvUp,150,
 all,East,EastNorth,solar,openspace,,capaConvUp,40,
 all,East,EastNorth,solar,rooftop,,capaConvUp,245.452141,

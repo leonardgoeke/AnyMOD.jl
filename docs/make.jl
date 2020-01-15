@@ -9,7 +9,7 @@ makedocs(sitename="anyMOD.jl",
                                 "Parameter" => "parameter.md",
                                 "Variables and Constraints" => "var_const.md",
                                 "Objective" => "objective.md"],
-        "Obtain results" => Any["Reporting and Options" => "reportOpt.md", 
+        "Obtain results" => Any["Reporting and Options" => "reportOpt.md",
                                 "Visualizations" => "vis.md",
                                 "CSV Tables" => "csvtab.md"]
         ],

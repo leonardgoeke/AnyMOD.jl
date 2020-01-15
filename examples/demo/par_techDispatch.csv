@@ -9,7 +9,6 @@ timestep_1,technology_1,technology_2,technology_3,mode,carrier_1,carrier_2,param
 ,methanation,,,,,,effConv,0.78,"since excess heat is also an output from methanation this is the Carnot efficiencies, the effiency relating only to synthetic gas is obtained via combination with the ratio of genration outputs"
 2020,electrolysis,,,,,,effConv,0.55,
 2030,electrolysis,,,,,,effConv,0.655,
-2040,electrolysis,,,,,,effConv,0.76,
 ,fuelCell,,,,,,effConv,0.918,"since excess heat is also an output from fuel cells this is the Carnot efficiencies, the effiency relating only to electricity is obtained via combination with the ratio of genration outputs"
 ,gasPlant,,,,,,avaConv,0.95,
 ,coalPlant,,,,,,avaConv,0.85,
@@ -19,10 +18,8 @@ timestep_1,technology_1,technology_2,technology_3,mode,carrier_1,carrier_2,param
 ,coalPlant,,,,electricity,,ratioEnerGenUp,0.471,"for CHP ccgtPlants two modes are assumed, ""moreHeat"" as a lower overall efficiency, but a smaller smaller electricity share "
 2020,fuelCell,,,,electricity,,ratioEnerGenFix,0.523,
 2030,fuelCell,,,,electricity,,ratioEnerGenFix,0.534,
-2040,fuelCell,,,,electricity,,ratioEnerGenFix,0.556,
 2020,methanation,,,,gas,synthGas,ratioEnerGenFix,0.769,
 2030,methanation,,,,gas,synthGas,ratioEnerGenFix,0.817,
-2040,methanation,,,,gas,synthGas,ratioEnerGenFix,0.865,"synthGas ratio of output, the remaining share is excess heat, so increasing value implies increase in ""efficiency"""
 ,solar,rooftop,photovoltaic,,electricity,,effStIn,0.96,"synthGas ratio of output, the remaining share is excess heat, so increasing value implies increase in ""efficiency"""
 ,solar,rooftop,solarThermal,,heat,,effStIn,0.894,"synthGas ratio of output, the remaining share is excess heat, so increasing value implies increase in ""efficiency"""
 ,gasStorage,,,,,,effStIn,0.98,
