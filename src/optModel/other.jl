@@ -57,7 +57,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	# get defined entries
 	varCrt_df = DataFrame()
 	for crtPar in intersect(keys(partBal.par),(:crtUp,:crtLow,:crtFix,:costCrt))
-		varCrt_df = vcat(varCrt_df,matchSetParameter(allDim_df,partBal.par[crtPar],anyM.sets,anyM.report)[!,Not(:val)])
+		append!(varCrt_df,matchSetParameter(allDim_df,partBal.par[crtPar],anyM.sets,anyM.report)[!,Not(:val)])
 	end
 
 	# obtain upper bound for variables and create them
@@ -67,94 +67,113 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	# </editor-fold>
 
 	# <editor-fold desc="create actual balance"
+	allC_arr = unique(allDim_df[!,:C])
+	Threads.@threads for c in allC_arr
+		relC_arr = unique([c,getDescendants(c,anyM.sets[:C])...])
 
-	# XXX add demand and scale it
+		# XXX add demand and scale it
+		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets,anyM.report)
+		cns_df[!,:dem] = cns_df[!,:val] .* getScale(cns_df,anyM.sets[:Ts],anyM.supTs)
+		select!(cns_df,Not(:val))
 
-	cns_df = matchSetParameter(allDim_df,partBal.par[:dem],anyM.sets,anyM.report)
-	cns_df[!,:dem] = cns_df[!,:val] .* getScale(cns_df,anyM.sets[:Ts],anyM.supTs)
-	cns_df[!,:eq] = map(x -> anyM.cInfo[x].eq , cns_df[!,:C])
+		# XXX get relevant variables
+		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
 
-	# XXX get relevant variables
-	src_df = copy(cns_df[!,Not([:val,:eq,:Ts_disSup])])
+		# add tech variables
+		cns_df[!,:techVar] = getTechEnerBal(c,relC_arr,src_df,techIdx_arr,anyM.parts.tech,anyM.sets,agg_tup)
 
-	# add tech variables
-	cns_df[!,:techVar] = getTechEnerBal(src_df,techIdx_arr,anyM.parts.tech,anyM.sets,agg_tup,bal_tup)
-
-
-	# add curtailment variables
-	if :crt in keys(partBal.var)
-		cns_df[!,:crtVar] = partBal.var[:crt] |> (x -> aggregateVar(x,src_df,agg_tup,anyM.sets,srcFilt = bal_tup)[1])
-	else
-		cns_df[!,:crtVar] .= AffExpr()
-	end
-
-	# add trade variables
-	if !isempty(anyM.parts.trd.var)
-		cns_df[!,:trdVar] = sum([anyM.parts.trd.var[trd] |> (x -> aggregateVar(x,src_df,agg_tup,anyM.sets,srcFilt = bal_tup)[1] |> (y -> trd != :trdSell ? y : -1.0 * y)) for trd in keys(anyM.parts.trd.var)])
-	else
-		cns_df[!,:trdVar] .= AffExpr()
-	end
-
-	# add exchange variables
-	if !isempty(anyM.parts.exc.var)
-		excVarTo_df = anyM.parts.exc.var[:exc]
-		excVarFrom_df = convertExcCol(copy(excVarTo_df))
-
-		# apply loss values to from dataframe of from variables
-		lossPar_obj = copy(anyM.parts.exc.par[:lossExc])
-		lossPar_obj.data = lossPar_obj.data |> (x -> vcat(x,rename(x,:R_a => :R_b, :R_b => :R_a)))
-		excVarFrom_df = matchSetParameter(excVarFrom_df,lossPar_obj,anyM.sets,anyM.report,newCol = :loss)
-
-		# overwrite symmetric losses with any directed losses provided
-		if :lossExcDir in keys(anyM.parts.exc.par)
-			oprCol_arr = intCol(excVarFrom_df)
-			dirLoss_df = matchSetParameter(excVarFrom_df[!,oprCol_arr],anyM.parts.exc.par[:lossExcDir],anyM.sets,anyM.report,newCol = :lossDir)
-			excVarFrom_df = joinMissing(excVarFrom_df,dirLoss_df,oprCol_arr,:left,Dict(:lossDir => nothing))
-			excVarFrom_df[!,:val] = map(x -> isnothing(x.lossDir) ? x.loss : x.lossDir,eachrow(excVarFrom_df[!,[:loss,:lossDir]]))
-			select!(excVarFrom_df,Not(:lossDir))
+		# add curtailment variables
+		if :crt in keys(partBal.var)
+			cns_df[!,:crtVar] = filterCarrier(partBal.var[:crt],relC_arr) |> (x -> aggregateVar(x,src_df,agg_tup,anyM.sets)[1])
+		else
+			cns_df[!,:crtVar] .= AffExpr()
 		end
 
-		# apply loss values to from variables
-		excVarFrom_df[!,:var] = excVarFrom_df[!,:var] .* (1.0 .- excVarFrom_df[!,:loss])
-		select!(excVarFrom_df,Not(:loss))
+		# add trade variables
+		if !isempty(anyM.parts.trd.var)
+			cns_df[!,:trdVar] = sum([filterCarrier(anyM.parts.trd.var[trd],relC_arr) |> (x -> aggregateVar(x,src_df,agg_tup,anyM.sets)[1] |> (y -> trd != :trdSell ? y : -1.0 * y)) for trd in keys(anyM.parts.trd.var)])
+		else
+			cns_df[!,:trdVar] .= AffExpr()
+		end
 
-		balTo_tup, balFrom_tup = [tuple(replace(collect(bal_tup),:R_dis => x)...) for x in [:R_to, :R_from]]
+		# add exchange variables
+		if !isempty(anyM.parts.exc.var)
+			excVarTo_df = filterCarrier(anyM.parts.exc.var[:exc],relC_arr)
+			excVarFrom_df = convertExcCol(copy(excVarTo_df))
 
-		excFrom_arr = aggregateVar(convertExcCol(excVarFrom_df),rename(src_df,:R_dis => :R_to),(:Ts_dis,:R_to,:C),anyM.sets, srcFilt = balTo_tup)[1]
-		excTo_arr  = aggregateVar(excVarTo_df,rename(src_df,:R_dis => :R_from),(:Ts_dis,:R_from,:C),anyM.sets, srcFilt = balFrom_tup)[1]
+			# apply loss values to from dataframe of from variables
+			lossPar_obj = copy(anyM.parts.exc.par[:lossExc])
+			lossPar_obj.data = lossPar_obj.data |> (x -> vcat(x,rename(x,:R_a => :R_b, :R_b => :R_a)))
+			excVarFrom_df = matchSetParameter(excVarFrom_df,lossPar_obj,anyM.sets,anyM.report,newCol = :loss)
 
-		cns_df[!,:excVar] =  excFrom_arr .- excTo_arr
-	else
-		cns_df[!,:excVar] .= AffExpr()
+			# overwrite symmetric losses with any directed losses provided
+			if :lossExcDir in keys(anyM.parts.exc.par)
+				oprCol_arr = intCol(excVarFrom_df)
+				dirLoss_df = matchSetParameter(excVarFrom_df[!,oprCol_arr],anyM.parts.exc.par[:lossExcDir],anyM.sets,anyM.report,newCol = :lossDir)
+				excVarFrom_df = joinMissing(excVarFrom_df,dirLoss_df,oprCol_arr,:left,Dict(:lossDir => nothing))
+				excVarFrom_df[!,:val] = map(x -> isnothing(x.lossDir) ? x.loss : x.lossDir,eachrow(excVarFrom_df[!,[:loss,:lossDir]]))
+				select!(excVarFrom_df,Not(:lossDir))
+			end
+
+			# apply loss values to from variables
+			excVarFrom_df[!,:var] = excVarFrom_df[!,:var] .* (1.0 .- excVarFrom_df[!,:loss])
+			select!(excVarFrom_df,Not(:loss))
+
+			balTo_tup, balFrom_tup = [tuple(replace(collect(bal_tup),:R_dis => x)...) for x in [:R_to, :R_from]]
+
+			excFrom_arr = aggregateVar(convertExcCol(excVarFrom_df),rename(src_df,:R_dis => :R_to),(:Ts_dis,:R_to,:C),anyM.sets)[1]
+			excTo_arr  = aggregateVar(excVarTo_df,rename(src_df,:R_dis => :R_from),(:Ts_dis,:R_from,:C),anyM.sets)[1]
+
+			cns_df[!,:excVar] =  excFrom_arr .- excTo_arr
+		end
+
+		# XXX create final constaint depending on equality and non-equality cases
+		withlock(anyM.lock) do
+			if anyM.cInfo[c].eq
+				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, 0.1 * (x.techVar + x.excVar + x.trdVar) ==  0.1 * (x.dem + x.crtVar)),eachrow(cns_df))
+			else
+				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, 0.1 *  (x.techVar + x.excVar + x.trdVar) >= 0.1 * (x.dem + x.crtVar)),eachrow(cns_df))
+			end
+		end
+
+		# XXX writes constraint to object
+		c_str = anyM.sets[:C].nodes[c].val
+		produceMessage(anyM.options,anyM.report, 2," - Created energy balance for $(c_str)")
+		partBal.cns[Symbol(c_str)] = orderDf(cns_df[!,[intCol(cns_df)...,:cns]])
 	end
 
-	# XXX create final constaint splited into equality and non-equality cases
-	cns_arr = Array{ConstraintRef}(undef,size(cns_df,1))
-	eqIdx_arr = findall(cns_df[!,:eq])
-	noEdIdx_arr = setdiff(1:size(cns_df,1),eqIdx_arr)
-
-	cns_arr[eqIdx_arr] =   map(x -> @constraint(anyM.optModel, 0.1 * (x.techVar + x.excVar + x.trdVar) ==  0.1 * (x.dem + x.crtVar)),eachrow(cns_df)[eqIdx_arr])
-	cns_arr[noEdIdx_arr] = map(x -> @constraint(anyM.optModel, 0.1 *  (x.techVar + x.excVar + x.trdVar) >= 0.1 * (x.dem + x.crtVar)),eachrow(cns_df)[noEdIdx_arr])
-	cns_df[!,:cns] = cns_arr
-
-	partBal.cns[:enerBal] = orderDf(cns_df[!,[intCol(cns_df)...,:cns]])
 	produceMessage(anyM.options,anyM.report, 1," - Created energy balances for all carriers")
 	# </editor-fold>
 end
 
 # XXX aggregate all technology variables for energy balance
-function getTechEnerBal(src_df::DataFrame,techIdx_arr::Array{Int,1},tech_dic::Dict{Int,TechPart},sets_dic::Dict{Symbol,Tree},agg_tup::Tuple,bal_tup::Tuple)
-	techVar_arr = Array{Array{AffExpr,1},1}()
-	itr_arr = vcat([intersect((:use,:gen,:stExtIn,:stExtOut),keys(tech_dic[x].var)) |> (y -> collect(zip(fill(x,length(y)),y))) for x in techIdx_arr]...)
-	# loop over technology / variable type combinations,
-	Threads.@threads for x in itr_arr
-		part = tech_dic[x[1]]
-		push!(techVar_arr,aggregateVar(part.var[x[2]],src_df,agg_tup,sets_dic, srcFilt = bal_tup)[1] |> (y -> x[2] in (:use,:stExtIn) ? -1.0 .* y : y))
+function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,techIdx_arr::Array{Int,1},tech_dic::Dict{Int,TechPart},sets_dic::Dict{Symbol,Tree},agg_tup::Tuple)
+	techVar_arr = Array{Array{AffExpr,1}}(undef,length(relC_arr))
+
+	# loops over all carriers relevant for respective energy balance
+	for (idx,c) in enumerate(relC_arr)
+		relTech_arr = vcat([intersect((:use,:gen,:stExtIn,:stExtOut),filter(y -> c in tech_dic[x].carrier[y], collect(keys(tech_dic[x].carrier)))) |> (y -> collect(zip(fill(x,length(y)),y))) for x in techIdx_arr]...)
+
+		if isempty(relTech_arr)
+			techVar_arr[idx]  = fill(AffExpr(),size(src_df,1))
+			continue
+		end
+
+		allVar_df = DataFrame(Ts_dis = Int[], R_dis = Int[], var = AffExpr[])
+		for x in relTech_arr
+			append!(allVar_df,select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var]))
+		end
+
+		grpVar_df = by(allVar_df, [:Ts_dis, :R_dis], var = [:var] => x -> sum(x.var))
+
+		if c == cBal_int
+			techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis], :left, Dict(:var => AffExpr()))[!,:var]
+		else
+			techVar_arr[idx] = aggregateVar(grpVar_df,src_df,(:Ts_dis, :R_dis),sets_dic)[1]
+		end
 	end
 
-	sum_arr = map(x -> sum(x),eachrow(hcat(techVar_arr...)))
-
-	return sum_arr
+	return map(x -> sum(x),eachrow(hcat(techVar_arr...)))
 end
 
 # XXX create constarints that enforce any type of limit (Up/Low/Fix) on any type of variable
@@ -167,7 +186,6 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 	# loop over all variables that are subject to any type of limit (except emissions)
 	allKeys_arr = collect(keys(varToPar_dic))
 	Threads.@threads for va in allKeys_arr
-
 		varToPart_dic = Dict(:exc => :exc, :crt => :bal,:trdSell => :trd, :trdBuy => :trd)
 
 		# obtain all variables relevant for limits
@@ -190,7 +208,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 			# try to aggregate variables to limits directly provided via inputs
 			limit_df = copy(par_obj.data)
-			limit_df[!,:var] = aggregateVar(grpVar_df, limit_df, agg_tup, anyM.sets, aggFilt = agg_tup, srcFilt = agg_tup)[1]
+			limit_df[!,:var] = aggregateVar(grpVar_df, limit_df[!,Not(:val)], agg_tup, anyM.sets, aggFilt = agg_tup)[1]
 
 			# gets provided limit parameters, that no variables could assigned to so far and tests if via inheritance any could be assigned
 			mtcPar_arr, noMtcPar_arr  = findall(map(x -> x != AffExpr(),limit_df[!,:var])) |>  (x -> [x, setdiff(1:size(par_obj.data,1),x)])

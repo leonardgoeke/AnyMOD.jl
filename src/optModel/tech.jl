@@ -391,9 +391,8 @@ function createConvBal!(part::TechPart,anyM::anyModel)
 	in_arr = intersect(keys(part.carrier),(:use,:stIntOut))
 	out_arr = intersect(keys(part.carrier),(:gen,:stIntIn))
 
-	grpAgg_tup = :M in names(cns_df) ? ((:Ts_expSup,:Ts_dis),(:Te,:R_dis,:M)) : ((:Ts_expSup,:Ts_dis),(:Te,:R_dis))
 	for va in union(in_arr,out_arr)
-		cns_df[!,va] = aggregateVar(part.var[va], cns_df, agg_tup, anyM.sets, grpInter = grpAgg_tup)[1]
+		cns_df[!,va] = aggregateVar(part.var[va], select(cns_df,intCol(cns_df)), agg_tup, anyM.sets)[1]
 	end
 
 	# aggregate in and out variables respectively
@@ -507,7 +506,7 @@ function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{I
 			# replaces expansion with dispatch regions
 			grpCapaVar_df = copy(capaVar_df) |> (y -> unique(by(y,names(y),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])]))
 
-			if restr.lvlR < part.balLvl.exp[2] # aggregate capacity variables spatial
+			if restr.lvlR < part.balLvl.exp[2] # aggregate capacity variables spatially
 				grpCapaVar_df[!,:var] = aggregateVar(capaVar_df,rename(grpCapaVar_df,:R_dis => :R_exp),(:Ts_expSup,:Ts_disSup,:Te,:R_exp),anyM.sets)[1]
 			end
 
@@ -531,7 +530,7 @@ function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{I
 				allVar_df[!,:var] = allVar_df[!,:var] .* 1 ./ ava_arr
 
 				# aggregate dispatch variables
-				capaDim_df[!,va] = aggregateVar(allVar_df, capaDim_df, agg_tup, anyM.sets, aggFilt = aggFilt_tup)[1]
+				capaDim_df[!,va] = aggregateVar(allVar_df, select(capaDim_df,intCol(capaDim_df)), agg_tup, anyM.sets, aggFilt = aggFilt_tup)[1]
 			end
 
 			# sum dispatch variables and filter cases without any
@@ -545,7 +544,7 @@ function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{I
 			withlock(anyM.lock) do
 				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, 0.01 * x.disp <=  0.01 * x.capa),eachrow(cns_df))
 			end
-			allCns_df = vcat(allCns_df,select(cns_df,[dim_arr...,:cns]))
+			append!(allCns_df,select(cns_df,[dim_arr...,:cns]))
 		end
 		part.cns[Symbol(type_sym,:Restr)] = orderDf(allCns_df[!,[intCol(allCns_df)...,:cns]])
 	end
@@ -566,15 +565,13 @@ function createRatioCns!(part::TechPart,anyM::anyModel)
 
 		if :M in names(cns_df)
 			joinKey1_tup = (:Ts_expSup, :Ts_dis,  :R_dis, :C, :Te, :M); joinKey2_tup = (:Ts_expSup, :Ts_dis, :R_dis, :Te, :M)
-			ordDim1_tup =  ((:Ts_expSup, :Ts_dis), (:R_dis, :C, :M)); ordDim2_tup = ((:Ts_expSup, :Ts_dis), (:R_dis, :M))
 		else
 			joinKey1_tup = (:Ts_expSup, :Ts_dis,  :R_dis, :C, :Te); joinKey2_tup = (:Ts_expSup, :Ts_dis, :R_dis, :Te)
-			ordDim1_tup = ((:Ts_expSup, :Ts_dis), (:R_dis, :C)); ordDim2_tup = ((:Ts_expSup, :Ts_dis), (:R_dis,))
 		end
 
 		# joins parameter data with ratio controlled variable and all variables
-		cns_df[!,:ratioVar], chldRows_dic = aggregateVar(part.var[type],cns_df,joinKey1_tup, anyM.sets, grpInter = ordDim1_tup, aggFilt = (:C,))
-		cns_df[!,:allVar] = aggregateVar(part.var[type],cns_df, joinKey2_tup, anyM.sets, grpInter = ordDim2_tup, chldRows = chldRows_dic, aggFilt = (:C,))[1]
+		cns_df[!,:ratioVar], chldRows_dic = aggregateVar(part.var[type],select(cns_df,intCol(cns_df)),joinKey1_tup, anyM.sets, aggFilt = (:C,))
+		cns_df[!,:allVar] = aggregateVar(part.var[type],select(cns_df,intCol(cns_df)), joinKey2_tup, anyM.sets, chldRows = chldRows_dic, aggFilt = (:C,))[1]
 
 		# create corresponding constraint
 		withlock(anyM.lock) do

@@ -16,11 +16,11 @@ function prepareExcExpansion!(partExc::OthPart,partLim::OthPart,prepExc_dic::Dic
 	exExp_df = DataFrame(R_a = Int[], R_b = Int[], C = Int[])
 
 	for excPar in intersect((:capaExcResi,:capaExcResiDir),keys(partExc.par))
-		exExp_df = vcat(exExp_df,matchSetParameter(potExc_df,partExc.par[excPar],anyM.sets,anyM.report)[!,[:R_a,:R_b,:C]])
+		append!(exExp_df,matchSetParameter(potExc_df,partExc.par[excPar],anyM.sets,anyM.report)[!,[:R_a,:R_b,:C]])
 	end
 
 	for excPar in intersect((:capaExcUp, :capaExcLow, :capaExFix, :expExcUp, :expExcLow, :expExcFix),keys(partLim.par))
-		exExp_df = vcat(exExp_df,matchSetParameter(potExc_df,partLim.par[excPar],anyM.sets,anyM.report)[!,[:R_a,:R_b,:C]])
+		append!(exExp_df,matchSetParameter(potExc_df,partLim.par[excPar],anyM.sets,anyM.report)[!,[:R_a,:R_b,:C]])
 	end
 
 	# ensure expansion entries are not directed

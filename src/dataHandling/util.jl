@@ -1,4 +1,4 @@
-<
+
 # <editor-fold desc="reporting of calculation progress and error handling"
 
 # XXX return elapsed time since Start_date
@@ -67,6 +67,9 @@ orderDf(in_df::DataFrame) = select(in_df,orderDim(names(in_df),intCol(in_df)))
 
 # XXX writes all tuples occuring in a tuple of pairs and tuples
 mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  x
+
+# XXX check if dataframe should be considered, if energy balance is created for carriers in array
+filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in names(var_df) ? filter(r -> r.C in c_arr,var_df) : var_df
 
 # XXX creates a dictionary that assigns each dispatch timestep inputed to its supordinate dispatch timestep
 function assignSupTs(inputSteps_arr::Array{Int,1},time_Tree::Tree,supordinateLvl_int::Int)
@@ -153,7 +156,7 @@ function mergeDicTable(df_dic::Dict{Symbol,DataFrame},outerJoin_boo::Bool=true)
 		if outerJoin_boo
 			mergeTable_df = join(mergeTable_df, df_dic[restKey]; on = joinCol_tup, kind = :outer)
 		else
-			mergeTable_df = vcat(mergeTable_df, df_dic[restKey])
+			append!(mergeTable_df, df_dic[restKey])
 		end
 	end
 
@@ -216,14 +219,13 @@ end
 # grpInter_tup provides tuples that defines for what combination of sets dictionaries are created (e.g. ((:Ts_dis, :Te), (:R_dis, :C)) saves looked up Ts_dis/Te and R_dis/C combinations to dictionaries)
 # these dictionaries can also be nested indicated by a pair ( e.g. (((:Ts_inv, :Te, :Ts_dis) => (:Ts_inv, :Te))) saves looks-up for Ts_inv/Te and uses these to look-up and save Ts_inv/Te/Ts_dis
 # WARNING unreasonable grpInter_tup can lead to wrong results (e.g.  (((:Ts_inv, :Te) => (:Ts_inv, :Te, :Ts_dis)))
-function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, sets_dic::Dict{Symbol,Tree};  grpInter::Tuple = (),  aggFilt::Tuple = (), srcFilt::Tuple = (), chldRows::Dict{Symbol,Dict{Int,BitSet}} =  Dict{Symbol,Dict{Int,BitSet}}())
+function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, sets_dic::Dict{Symbol,Tree}; aggFilt::Tuple = (), chldRows::Dict{Symbol,Dict{Int,BitSet}} =  Dict{Symbol,Dict{Int,BitSet}}())
 
 	# XXX sanity checks regarding columns
 	if all(names(aggEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to be aggregated") end
 	if all(names(srcEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to aggregate") end
 
 	select!(aggEtr_df,intCol(aggEtr_df,:var))
-
 	# XXX filter entries from aggEtr_df, that based on isolated analysis of columns will not be aggregated
 	for dim in intersect(aggFilt,agg_tup)
 		set_sym = Symbol(split(string(dim),"_")[1])
@@ -235,7 +237,7 @@ function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple
 
 	# XXX filter entries from srcEtr_df, that based on isolated anlysis of columns will not have any values aggregated to
 	idxRel_set = BitSet(1:size(srcEtr_df,1))
-	for dim in intersect(srcFilt,agg_tup)
+	for dim in agg_tup
 		set_sym = Symbol(split(string(dim),"_")[1])
 		allAgg_set = unique(aggEtr_df[!,dim]) |> (z -> union(BitSet(z),map(y -> BitSet(getindex.(getAncestors(y,sets_dic[set_sym],0),1)), z)...))
 		idxRel_set = intersect(idxRel_set,BitSet(findall(map(x -> x in allAgg_set, srcEtr_df[!,dim]))))
@@ -244,42 +246,36 @@ function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple
 	# group aggregation dataframe to relevant columns and removes unrequired columns
 	aggEtrGrp_df = by(aggEtr_df,collect(agg_tup), var = [:var] => x -> sum(x.var))
 
-
 	# XXX create dictionaries in each dimension that assign rows suited for aggregation for each value
 	newChldRows_arr = setdiff(agg_tup,keys(chldRows))
 	for col in newChldRows_arr
-		set_sym = Symbol(split(string(col),"_")[1])
-		# entries that other entries can be aggregated to
-		searchVal_set = BitSet(unique(srcEtrAct_df[!,col]))
+		# row that are potentially aggregated
 		findCol_arr = aggEtrGrp_df[!,col]
 		findCol_set = BitSet(findCol_arr)
 
+		# entries that other entries can be aggregated to
+		searchVal_set = BitSet(unique(srcEtrAct_df[!,col]))
+
 		# to every unique value in column the value itself and its children are assigned
-		idxChild_dic = Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set) |> (z -> filter(x -> !isempty(x[2]),z))
-		# to everything occuring in values, the rows where it appears are assigned
-		childrenRow_dic = groupby(DataFrame(val = findCol_arr, id = 1:length(findCol_arr)),:val) |> (y -> Dict(x.val[1] => BitSet(sort(x[!,:id])) for x in y))
+		set_sym = Symbol(split(string(col),"_")[1])
+		idxChild_dic = Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set)
+
 		# for each unique value in column the rows with children are assigned
-		chldRows[col] = Dict(x => union(map(y -> childrenRow_dic[y],collect(idxChild_dic[x]))...) for x in keys(idxChild_dic))
+		grp_df = groupby(DataFrame(val = findCol_arr, id = 1:length(findCol_arr)),:val)
+		dicVal_dic = Dict(x.val[1] => BitSet(sort(x[!,:id])) for x in grp_df) |> (dic -> Dict(x => union(map(y -> dic[y],collect(idxChild_dic[x]))...) for x in keys(idxChild_dic)))
+		# excludes column from search, if based on it, every entry in find could be aggregated to every row in search
+		if all(length.(values(dicVal_dic)) .== length(findCol_arr))
+			select!(srcEtrAct_df,Not(col)); continue
+		else
+			chldRows[col] = dicVal_dic
+		end
 	end
 
 	# XXX finds aggregation by intersecting suited rows in each dimension
-	# for speedup already computed intersection between certain combination of sets are stored within dictionaries accoring to groupings provided
-	if isempty(grpInter) grpInter = tuple(agg_tup) end
-	saveInter_dic = Dict(x => Dict{Tuple{Vararg{Int}},BitSet}() for x in vcat(map(x -> mixedTupToTup(x),grpInter)...))
-
-	exKeys_dic = Dict(x => BitSet(keys(chldRows[x])) for x in agg_tup)
-
-	# XXX creates actual lookups
-	aggRow_arr = map(eachrow(srcEtrAct_df)) do row
-		# directly returns an empty array, if due to a single dim aggregation can already be ruled out
-		if any(map(x -> !(row[x] in exKeys_dic[x]), agg_tup)) return Int[] end
-		# creates first intersection
-		inter = lookupIntersect(row, grpInter[1],saveInter_dic,chldRows)
-		# creates remaining intersections
-		for grp in grpInter[2:end]
-			inter = intersect(inter,lookupIntersect(row, grp,saveInter_dic,chldRows))
-		end
-  		return inter
+	if isempty(chldRows)
+		aggRow_arr = fill(BitSet(),size(srcEtrAct_df,1))
+	else
+		aggRow_arr = collect(keys(chldRows)) |> (y -> map(x -> intersect(map(y -> chldRows[y][x[y]],y)...) ,eachrow(srcEtrAct_df)))
 	end
 
 	# XXX aggregates values according to lookup
@@ -288,32 +284,6 @@ function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple
 	out_arr[setdiff(1:size(srcEtr_df,1),idxRel_set)] .= AffExpr()
 
 	return out_arr, chldRows
-end
-
-# XXX builds intersection of rows matching the current one in cases where no subdictionary is used, used in aggregateVar
-function lookupIntersect(row::DataFrameRow,grp::T,saveInter_dic::Dict,chldRows_dic::Dict{Symbol,Dict{Int,BitSet}}) where T <: Tuple
-	lookup_tup = tuple(collect(getproperty(row,j) for j in grp)...)
-
-	if lookup_tup in keys(saveInter_dic[grp]) # take value directly from dictionary
-		ele_arr = saveInter_dic[grp][lookup_tup]
-	else  # compute value and write to dictionary
-		ele_arr = intersect([chldRows_dic[j][getproperty(row,j)] for j in grp]...)
-		saveInter_dic[grp][lookup_tup] = ele_arr
-	end
-	return ele_arr
-end
-
-# XXX builds intersection of rows matching the current one in cases where a subdictionary is used according to the named tuple provided, used in aggregateVar
-function lookupIntersect(row::DataFrameRow,grp::T,saveInter_dic::Dict,chldRows_dic::Dict{Symbol,Dict{Int,BitSet}}) where T <: Pair
-	lookup_tup = tuple(collect(getproperty(row,j) for j in grp[1])...)
-
-	if lookup_tup in keys(saveInter_dic[grp[1]]) # take value directly from dictionary
-		ele_arr = saveInter_dic[grp[1]][lookup_tup]
-	else # compute value and write to dictionary
-		ele_arr = intersect(lookupIntersect(row,grp[2],saveInter_dic::Dict,chldRows_dic::Dict{Symbol,Dict{Int,BitSet}}),chldRows_dic[grp[1][end]][getproperty(row,grp[1][end])]) # lookup subdictionary
-		saveInter_dic[grp[1]][lookup_tup] = ele_arr
-	end
-	return ele_arr
 end
 
 # </editor-fold>
@@ -391,7 +361,7 @@ function getAllVariables(va::Symbol,anyM::anyModel)
 	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :expExc => :exc, :ctr => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
 	techIdx_arr = collect(keys(anyM.parts.tech))
 
-	if !(va in keys(varToPart_dic)) # get all variables for technology variables
+	if !(va in keys(varToPart_dic)) # get all variables for technologies
 		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut))
 		techType_arr = filter(x -> !isempty(x[2]),[[vaSpec,filter(y -> vaSpec in keys(anyM.parts.tech[y].var), techIdx_arr)] for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
 		allVar_df = vcat(map(x -> anyM.parts.tech[x[2]].var[x[1]], vcat(map(x -> collect(zip(fill(x[1],length(x[2])),x[2])),techType_arr)...))...)

@@ -6,7 +6,6 @@ function setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyMode
     if typeof(obj_dic) == Symbol
         if obj_dic == :none @objective(anyM.optModel, Min, 1); return, produceMessage(anyM.options,anyM.report, 1," - Set an empty objective function") end
         obj_dic = Dict(obj_dic => 1.0)
-
     end
 
     # XXX create empty variables table for objective variables, if already other object defined, these variables and equations are removed from the model
@@ -72,11 +71,11 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allExp_df[!,:life] .= nothing
 		end
 
-		techFilt_arr = filter(x -> !(any(map(x -> occursin(x,string(va)),("capa","exp")))) || anyM.parts.tech[x].type != :stock, collect(keys(anyM.parts.tech)))
+		techFilt_arr = filter(y -> var_sym in keys(anyM.parts.tech[y].var), techIdx_arr)
 
 		# use technical lifetime where no economic lifetime could be obtained
 		if va != :Exc
-			allPar_arr = map(x -> anyM.parts.tech[x].par[Symbol(:life,va)].data,filter(y -> var_sym in keys(anyM.parts.tech[y].var), techIdx_arr))
+			allPar_arr = map(x -> anyM.parts.tech[x].par[Symbol(:life,va)].data,filter(y -> var_sym in keys(anyM.parts.tech[y].var), techFilt_arr))
 			union(intCol.(allPar_arr)...) |> (z -> map(x -> map(y -> insertcols!(x,1,(y => fill(0,size(x,1)))) , setdiff(z,intCol(x)) ) ,allPar_arr))
 			lifePar_obj = copy(anyM.parts.tech[techFilt_arr[1]].par[Symbol(:life,va)],vcat(allPar_arr...))
 		else
