@@ -161,10 +161,22 @@ function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,t
 
 		allVar_df = DataFrame(Ts_dis = Int[], R_dis = Int[], var = AffExpr[])
 		for x in relTech_arr
-			append!(allVar_df,select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var]))
+			add_df = select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var])
+			# if dispatch regions for technology were are disaggregated, replace the disaggregated with the ones relevant for the carrier
+			if tech_dic[x[1]].disAgg
+				rAgg_dic = Dict(x => getindex(getAncestors(x,anyM.sets[:R],anyM.cInfo[c].rDis)[end],1) for x in unique(add_df[!,:R_dis]))
+				add_df[!,:R_dis] = map(x -> rAgg_dic[x],add_df[!,:R_dis])
+			end
+			add_df[!,:var] = add_df[!,:var] .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
+			append!(allVar_df, add_df)
 		end
 
 		grpVar_df = by(allVar_df, [:Ts_dis, :R_dis], var = [:var] => x -> sum(x.var))
+
+		filter(x -> x.Ts_dis == 13881 && !(x.R_dis in (1,2)), allVar_df)
+
+		unique(filter(x -> !(x.R_dis in (1,2)), grpVar_df)[!,:R_dis])
+
 
 		if c == cBal_int
 			techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis], :left, Dict(:var => AffExpr()))[!,:var]
@@ -256,11 +268,32 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 			end
 		end
 
+		# XXX check for suspicious entries for capacity where limits are provided for the sum of capacity over several years
+		if occursin("capa",string(va))
+			println(allLimit_df)
+			if !(:Ts_disSup in names(allLimit_df))
+				println(allLimit_df)
+				push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the supordinate dispatch timestep, this means the sum of capacity over all supordinate timesteps was limited
+																												(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
+			else 0 in unique(allLimit_df[!,:Ts_disSup])
+				relEntr_df = filter(x -> x.Ts_disSup == 0, allLimit_df)
+				if :Te in names(relEntr_df)
+					allTe_arr = unique(relEntr_df[!,:Te])
+					for t in allTe_arr
+						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for $(createFullString(t,anyM.sets[:Te])) without specificing the supordinate dispatch timestep, this means the sum of capacity over all supordinate timesteps was limited
+																						(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
+					end
+				else
+					push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the supordinate dispatch timestep, this means the sum of capacity over all supordinate timesteps was limited
+																												(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
+				end
+			end
+		end
+
 		# XXX create final constraints
 		for lim in limitCol_arr
 			relLim_df = filter(x -> !isnothing(x[lim]),allLimit_df[!,Not(filter(x -> x != lim,limitCol_arr))])
             if isempty(relLim_df) continue end
-
 
 			withlock(anyM.lock) do
 				if lim == :Up

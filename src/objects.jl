@@ -155,7 +155,8 @@ struct modOptions
 	# model generation
 	decomm::Symbol
 	interCapa::Symbol
-	shortExp::Int64
+	supTsLvl::Int
+	shortExp::Int
 	# managing numerical issues
 	scale::NamedTuple{(:cost,:ener,:capa,:ems),Tuple{Float64,Float64,Float64,Float64}}
 	bound::NamedTuple{(:exp,:disp, :cost),Tuple{Union{Nothing,Float64},Union{Nothing,Float64},Union{Nothing,Float64}}}
@@ -180,7 +181,7 @@ mutable struct anyModel
 	sets::Dict{Symbol,Tree}
 	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Int,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
 
-	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; name = "", csvDelim = ",", decomm = :none, interCapa = :linear, shortExp = 10, reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1,
+	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; name = "", csvDelim = ",", decomm = :none, interCapa = :linear, supTsLvl = 0, shortExp = 10, reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1,
 																																						bound = (exp = nothing, disp = nothing, cost = nothing))
 		anyM = new()
 
@@ -193,7 +194,7 @@ mutable struct anyModel
 		anyM.lock = SpinLock()
 
 		# XXX sets whole options object from specified directories TODO arbeite mit kwargs später
-		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, name = name, csvDelim = csvDelim, outStamp = Dates.format(now(),"yyyymmddHHMM"), decomm = decomm, interCapa = interCapa, shortExp = shortExp,
+		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, name = name, csvDelim = csvDelim, outStamp = Dates.format(now(),"yyyymmddHHMM"), decomm = decomm, interCapa = interCapa, supTsLvl = supTsLvl, shortExp = shortExp,
 																																			scale = (cost = 1.0, ener = 1.0,capa = 1.0, ems = 1.0), bound = bound,
 																																				reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
 
@@ -214,19 +215,16 @@ mutable struct anyModel
 
 		# <editor-fold desc="create part objects and general mappings"
 		# assign actual tech to parents
+		# assign actual tech to parents
 		relTech_df = setData_dic[:Te][!,Symbol.(filter(x -> occursin("technology",x) && !isnothing(tryparse(Int16,string(x[end]))), string.(names(setData_dic[:Te]))))]
-		techIdx_arr = map(x -> lookupTupleTree(x,anyM.sets[:Te]),map(y -> tuple(filter(x -> x != "",collect(y))...),eachrow(relTech_df)))
+	 	techIdx_arr = filter(z -> isempty(anyM.sets[:Te].nodes[z].down), map(x -> lookupTupleTree(tuple(filter(y -> y != "", collect(x))...),anyM.sets[:Te]), eachrow(relTech_df)))
 
 		anyM.parts = (tech = Dict(x => TechPart(getUniName(x,anyM.sets[:Te])) for x in techIdx_arr), trd = OthPart(), exc = OthPart(), bal = OthPart(), lim = OthPart(), obj = OthPart())
 
 		createCarrierMapping!(setData_dic,anyM)
 		createTimestepMapping!(anyM)
 
-
 		# XXX write general info about technologies
-		relTech_df = setData_dic[:Te][!,Symbol.(filter(x -> occursin("technology",x) && !isnothing(tryparse(Int16,string(x[end]))), string.(names(setData_dic[:Te]))))]
-		techIdx_arr = map(x -> lookupTupleTree(x,anyM.sets[:Te]),map(y -> tuple(filter(x -> x != "",collect(y))...),eachrow(relTech_df)))
-
 		for t in techIdx_arr createTechInfo!(t, setData_dic, anyM) end
 		produceMessage(anyM.options,anyM.report, 2," - Created all mappings among sets")
 
@@ -239,6 +237,7 @@ mutable struct anyModel
 
 		return anyM
 	end
+
 end
 
 # </editor-fold>

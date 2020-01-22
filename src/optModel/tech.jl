@@ -194,7 +194,6 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 		# create dataframe of capacity or expansion variables by creating the required capacity variables and join them with pure residual values
 		var_df = createVar(varMap_tup.var,string(expVar),anyM.options.bound.exp,anyM.optModel,anyM.lock,anyM.sets)
 		if !isempty(varMap_tup.resi)
-
 			if expVar == :capaExc # flips and repeats entries for directed exchange variabes before moving on
 				var_df = filter(r -> r.dir,var_df) |> (x -> vcat(filter(r -> !r.dir,var_df),vcat(x,rename(x,replace(names(x),:R_to => :R_from, :R_from => :R_to)))))
 			end
@@ -236,7 +235,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 			# join ratios and corresponding
 			ratio_df = join(preRatio_df,part.var[ratioVar_sym]; on = join_arr, kind = :inner)
 			ratio_df[!,:var] = ratio_df[!,:var] .* ratio_df[!,:ratio]
-			var_df = vcat(ratio_df[!,Not(:ratio)],var_df)
+			var_df = ratio_df[!,Not(:ratio)] |> (x -> vcat(x,join(var_df,x, on = join_arr, kind = :anti)))
 		end
 
 		if !isempty(var_df)	part.var[expVar] = orderDf(var_df) end

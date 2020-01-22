@@ -260,7 +260,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
     undefinedPar_arr = setdiff(unique(vcat(values(parToFile_dic)...)),keys(parDef_dic))
     if !isempty(undefinedPar_arr)
         for undefined in undefinedPar_arr push!(anyM.report,(3,"parameter assignment",string(undefined),"parameter was not defined in parameter.jl")) end
-        print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options,true)
+        print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options)
     end
 
     # maps potential nodes for inheritance from technology tree to "actual" technologies

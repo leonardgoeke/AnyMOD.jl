@@ -8,15 +8,15 @@ function lookupTupleTree(input_uni::Union{Tuple{Vararg{String,N} where N},String
 	gaps_boo = "" in input_uni
 
 	if startLvl_int == 1 && !gaps_boo
-		return tree_obj.srcTup[input_uni]
+		return getDicEmpty(tree_obj.srcTup,input_uni)
 	else
 		# initialize by searching for last entry in input tuple
 		start_int = maximum(noGap_arr)
-		found_arr = tree_obj.srcStr[input_uni[start_int]]
+		found_arr = getDicEmpty(tree_obj.srcStr,input_uni[start_int])
 
 		# checks which nodes found initially actually comply with rest of input_uni
 		for i in setdiff(noGap_arr,start_int)
-			found_arr = tree_obj.srcStr[input_uni[i]] |> (y -> filter(x -> goUp(x,tree_obj.up,start_int - i) in y,found_arr))
+			found_arr = getDicEmpty(tree_obj.srcStr,input_uni[i]) |> (y -> filter(x -> goUp(x,tree_obj.up,start_int - i) in y,found_arr))
 		end
 	end
 	return found_arr
@@ -33,11 +33,11 @@ function sortSiblings(nodesIndex_arr::Array{Int,1},tree_obj::Tree)
 
     for (row, row_arr) in enumerate(hertiLine_mat)
 		for ele in row_arr
-            herti_mat[row,ele[2]+1] = ele[1]
+            herti_mat[row,tree_obj.nodes[ele[1]].lvl+1] = ele[1]
         end
     end
 
-    order_mat = sortslices(hcat(nodesIndex_arr,herti_mat), dims=1, by = x-> x[2:end])
+    order_mat = sortslices(hcat(nodesIndex_arr,herti_mat), dims=1, by = x-> x[2:end,1])
 
     return order_mat[:,1]
 end
@@ -60,14 +60,13 @@ function getAncestors(startNode_int::Int,tree_obj::Tree,limitLvl_int::Int=0)
 	if currLvl_int == 0 || limitLvl_int == currLvl_int  return [(startNode_int, currLvl_int)] end
 	# initialize move up the tree
 	heri_arr = Array{Tuple{Int,Int},1}()
-	currLvl_int = currLvl_int - 1
 	next = startNode_int
 
 	# loops up the tree and obtains (id, level) combinations
-	while limitLvl_int <= currLvl_int
+	while limitLvl_int < currLvl_int
 		next = tree_obj.up[next]
+		currLvl_int = tree_obj.nodes[next].lvl
 		push!(heri_arr, (next, currLvl_int))
-		currLvl_int = currLvl_int - 1
 	end
 
 	return heri_arr

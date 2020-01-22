@@ -54,6 +54,9 @@ end
 removeVal(input_df::DataFrame) = filter(x -> !(x in (:val,:ratio)),names(input_df))
 removeVal(col_arr::Array{Symbol,1}) = filter(x -> !(x in (:val,:ratio))l,col_arr)
 
+# XXX return an empty integer array instead of an error, if a key is not in a dictionary
+getDicEmpty(dic::Dict,key::Any) = key in keys(dic) ? dic[key] : Int[]
+
 # XXX get names of column of type integer
 intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, eachcol(in_df, true)),1)
 intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(names(in_df),[add_sym]))

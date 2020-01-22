@@ -39,7 +39,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     		anyM.cInfo[car_int] = (tsDis = res_dic[:lvlTsDis],tsExp = res_dic[:lvlTsExp],rDis = res_dic[:lvlRDis],rExp = res_dic[:lvlRExp], eq = row[:carrier_equality] == "yes" ? true : false)
     	end
     end
-	if any(getindex.(anyM.report,1) .== 3) errorTest(anyM.report,anyM.options, inCode = true) end
+	if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
 	 #  loops over all carriers and check consistency of resolutions and tries to inherit a resolution where none was defined, cannot be carried if above they have already been errors detected
     for c in filter(x -> x != 0, keys(anyM.sets[:C].nodes))
     	anyM.cInfo = evaluateReso(c,anyM.sets[:C],anyM.cInfo,anyM.report)
@@ -91,6 +91,16 @@ end
 function createTimestepMapping!(anyM::anyModel)
     # XXX writes the supordinate dispatch level, the timesteps on this level and scaling factor for timesteps depending on the respective supordinate dispatch timestep and the level
     supTsLvl_int = maximum(map(x -> getfield(x,:tsExp),values(anyM.cInfo)))
+
+	if anyM.options.supTsLvl != 0
+		if minimum(map(x -> getfield(x,:tsDis),values(anyM.cInfo))) <= anyM.options.supTsLvl
+			supTsLvl_int = anyM.options.supTsLvl
+			push!(anyM.report,(1,"timestep mapping","","supordinate dispatch level provided via options was used"))
+		else
+			push!(anyM.report,(2,"timestep mapping","","supordinate dispatch level provided via options could not be used, because it was more detailed than at least one dispatch level provided"))
+		end
+	end
+
     supTs_tup = tuple(sort(getfield.(filter(x -> x.lvl == supTsLvl_int,collect(values(anyM.sets[:Ts].nodes))),:idx))...)
     scaSupTs_dic = Dict((x[1],x[2]) => 8760/length(getDescendants(x[1],anyM.sets[:Ts],false,x[2])) for x in Iterators.product(supTs_tup,filter(x -> x >= supTsLvl_int,1:anyM.sets[:Ts].height)))
     anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic)
@@ -114,7 +124,10 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     # gets index for respective technology
     name_tup = getUniName(t,anyM.sets[:Te])
     allRow_df = eachrow(setData_dic[:Te])
-    for i = 1:length(name_tup) allRow_df = filter(r -> name_tup[i] == r[lvlTech_arr[i]],allRow_df) end
+
+    for i in unique(vcat((t,anyM.sets[:Te].nodes[t].lvl),getAncestors(t,anyM.sets[:Te],1)...))
+		allRow_df = filter(r -> r[Symbol(:technology_,i[2])] == anyM.sets[:Te].nodes[i[1]].val,allRow_df)
+	end
     row_df = allRow_df[1]
 
     # XXX writes carrier info
@@ -183,20 +196,36 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     end
 
     # XXX determines resolution
-    # determines expansion timestps
-    expLvl_tup = tuple([maximum(map(y -> getfield(anyM.cInfo[y],k), vcat(collect.(values(carGrp_ntup))...))) for k in (:tsExp, :rExp)]...)
 
+    # determines expansion timesteps (lowest level of expansion among all carriers, temporal level can be overwritten by technology specific values)
+	expR_int = maximum(map(y -> getfield(anyM.cInfo[y],:rExp), vcat(collect.(values(carGrp_ntup))...)))
+	expTs_int = maximum(map(y -> getfield(anyM.cInfo[y],:tsExp), vcat(collect.(values(carGrp_ntup))...)))
+
+	if :timestep_expansion in names(row_df)
+		tsExp_int = tryparse(Int,row_df[:timestep_expansion])
+
+		if !isnothing(tsExp_int)
+			if tsExp_int > anyM.supTs.lvl
+				push!(anyM.report,(2,"technology mapping","expansion level","specific temporal expansion level provided for $(createFullString(t,anyM.sets[:Te])) is below supordinate dispatch level and therefore could not be used"))
+			else
+				push!(anyM.report,(1,"technology mapping","expansion level","specific temporal expansion level provided for $(createFullString(t,anyM.sets[:Te])) was used instead of a carrier based value"))
+				expTs_int = tsExp_int
+			end
+		end
+	end
+    expLvl_tup = (expTs_int,expR_int)
     if isempty(keys(carGrp_ntup)) return end
 
     # determines reference level for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
     if !isempty(union(carGrp_ntup.use,carGrp_ntup.gen))
-        refLvl_tup = map(z -> minimum([maximum(map(y -> getfield(anyM.cInfo[y],z),getfield(carGrp_ntup,k))) for k in intersect(keys(part.carrier),(:gen, :use))]),(:tsDis,:rDis))
+		refTs_int = minimum([maximum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
+		refR_int = minimum([maximum([getproperty(anyM.cInfo[x], disAgg_boo ? :rExp : :rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
+        refLvl_tup = (refTs_int, refR_int)
     else
         refLvl_tup = nothing
     end
 
-    balLvl_ntup = (exp = expLvl_tup, ref = refLvl_tup)
-    part.balLvl = balLvl_ntup
+    part.balLvl = (exp = expLvl_tup, ref = refLvl_tup)
 
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for technology $(createFullString(t,anyM.sets[:Te]))")
 end
