@@ -62,13 +62,17 @@ end
 # XXX add residual capacties for exchange (both symmetric and directed)
 function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTuple},potExc_df::DataFrame,anyM::anyModel)
 
+	expSup_dic = Dict(x => getDescendants(x,anyM.sets[:Ts],true,anyM.supTs.lvl) for x in unique(potExc_df[!,:Ts_exp]))
+	potExc_df[!,:Ts_disSup] = map(x -> expSup_dic[x],potExc_df[!,:Ts_exp])
+	potExc_df = flatten(potExc_df[!,Not(:Ts_exp)],:Ts_disSup)
+
 	# obtain symmetric residual capacites
-	capaResi_df = filter(r -> r.R_a < r.R_b,checkResiCapa(:capaExc,rename(potExc_df,:Ts_exp => :Ts_disSup), partExc, anyM))
+	capaResi_df = filter(r -> r.R_a < r.R_b,checkResiCapa(:capaExc,potExc_df, partExc, anyM))
 
 	# manipulate entries in case directed residual capacities are defined
 	if :capaExcResiDir in keys(partExc.par)
 
-		directExc_df = matchSetParameter(rename(potExc_df,:Ts_exp => :Ts_disSup),partExc.par[:capaExcResiDir],anyM.sets,anyM.report)
+		directExc_df = matchSetParameter(potExc_df,partExc.par[:capaExcResiDir],anyM.sets,anyM.report)
 		directExc_df[!,:var] = map(x -> AffExpr(x), directExc_df[!,:val]); select!(directExc_df,Not(:val))
 
 		excDim_arr = [:C, :R_a, :R_b, :Ts_disSup]

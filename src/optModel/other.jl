@@ -270,12 +270,10 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 		# XXX check for suspicious entries for capacity where limits are provided for the sum of capacity over several years
 		if occursin("capa",string(va))
-			println(allLimit_df)
 			if !(:Ts_disSup in names(allLimit_df))
-				println(allLimit_df)
 				push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the supordinate dispatch timestep, this means the sum of capacity over all supordinate timesteps was limited
 																												(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
-			else 0 in unique(allLimit_df[!,:Ts_disSup])
+			elseif 0 in unique(allLimit_df[!,:Ts_disSup])
 				relEntr_df = filter(x -> x.Ts_disSup == 0, allLimit_df)
 				if :Te in names(relEntr_df)
 					allTe_arr = unique(relEntr_df[!,:Te])
