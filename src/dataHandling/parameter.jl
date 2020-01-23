@@ -665,24 +665,17 @@ function heritParameter_up(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{Int
     heritSetShort_sym = Symbol(split(String(herit_par[1]),"_")[1])
 
     unmatch_set = BitSet(unmatch_arr)
-    unmatchChild_dic = Dict(x => intersect(unmatch_set,BitSet(getDescendants(x,sets[heritSetShort_sym],true))) for x in unique(paraData_df[!, herit_par[1]]))
+    unmatchChild_dic = Dict(x => filter(y -> y != x, intersect(unmatch_set,BitSet(getDescendants(x,sets[heritSetShort_sym],true)))) for x in unique(paraData_df[!, herit_par[1]]))
 
     # adds children where their data is missing to provided parameter data
     paraDataIn_df = filter(r -> !isempty(unmatchChild_dic[getproperty(r,herit_par[1])]),paraData_df)
     if isempty(paraDataIn_df) return paraDataIn_df end
-    paraDataIn_df[!,:child] = map(x -> unmatchChild_dic[x],paraDataIn_df[!,herit_par[1]])
-    paraDataIn_df = flatten(paraDataIn_df,:child)
+    paraDataIn_df[!,:child] = map(x -> maximum(unmatchChild_dic[x]),paraDataIn_df[!,herit_par[1]])
 
-    # determines all columns for groupby statement
-    grpBy_arr = filter(x -> !(x in [:val,herit_par[1]]),names(paraDataIn_df))
+    select!(paraDataIn_df, Not(herit_par[1]))
+    rename!(paraDataIn_df,:child => herit_par[1])
 
-    # uses closest child with value as new data
-    newData_df = by(paraDataIn_df, grpBy_arr, [:val,herit_par[1]] => x -> maximum(getfield(x, herit_par[1])) |> (z -> NamedTuple{(herit_par[1],:val)}(tuple(z,x.val[findall(getfield(x,herit_par[1]) .== z)][1]))))
-
-    select!(newData_df, Not(herit_par[1]))
-    rename!(newData_df,:child => herit_par[1])
-
-    return newData_df
+    return paraDataIn_df
 end
 
 # XXX covers all inheritance from nodes below unmatched nodes

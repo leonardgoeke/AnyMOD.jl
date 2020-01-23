@@ -50,7 +50,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	c_arr = filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx))
 	allDim_df = createPotDisp(c_arr,anyM)
 	bal_tup = (:C,:Ts_dis)
-	agg_tup = (:C, :R_dis, :Ts_dis)
+	agg_arr = [:Ts_dis, :R_dis, :C]
 
 	# <editor-fold desc="create potential curtailment variables
 
@@ -71,6 +71,8 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	Threads.@threads for c in allC_arr
 		relC_arr = unique([c,getDescendants(c,anyM.sets[:C])...])
 
+		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
+
 		# XXX add demand and scale it
 		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets,anyM.report)
 		cns_df[!,:dem] = cns_df[!,:val] .* getScale(cns_df,anyM.sets[:Ts],anyM.supTs)
@@ -80,18 +82,18 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
 
 		# add tech variables
-		cns_df[!,:techVar] = getTechEnerBal(c,relC_arr,src_df,techIdx_arr,anyM.parts.tech,anyM.sets,agg_tup)
+		cns_df[!,:techVar] = getTechEnerBal(c,relC_arr,src_df,techIdx_arr,anyM.parts.tech,anyM.sets)
 
 		# add curtailment variables
 		if :crt in keys(partBal.var)
-			cns_df[!,:crtVar] = filterCarrier(partBal.var[:crt],relC_arr) |> (x -> aggregateVar(x,src_df,agg_tup,anyM.sets)[1])
+			cns_df[!,:crtVar] = filterCarrier(partBal.var[:crt],relC_arr) |> (x -> aggUniVar(x,src_df,agg_arr, cRes_tup,anyM.sets))
 		else
 			cns_df[!,:crtVar] .= AffExpr()
 		end
 
 		# add trade variables
 		if !isempty(anyM.parts.trd.var)
-			cns_df[!,:trdVar] = sum([filterCarrier(anyM.parts.trd.var[trd],relC_arr) |> (x -> aggregateVar(x,src_df,agg_tup,anyM.sets)[1] |> (y -> trd != :trdSell ? y : -1.0 * y)) for trd in keys(anyM.parts.trd.var)])
+			cns_df[!,:trdVar] = sum([filterCarrier(anyM.parts.trd.var[trd],relC_arr) |> (x -> aggUniVar(x,src_df,agg_arr,cRes_tup,anyM.sets) |> (y -> trd != :trdSell ? y : -1.0 * y)) for trd in keys(anyM.parts.trd.var)])
 		else
 			cns_df[!,:trdVar] .= AffExpr()
 		end
@@ -121,8 +123,8 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 
 			balTo_tup, balFrom_tup = [tuple(replace(collect(bal_tup),:R_dis => x)...) for x in [:R_to, :R_from]]
 
-			excFrom_arr = aggregateVar(convertExcCol(excVarFrom_df),rename(src_df,:R_dis => :R_to),(:Ts_dis,:R_to,:C),anyM.sets)[1]
-			excTo_arr  = aggregateVar(excVarTo_df,rename(src_df,:R_dis => :R_from),(:Ts_dis,:R_from,:C),anyM.sets)[1]
+			excFrom_arr = aggUniVar(convertExcCol(excVarFrom_df),rename(src_df,:R_dis => :R_to),[:Ts_dis,:R_to,:C],(Ts_dis = cRes_tup[1], R_to = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
+			excTo_arr  = aggUniVar(excVarTo_df,rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
 
 			cns_df[!,:excVar] =  excFrom_arr .- excTo_arr
 		end
@@ -147,8 +149,11 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 end
 
 # XXX aggregate all technology variables for energy balance
-function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,techIdx_arr::Array{Int,1},tech_dic::Dict{Int,TechPart},sets_dic::Dict{Symbol,Tree},agg_tup::Tuple)
+function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,techIdx_arr::Array{Int,1},tech_dic::Dict{Int,TechPart},sets_dic::Dict{Symbol,Tree})
 	techVar_arr = Array{Array{AffExpr,1}}(undef,length(relC_arr))
+
+	# get temporal and spatial resolution for carrier being balanced
+	cBalRes_tup = anyM.cInfo[cBal_int] |> (x -> (x.tsDis, x.rDis))
 
 	# loops over all carriers relevant for respective energy balance
 	for (idx,c) in enumerate(relC_arr)
@@ -159,30 +164,31 @@ function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,t
 			continue
 		end
 
+		# prepare loop over tech for c by creating empty dataframe and get temporal and spatial resolution for carrier being balanced
 		allVar_df = DataFrame(Ts_dis = Int[], R_dis = Int[], var = AffExpr[])
+		cRes_tup = anyM.cInfo[c] |> (x -> (x.tsDis, x.rDis))
+
 		for x in relTech_arr
 			add_df = select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var])
-			# if dispatch regions for technology were are disaggregated, replace the disaggregated with the ones relevant for the carrier
-			if tech_dic[x[1]].disAgg
-				rAgg_dic = Dict(x => getindex(getAncestors(x,anyM.sets[:R],anyM.cInfo[c].rDis)[end],1) for x in unique(add_df[!,:R_dis]))
-				add_df[!,:R_dis] = map(x -> rAgg_dic[x],add_df[!,:R_dis])
+			# gets resolution of technology being balanced from respective carrier and the information, if it is a disaggregated further or not
+			tRes_tup = tech_dic[x[1]].disAgg ? (cRes_tup[1], anyM.cInfo[c].rExp) : cRes_tup
+
+			# if dispatch regions for technology were disaggregated, replace the disaggregated with the ones relevant for the carrier
+			for (idx,dim) in enumerate([:Ts_dis,:R_dis])
+				if cBalRes_tup[idx] != tRes_tup[idx]
+					set_sym = Symbol(split(string(dim),"_")[1])
+					dim_dic = Dict(x => getindex(getAncestors(x,anyM.sets[set_sym],cBalRes_tup[idx])[end],1) for x in unique(add_df[!,dim]))
+					add_df[!,dim] = map(x -> dim_dic[x],add_df[!,dim])
+				end
 			end
+
 			add_df[!,:var] = add_df[!,:var] .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
 			append!(allVar_df, add_df)
 		end
 
 		grpVar_df = by(allVar_df, [:Ts_dis, :R_dis], var = [:var] => x -> sum(x.var))
 
-		filter(x -> x.Ts_dis == 13881 && !(x.R_dis in (1,2)), allVar_df)
-
-		unique(filter(x -> !(x.R_dis in (1,2)), grpVar_df)[!,:R_dis])
-
-
-		if c == cBal_int
-			techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis], :left, Dict(:var => AffExpr()))[!,:var]
-		else
-			techVar_arr[idx] = aggregateVar(grpVar_df,src_df,(:Ts_dis, :R_dis),sets_dic)[1]
-		end
+		techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis], :left, Dict(:var => AffExpr()))[!,:var]
 	end
 
 	return map(x -> sum(x),eachrow(hcat(techVar_arr...)))
@@ -220,7 +226,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 			# try to aggregate variables to limits directly provided via inputs
 			limit_df = copy(par_obj.data)
-			limit_df[!,:var] = aggregateVar(grpVar_df, limit_df[!,Not(:val)], agg_tup, anyM.sets, aggFilt = agg_tup)[1]
+			limit_df[!,:var] = aggDivVar(grpVar_df, limit_df[!,Not(:val)], agg_tup, anyM.sets, aggFilt = agg_tup)
 
 			# gets provided limit parameters, that no variables could assigned to so far and tests if via inheritance any could be assigned
 			mtcPar_arr, noMtcPar_arr  = findall(map(x -> x != AffExpr(),limit_df[!,:var])) |>  (x -> [x, setdiff(1:size(par_obj.data,1),x)])
@@ -233,7 +239,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 				aggPar_obj.data = matchSetParameter(grpVar_df[!,Not(:var)],aggPar_obj,anyM.sets,anyM.report, useNew = false)
 				# again performs aggregation for inherited parameter data and merges if original limits
 				aggLimit_df = copy(aggPar_obj.data)
-				aggLimit_df[!,:var]  = aggregateVar(grpVar_df, aggLimit_df, agg_tup, anyM.sets, aggFilt = agg_tup)[1]
+				aggLimit_df[!,:var]  = aggDivVar(grpVar_df, aggLimit_df, agg_tup, anyM.sets, aggFilt = agg_tup)
 				limit_df = vcat(limit_df,aggLimit_df)
 			end
 

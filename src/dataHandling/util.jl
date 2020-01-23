@@ -217,12 +217,28 @@ end
 
 # <editor-fold desc="functions and sub-functions to aggregate variables"
 
-# XXX creates var column for rows in srcEtr_df from rows in aggEtr_df along columns provided via aggCol_tup
-# the aggregation process is speeded-up by saving the location of set combinations that were already looked up to a dictionary
-# grpInter_tup provides tuples that defines for what combination of sets dictionaries are created (e.g. ((:Ts_dis, :Te), (:R_dis, :C)) saves looked up Ts_dis/Te and R_dis/C combinations to dictionaries)
-# these dictionaries can also be nested indicated by a pair ( e.g. (((:Ts_inv, :Te, :Ts_dis) => (:Ts_inv, :Te))) saves looks-up for Ts_inv/Te and uses these to look-up and save Ts_inv/Te/Ts_dis
-# WARNING unreasonable grpInter_tup can lead to wrong results (e.g.  (((:Ts_inv, :Te) => (:Ts_inv, :Te, :Ts_dis)))
-function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, sets_dic::Dict{Symbol,Tree}; aggFilt::Tuple = (), chldRows::Dict{Symbol,Dict{Int,BitSet}} =  Dict{Symbol,Dict{Int,BitSet}}())
+# XXX aggregates variables in aggregation to rows in serach, function used, if all entries of search have the same resolution (all entries in a relevant column are on the same level)
+function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Symbol,1},srcRes_tup::NamedTuple,sets_dic::Dict{Symbol,Tree})
+	if isempty(aggEtr_df) return fill(AffExpr(),size(srcEtr_df,1)) end
+
+	# only selects relevant columns
+    aggEtr_df = select(aggEtr_df,vcat(:var,agg_arr...))
+	srcEtr_df = select(srcEtr_df,agg_arr)
+
+	# adjusts entries in aggregation dataframe to comply with resolution of search dataframe
+	for dim in intersect(keys(srcRes_tup),agg_arr)
+		set_sym = Symbol(split(string(dim),"_")[1])
+		dim_dic = Dict(x => getAncestors(x,sets_dic[set_sym],getfield(srcRes_tup,dim))[end][1] for x in unique(aggEtr_df[!,dim]))
+		aggEtr_df[!,dim] .= map(x -> dim_dic[x],aggEtr_df[!,dim])
+	end
+
+	aggEtrGrp_df = by(aggEtr_df,agg_arr, var = [:var] => x -> sum(x.var))
+	var_arr = joinMissing(srcEtr_df,aggEtrGrp_df,agg_arr,:left,Dict(:var => AffExpr()))[!,:var]
+	return var_arr
+end
+
+# XXX aggregates variables in aggregation to rows in serach, function used, if entries of search can have different resolutions (not all entries in a relevant column are on the same level)
+function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, sets_dic::Dict{Symbol,Tree}; aggFilt::Tuple = ())
 
 	# XXX sanity checks regarding columns
 	if all(names(aggEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to be aggregated") end
@@ -236,7 +252,7 @@ function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple
 		aggEtr_df = aggEtr_df[findall(map(x -> (x in allSrc_set),aggEtr_df[!,dim])),:]
 	end
 
-	if isempty(aggEtr_df) return fill(AffExpr(),size(srcEtr_df,1)), chldRows end
+	if isempty(aggEtr_df) return fill(AffExpr(),size(srcEtr_df,1)) end
 
 	# XXX filter entries from srcEtr_df, that based on isolated anlysis of columns will not have any values aggregated to
 	idxRel_set = BitSet(1:size(srcEtr_df,1))
@@ -250,8 +266,8 @@ function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple
 	aggEtrGrp_df = by(aggEtr_df,collect(agg_tup), var = [:var] => x -> sum(x.var))
 
 	# XXX create dictionaries in each dimension that assign rows suited for aggregation for each value
-	newChldRows_arr = setdiff(agg_tup,keys(chldRows))
-	for col in newChldRows_arr
+	chldRows = Dict{Symbol,Dict{Int,BitSet}}()
+	for col in agg_tup
 		# row that are potentially aggregated
 		findCol_arr = aggEtrGrp_df[!,col]
 		findCol_set = BitSet(findCol_arr)
@@ -286,7 +302,7 @@ function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple
 	out_arr[collect(idxRel_set)] =  map(x -> sum(aggEtrGrp_df[x,:var]), collect.(aggRow_arr))
 	out_arr[setdiff(1:size(srcEtr_df,1),idxRel_set)] .= AffExpr()
 
-	return out_arr, chldRows
+	return out_arr
 end
 
 # </editor-fold>
