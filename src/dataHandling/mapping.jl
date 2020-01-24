@@ -93,7 +93,7 @@ function createTimestepMapping!(anyM::anyModel)
     supTsLvl_int = maximum(map(x -> getfield(x,:tsExp),values(anyM.cInfo)))
 
 	if anyM.options.supTsLvl != 0
-		if minimum(map(x -> getfield(x,:tsDis),values(anyM.cInfo))) <= anyM.options.supTsLvl
+		if minimum(map(x -> getfield(x,:tsDis),values(anyM.cInfo))) >= anyM.options.supTsLvl
 			supTsLvl_int = anyM.options.supTsLvl
 			push!(anyM.report,(1,"timestep mapping","","supordinate dispatch level provided via options was used"))
 		else
