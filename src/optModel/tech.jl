@@ -486,7 +486,7 @@ function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{I
 
 		# loop over indiviudal constraints
 		for (idx,restr) in enumerate(eachrow(restrGrp))
-			allCns_arr[idx] = createRestr(part,part.var[Symbol(capa_sym,info_ntup.capa)],restr,type_sym,info_ntup,ts_dic,r_dic,anyM.sets,anyM.supTs)
+			allCns_arr[idx] = createRestr(part,copy(part.var[Symbol(capa_sym,info_ntup.capa)]),restr,type_sym,info_ntup,ts_dic,r_dic,anyM.sets,anyM.supTs)
 		end
 
 		allCns_df = vcat(allCns_arr...)
