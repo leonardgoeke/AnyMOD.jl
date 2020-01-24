@@ -40,8 +40,11 @@ function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::I
 
 	sty_dic[currentLvl]
     if options.reportLvl >= currentLvl
-		options.errCheckLvl >= currentLvl ? printstyled(options.name, getElapsed(options.startTime), fixedString, dynamicString; color = sty_dic[currentLvl]) :
-															printstyled(options.name,getElapsed(options.startTime), fixedString, dynamicString, "\n"; color = sty_dic[currentLvl])
+		if options.errCheckLvl >= currentLvl
+			printstyled(options.name; color = :underline); printstyled(" ", getElapsed(options.startTime), fixedString, dynamicString; color = sty_dic[currentLvl])
+		else
+			printstyled(options.name; color = :underline); printstyled(" ",getElapsed(options.startTime), fixedString, dynamicString, "\n"; color = sty_dic[currentLvl])
+		end
 	end
     if options.errCheckLvl >= currentLvl errorTest(report,options,write = options.errWrtLvl >= currentLvl) end
 end
