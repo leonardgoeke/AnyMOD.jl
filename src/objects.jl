@@ -254,6 +254,7 @@ function createOptModel!(anyM::anyModel)
 	tsYear_dic = Dict(zip(anyM.supTs.step,collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
 	prepVar_dic = Dict{Int,Dict{Symbol,NamedTuple}}()
 	prepareTechs!(techIdx_arr,prepVar_dic,tsYear_dic,anyM)
+	print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options)
 
 	# remove technologies without any potential capacity variables
 	techIdx_arr = collect(keys(prepVar_dic))
