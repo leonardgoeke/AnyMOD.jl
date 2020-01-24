@@ -1,5 +1,5 @@
 module anyMOD
-    using TableReader, CSV, Dates, JuMP, Statistics, ThreadTools, LinearAlgebra
+    using TableReader, CSV, Dates, JuMP, Statistics, ThreadTools, LinearAlgebra, Base.Threads
     using LightGraphs, GraphPlot, Compose, Colors, MathOptInterface, Reexport
     @reexport using DataFrames, JuMP
 

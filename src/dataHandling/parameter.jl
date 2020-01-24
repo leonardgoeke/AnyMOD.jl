@@ -274,7 +274,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
     stTechIdx_arr   = filter(r -> !isempty(intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(anyM.parts.tech[r].carrier))),techIdx_arr)
 
     # XXX loop over all actual parameters to assign them to parts of the model
-    Threads.@threads for parIt in allPar_arr
+    @threads for parIt in allPar_arr
 
         # ensures all dataframes with data from single files have the same columns so they can be merged
         relFiles_arr = collect(filter(y -> parIt in parToFile_dic[y],keys(paraTemp_dic)))
@@ -359,7 +359,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
     return parDef_dic
 end
 
-# XXX perform pre-setting of dispatch parameters for all technologies Threads.@threads
+# XXX perform pre-setting of dispatch parameters for all technologies
 function presetDispatchParameter!(t::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},newHerit_dic::Dict{Symbol,Tuple{Pair{Symbol,Symbol},Pair{Symbol,Symbol}}},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},anyM::anyModel)
 
 	relPar_arr = filter(x -> :techPre in keys(parDef_dic[x]) && !(isempty(anyM.parts.tech[t].par[x].data)), collect(keys(anyM.parts.tech[t].par)))
@@ -472,10 +472,10 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{S
 
     if !(:M in names(newData_df))
         # in case modes are not being searched for just directly set data
-        par_obj.data = matchSetParameter(newData_df,par_obj,sets,report) |> (x -> select(x,orderDim(names(x))))
+        par_obj.data = matchSetParameter(newData_df,par_obj,sets) |> (x -> select(x,orderDim(names(x))))
     else
         # looks up original table without applying default values
-        matchData1_df = matchSetParameter(newData_df,par_obj,sets,report,newCol = :val, useDef = false)
+        matchData1_df = matchSetParameter(newData_df,par_obj,sets,newCol = :val, useDef = false)
 
         # filter returned table by weather a mode was specified
         noMode_df = filter(r -> r.M == 0,matchData1_df)
@@ -513,7 +513,7 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{S
 
         if !isempty(newSearch_df)
             newSearch_df[!,:M] .= 0
-            matchData2_df = matchSetParameter(newSearch_df,par_obj,sets, report)
+            matchData2_df = matchSetParameter(newSearch_df,par_obj,sets)
             noMode_df = vcat(matchData2_df,noMode_df)
         end
 
@@ -531,7 +531,7 @@ function computeFacDisc!(partObj::OthPart,anyM::anyModel)
 
 	# XXX discount factor for technologies
 	rExp_arr = union(map(x -> getfield.(getNodesLvl(anyM.sets[:R],x),:idx), unique(getfield.(values(anyM.cInfo),:rExp)))...)
-	discR_df = matchSetParameter(flatten(flatten(DataFrame(Ts_disSup = anyM.supTs.step, R_exp = rExp_arr),:Ts_disSup),:R_exp),partObj.par[:rateDisc],anyM.sets,anyM.report)
+	discR_df = matchSetParameter(flatten(flatten(DataFrame(Ts_disSup = anyM.supTs.step, R_exp = rExp_arr),:Ts_disSup),:R_exp),partObj.par[:rateDisc],anyM.sets)
 
 	discR_df[!,:disFac] = 1 ./ (1 .+ discR_df[!,:val]).^anyM.options.shortExp
 	discR_df[!,:disFac] = map(x -> filter(y -> y < x.Ts_disSup ,collect(anyM.supTs.step)) |> (z -> prod(filter(y -> y.R_exp == x.R_exp && y.Ts_disSup in z, discR_df)[!,:disFac])*x.disFac),eachrow(discR_df))
@@ -582,7 +582,7 @@ end
 # <editor-fold desc="perform match between dimension tables and parameter data"
 
 # XXX matches set with input parameters, uses inheritance rules for unmatched cases
-function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Dict{Symbol,Tree}, report::Array{Tuple,1}; newCol::Symbol =:val, useDef::Bool = true, useNew::Bool = true)
+function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Dict{Symbol,Tree}; newCol::Symbol =:val, useDef::Bool = true, useNew::Bool = true)
 
     # directly returns default values if no data was provided for the parameter
     if isempty(par_obj.data) || length(names(par_obj.data)) == 1

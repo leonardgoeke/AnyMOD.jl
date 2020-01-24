@@ -129,7 +129,7 @@ function filterZero(src_df::DataFrame,par_obj::ParElement,anyM::anyModel)
 		modPar_obj = par_obj
 		modPar_obj.inherit = modPar_obj.inherit |> (y -> tuple(vcat(y..., map(x -> x => :up,getindex.(y,1))...)...))
 		# filter zero cases
-		zero_df = select!(filter(r -> r.val == 0, matchSetParameter(src_df, modPar_obj, anyM.sets, anyM.report)),Not(:val))
+		zero_df = select!(filter(r -> r.val == 0, matchSetParameter(src_df, modPar_obj, anyM.sets)),Not(:val))
 	else
 		zero_df = src_df[[],:]
 	end
@@ -312,8 +312,8 @@ end
 # XXX add supordinate dispatch timestep to expansion dataframe
 function addSupTsToExp(expMap_df::DataFrame,para_obj::Dict{Symbol,ParElement},type_sym::Symbol,tsYear_dic::Dict{Int,Int},anyM::anyModel)
 	if !isempty(expMap_df)
-		lftm_df = matchSetParameter(flatten(expMap_df,:Ts_expSup),para_obj[Symbol(:life,type_sym)],anyM.sets,anyM.report,newCol = :life)
-		lftmDel_df = matchSetParameter(lftm_df,para_obj[Symbol(:delExp,type_sym)],anyM.sets,anyM.report,newCol = :del)
+		lftm_df = matchSetParameter(flatten(expMap_df,:Ts_expSup),para_obj[Symbol(:life,type_sym)],anyM.sets,newCol = :life)
+		lftmDel_df = matchSetParameter(lftm_df,para_obj[Symbol(:delExp,type_sym)],anyM.sets,newCol = :del)
 		lftmDel_df[!,:Ts_disSup] = map(x -> filter(y -> (tsYear_dic[y] >= tsYear_dic[x.Ts_expSup] + x.del) && (tsYear_dic[y] <= tsYear_dic[x.Ts_expSup] + x.life + x.del),collect(anyM.supTs.step)), eachrow(lftmDel_df))
 		select!(lftmDel_df,Not([:life,:del]))
 		grpCol_arr = intCol(expMap_df) |> (x -> :ratio in names(expMap_df) ? vcat(:ratio,x...) : x)
@@ -361,7 +361,7 @@ function checkResiCapa(var_sym::Symbol, stockCapa_df::DataFrame, part::AbstractM
   resiPar_sym = Symbol(var_sym,:Resi,addSym)
    if resiPar_sym in tuple(keys(part.par)...)
 	   # search for defined residual values
-	  stock_df = filter(r -> r.val != 0.0, matchSetParameter(stockCapa_df, part.par[resiPar_sym], anyM.sets, anyM.report))
+	  stock_df = filter(r -> r.val != 0.0, matchSetParameter(stockCapa_df, part.par[resiPar_sym], anyM.sets))
    else
 	   stock_df = filter(x -> false,stockCapa_df)
 	   stock_df[!,:val] = Float64[]
@@ -397,7 +397,7 @@ function getAllVariables(va::Symbol,anyM::anyModel)
 			push!(anyM.report,(2,"limits","emissionUp","upper emission limits but no emission factors provided"))
 			allVar_df = DataFrame()
 		end
-		allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets,anyM.report)
+		allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)
 		allVar_df[!,:var] = allVar_df[!,:val]  ./ 1e6 .* allVar_df[!,:var]
 		select!(allVar_df,Not(:val))
 	end

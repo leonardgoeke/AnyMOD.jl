@@ -15,7 +15,7 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 			var_df = createPotDisp(c_arr,anyM)
 
 			# match all potential variables with defined prices
-			var_df = matchSetParameter(var_df,partTrd.par[trdPrc_sym],anyM.sets,anyM.report)[!,Not(:val)]
+			var_df = matchSetParameter(var_df,partTrd.par[trdPrc_sym],anyM.sets)[!,Not(:val)]
 
 			var_df = createVar(var_df,string(:trd,type),getUpBound(var_df,anyM),anyM.optModel,anyM.lock,anyM.sets)
 			partTrd.var[trd_sym] = orderDf(var_df)
@@ -25,13 +25,13 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 			# <editor-fold desc="create capacity constraint on variable"
 			trdCap_sym = Symbol(trd_sym,:Cap)
 			if trdCap_sym in keys(partTrd.par)
-				cns_df = matchSetParameter(var_df,partTrd.par[trdCap_sym],anyM.sets,anyM.report,newCol = :cap)
+				cns_df = matchSetParameter(var_df,partTrd.par[trdCap_sym],anyM.sets,newCol = :cap)
 				sca_arr = getScale(cns_df,anyM.sets[:Ts],anyM.supTs)
 				cns_df[!,:cap] = cns_df[!,:cap] .* sca_arr
 
-				withlock(anyM.lock) do
-					cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var <= x.cap),eachrow(cns_df))
-				end
+				lock(anyM.lock)
+				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var <= x.cap),eachrow(cns_df))
+				unlock(anyM.lock)
 				partTrd.cns[trdCap_sym] = orderDf(cns_df[!,[intCol(cns_df)...,:cns]])
 				produceMessage(anyM.options,anyM.report, 3," - Created capacity restrictions for $(type == :Buy ? "buying" : "selling") carriers")
 			end
@@ -57,7 +57,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	# get defined entries
 	varCrt_df = DataFrame()
 	for crtPar in intersect(keys(partBal.par),(:crtUp,:crtLow,:crtFix,:costCrt))
-		append!(varCrt_df,matchSetParameter(allDim_df,partBal.par[crtPar],anyM.sets,anyM.report)[!,Not(:val)])
+		append!(varCrt_df,matchSetParameter(allDim_df,partBal.par[crtPar],anyM.sets)[!,Not(:val)])
 	end
 
 	# obtain upper bound for variables and create them
@@ -68,13 +68,13 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 
 	# <editor-fold desc="create actual balance"
 	allC_arr = unique(allDim_df[!,:C])
-	Threads.@threads for c in allC_arr
+	@threads for c in allC_arr
 		relC_arr = unique([c,getDescendants(c,anyM.sets[:C])...])
 
 		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
 
 		# XXX add demand and scale it
-		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets,anyM.report)
+		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets)
 		cns_df[!,:dem] = cns_df[!,:val] .* getScale(cns_df,anyM.sets[:Ts],anyM.supTs)
 		select!(cns_df,Not(:val))
 
@@ -106,12 +106,12 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 			# apply loss values to from dataframe of from variables
 			lossPar_obj = copy(anyM.parts.exc.par[:lossExc])
 			lossPar_obj.data = lossPar_obj.data |> (x -> vcat(x,rename(x,:R_a => :R_b, :R_b => :R_a)))
-			excVarFrom_df = matchSetParameter(excVarFrom_df,lossPar_obj,anyM.sets,anyM.report,newCol = :loss)
+			excVarFrom_df = matchSetParameter(excVarFrom_df,lossPar_obj,anyM.sets,newCol = :loss)
 
 			# overwrite symmetric losses with any directed losses provided
 			if :lossExcDir in keys(anyM.parts.exc.par)
 				oprCol_arr = intCol(excVarFrom_df)
-				dirLoss_df = matchSetParameter(excVarFrom_df[!,oprCol_arr],anyM.parts.exc.par[:lossExcDir],anyM.sets,anyM.report,newCol = :lossDir)
+				dirLoss_df = matchSetParameter(excVarFrom_df[!,oprCol_arr],anyM.parts.exc.par[:lossExcDir],anyM.sets,newCol = :lossDir)
 				excVarFrom_df = joinMissing(excVarFrom_df,dirLoss_df,oprCol_arr,:left,Dict(:lossDir => nothing))
 				excVarFrom_df[!,:val] = map(x -> isnothing(x.lossDir) ? x.loss : x.lossDir,eachrow(excVarFrom_df[!,[:loss,:lossDir]]))
 				select!(excVarFrom_df,Not(:lossDir))
@@ -130,13 +130,13 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 		end
 
 		# XXX create final constaint depending on equality and non-equality cases
-		withlock(anyM.lock) do
-			if anyM.cInfo[c].eq
-				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, 0.1 * (x.techVar + x.excVar + x.trdVar) ==  0.1 * (x.dem + x.crtVar)),eachrow(cns_df))
-			else
-				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, 0.1 *  (x.techVar + x.excVar + x.trdVar) >= 0.1 * (x.dem + x.crtVar)),eachrow(cns_df))
-			end
+		lock(anyM.lock)
+		if anyM.cInfo[c].eq
+			cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, 0.1 * (x.techVar + x.excVar + x.trdVar) ==  0.1 * (x.dem + x.crtVar)),eachrow(cns_df))
+		else
+			cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, 0.1 *  (x.techVar + x.excVar + x.trdVar) >= 0.1 * (x.dem + x.crtVar)),eachrow(cns_df))
 		end
+		unlock(anyM.lock)
 
 		# XXX writes constraint to object
 		c_str = anyM.sets[:C].nodes[c].val
@@ -203,7 +203,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 	# loop over all variables that are subject to any type of limit (except emissions)
 	allKeys_arr = collect(keys(varToPar_dic))
-	Threads.@threads for va in allKeys_arr
+	@threads for va in allKeys_arr
 		varToPart_dic = Dict(:exc => :exc, :crt => :bal,:trdSell => :trd, :trdBuy => :trd)
 
 		# obtain all variables relevant for limits
@@ -236,7 +236,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 			if !isempty(noMtcPar_arr)
 				# tries to inherit values to existing variables only for parameters without variables aggregated so far
 				aggPar_obj = copy(par_obj,par_obj.data[noMtcPar_arr,:])
-				aggPar_obj.data = matchSetParameter(grpVar_df[!,Not(:var)],aggPar_obj,anyM.sets,anyM.report, useNew = false)
+				aggPar_obj.data = matchSetParameter(grpVar_df[!,Not(:var)],aggPar_obj,anyM.sets, useNew = false)
 				# again performs aggregation for inherited parameter data and merges if original limits
 				aggLimit_df = copy(aggPar_obj.data)
 				aggLimit_df[!,:var]  = aggDivVar(grpVar_df, aggLimit_df, agg_tup, anyM.sets, aggFilt = agg_tup)
@@ -299,15 +299,15 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 			relLim_df = filter(x -> !isnothing(x[lim]),allLimit_df[!,Not(filter(x -> x != lim,limitCol_arr))])
             if isempty(relLim_df) continue end
 
-			withlock(anyM.lock) do
-				if lim == :Up
-					relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var <=  x.Up),eachrow(relLim_df))
-				elseif lim == :Low
-					relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var >=  x.Low),eachrow(relLim_df))
-				elseif lim == :Fix
-					relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var ==  x.Fix),eachrow(relLim_df))
-				end
+			lock(anyM.lock)
+			if lim == :Up
+				relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var <=  x.Up),eachrow(relLim_df))
+			elseif lim == :Low
+				relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var >=  x.Low),eachrow(relLim_df))
+			elseif lim == :Fix
+				relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var ==  x.Fix),eachrow(relLim_df))
 			end
+			unlock(anyM.lock)
 
 			partLim.cns[Symbol(va,lim)] = orderDf(relLim_df[!,[intCol(relLim_df)...,:cns]])
 			produceMessage(anyM.options,anyM.report, 3," - Created constraints for $(lim == :Up ? "upper" : (lim == :Low ? "lower" : "fixed")) limit of variable $va")
@@ -335,15 +335,15 @@ function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},any
         cns_df = rename(join(part.var[capaVar],by(expVar_df,join_arr, exp = :var => x -> sum(x)); on = join_arr, kind = :inner),:var => :capa)
 
         # creates final equation
-        withlock(anyM.lock) do
-            cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.capa - x.capa.constant == x.exp),eachrow(cns_df))
-        end
+        lock(anyM.lock)
+        cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.capa - x.capa.constant == x.exp),eachrow(cns_df))
+        unlock(anyM.lock)
         part.cns[Symbol(capaVar)] = orderDf(cns_df[!,Not([:capa,:exp])])
     end
 end
 
 # XXX adds column with JuMP variable to dataframe
-function createVar(setData_df::DataFrame,name_str::String,upBd_any::Union{Nothing,Float64,Array{Float64,1}},optModel::Model,lock::SpinLock,sets::Dict{Symbol,Tree})
+function createVar(setData_df::DataFrame,name_str::String,upBd_any::Union{Nothing,Float64,Array{Float64,1}},optModel::Model,lock2::SpinLock,sets::Dict{Symbol,Tree})
 	# adds an upper bound to all variables if provided within the options
 	#if isempty(setData_df) return DataFrame(var = AffExpr[]) end
 	arr_boo = typeof(upBd_any) <: Array
@@ -361,13 +361,13 @@ function createVar(setData_df::DataFrame,name_str::String,upBd_any::Union{Nothin
 	dim_int = length(dim_arr)
 	setData_df[!,:name] = string.(name_str,"[",map(x -> join(map(y -> sets[dim_arr[y]].nodes[x[y]].val,1:dim_int),", "),eachrow(setData_df)),"]")
 
-	withlock(lock) do
-		if arr_boo
-			setData_df[!,:var] = [AffExpr(0,JuMP.add_variable(optModel, nameItr[1], nameItr[2]) => 1) for nameItr in zip(var_obj,setData_df[!,:name])]
-		else
-			setData_df[!,:var] = [AffExpr(0,JuMP.add_variable(optModel, var_obj, nameItr) => 1) for nameItr in setData_df[!,:name]]
-		end
+	lock(lock2)
+	if arr_boo
+		setData_df[!,:var] = [AffExpr(0,JuMP.add_variable(optModel, nameItr[1], nameItr[2]) => 1) for nameItr in zip(var_obj,setData_df[!,:name])]
+	else
+		setData_df[!,:var] = [AffExpr(0,JuMP.add_variable(optModel, var_obj, nameItr) => 1) for nameItr in setData_df[!,:name]]
 	end
+	unlock(lock2)
 
 	return setData_df[!,Not(:name)]
 end

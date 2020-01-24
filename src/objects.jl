@@ -191,6 +191,7 @@ mutable struct anyModel
 		anyM.report = Array{Tuple,1}()
 
 		anyM.optModel = Model()
+
 		anyM.lock = SpinLock()
 
 		# XXX sets whole options object from specified directories TODO arbeite mit kwargs später
@@ -237,7 +238,6 @@ mutable struct anyModel
 
 		return anyM
 	end
-
 end
 
 # </editor-fold>

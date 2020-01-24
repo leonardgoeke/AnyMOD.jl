@@ -39,7 +39,7 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 	setLongShort_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id)
 
 	# read-in parameter files and convert their content
-	Threads.@threads for parFile in files_dic["par"]
+	@threads for parFile in files_dic["par"]
 		parData_df = convertReadIn(readcsv(parFile;delim = anyM.options.csvDelim[1]),parFile,set_arr,setLongShort_dic,anyM.report,anyM.sets)
 		paraTemp_dic[parFile] = writeParameter(parData_df, anyM.sets, setLongShort_dic, parFile, anyM.report)
 		produceMessage(anyM.options,anyM.report, 3," - Read-in parameter file: ",parFile)

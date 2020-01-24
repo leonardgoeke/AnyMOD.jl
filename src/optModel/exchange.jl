@@ -16,11 +16,11 @@ function prepareExcExpansion!(partExc::OthPart,partLim::OthPart,prepExc_dic::Dic
 	exExp_df = DataFrame(R_a = Int[], R_b = Int[], C = Int[])
 
 	for excPar in intersect((:capaExcResi,:capaExcResiDir),keys(partExc.par))
-		append!(exExp_df,matchSetParameter(potExc_df,partExc.par[excPar],anyM.sets,anyM.report)[!,[:R_a,:R_b,:C]])
+		append!(exExp_df,matchSetParameter(potExc_df,partExc.par[excPar],anyM.sets)[!,[:R_a,:R_b,:C]])
 	end
 
 	for excPar in intersect((:capaExcUp, :capaExcLow, :capaExFix, :expExcUp, :expExcLow, :expExcFix),keys(partLim.par))
-		append!(exExp_df,matchSetParameter(potExc_df,partLim.par[excPar],anyM.sets,anyM.report)[!,[:R_a,:R_b,:C]])
+		append!(exExp_df,matchSetParameter(potExc_df,partLim.par[excPar],anyM.sets)[!,[:R_a,:R_b,:C]])
 	end
 
 	# ensure expansion entries are not directed
@@ -52,7 +52,7 @@ function createExcVar!(partExc::OthPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 
 	# filter entries where availability is zero
 	if !isempty(partExc.par[:avaExc].data) && 0.0 in partExc.par[:avaExc].data[!,:val]
-		disp_df = filter(x -> x.val != 0.0, matchSetParameter(disp_df,partExc.par[:avaExc],anyM.sets,anyM.report))[!,Not(:val)]
+		disp_df = filter(x -> x.val != 0.0, matchSetParameter(disp_df,partExc.par[:avaExc],anyM.sets))[!,Not(:val)]
 	end
 
 	# computes value to scale up the global limit on dispatch variable that is provied per hour and create variables
@@ -72,7 +72,7 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 	# manipulate entries in case directed residual capacities are defined
 	if :capaExcResiDir in keys(partExc.par)
 
-		directExc_df = matchSetParameter(potExc_df,partExc.par[:capaExcResiDir],anyM.sets,anyM.report)
+		directExc_df = matchSetParameter(potExc_df,partExc.par[:capaExcResiDir],anyM.sets)
 		directExc_df[!,:var] = map(x -> AffExpr(x), directExc_df[!,:val]); select!(directExc_df,Not(:val))
 
 		excDim_arr = [:C, :R_a, :R_b, :Ts_disSup]
@@ -135,10 +135,8 @@ function createCapaExcCns!(part::OthPart,anyM::anyModel)
 		expVar_df = flatten(part.var[:expExc],:Ts_disSup)[!,Not(:Ts_exp)]
 
 		cns_df = join(capaVar_df, by(expVar_df,[:Ts_disSup, :R_from, :R_to, :C], expVar = :var => x -> sum(x)); on = [:Ts_disSup, :R_from, :R_to, :C], kind = :inner)
+		cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.capaVar - x.capaVar.constant == x.expVar),eachrow(cns_df))
 
-		withlock(anyM.lock) do
-			cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.capaVar - x.capaVar.constant == x.expVar),eachrow(cns_df))
-		end
 		part.cns[:excCapa] = intCol(cns_df,:dir) |> (x -> orderDf(cns_df[!,[x...,:cns]]))
 
 		# create and control commissioned capacity variables
@@ -160,19 +158,17 @@ function createCapaRestrExc!(part::OthPart,anyM::anyModel)
 	cns_df = rename(joinMissing(cns_df,dispVar_df, [:Ts_disSup,:Ts_dis,:R_from,:R_to,:C,:dir] .=> [:Ts_disSup,:Ts_dis,:R_to,:R_from,:C,:dir] , :left, Dict(:disp => AffExpr())),:disp => :dispSym)
 
 	# add availablities to dataframe
-	cns_df = matchSetParameter(convertExcCol(cns_df),part.par[:avaExc],anyM.sets,anyM.report, newCol = :avaSym)
+	cns_df = matchSetParameter(convertExcCol(cns_df),part.par[:avaExc],anyM.sets, newCol = :avaSym)
 
 	if :avaExcDir in keys(part.par)
-		dirAva_df = matchSetParameter(cns_df[!,intCol(cns_df,:dir)],part.par[:avaExcDir],anyM.sets,anyM.report, newCol = :avaDir)
+		dirAva_df = matchSetParameter(cns_df[!,intCol(cns_df,:dir)],part.par[:avaExcDir],anyM.sets, newCol = :avaDir)
 		cns_df = joinMissing(cns_df,dirAva_df,[:Ts_disSup,:Ts_dis,:R_a,:R_b,:C,:dir],:left, Dict(:avaDir => nothing))
 	else
 		cns_df[!,:avaDir] .= nothing
 	end
 
 	# create final constraints
-	withlock(anyM.lock) do
-		cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, (x.dispDir + x.dispSym) *0.01 <=  0.01 * x.capa * (isnothing(x.avaDir) ? x.avaSym : x.avaDir)),eachrow(cns_df))
-	end
+	cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, (x.dispDir + x.dispSym) *0.01 <=  0.01 * x.capa * (isnothing(x.avaDir) ? x.avaSym : x.avaDir)),eachrow(cns_df))
 	part.cns[:capaExcRestr] = convertExcCol(cns_df) |>  (x -> orderDf(x[!,[intCol(x,:dir)...,:cns]]) )
 end
 
