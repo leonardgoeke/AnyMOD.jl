@@ -98,7 +98,7 @@ function reportResults(objGrp::Val{:tech},anyM::anyModel)
 			end
 			# comput values and add to tech data frame
 			disp_df[!,:variable] .= va
-			disp_df[!,:value] .=  value.(aggregateVar(part.var[va],disp_df, (:Ts_disSup,:R_dis,:C,:Te),anyM.sets)[1]) ./ 1000
+			disp_df[!,:value] .=  value.(aggDivVar(part.var[va],disp_df, (:Ts_disSup,:R_dis,:C,:Te),anyM.sets)[1]) ./ 1000
 			tech_df = vcat(tech_df,unique(disp_df))
 		end
 
