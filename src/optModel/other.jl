@@ -301,7 +301,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 			lock(anyM.lock)
 			if lim == :Up
-				relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var <=  x.Up),eachrow(relLim_df))
+				relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var * scaUp_fl <=  x.Up * scaUp_fl),eachrow(relLim_df))
 			elseif lim == :Low
 				relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var >=  x.Low),eachrow(relLim_df))
 			elseif lim == :Fix
