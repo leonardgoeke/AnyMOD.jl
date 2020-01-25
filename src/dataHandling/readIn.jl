@@ -381,7 +381,7 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 				split_arr = split(string(ele.colSet),"_")
 				setShort_sym = setLongShort_dic[Symbol(split_arr[1])]
 				saveDic_sym = length(split_arr) == 1 ? setShort_sym : Symbol(setShort_sym,"_",split_arr[2])
-				setId_dic[saveDic_sym] = lookupTupleTree(tuple(filter(x -> x != "", ele.entry)...),sets[setShort_sym],ele.startLvl)
+				setId_dic[saveDic_sym] = (ele.entry .!= "") |> (x -> lookupTupleTree(tuple(ele.entry[findall(x)]...),sets[setShort_sym],ele.startLvl+findfirst(.!x)))
 			end
 		end
 

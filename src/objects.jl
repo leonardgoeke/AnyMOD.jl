@@ -89,6 +89,10 @@ function copy(par_obj::ParElement,data_df::DataFrame)
 	return out
 end
 
+# XXX extends base function to avoid certain errors, that otherwise would require more costly solutions
+import Base.+
++(a::Int,b::Nothing) = a
+
 # </editor-fold>
 
 # <editor-fold desc="struct for individual parts of the model"
@@ -254,7 +258,7 @@ function createOptModel!(anyM::anyModel)
 	tsYear_dic = Dict(zip(anyM.supTs.step,collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
 	prepVar_dic = Dict{Int,Dict{Symbol,NamedTuple}}()
 	prepareTechs!(techIdx_arr,prepVar_dic,tsYear_dic,anyM)
-	print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options)
+	if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
 
 	# remove technologies without any potential capacity variables
 	techIdx_arr = collect(keys(prepVar_dic))
