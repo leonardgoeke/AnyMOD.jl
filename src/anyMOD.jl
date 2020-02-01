@@ -1,11 +1,13 @@
 module anyMOD
-    using TableReader, CSV, Dates, JuMP, Statistics, ThreadTools, LinearAlgebra, Base.Threads
-    using LightGraphs, GraphPlot, Compose, Colors, MathOptInterface, Reexport
+
+    using Base.Threads, CSV, Colors, Compose, Dates, GraphPlot, LightGraphs, LinearAlgebra
+    using MathOptInterface, Reexport, Statistics, TableReader
     @reexport using DataFrames, JuMP
 
 
     include("objects.jl")
     include("tools.jl")
+    include("modelCreation.jl")
 
     include("optModel/exchange.jl")
     include("optModel/objective.jl")

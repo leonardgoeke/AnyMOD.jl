@@ -1,22 +1,29 @@
 # XXX finds provided string tuple in tree structure and returns node id (or false), tuple does not need to start at the top level of tree, in that case function can return an array instead of a number
-function lookupTupleTree(input_uni::Union{Tuple{Vararg{String,N} where N},String},tree_obj::Tree, startLvl_int::Int= 1)
+function lookupTupleTree(input_uni::Tuple{Vararg{String,N} where N},tree_obj::Tree, startLvl_int::Int= 1)
 
 	if isempty(tree_obj.nodes) return false end
-    if isa(input_uni,String) input_uni = tuple(input_uni,) end
 
-	noGap_arr = findall(input_uni .!= "")
-	gaps_boo = "" in input_uni
+	# find leading and trailing empty entries
+	firstVal_int = findfirst(x -> x != "",input_uni)
+	lastVal_int = findlast(x -> x != "",input_uni)
 
-	if startLvl_int == 1 && !gaps_boo
+	# adjust input uni and start level according to removed values
+	startLvl_int = startLvl_int + firstVal_int - 1
+	input_uni = input_uni[firstVal_int:lastVal_int]
+
+	if startLvl_int == 1
 		return getDicEmpty(tree_obj.srcTup,input_uni)
 	else
+		noGap_arr = reverse(findall(input_uni .!= ""))
+
 		# initialize by searching for last entry in input tuple
-		start_int = maximum(noGap_arr)
-		found_arr = getDicEmpty(tree_obj.srcStr,input_uni[start_int])
+		crtLvl_int = noGap_arr[1] + startLvl_int - 1
+		found_arr = getDicEmpty(tree_obj.srcStr,(input_uni[noGap_arr[1]],crtLvl_int))
 
 		# checks which nodes found initially actually comply with rest of input_uni
-		for i in setdiff(noGap_arr,start_int)
-			found_arr = getDicEmpty(tree_obj.srcStr,input_uni[i]) |> (y -> filter(x -> goUp(x,tree_obj.up,start_int - i) in y,found_arr))
+		for i in noGap_arr[2:end]
+			crtLvlItr_int = i + startLvl_int - 1
+			found_arr = getDicEmpty(tree_obj.srcStr,(input_uni[i],crtLvlItr_int)) |> (y -> filter(x -> goUp(x,tree_obj.up,crtLvl_int-crtLvlItr_int) in y,found_arr))
 		end
 	end
 	return found_arr

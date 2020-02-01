@@ -23,6 +23,7 @@ function printIIS(anyM::anyModel)
             end
         end
     end
+
 end
 
 # XXX prints dataframe to csv file
@@ -135,7 +136,7 @@ Draw a tree for all nodes provided by the set data frame and copies it to the ou
     - Ratio of distances between nodes that have and do not have the same parent (separate on each level).
 - `labelsize = 7`
     - Size of labels in graph.
-- `name = "ratio"`
+- `ratio = 1.0`
 	- Aspect ratio of output graph.
 """
 function drawTree(tree_sym::Symbol, anyM::anyModel; args...)

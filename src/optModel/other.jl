@@ -17,7 +17,7 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 			# match all potential variables with defined prices
 			var_df = matchSetParameter(var_df,partTrd.par[trdPrc_sym],anyM.sets)[!,Not(:val)]
 
-			var_df = createVar(var_df,string(:trd,type),getUpBound(var_df,anyM),anyM.optModel,anyM.lock,anyM.sets)
+			var_df = createVar(var_df,string(:trd,type),getUpBound(var_df,anyM.options.bound.disp / anyM.options.scaFac.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.disp)
 			partTrd.var[trd_sym] = orderDf(var_df)
 			produceMessage(anyM.options,anyM.report, 3," - Created variables for $(type == :Buy ? "buying" : "selling") carriers")
 			# </editor-fold>
@@ -26,13 +26,14 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 			trdCap_sym = Symbol(trd_sym,:Cap)
 			if trdCap_sym in keys(partTrd.par)
 				cns_df = matchSetParameter(var_df,partTrd.par[trdCap_sym],anyM.sets,newCol = :cap)
-				sca_arr = getScale(cns_df,anyM.sets[:Ts],anyM.supTs)
+				sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
 				cns_df[!,:cap] = cns_df[!,:cap] .* sca_arr
 
-				lock(anyM.lock)
-				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var <= x.cap),eachrow(cns_df))
-				unlock(anyM.lock)
-				partTrd.cns[trdCap_sym] = orderDf(cns_df[!,[intCol(cns_df)...,:cns]])
+				# prepare, scale and create constraints
+				cns_df[!,:cnsExpr] = map(x -> x.var - x.cap, eachrow(cns_df))
+				scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
+				partTrd.cns[trdCap_sym] = createCns(cnsCont(cns_df,:smaller),anyM.optModel)
+
 				produceMessage(anyM.options,anyM.report, 3," - Created capacity restrictions for $(type == :Buy ? "buying" : "selling") carriers")
 			end
 
@@ -62,27 +63,30 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 
 	# obtain upper bound for variables and create them
 	if !isempty(varCrt_df)
-		partBal.var[:crt] = orderDf(createVar(varCrt_df,"crt",getUpBound(varCrt_df,anyM),anyM.optModel,anyM.lock,anyM.sets))
+		partBal.var[:crt] = orderDf(createVar(varCrt_df,"crt",getUpBound(varCrt_df,anyM.options.bound.disp / anyM.options.scaFac.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.disp))
 	end
 	# </editor-fold>
 
 	# <editor-fold desc="create actual balance"
 	allC_arr = unique(allDim_df[!,:C])
+
+	cns_dic = Dict{Symbol,cnsCont}()
+
 	@threads for c in allC_arr
 		relC_arr = unique([c,getDescendants(c,anyM.sets[:C])...])
 
 		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
 
-		# XXX add demand and scale it
+		# XXX add demand and size it
 		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets)
-		cns_df[!,:dem] = cns_df[!,:val] .* getScale(cns_df,anyM.sets[:Ts],anyM.supTs)
+		cns_df[!,:dem] = cns_df[!,:val] .* getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
 		select!(cns_df,Not(:val))
 
 		# XXX get relevant variables
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
 
 		# add tech variables
-		cns_df[!,:techVar] = getTechEnerBal(c,relC_arr,src_df,techIdx_arr,anyM.parts.tech,anyM.sets)
+		cns_df[!,:techVar] = getTechEnerBal(c,relC_arr,src_df,techIdx_arr,anyM.parts.tech,anyM.cInfo,anyM.sets)
 
 		# add curtailment variables
 		if :crt in keys(partBal.var)
@@ -129,19 +133,19 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 			cns_df[!,:excVar] =  excFrom_arr .- excTo_arr
 		end
 
-		# XXX create final constaint depending on equality and non-equality cases
-		lock(anyM.lock)
-		if anyM.cInfo[c].eq
-			cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, 0.1 * (x.techVar + x.excVar + x.trdVar) ==  0.1 * (x.dem + x.crtVar)),eachrow(cns_df))
-		else
-			cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, 0.1 *  (x.techVar + x.excVar + x.trdVar) >= 0.1 * (x.dem + x.crtVar)),eachrow(cns_df))
-		end
-		unlock(anyM.lock)
+		# prepare, scale and save constraints to dictionary
+		c_str = Symbol(anyM.sets[:C].nodes[c].val)
+		cns_df[!,:cnsExpr] = map(x -> x.techVar + x.excVar + x.trdVar - x.dem - x.crtVar, eachrow(cns_df))
+		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
+		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
+		cns_dic[Symbol(c_str)] = cnsCont(cns_df,anyM.cInfo[c].eq ? :equal : :greater)
 
-		# XXX writes constraint to object
-		c_str = anyM.sets[:C].nodes[c].val
 		produceMessage(anyM.options,anyM.report, 2," - Created energy balance for $(c_str)")
-		partBal.cns[Symbol(c_str)] = orderDf(cns_df[!,[intCol(cns_df)...,:cns]])
+	end
+
+	# loops over stored constraints outside of threaded loop to create actual jump constraints
+	for cnsSym in keys(cns_dic)
+		partBal.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
 	end
 
 	produceMessage(anyM.options,anyM.report, 1," - Created energy balances for all carriers")
@@ -149,11 +153,12 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 end
 
 # XXX aggregate all technology variables for energy balance
-function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,techIdx_arr::Array{Int,1},tech_dic::Dict{Int,TechPart},sets_dic::Dict{Symbol,Tree})
+function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,techIdx_arr::Array{Int,1},tech_dic::Dict{Int,TechPart},
+																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}},sets_dic::Dict{Symbol,Tree})
 	techVar_arr = Array{Array{AffExpr,1}}(undef,length(relC_arr))
 
 	# get temporal and spatial resolution for carrier being balanced
-	cBalRes_tup = anyM.cInfo[cBal_int] |> (x -> (x.tsDis, x.rDis))
+	cBalRes_tup = cInfo_dic[cBal_int] |> (x -> (x.tsDis, x.rDis))
 
 	# loops over all carriers relevant for respective energy balance
 	for (idx,c) in enumerate(relC_arr)
@@ -166,18 +171,18 @@ function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,t
 
 		# prepare loop over tech for c by creating empty dataframe and get temporal and spatial resolution for carrier being balanced
 		allVar_df = DataFrame(Ts_dis = Int[], R_dis = Int[], var = AffExpr[])
-		cRes_tup = anyM.cInfo[c] |> (x -> (x.tsDis, x.rDis))
+		cRes_tup = cInfo_dic[c] |> (x -> (x.tsDis, x.rDis))
 
 		for x in relTech_arr
 			add_df = select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var])
 			# gets resolution of technology being balanced from respective carrier and the information, if it is a disaggregated further or not
-			tRes_tup = tech_dic[x[1]].disAgg ? (cRes_tup[1], anyM.cInfo[c].rExp) : cRes_tup
+			tRes_tup = tech_dic[x[1]].disAgg ? (cRes_tup[1], cInfo_dic[c].rExp) : cRes_tup
 
 			# if dispatch regions for technology were disaggregated, replace the disaggregated with the ones relevant for the carrier
 			for (idx,dim) in enumerate([:Ts_dis,:R_dis])
 				if cBalRes_tup[idx] != tRes_tup[idx]
 					set_sym = Symbol(split(string(dim),"_")[1])
-					dim_dic = Dict(x => getindex(getAncestors(x,anyM.sets[set_sym],cBalRes_tup[idx])[end],1) for x in unique(add_df[!,dim]))
+					dim_dic = Dict(x => getindex(getAncestors(x,sets_dic[set_sym],cBalRes_tup[idx])[end],1) for x in unique(add_df[!,dim]))
 					add_df[!,dim] = map(x -> dim_dic[x],add_df[!,dim])
 				end
 			end
@@ -203,6 +208,9 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 	# loop over all variables that are subject to any type of limit (except emissions)
 	allKeys_arr = collect(keys(varToPar_dic))
+	cns_dic = Dict{Symbol,cnsCont}()
+	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal)
+
 	@threads for va in allKeys_arr
 		varToPart_dic = Dict(:exc => :exc, :crt => :bal,:trdSell => :trd, :trdBuy => :trd)
 
@@ -211,7 +219,9 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 		# check if acutally any variables were obtained
 		if isempty(allVar_df)
+			lock(anyM.lock)
 			push!(anyM.report,(2,"limit",string(va),"limits for variable provided, but none of these variables are actually created"))
+			unlock(anyM.lock)
 			continue
 		end
 
@@ -257,12 +267,16 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 			if :Low in limitCol_arr && :Up in limitCol_arr
 				filter!(x -> any(isnothing.([x.Low,x.Up])) ? true : x.Low < x.Up,allLimit_df)
 				if entr_int != size(allLimit_df,1)
+					lock(anyM.lock)
 					push!(anyM.report,(2,"limit",string(va),"contradicting or equal values for upper and lower limit detected, both values were ignored in these cases"))
+					unlock(anyM.lock)
 				end
 			end
 			# upper or lower limit of zero
 			if !isempty(limitCol_arr |> (y -> filter(x -> collect(x[y]) |> (z -> any(isnothing.(z)) ? false : any(z .== 0)),allLimit_df))) && va != :emission
+				lock(anyM.lock)
 				push!(anyM.report,(2,"limit",string(va),"upper or lower limit of zero detected, please consider to use fix instead"))
+				unlock(anyM.lock)
 				entr_int = size(allLimit_df,1)
 			end
 		end
@@ -270,15 +284,19 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 		# value is fixed, but still a upper a lower limit is provided
 		if :Fix in limitCol_arr && (:Low in limitCol_arr || :Up in limitCol_arr)
 			if !isempty(limitCol_arr |> (z -> filter(x -> all([!isnothing(x.Fix),any(.!isnothing.(x[z]))]) ,allLimit_df)))
+				lock(anyM.lock)
 				push!(anyM.report,(2,"limit",string(va),"upper and/or lower limit detected, although variable is already fixed"))
+				unlock(anyM.lock)
 			end
 		end
 
 		# XXX check for suspicious entries for capacity where limits are provided for the sum of capacity over several years
 		if occursin("capa",string(va))
 			if !(:Ts_disSup in names(allLimit_df))
+				lock(anyM.lock)
 				push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the supordinate dispatch timestep, this means the sum of capacity over all supordinate timesteps was limited
 																												(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
+				unlock(anyM.lock)
 			elseif 0 in unique(allLimit_df[!,:Ts_disSup])
 				relEntr_df = filter(x -> x.Ts_disSup == 0, allLimit_df)
 				if :Te in names(relEntr_df)
@@ -288,41 +306,47 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 																						(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
 					end
 				else
+					lock(anyM.lock)
 					push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the supordinate dispatch timestep, this means the sum of capacity over all supordinate timesteps was limited
 																												(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
+					unlock(anyM.lock)
 				end
 			end
 		end
 
-		# XXX create final constraints
+		# XXX write constraint containers
 		for lim in limitCol_arr
+			# filter respective limits (low, fix or up) out of the entire dataframe
 			relLim_df = filter(x -> !isnothing(x[lim]),allLimit_df[!,Not(filter(x -> x != lim,limitCol_arr))])
+			relLim_df = filter(x -> x.var != AffExpr() || x.Fix != 0.0, relLim_df)
             if isempty(relLim_df) continue end
+			rename!(relLim_df,lim => :Lim)
 
-			lock(anyM.lock)
-			if lim == :Up
-				relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var * scaUp_fl <=  x.Up * scaUp_fl),eachrow(relLim_df))
-			elseif lim == :Low
-				relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var >=  x.Low),eachrow(relLim_df))
-			elseif lim == :Fix
-				relLim_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.var ==  x.Fix),eachrow(relLim_df))
-			end
-			unlock(anyM.lock)
+			# prepare, scale and save constraints to dictionary
+			relLim_df[!,:cnsExpr] = map(x -> x.var - x.Lim, eachrow(relLim_df))
+			relLim_df = orderDf(relLim_df[!,[intCol(relLim_df)...,:cnsExpr]])
+			scaleCnsExpr!(relLim_df,anyM.options.coefRng,anyM.options.checkRng)
+			cns_dic[Symbol(va,lim)] = cnsCont(relLim_df,signLim_dic[lim])
 
-			partLim.cns[Symbol(va,lim)] = orderDf(relLim_df[!,[intCol(relLim_df)...,:cns]])
 			produceMessage(anyM.options,anyM.report, 3," - Created constraints for $(lim == :Up ? "upper" : (lim == :Low ? "lower" : "fixed")) limit of variable $va")
 		end
 		produceMessage(anyM.options,anyM.report, 2," - Created constraints to limit variable $va")
 	end
+
+	# loops over stored constraints outside of threaded loop to create actual jump constraints
+	for cnsSym in keys(cns_dic)
+		partLim.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
+	end
+
 	produceMessage(anyM.options,anyM.report, 1," - Created all limiting constraints")
 end
 
 # </editor-fold>
 
-# <editor-fold desc= utility"
+# <editor-fold desc= utility functions"
 
 # XXX connect capacity and expansion variables
-function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
+function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
     for capaVar in filter(x -> occursin("capa",string(x)),keys(prepTech_dic))
 
         index_arr = intCol(part.var[capaVar])
@@ -334,24 +358,22 @@ function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},any
         expVar_df = flatten(part.var[expVar_sym],:Ts_disSup)
         cns_df = rename(join(part.var[capaVar],by(expVar_df,join_arr, exp = :var => x -> sum(x)); on = join_arr, kind = :inner),:var => :capa)
 
-        # creates final equation
-        lock(anyM.lock)
-        cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.capa - x.capa.constant == x.exp),eachrow(cns_df))
-        unlock(anyM.lock)
-        part.cns[Symbol(capaVar)] = orderDf(cns_df[!,Not([:capa,:exp])])
+        # creates final constraint object
+		cns_df[!,:cnsExpr] = map(x -> x.capa - x.capa.constant - x.exp,eachrow(cns_df))
+		cns_dic[Symbol(capaVar)] = cnsCont(select(cns_df,Not([:capa,:exp])),:equal)
     end
 end
 
 # XXX adds column with JuMP variable to dataframe
-function createVar(setData_df::DataFrame,name_str::String,upBd_any::Union{Nothing,Float64,Array{Float64,1}},optModel::Model,lock2::SpinLock,sets::Dict{Symbol,Tree})
+function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64,Array{Float64,1}},optModel::Model,lock_::SpinLock,sets::Dict{Symbol,Tree}; scaFac::Float64 = 1.0, lowBd::Float64 = 0.0)
 	# adds an upper bound to all variables if provided within the options
 	#if isempty(setData_df) return DataFrame(var = AffExpr[]) end
-	arr_boo = typeof(upBd_any) <: Array
+	arr_boo = typeof(upBd_fl) <: Array
 	if arr_boo
-		info = VariableInfo.(true, 0.0, true, upBd_any, false, NaN, false, NaN, false, false)
+		info = VariableInfo.(!isnan(lowBd), lowBd, .!isnan.(upBd_fl), upBd_fl, false, NaN, false, NaN, false, false)
 		var_obj = JuMP.build_variable.(error, info)
 	else
-		info = VariableInfo(true, 0.0, false, isnothing(upBd_any) ? NaN : upBd_any, false, NaN, false, NaN, false, false)
+		info = VariableInfo(!isnan(lowBd), lowBd, !isnan(upBd_fl), upBd_fl, false, NaN, false, NaN, false, false)
 		var_obj = JuMP.build_variable(error, info)
 	end
 
@@ -361,15 +383,73 @@ function createVar(setData_df::DataFrame,name_str::String,upBd_any::Union{Nothin
 	dim_int = length(dim_arr)
 	setData_df[!,:name] = string.(name_str,"[",map(x -> join(map(y -> sets[dim_arr[y]].nodes[x[y]].val,1:dim_int),", "),eachrow(setData_df)),"]")
 
-	lock(lock2)
+	lock(lock_)
 	if arr_boo
-		setData_df[!,:var] = [AffExpr(0,JuMP.add_variable(optModel, nameItr[1], nameItr[2]) => 1) for nameItr in zip(var_obj,setData_df[!,:name])]
+		setData_df[!,:var] = [AffExpr(0,JuMP.add_variable(optModel, nameItr[1], nameItr[2]) => scaFac) for nameItr in zip(var_obj,setData_df[!,:name])]
 	else
-		setData_df[!,:var] = [AffExpr(0,JuMP.add_variable(optModel, var_obj, nameItr) => 1) for nameItr in setData_df[!,:name]]
+		setData_df[!,:var] = [AffExpr(0,JuMP.add_variable(optModel, var_obj, nameItr) => scaFac) for nameItr in setData_df[!,:name]]
 	end
-	unlock(lock2)
+	unlock(lock_)
 
 	return setData_df[!,Not(:name)]
+end
+
+# XXX scales expressions in the dataframe to be within the range defined within options
+function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}},checkRng_fl::Float64)
+
+	if !all(isnan.(coefRng.rhs))
+		# scale expression defining constraint so rhs coefficients are within desired range
+		rhs_arr = abs.(getfield.(cnsExpr_df[!,:cnsExpr],:constant))
+		findall(rhs_arr .!= 0.0) |> (x -> cnsExpr_df[x,:cnsExpr] = scaleRng(cnsExpr_df[x,:cnsExpr],rhs_arr[x],coefRng.rhs, true))
+	end
+
+	if !all(isnan.(coefRng.mat))
+		# scale expression defining constraint so matrix coefficients are within desired range
+		matRng_arr = map(x -> abs.(values(x.terms)) |> (y -> isempty(y) ? (0.0,0.0) : (minimum(y),maximum(y))), cnsExpr_df[!,:cnsExpr])
+		findall(map(x -> x != (0.0,0.0),matRng_arr)) |> (x -> cnsExpr_df[x,:cnsExpr] = scaleRng(cnsExpr_df[x,:cnsExpr],matRng_arr[x],coefRng.mat,false))
+	end
+
+	if !isnan(checkRng_fl)
+		checkExprRng(cnsExpr_df[:,:cnsExpr],checkRng_fl)
+	end
+end
+
+# XXX used to perform scaling of expression array based on range of coefficients provided
+function scaleRng(expr_arr::Array{AffExpr,1},rng_arr::Array,rng_tup::Tuple{Float64,Float64}, rhs_boo::Bool)
+	scaRel_arr = rhs_boo ? union(findall(rng_arr .< rng_tup[1]), findall(rng_arr .> rng_tup[2])) : union(findall(getindex.(rng_arr,1) .< rng_tup[1]), findall(getindex.(rng_arr,2) .> rng_tup[2]))
+	if !isempty(scaRel_arr)
+		expr_arr[scaRel_arr] = map(x -> x[1] < rng_tup[1] ? rng_tup[1]/x[1] : rng_tup[2]/x[rhs_boo ? 1 : 2], rng_arr[scaRel_arr]) .* expr_arr[scaRel_arr]
+	end
+	return expr_arr
+end
+
+# XXX check range of coefficients in expressions within input array
+function checkExprRng(expr_arr::Array{AffExpr,1},rngThres_fl::Float64)
+
+	# obtains range of coefficients for matrix and rhs
+	matRng_arr = map(x -> abs.(values(x.terms)) |> (y -> (minimum(y),maximum(y))), expr_arr)
+	rhs_arr = abs.(getfield.(expr_arr,:constant))
+	both_arr = max.(getindex.(matRng_arr,2),replace(rhs_arr,0.0 => -Inf)) ./ min.(getindex.(matRng_arr,1),replace(rhs_arr,0.0 => Inf))
+
+	# filters rows where reange of coefficients is above threshold
+	aboveThres_arr = findall(both_arr .> rngThres_fl)
+
+	for expr in expr_arr[aboveThres_arr]
+		println(expr)
+	end
+end
+
+# XXX creates an actual jump constraint based on the constraint container provided
+function createCns(cnsCont::cnsCont,optModel::Model)
+	cns_df = cnsCont.data
+	if cnsCont.sign == :equal
+		cns_df[!,:cns] = map(x -> @constraint(optModel, x.cnsExpr == 0),eachrow(cns_df))
+	elseif cnsCont.sign == :greater
+		cns_df[!,:cns] = map(x -> @constraint(optModel, x.cnsExpr >= 0),eachrow(cns_df))
+	elseif cnsCont.sign == :smaller
+		cns_df[!,:cns] = map(x -> @constraint(optModel, x.cnsExpr <= 0),eachrow(cns_df))
+	end
+	return select!(cns_df,Not(:cnsExpr))
 end
 
 # </editor-fold>

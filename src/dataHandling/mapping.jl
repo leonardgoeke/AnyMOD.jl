@@ -194,7 +194,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
     # XXX writes modes of technology
     if haskey(anyM.sets,:M)
-        part.modes = tuple(collect(lookupTupleTree(String(x),anyM.sets[:M])[1] for x in filter(x -> x != "",split(replace(row_df[:mode]," " => ""),";")))...)
+        part.modes = tuple(collect(lookupTupleTree(tuple(string(x),),anyM.sets[:M],1)[1] for x in filter(x -> x != "",split(replace(row_df[:mode]," " => ""),";")))...)
     else
         part.modes = tuple()
     end

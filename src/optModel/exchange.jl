@@ -56,7 +56,7 @@ function createExcVar!(partExc::OthPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 	end
 
 	# computes value to scale up the global limit on dispatch variable that is provied per hour and create variables
-	partExc.var[:exc] = orderDf(createVar(disp_df,"exc",getUpBound(disp_df,anyM),anyM.optModel,anyM.lock,anyM.sets))
+	partExc.var[:exc] = orderDf(createVar(disp_df,"exc",getUpBound(disp_df,anyM.options.bound.disp / anyM.options.scaFac.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.disp))
 end
 
 # XXX add residual capacties for exchange (both symmetric and directed)
@@ -135,12 +135,23 @@ function createCapaExcCns!(part::OthPart,anyM::anyModel)
 		expVar_df = flatten(part.var[:expExc],:Ts_disSup)[!,Not(:Ts_exp)]
 
 		cns_df = join(capaVar_df, by(expVar_df,[:Ts_disSup, :R_from, :R_to, :C], expVar = :var => x -> sum(x)); on = [:Ts_disSup, :R_from, :R_to, :C], kind = :inner)
-		cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.capaVar - x.capaVar.constant == x.expVar),eachrow(cns_df))
 
-		part.cns[:excCapa] = intCol(cns_df,:dir) |> (x -> orderDf(cns_df[!,[x...,:cns]]))
+		# prepare, scale and create constraints
+		cns_df[!,:cnsExpr] = map(x -> x.capaVar - x.capaVar.constant - x.expVar, eachrow(cns_df))
+		cns_df = intCol(cns_df,:dir) |> (x -> orderDf(cns_df[!,[x...,:cnsExpr]]))
+		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
+		part.cns[:excCapa] = createCns(cnsCont(cns_df,:equal),anyM.optModel)
 
 		# create and control commissioned capacity variables
-		if anyM.options.decomm != :none createCommVarCns!(part,anyM) end
+		if anyM.options.decomm != :none
+			# constraints for commissioned capacities are saved into a dictionary of containers and then actually created
+			cns_dic = Dict{Symbol,cnsCont}()
+			createCommVarCns!(part,anyM)
+			for cnsSym in keys(cns_dic)
+				scaleCnsExpr!(cns_dic[cnsSym],anyM.options.coefRng,anyM.options.checkRng)
+				part.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
+			end
+		end
 	end
 end
 
@@ -167,9 +178,10 @@ function createCapaRestrExc!(part::OthPart,anyM::anyModel)
 		cns_df[!,:avaDir] .= nothing
 	end
 
-	# create final constraints
-	cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, (x.dispDir + x.dispSym) *0.01 <=  0.01 * x.capa * (isnothing(x.avaDir) ? x.avaSym : x.avaDir)),eachrow(cns_df))
-	part.cns[:capaExcRestr] = convertExcCol(cns_df) |>  (x -> orderDf(x[!,[intCol(x,:dir)...,:cns]]) )
+	# prepare, scale and create constraints
+	cns_df[!,:cnsExpr] = map(x -> x.dispDir + x.dispSym  - x.capa * (isnothing(x.avaDir) ? x.avaSym : x.avaDir), eachrow(cns_df))
+	scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
+	part.cns[:capaExcRestr] = createCns(cnsCont(cns_df,:smaller),anyM.optModel)
 end
 
 # </editor-fold>

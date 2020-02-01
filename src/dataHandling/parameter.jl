@@ -457,6 +457,10 @@ function presetDispatchParameter!(t::Int,part::TechPart,prepTech_dic::Dict{Symbo
                     modeDep_dic[va] = unique(vcat(modeDep_dic[va],modeItr_df))
                 end
             end
+            # rounds availability values to the third digits to avoid numerical troubles with small availabilites
+            if parItr in (:avaConv, :avaStIn, :avaStOut, :avaStSize)
+                newPar_obj.data[!,:val] = max.(newPar_obj.data[!,:val],anyM.options.avaMin)
+            end
 
             part.par[parItr] = newPar_obj
         end
@@ -529,7 +533,7 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{S
 end
 
 # XXX creates new parameter objects for discount factors from discount rates provided
-function computeFacDisc!(partObj::OthPart,anyM::anyModel)
+function computeDisFac!(partObj::OthPart,anyM::anyModel)
 
 	# XXX discount factor for technologies
 	rExp_arr = union(map(x -> getfield.(getNodesLvl(anyM.sets[:R],x),:idx), unique(getfield.(values(anyM.cInfo),:rExp)))...)
@@ -542,7 +546,7 @@ function computeFacDisc!(partObj::OthPart,anyM::anyModel)
 	discPar_obj = copy(partObj.par[:rateDisc],rename(discR_df,:disFac => :val))
 	discPar_obj.name = :discFac
 	discPar_obj.defVal = nothing
-	partObj.par[:facDisc] = discPar_obj
+	partObj.par[:disFac] = discPar_obj
 
 	# XXX discount factor for exchange (average of from and to region)
 	discRExc_df = rename(copy(discR_df),:R_exp => :R_from,:disFac => :disFacFrom)
@@ -554,11 +558,11 @@ function computeFacDisc!(partObj::OthPart,anyM::anyModel)
 	select!(discRExc_df,Not(:disFacFrom))
 
 	discPar_obj = copy(partObj.par[:rateDisc],rename(discRExc_df,:disFac => :val))
-	discPar_obj.name = :facDiscExc
+	discPar_obj.name = :disFacExc
 	discPar_obj.defVal = nothing
 	discPar_obj.dim = (:Ts_dis, :R_from, :R_to)
 	discPar_obj.herit = (:Ts_dis => :up, :R_from => :up, :R_to => :up, :Ts_dis => :avg_any, :R_from => :avg_any, :R_to => :avg_any)
-	partObj.par[:facDiscExc] = discPar_obj
+	partObj.par[:disFacExc] = discPar_obj
 end
 
 # XXX extract specified limit parameter from the limit part of the model

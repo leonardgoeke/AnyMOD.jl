@@ -41,9 +41,9 @@ function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::I
 	sty_dic[currentLvl]
     if options.reportLvl >= currentLvl
 		if options.errCheckLvl >= currentLvl
-			printstyled(options.name; color = :underline); printstyled(" ", getElapsed(options.startTime), fixedString, dynamicString; color = sty_dic[currentLvl])
+			printstyled(options.objName; color = :underline); printstyled(" ", getElapsed(options.startTime), fixedString, dynamicString; color = sty_dic[currentLvl])
 		else
-			printstyled(options.name; color = :underline); printstyled(" ",getElapsed(options.startTime), fixedString, dynamicString, "\n"; color = sty_dic[currentLvl])
+			printstyled(options.objName; color = :underline); printstyled(" ",getElapsed(options.startTime), fixedString, dynamicString, "\n"; color = sty_dic[currentLvl])
 		end
 	end
     if options.errCheckLvl >= currentLvl errorTest(report,options,write = options.errWrtLvl >= currentLvl) end
@@ -197,20 +197,20 @@ function joinMissing(leftData_df::DataFrame, rightData_df::DataFrame, key_arr::U
 end
 
 # XXX get array of scaling factors for add_df
-function getScale(add_df::DataFrame,time_obj::Tree,supDis::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}})
+function getResize(add_df::DataFrame,time_obj::Tree,supDis::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}})
     tsDisLvl_dic = Dict(x => x == 0 ? 1 : getfield(time_obj.nodes[x],:lvl) for x in unique(add_df[!,:Ts_dis]))
 	lvl_arr = map(x -> tsDisLvl_dic[x],add_df[!,:Ts_dis])
-	aboveSupScale_flt = maximum(values(supDis.sca)) * length(supDis.step) # scaling value used for variables above the superordinate dispatch level
-	sca_arr = map(x -> supDis.lvl > x[1] ? aboveSupScale_flt : supDis.sca[(x[2],x[1])] ,zip(lvl_arr,add_df[!,:Ts_disSup]))
+	aboveSupResize_fl = maximum(values(supDis.sca)) * length(supDis.step) # scaling value used for variables above the superordinate dispatch level
+	sca_arr = map(x -> supDis.lvl > x[1] ? aboveSupResize_fl : supDis.sca[(x[2],x[1])] ,zip(lvl_arr,add_df[!,:Ts_disSup]))
     return sca_arr
 end
 
 # XXX gets the upper bound used for dispatch variables
-function getUpBound(in_df::DataFrame,anyM::anyModel)
-	if !isnothing(anyM.options.bound.disp)
-		upBound_arr = anyM.options.bound.disp * getScale(in_df,anyM.sets[:Ts],anyM.supTs)
+function getUpBound(in_df::DataFrame,dispBound_fl::Float64,supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}},treeTs::Tree)
+	if !isnan(dispBound_fl)
+		upBound_arr = dispBound_fl * getResize(in_df,treeTs,supTs)
 	else
-		upBound_arr = nothing
+		upBound_arr = fill(NaN,size(in_df,1))
 	end
 	return upBound_arr
 end
@@ -397,7 +397,9 @@ function getAllVariables(va::Symbol,anyM::anyModel)
 		allVar_df = vcat(map(x -> anyM.parts.tech[x].var[:use], filter(y -> :use in keys(anyM.parts.tech[y].var), techIdx_arr))...)
 
 		if !(:emissionFac in keys(anyM.parts.lim.par))
-			push!(anyM.report,(2,"limits","emissionUp","upper emission limits but no emission factors provided"))
+			lock(anyM.lock)
+            push!(anyM.report,(2,"limits","emissionUp","upper emission limits but no emission factors provided"))
+			unlock(anyM.lock)
 			allVar_df = DataFrame()
 		end
 		allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)

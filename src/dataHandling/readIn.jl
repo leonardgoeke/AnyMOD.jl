@@ -41,7 +41,7 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 	# read-in parameter files and convert their content
 	@threads for parFile in files_dic["par"]
 		parData_df = convertReadIn(readcsv(parFile;delim = anyM.options.csvDelim[1]),parFile,set_arr,setLongShort_dic,anyM.report,anyM.sets)
-		paraTemp_dic[parFile] = writeParameter(parData_df, anyM.sets, setLongShort_dic, parFile, anyM.report)
+		paraTemp_dic[parFile] = writeParameter(parData_df, anyM.sets, setLongShort_dic, parFile, anyM.report, anyM.lock)
 		produceMessage(anyM.options,anyM.report, 3," - Read-in parameter file: ",parFile)
 	end
 	produceMessage(anyM.options,anyM.report, 2," - Read-in all parameter files")
@@ -209,44 +209,44 @@ function createTree(readIn_df::DataFrame, setLoad_sym::Symbol, report::Array{Tup
 
 	setLoad_str = string(setLoad_sym)
 	# create tree object and add the top node
-	Tree_obj = Tree()
-	Tree_obj.nodes[0] = Node(0,"none",0,1,Int[])
+	tree_obj = Tree()
+	tree_obj.nodes[0] = Node(0,"none",0,1,Int[])
 
 	# writes values of first column
 	firstCol_sym = Symbol(setLoad_str,"_1")
 	topNodes_arr =  filter(x -> !isempty(x),convert(Matrix,unique(readIn_df[!,names(readIn_df) .== firstCol_sym])))
 
 	for (idx, node) in enumerate(sort(topNodes_arr))
-	    Tree_obj.nodes[idx] = Node(idx,node,1,idx,Int[])
-		Tree_obj.srcTup[(node,)] = idx
-		Tree_obj.up[idx] = 0
+	    tree_obj.nodes[idx] = Node(idx,node,1,idx,Int[])
+		tree_obj.srcTup[(node,)] = idx
+		tree_obj.up[idx] = 0
 	end
-	Tree_obj.nodes[0].down = collect(keys(Tree_obj.up))
+	tree_obj.nodes[0].down = collect(keys(tree_obj.up))
 
 	# adds dictionary for occurrence of single strings
-	for v in getNodesLvl(Tree_obj, 1)
+	for v in getNodesLvl(tree_obj, 1)
 		a = v.val
-		if haskey(Tree_obj.srcStr,a)
-			push!(Tree_obj.srcStr[a],v.idx)
+		if haskey(tree_obj.srcStr,(a,1))
+			push!(tree_obj.srcStr[(a,1)],v.idx)
 		else
-			Tree_obj.srcStr[a] = [v.idx]
+			tree_obj.srcStr[(a,1)] = [v.idx]
 		end
 	end
 
 	# loop over subsequent columns and add respective tree levels
 	height_int = maximum((map(x -> parse(Int,x[end]), filter(x-> (tryparse(Int,string(x[end])) != nothing) && x[1:minimum([length(x),length(setLoad_str)])] .== setLoad_str,[String(names(readIn_df)[i]) for i = 1:size(readIn_df,2)]))))
 	for i in 2:height_int
-		createTreeLevel!(readIn_df, Tree_obj, setLoad_str, i, report)
+		createTreeLevel!(readIn_df, tree_obj, setLoad_str, i, report)
 	end
 
 	# adds max level
-	Tree_obj.height = height_int
+	tree_obj.height = height_int
 
-    return Tree_obj
+    return tree_obj
 end
 
 # XXX adds nodex on level i to tree object
-function createTreeLevel!(readIn_df::DataFrame, Tree_obj::Tree, setLoad_str::String, i::Int, report::Array{Tuple,1})
+function createTreeLevel!(readIn_df::DataFrame, tree_obj::Tree, setLoad_str::String, i::Int, report::Array{Tuple,1})
 	colNames_arr = filter(x -> occursin(setLoad_str,string(x)), names(readIn_df))
 	loLvl_Sym = Symbol(setLoad_str,"_",i)
 
@@ -271,34 +271,39 @@ function createTreeLevel!(readIn_df::DataFrame, Tree_obj::Tree, setLoad_str::Str
 
 	# XXX assigns the upper nodes by id to strings of corresponding lower nodes
 	startLvl_int = parse(Int,string(grpRel_arr[1])[end])
-	upToLow_dic = Dict(lookupTupleTree(tuple(collect(lowerNode[1,grpRel_arr])...), Tree_obj,startLvl_int)[1] =>  lowerNode[!,loLvl_Sym] for lowerNode in lowerNodes_gdf[up_arr])
+	upToLow_dic = Dict(lookupTupleTree(tuple(collect(lowerNode[1,grpRel_arr])...), tree_obj,startLvl_int)[1] =>  lowerNode[!,loLvl_Sym] for lowerNode in lowerNodes_gdf[up_arr])
 	# XXX iterates over dict to write new nodes into tree
-	createNodes!(upToLow_dic,Tree_obj,i)
+	createNodes!(upToLow_dic,tree_obj,i)
 
 	# adds dictionary for occurrence of single strings
-	for v in getNodesLvl(Tree_obj, i)
+	for v in getNodesLvl(tree_obj, i)
 		a = v.val
-		if haskey(Tree_obj.srcStr,a)
-			push!(Tree_obj.srcStr[a],v.idx)
+		if haskey(tree_obj.srcStr,(a,i))
+			push!(tree_obj.srcStr[(a,i)],v.idx)
 		else
-			Tree_obj.srcStr[a] = [v.idx]
+			tree_obj.srcStr[(a,i)] = [v.idx]
 		end
 	end
 end
 
 # XXX create specific node on branch
-function createNodes!(upToLow_dic::Dict{Int64,SubArray{String,1,Array{String,1},Tuple{Array{Int64,1}},false}},Tree_obj::Tree,i::Int)
+function createNodes!(upToLow_dic::Dict{Int64,SubArray{String,1,Array{String,1},Tuple{Array{Int64,1}},false}},tree_obj::Tree,i::Int)
 	upToLowSort_dic = sort(upToLow_dic)
-	for upperNodeId in sortSiblings(collect(keys(upToLowSort_dic)),Tree_obj)
-		numRow_int = length(Tree_obj.nodes) -1
-		exUp_int = length(Tree_obj.nodes[upperNodeId].down)
+	for upperNodeId in sortSiblings(collect(keys(upToLowSort_dic)),tree_obj)
+		numRow_int = length(tree_obj.nodes) -1
+		exUp_int = length(tree_obj.nodes[upperNodeId].down)
 		for (idx, lowerNode) in enumerate(sort(upToLowSort_dic[upperNodeId]))
 			newIdx_int = numRow_int + idx
-			Tree_obj.nodes[newIdx_int] = Node(newIdx_int,lowerNode,i,idx+exUp_int,Int[])
-			Tree_obj.up[newIdx_int] = upperNodeId
-			Tree_obj.srcTup[tuple(map(x -> Tree_obj.nodes[x[1]].val,reverse(getAncestors(newIdx_int,Tree_obj,1)))..., lowerNode)] = newIdx_int
+			tree_obj.nodes[newIdx_int] = Node(newIdx_int,lowerNode,i,idx+exUp_int,Int[])
+			tree_obj.up[newIdx_int] = upperNodeId
+
+			keyStr_tup = fill("",i)
+			keyStr_tup[i] = lowerNode
+			foreach(x -> keyStr_tup[x[2]] = tree_obj.nodes[x[1]].val, getAncestors(newIdx_int,tree_obj,1))
+
+			tree_obj.srcTup[tuple(keyStr_tup...)] = newIdx_int
 		end
-		Tree_obj.nodes[upperNodeId].down = union(Tree_obj.nodes[upperNodeId].down,collect((numRow_int+1):(numRow_int+length(upToLowSort_dic[upperNodeId]))))
+		tree_obj.nodes[upperNodeId].down = union(tree_obj.nodes[upperNodeId].down,collect((numRow_int+1):(numRow_int+length(upToLowSort_dic[upperNodeId]))))
 	end
 end
 
@@ -307,8 +312,9 @@ end
 # <editor-fold desc= read-in of parameter data"
 
 # XXX reads-in parameter data for respective sheet
-function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLongShort_dic::Dict{Symbol,Symbol}, fileName_str::String, report::Array{Tuple,1})
-    setShortLong_dic = Dict(value => key for (key, value) in setLongShort_dic)
+function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLongShort_dic::Dict{Symbol,Symbol}, fileName_str::String, report::Array{Tuple,1},lock_::SpinLock)
+
+	setShortLong_dic = Dict(value => key for (key, value) in setLongShort_dic)
     set_arr = vcat(collect(setShortLong_dic[key] for key in keys(sets))...,:id)
     setNames_arr = filterSetColumns(parData_df,set_arr)[1]
 	para_dic = Dict{Symbol, DataFrame}()
@@ -324,13 +330,15 @@ function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLongS
 	# creates array that is later edited to lookup and save set values, entries: set, blank for set values, levels, start level
 	setIni_arr = [parEntry(z[1],initializeLookup(maximum(z[2])-minimum(z[2])+1),z[2],minimum(z[2])) for z in setIndex_arr]
     # creates special entry for sets with only one level, because they do not need to have a number at the end
-    for i in intersect(set_arr,setNames_arr) push!(setIni_arr,parEntry(i,Union{Bool, String}[false],Int[],1)) end
+    for i in intersect(set_arr,setNames_arr) push!(setIni_arr,parEntry(i,String[""],Int[],1)) end
 
 	# throws error, if column level exceeds level of the respective set used
 	for ele in setIndex_arr
 		set = Symbol(split(string(ele[1]),"_")[1]) # extracts just the actual set name, if it has a letter in the end, because set is used multiple times
 		if set != :id && sets[setLongShort_dic[set]].height < maximum(ele[2])
+			lock(lock_)
 			push!(report,(2,"parameter read-in",fileName_str,"columns provided for $(ele[1]) exceed level of definition, parameter input ignored"))
+			unlock(lock_)
 			return para_dic
 		end
 	end
@@ -354,16 +362,15 @@ function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLongS
     for i in parVal_arr parData_df[!,i[1]] = map(x -> Symbol(x),parData_df[!,i[1]]) end
 
     # loop over rows to read respective parameter values
-	convertParameter!(parData_df,sets,setIni_arr,parVal_arr,para_dic,setCol_dic,setLongShort_dic,fileName_str,report)
+	convertParameter!(parData_df,sets,setIni_arr,parVal_arr,para_dic,setCol_dic,setLongShort_dic,fileName_str,report,lock_)
 
     return para_dic
 end
 
 # XXX gets idx from set names and orders all data in dataframe for respective parameter
-function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_arr::Array{parEntry,1},parVal_arr::Array{Array{Symbol,1},1},para_dic::Dict{Symbol,DataFrame},setCol_dic::Dict{Symbol,Array},setLongShort_dic::Dict{Symbol,Symbol},fileName_str::String,report::Array{Tuple,1})
+function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_arr::Array{parEntry,1},parVal_arr::Array{Array{Symbol,1},1},para_dic::Dict{Symbol,DataFrame},setCol_dic::Dict{Symbol,Array},setLongShort_dic::Dict{Symbol,Symbol},fileName_str::String,report::Array{Tuple,1},lock_::SpinLock)
 	setShortLong_dic = Dict(value => key for (key, value) in setLongShort_dic)
 	for row in eachrow(parData_df)
-
 		setId_dic = Dict{Symbol,Union{Int,Array{Int,1}}}()
 
 		# XXX obtains node ids for row
@@ -381,7 +388,7 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 				split_arr = split(string(ele.colSet),"_")
 				setShort_sym = setLongShort_dic[Symbol(split_arr[1])]
 				saveDic_sym = length(split_arr) == 1 ? setShort_sym : Symbol(setShort_sym,"_",split_arr[2])
-				setId_dic[saveDic_sym] = (ele.entry .!= "") |> (x -> lookupTupleTree(tuple(ele.entry[findall(x)]...),sets[setShort_sym],ele.startLvl+findfirst(.!x)))
+				setId_dic[saveDic_sym] = lookupTupleTree(tuple(ele.entry...),sets[setShort_sym],ele.startLvl)
 			end
 		end
 
@@ -393,9 +400,13 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 				return length(split_arr) == 1 ? setName : Symbol(setName,"_",split_arr[2])
 			end
 			undefinedSets_arr = map(y -> join(map(z -> string(y.entry[z]," (lvl ",y.lvl[z],")") ,1:length(y.lvl))," > "),filter(x -> x.colSet in undefinedDim_arr,relSets_arr))
+
 			for undef in undefinedSets_arr
+				lock(lock_)
 				push!(report,(2,"parameter read-in",fileName_str,"values provided for undefined set $(undef...)"))
+				unlock(lock_)
 			end
+
 			continue
 		end
 
@@ -461,8 +472,8 @@ end
 
 # XXX initializes dictionary that saves lookups in tree
 function initializeLookup(size_int::Int)
-    Ini_arr = Array{Union{Bool,String}}(undef,size_int)
-    Ini_arr .= false
+    Ini_arr = Array{String}(undef,size_int)
+    Ini_arr .= ""
     return Ini_arr
 end
 
