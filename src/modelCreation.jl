@@ -26,7 +26,7 @@ function createOptModel!(anyM::anyModel)
 	# creates dictionary that assigns combination of expansion region and dispatch level to dispatch region
 	allLvlR_arr = unique(union([getfield.(values(anyM.cInfo),x) for x in (:rDis, :rExp)]...))
 	allRExp_arr = union([getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in allLvlR_arr]...)
-	r_dic = Dict((x[1], x[2]) => anyM.sets[:R].nodes[x[1]].lvl == x[2] <= x[2] ? x[1] : getindex.(getAncestors(x[1],anyM.sets[:R],x[2]),1)[1]
+	r_dic = Dict((x[1], x[2]) => anyM.sets[:R].nodes[x[1]].lvl == x[2] <= x[2] ? x[1] : getAncestors(x[1],anyM.sets[:R],:int,x[2])[1]
 																						for x in filter(x -> anyM.sets[:R].nodes[x[1]].lvl >= x[2], collect(Iterators.product(allRExp_arr,allLvlR_arr))))
 
 	produceMessage(anyM.options,anyM.report, 3," - Determined dimension of expansion and capacity variables for technologies")
@@ -54,22 +54,20 @@ function createOptModel!(anyM::anyModel)
 
 	addResidualCapaExc!(partExc,prepExc_dic,potExc_df,anyM)
 
-	# create expansion and capacity variables
-	createExpCap!(partExc,prepExc_dic,anyM)
-	# create capacity constraint
-	createCapaExcCns!(partExc,anyM)
-
-	produceMessage(anyM.options,anyM.report, 2," - Created all variables and constraints related to expansion and capacity for exchange")
-
-	# create dispatch related variables
-	createExcVar!(partExc,ts_dic,anyM)
-	produceMessage(anyM.options,anyM.report, 2," - Created all dispatch variables for exchange")
-
-	# create capacity restrictions
-	createCapaRestrExc!(partExc,anyM)
-	produceMessage(anyM.options,anyM.report, 2," - Created all capacity restrictions for exchange")
-
-	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for exchange")
+	if !all(map(x -> isempty(x),values(prepExc_dic[:capaExc])))
+		# create expansion and capacity variables
+		createExpCap!(partExc,prepExc_dic,anyM)
+		# create capacity constraint
+		createCapaExcCns!(partExc,anyM)
+		produceMessage(anyM.options,anyM.report, 2," - Created all variables and constraints related to expansion and capacity for exchange")
+		# create dispatch related variables
+		createExcVar!(partExc,ts_dic,anyM)
+		produceMessage(anyM.options,anyM.report, 2," - Created all dispatch variables for exchange")
+		# create capacity restrictions
+		createCapaRestrExc!(partExc,anyM)
+		produceMessage(anyM.options,anyM.report, 2," - Created all capacity restrictions for exchange")
+		produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for exchange")
+	end
 
 	# </editor-fold>
 

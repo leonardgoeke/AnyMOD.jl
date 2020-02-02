@@ -95,7 +95,7 @@ function assignSupTs(inputSteps_arr::Array{Int,1},time_Tree::Tree,supordinateLvl
 
 	# assigns remaining entries
 	for x in inputSteps_arr
-		assSup_dic[x] = getAncestors(x,time_Tree,supordinateLvl_int)[1][1]
+		assSup_dic[x] = getAncestors(x,time_Tree,:int,supordinateLvl_int)[1]
 	end
 
 	return assSup_dic
@@ -114,7 +114,7 @@ function createPotDisp(c_arr::Array{Int,1},anyM::anyModel)
 	var_df = flatten(flatten(select(allLvl_df,Not([:lvlTs,:lvlR])),:Ts_dis),:R_dis)
 
 	# add column for supordinate dispatch timestep
-	supTs_dic =  Dict(x => getindex(getAncestors(x,anyM.sets[:Ts],anyM.supTs.lvl)[end],1) for x in unique(var_df[!,:Ts_dis]))
+	supTs_dic =  Dict(x => getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(var_df[!,:Ts_dis]))
 	var_df[!,:Ts_disSup] = map(x -> supTs_dic[x], var_df[!,:Ts_dis])
 
 	return var_df
@@ -231,7 +231,7 @@ function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Sy
 	# adjusts entries in aggregation dataframe to comply with resolution of search dataframe
 	for dim in intersect(keys(srcRes_tup),agg_arr)
 		set_sym = Symbol(split(string(dim),"_")[1])
-		dim_dic = Dict(x => getAncestors(x,sets_dic[set_sym],getfield(srcRes_tup,dim))[end][1] for x in unique(aggEtr_df[!,dim]))
+		dim_dic = Dict(x => getAncestors(x,sets_dic[set_sym],:int,getfield(srcRes_tup,dim))[end] for x in unique(aggEtr_df[!,dim]))
 		aggEtr_df[!,dim] .= map(x -> dim_dic[x],aggEtr_df[!,dim])
 	end
 
@@ -261,7 +261,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 	idxRel_set = BitSet(1:size(srcEtr_df,1))
 	for dim in agg_tup
 		set_sym = Symbol(split(string(dim),"_")[1])
-		allAgg_set = unique(aggEtr_df[!,dim]) |> (z -> union(BitSet(z),map(y -> BitSet(getindex.(getAncestors(y,sets_dic[set_sym],0),1)), z)...))
+		allAgg_set = unique(aggEtr_df[!,dim]) |> (z -> union(BitSet(z),map(y -> BitSet(getAncestors(y,sets_dic[set_sym],:int,0)), z)...))
 		idxRel_set = intersect(idxRel_set,BitSet(findall(map(x -> x in allAgg_set, srcEtr_df[!,dim]))))
 	end
 	srcEtrAct_df = srcEtr_df[collect(idxRel_set),:]

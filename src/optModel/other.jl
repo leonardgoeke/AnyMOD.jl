@@ -131,6 +131,8 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 			excTo_arr  = aggUniVar(excVarTo_df,rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
 
 			cns_df[!,:excVar] =  excFrom_arr .- excTo_arr
+		else
+			cns_df[!,:excVar] .= AffExpr()
 		end
 
 		# prepare, scale and save constraints to dictionary
@@ -182,7 +184,7 @@ function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,t
 			for (idx,dim) in enumerate([:Ts_dis,:R_dis])
 				if cBalRes_tup[idx] != tRes_tup[idx]
 					set_sym = Symbol(split(string(dim),"_")[1])
-					dim_dic = Dict(x => getindex(getAncestors(x,sets_dic[set_sym],cBalRes_tup[idx])[end],1) for x in unique(add_df[!,dim]))
+					dim_dic = Dict(x => getAncestors(x,sets_dic[set_sym],:int,cBalRes_tup[idx])[end] for x in unique(add_df[!,dim]))
 					add_df[!,dim] = map(x -> dim_dic[x],add_df[!,dim])
 				end
 			end

@@ -6,18 +6,26 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 
 	# creates relevant sets, manually adds :mode and assigns short names
 	set_arr = append!(map(x ->  Symbol(x[findfirst("set_",x)[1]+4:end-4]),files_dic["set"]), [:mode, :id])
-	setLongShort_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id)
+	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id)
 
 	setData_dic = Dict{Symbol,DataFrame}()
 	anyM.sets = Dict{Symbol,Tree}()
 
 	# loop over sets read-in data and create tree objects
 	for setFile in files_dic["set"]
-		setLong_sym = Symbol(setFile[findfirst("set_",setFile)[1]+4:end-4])
-		setShort_sym = get!(setLongShort_dic,setLong_sym,setLong_sym)
-		setData_dic[setShort_sym] = convertReadIn(readcsv(setFile;delim = anyM.options.csvDelim[1]),setFile,set_arr,setLongShort_dic,anyM.report)
+		setLong_sym = getindex(setFile[findfirst("set_",setFile)[1]+4:end-4] |> (y -> filter(x -> occursin(string(x),y),collect(keys(setLngShrt_dic)))),1)
+		setShort_sym = get!(setLngShrt_dic,setLong_sym,setLong_sym)
+		if setShort_sym in keys(anyM.sets)
+			push!(anyM.report,(3,"set read-in",string(setLong_sym),"multiple input files provided for set"))
+		end
+		setData_dic[setShort_sym] = convertReadIn(readcsv(setFile;delim = anyM.options.csvDelim[1]),setFile,set_arr,setLngShrt_dic,anyM.report)
 		anyM.sets[setShort_sym] = createTree(setData_dic[setShort_sym],setLong_sym,anyM.report)
 	    produceMessage(anyM.options,anyM.report, 3," - Read-in set file: ",setFile)
+	end
+
+	for missSet in filter(x -> !(x in (:M,:id)),setdiff(values(setLngShrt_dic),keys(anyM.sets)))
+		setShrtLng_dic = Dict(Pair.(values(setLngShrt_dic),keys(setLngShrt_dic)))
+		push!(anyM.report,(3,"set read-in",string(setShrtLng_dic[missSet]),"no file provided to define set"))
 	end
 
 	# manually adds mode set, creates a top node for all modes to allow for aggregation later
@@ -25,6 +33,13 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 		modes_df = DataFrame(mode_1 = vcat(map(y -> split(replace(y," " => ""),";"),filter(x -> x != "",setData_dic[:Te][!,:mode]))...))
 		anyM.sets[:M] = createTree(modes_df,:mode,anyM.report)
 	end
+
+	# reports error if carrier names are non-unique
+	strC_arr = getfield.(values(anyM.sets[:C].nodes),:val)
+	if length(strC_arr) != length(unique(strC_arr))
+		push!(anyM.report,(3,"set read-in","carrier","non-unique carrier names provided"))
+	end
+
 	produceMessage(anyM.options,anyM.report, 2," - Read-in all set files")
 	return setData_dic
 end
@@ -36,12 +51,12 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 
 	# creates relevant sets, manually adds :mode and assigns short names
 	set_arr = append!(map(x ->  Symbol(x[findfirst("set_",x)[1]+4:end-4]),files_dic["set"]), [:mode, :id])
-	setLongShort_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id)
+	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id)
 
 	# read-in parameter files and convert their content
 	@threads for parFile in files_dic["par"]
-		parData_df = convertReadIn(readcsv(parFile;delim = anyM.options.csvDelim[1]),parFile,set_arr,setLongShort_dic,anyM.report,anyM.sets)
-		paraTemp_dic[parFile] = writeParameter(parData_df, anyM.sets, setLongShort_dic, parFile, anyM.report, anyM.lock)
+		parData_df = convertReadIn(readcsv(parFile;delim = anyM.options.csvDelim[1]),parFile,set_arr,setLngShrt_dic,anyM.report,anyM.sets)
+		paraTemp_dic[parFile] = writeParameter(parData_df, anyM.sets, setLngShrt_dic, parFile, anyM.report, anyM.lock)
 		produceMessage(anyM.options,anyM.report, 3," - Read-in parameter file: ",parFile)
 	end
 	produceMessage(anyM.options,anyM.report, 2," - Read-in all parameter files")
@@ -69,7 +84,7 @@ function readInputFolder(inputFolders::Array{String,1},files_dic::Dict{String,Ar
 end
 
 # XXX filters missing and adjusts data according to "all" statements
-function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{Symbol},setLongShort_dic::Dict{Symbol,Symbol},report::Array{Tuple,1},sets::Dict{Symbol,Tree} = Dict{Symbol,Tree}())
+function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{Symbol},setLngShrt_dic::Dict{Symbol,Symbol},report::Array{Tuple,1},sets::Dict{Symbol,Tree} = Dict{Symbol,Tree}())
     setNames_arr = filterSetColumns(readIn_df,set_arr)
     oprNames_arr = filterSetColumns(readIn_df,[:parameter,:variable,:value, :id])
 	readInColAll_tup = tuple(names(readIn_df)...)
@@ -106,7 +121,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
         # determine relevant reference for "all", if parameter are read in
         if  !isempty(sets) # take reference from readin sets
             specSet_arr = split(String(col),"_")
-            relSet_obj = sets[setLongShort_dic[Symbol(specSet_arr[1])]]
+            relSet_obj = sets[setLngShrt_dic[Symbol(specSet_arr[1])]]
             colValUni_arr = unique(map(x -> x.val,getNodesLvl(relSet_obj, parse(Int,specSet_arr[2]))))
         else # take reference from other column values, relevant when sets are currently read in
             colValUni_arr = sort(unique(filter(x -> !isempty(x),colVal_arr[(!).(rowsAll_arr)])))
@@ -299,7 +314,7 @@ function createNodes!(upToLow_dic::Dict{Int64,SubArray{String,1,Array{String,1},
 
 			keyStr_tup = fill("",i)
 			keyStr_tup[i] = lowerNode
-			foreach(x -> keyStr_tup[x[2]] = tree_obj.nodes[x[1]].val, getAncestors(newIdx_int,tree_obj,1))
+			foreach(x -> keyStr_tup[x[2]] = tree_obj.nodes[x[1]].val, getAncestors(newIdx_int,tree_obj,:tup,1))
 
 			tree_obj.srcTup[tuple(keyStr_tup...)] = newIdx_int
 		end
@@ -312,10 +327,10 @@ end
 # <editor-fold desc= read-in of parameter data"
 
 # XXX reads-in parameter data for respective sheet
-function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLongShort_dic::Dict{Symbol,Symbol}, fileName_str::String, report::Array{Tuple,1},lock_::SpinLock)
+function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLngShrt_dic::Dict{Symbol,Symbol}, fileName_str::String, report::Array{Tuple,1},lock_::SpinLock)
 
-	setShortLong_dic = Dict(value => key for (key, value) in setLongShort_dic)
-    set_arr = vcat(collect(setShortLong_dic[key] for key in keys(sets))...,:id)
+	setShrtLng_dic = Dict(value => key for (key, value) in setLngShrt_dic)
+    set_arr = vcat(collect(setShrtLng_dic[key] for key in keys(sets))...,:id)
     setNames_arr = filterSetColumns(parData_df,set_arr)[1]
 	para_dic = Dict{Symbol, DataFrame}()
 
@@ -335,7 +350,7 @@ function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLongS
 	# throws error, if column level exceeds level of the respective set used
 	for ele in setIndex_arr
 		set = Symbol(split(string(ele[1]),"_")[1]) # extracts just the actual set name, if it has a letter in the end, because set is used multiple times
-		if set != :id && sets[setLongShort_dic[set]].height < maximum(ele[2])
+		if set != :id && sets[setLngShrt_dic[set]].height < maximum(ele[2])
 			lock(lock_)
 			push!(report,(2,"parameter read-in",fileName_str,"columns provided for $(ele[1]) exceed level of definition, parameter input ignored"))
 			unlock(lock_)
@@ -362,14 +377,14 @@ function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLongS
     for i in parVal_arr parData_df[!,i[1]] = map(x -> Symbol(x),parData_df[!,i[1]]) end
 
     # loop over rows to read respective parameter values
-	convertParameter!(parData_df,sets,setIni_arr,parVal_arr,para_dic,setCol_dic,setLongShort_dic,fileName_str,report,lock_)
+	convertParameter!(parData_df,sets,setIni_arr,parVal_arr,para_dic,setCol_dic,setLngShrt_dic,fileName_str,report,lock_)
 
     return para_dic
 end
 
 # XXX gets idx from set names and orders all data in dataframe for respective parameter
-function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_arr::Array{parEntry,1},parVal_arr::Array{Array{Symbol,1},1},para_dic::Dict{Symbol,DataFrame},setCol_dic::Dict{Symbol,Array},setLongShort_dic::Dict{Symbol,Symbol},fileName_str::String,report::Array{Tuple,1},lock_::SpinLock)
-	setShortLong_dic = Dict(value => key for (key, value) in setLongShort_dic)
+function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_arr::Array{parEntry,1},parVal_arr::Array{Array{Symbol,1},1},para_dic::Dict{Symbol,DataFrame},setCol_dic::Dict{Symbol,Array},setLngShrt_dic::Dict{Symbol,Symbol},fileName_str::String,report::Array{Tuple,1},lock_::SpinLock)
+	setShrtLng_dic = Dict(value => key for (key, value) in setLngShrt_dic)
 	for row in eachrow(parData_df)
 		setId_dic = Dict{Symbol,Union{Int,Array{Int,1}}}()
 
@@ -386,7 +401,7 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 				setId_dic[:id] = parse(Int,ele.entry[1])
 			else
 				split_arr = split(string(ele.colSet),"_")
-				setShort_sym = setLongShort_dic[Symbol(split_arr[1])]
+				setShort_sym = setLngShrt_dic[Symbol(split_arr[1])]
 				saveDic_sym = length(split_arr) == 1 ? setShort_sym : Symbol(setShort_sym,"_",split_arr[2])
 				setId_dic[saveDic_sym] = lookupTupleTree(tuple(ele.entry...),sets[setShort_sym],ele.startLvl)
 			end
@@ -396,7 +411,7 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 		if Int[] in values(setId_dic)
 			undefinedDim_arr = map(filter(x -> setId_dic[x] == Int[],collect(keys(setId_dic)))) do x
 				split_arr = split(String(x),"_")
-				setName = setShortLong_dic[Symbol(split_arr[1])]
+				setName = setShrtLng_dic[Symbol(split_arr[1])]
 				return length(split_arr) == 1 ? setName : Symbol(setName,"_",split_arr[2])
 			end
 			undefinedSets_arr = map(y -> join(map(z -> string(y.entry[z]," (lvl ",y.lvl[z],")") ,1:length(y.lvl))," > "),filter(x -> x.colSet in undefinedDim_arr,relSets_arr))

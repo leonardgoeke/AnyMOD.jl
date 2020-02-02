@@ -267,7 +267,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
 
     # maps potential nodes for inheritance from technology tree to "actual" technologies
     techToPar_dic = Dict{Symbol,Dict{Int32,Array{Int32,1}}}()
-    techToPar_dic[:up] = Dict(x => vcat(x,getindex.(getAncestors(x,anyM.sets[:Te]),1)...) for x in techIdx_arr)
+    techToPar_dic[:up] = Dict(x => vcat(x,getAncestors(x,anyM.sets[:Te],:int)...) for x in techIdx_arr)
     techToPar_dic[:down] = Dict(x => vcat(x,getDescendants(x,anyM.sets[:Te],true)...) for x in techIdx_arr)
     techToPar_dic[:both] = Dict(x => union(techToPar_dic[:up][x],techToPar_dic[:down][x]) for x in techIdx_arr)
     techToPar_dic[:none] = Dict(x => [x] for x in techIdx_arr)
@@ -571,7 +571,7 @@ function getLimPar(partLim::OthPart,par_sym::Symbol, tech_tr::Tree; tech::Int = 
 	if par_sym in keys(partLim.par)
 		parLim_obj = copy(partLim.par[par_sym])
 		if :Te in names(parLim_obj.data) # case for technology limits with values differentiated by tech
-			parLim_obj.data = filter(x -> x.Te in [[tech];getindex.(getAncestors(tech,tech_tr,0),1)], parLim_obj.data)
+			parLim_obj.data = filter(x -> x.Te in [[tech];getAncestors(tech,tech_tr,:int,0)], parLim_obj.data)
 			if isempty(parLim_obj.data)
 				parLim_obj = ParElement()
 			end

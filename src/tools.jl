@@ -77,9 +77,9 @@ function reportResults(objGrp::Val{:tech},anyM::anyModel)
 			# set carrier column to zero for conversion capacities and add a spatial dispatch column
 			if va == :capaConv
 				capa_df[!,:C] .= 0
-				capa_df[!,:R_dis] = map(x -> getindex.(getAncestors(x,anyM.sets[:R],part.balLvl.ref[2]),1)[end],capa_df[!,:R_exp])
+				capa_df[!,:R_dis] = map(x -> getAncestors(x,anyM.sets[:R],:int,part.balLvl.ref[2])[end],capa_df[!,:R_exp])
 			else
-				capa_df[!,:R_dis] = map(x -> getindex.(getAncestors(x.R_exp,anyM.sets[:R],anyM.cInfo[x.C].rDis),1)[end],eachrow(capa_df))
+				capa_df[!,:R_dis] = map(x -> getAncestors(x.R_exp,anyM.sets[:R],:int,anyM.cInfo[x.C].rDis)[end],eachrow(capa_df))
 			end
 
 			select!(capa_df,Not(:R_exp))

@@ -129,7 +129,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     name_tup = getUniName(t,anyM.sets[:Te])
     allRow_df = eachrow(setData_dic[:Te])
 
-    for i in unique(vcat((t,anyM.sets[:Te].nodes[t].lvl),getAncestors(t,anyM.sets[:Te],1)...))
+    for i in unique(vcat((t,anyM.sets[:Te].nodes[t].lvl),getAncestors(t,anyM.sets[:Te],:tup,1)...))
 		allRow_df = filter(r -> r[Symbol(:technology_,i[2])] == anyM.sets[:Te].nodes[i[1]].val,allRow_df)
 	end
     row_df = allRow_df[1]
