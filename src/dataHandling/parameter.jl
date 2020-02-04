@@ -362,9 +362,9 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
 end
 
 # XXX perform pre-setting of dispatch parameters for all technologies
-function presetDispatchParameter!(t::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},newHerit_dic::Dict{Symbol,Tuple{Pair{Symbol,Symbol},Pair{Symbol,Symbol}}},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},anyM::anyModel)
+function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},newHerit_dic::Dict{Symbol,Tuple{Pair{Symbol,Symbol},Pair{Symbol,Symbol}}},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},anyM::anyModel)
 
-	relPar_arr = filter(x -> :techPre in keys(parDef_dic[x]) && !(isempty(anyM.parts.tech[t].par[x].data)), collect(keys(anyM.parts.tech[t].par)))
+	relPar_arr = filter(x -> :techPre in keys(parDef_dic[x]) && !(isempty(part.par[x].data)), collect(keys(part.par)))
 	parPre_dic = Dict(x => parDef_dic[x].techPre.preset for x in relPar_arr)
 	preType_arr = union(values(parPre_dic))
 

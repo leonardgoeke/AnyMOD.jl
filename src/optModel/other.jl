@@ -73,8 +73,8 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	cns_dic = Dict{Symbol,cnsCont}()
 
 	@threads for c in allC_arr
-		relC_arr = unique([c,getDescendants(c,anyM.sets[:C])...])
 
+		relC_arr = unique([c,getDescendants(c,anyM.sets[:C])...])
 		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
 
 		# XXX add demand and size it
@@ -107,21 +107,8 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 			excVarTo_df = filterCarrier(anyM.parts.exc.var[:exc],relC_arr)
 			excVarFrom_df = convertExcCol(copy(excVarTo_df))
 
-			# apply loss values to from dataframe of from variables
-			lossPar_obj = copy(anyM.parts.exc.par[:lossExc])
-			lossPar_obj.data = lossPar_obj.data |> (x -> vcat(x,rename(x,:R_a => :R_b, :R_b => :R_a)))
-			excVarFrom_df = matchSetParameter(excVarFrom_df,lossPar_obj,anyM.sets,newCol = :loss)
-
-			# overwrite symmetric losses with any directed losses provided
-			if :lossExcDir in keys(anyM.parts.exc.par)
-				oprCol_arr = intCol(excVarFrom_df)
-				dirLoss_df = matchSetParameter(excVarFrom_df[!,oprCol_arr],anyM.parts.exc.par[:lossExcDir],anyM.sets,newCol = :lossDir)
-				excVarFrom_df = joinMissing(excVarFrom_df,dirLoss_df,oprCol_arr,:left,Dict(:lossDir => nothing))
-				excVarFrom_df[!,:val] = map(x -> isnothing(x.lossDir) ? x.loss : x.lossDir,eachrow(excVarFrom_df[!,[:loss,:lossDir]]))
-				select!(excVarFrom_df,Not(:lossDir))
-			end
-
-			# apply loss values to from variables
+			# get loss values and apply them to variables
+			excVarFrom_df = getExcLosses(excVarFrom_df,anyM.parts.exc.par,anyM.sets)
 			excVarFrom_df[!,:var] = excVarFrom_df[!,:var] .* (1.0 .- excVarFrom_df[!,:loss])
 			select!(excVarFrom_df,Not(:loss))
 
@@ -176,19 +163,12 @@ function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,t
 		cRes_tup = cInfo_dic[c] |> (x -> (x.tsDis, x.rDis))
 
 		for x in relTech_arr
+			# gets resolution and adjusts add_df in case of an agggregated technology
 			add_df = select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var])
-			# gets resolution of technology being balanced from respective carrier and the information, if it is a disaggregated further or not
 			tRes_tup = tech_dic[x[1]].disAgg ? (cRes_tup[1], cInfo_dic[c].rExp) : cRes_tup
+			checkTechReso!(tRes_tup,cBalRes_tup,add_df,anyM.sets)
 
-			# if dispatch regions for technology were disaggregated, replace the disaggregated with the ones relevant for the carrier
-			for (idx,dim) in enumerate([:Ts_dis,:R_dis])
-				if cBalRes_tup[idx] != tRes_tup[idx]
-					set_sym = Symbol(split(string(dim),"_")[1])
-					dim_dic = Dict(x => getAncestors(x,sets_dic[set_sym],:int,cBalRes_tup[idx])[end] for x in unique(add_df[!,dim]))
-					add_df[!,dim] = map(x -> dim_dic[x],add_df[!,dim])
-				end
-			end
-
+			# adds sign to variables and adds them to overall dataframe
 			add_df[!,:var] = add_df[!,:var] .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
 			append!(allVar_df, add_df)
 		end
@@ -348,7 +328,7 @@ end
 # <editor-fold desc= utility functions"
 
 # XXX connect capacity and expansion variables
-function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
+function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns_dic::Dict{Symbol,cnsCont})
     for capaVar in filter(x -> occursin("capa",string(x)),keys(prepTech_dic))
 
         index_arr = intCol(part.var[capaVar])
@@ -452,6 +432,18 @@ function createCns(cnsCont::cnsCont,optModel::Model)
 		cns_df[!,:cns] = map(x -> @constraint(optModel, x.cnsExpr <= 0),eachrow(cns_df))
 	end
 	return select!(cns_df,Not(:cnsExpr))
+end
+
+# XXX adjusts resolution of var_df according to information in first two tuples
+function checkTechReso!(tRes_tup::Tuple{Int,Int},cBalRes_tup::Tuple{Int,Int},var_df::DataFrame,sets_dic::Dict{Symbol,Tree})
+	# if dispatch regions for technology were disaggregated, replace the disaggregated with the ones relevant for the carrier
+	for (idx,dim) in enumerate([:Ts_dis,:R_dis])
+		if cBalRes_tup[idx] != tRes_tup[idx]
+			set_sym = Symbol(split(string(dim),"_")[1])
+			dim_dic = Dict(x => getAncestors(x,sets_dic[set_sym],:int,cBalRes_tup[idx])[end] for x in unique(var_df[!,dim]))
+			var_df[!,dim] = map(x -> dim_dic[x],var_df[!,dim])
+		end
+	end
 end
 
 # </editor-fold>

@@ -146,9 +146,9 @@ function createCapaExcCns!(part::OthPart,anyM::anyModel)
 		if anyM.options.decomm != :none
 			# constraints for commissioned capacities are saved into a dictionary of containers and then actually created
 			cns_dic = Dict{Symbol,cnsCont}()
-			createCommVarCns!(part,anyM)
+			createCommVarCns!(part,cns_dic,anyM)
 			for cnsSym in keys(cns_dic)
-				scaleCnsExpr!(cns_dic[cnsSym],anyM.options.coefRng,anyM.options.checkRng)
+				scaleCnsExpr!(cns_dic[cnsSym].data,anyM.options.coefRng,anyM.options.checkRng)
 				part.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
 			end
 		end
@@ -182,6 +182,24 @@ function createCapaRestrExc!(part::OthPart,anyM::anyModel)
 	cns_df[!,:cnsExpr] = map(x -> x.dispDir + x.dispSym  - x.capa * (isnothing(x.avaDir) ? x.avaSym : x.avaDir), eachrow(cns_df))
 	scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 	part.cns[:capaExcRestr] = createCns(cnsCont(cns_df,:smaller),anyM.optModel)
+end
+
+# XXX obtain values for exchange losses 
+function getExcLosses(exc_df::DataFrame,excPar_dic::Dict{Symbol,ParElement},sets_dic::Dict{Symbol,Tree})
+	lossPar_obj = copy(excPar_dic[:lossExc])
+	lossPar_obj.data = lossPar_obj.data |> (x -> vcat(x,rename(x,:R_a => :R_b, :R_b => :R_a)))
+	excLoss_df = matchSetParameter(exc_df,lossPar_obj,sets_dic,newCol = :loss)
+
+	# overwrite symmetric losses with any directed losses provided
+	if :lossExcDir in keys(excPar_dic)
+		oprCol_arr = intCol(excLoss_df)
+		dirLoss_df = matchSetParameter(excLoss_df[!,oprCol_arr],excPar_dic[:lossExcDir],sets_dic,newCol = :lossDir)
+		excLoss_df = joinMissing(excLoss_df,dirLoss_df,oprCol_arr,:left,Dict(:lossDir => nothing))
+		excLoss_df[!,:loss] = map(x -> isnothing(x.lossDir) ? x.loss : x.lossDir,eachrow(excLoss_df[!,[:loss,:lossDir]]))
+		select!(excLoss_df,Not(:lossDir))
+	end
+
+	return excLoss_df
 end
 
 # </editor-fold>

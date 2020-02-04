@@ -118,6 +118,7 @@ mutable struct TechPart <: AbstractModelPart
 	disAgg::Bool
 	modes::Tuple{Vararg{Int,N} where N}
 	TechPart(name::Tuple{Vararg{String,N} where N}) = new(name,Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())
+	TechPart() = new()
 end
 
 mutable struct OthPart <: AbstractModelPart
@@ -199,8 +200,8 @@ mutable struct anyModel
 	sets::Dict{Symbol,Tree}
 	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Int,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
 
-	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decomm = :none, interCapa = :linear, supTsLvl = 0, shortExp = 10, reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1,
-																					coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)), scaFac = (capa = 1e2, disp = 1e2, cost = 1e2, totCost = 1e1), bound = (capa = NaN, disp = NaN, cost = NaN), avaMin = 0.01, checkRng = NaN)
+	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decomm = :recomm, interCapa = :linear, supTsLvl = 0, shortExp = 10, reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1,
+																					coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)), scaFac = (capa = 1e1, disp = 1e3, cost = 1e0, totCost = 1e0), bound = (capa = NaN, disp = NaN, cost = NaN), avaMin = 0.01, checkRng = NaN)
 		anyM = new()
 
 		# <editor-fold desc="initialize report and options"

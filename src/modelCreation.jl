@@ -5,38 +5,47 @@ function createOptModel!(anyM::anyModel)
 	# <editor-fold desc="create technology related variables and constraints"
 
 	techIdx_arr = collect(keys(anyM.parts.tech))
-	parDef_dic = defineParameter(anyM.options,anyM.report)
+    parDef_dic = defineParameter(anyM.options,anyM.report)
 
-	# XXX get dimension of expansion and capacity variables and mapping of capacity constraints
-	tsYear_dic = Dict(zip(anyM.supTs.step,collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
-	prepVar_dic = Dict{Int,Dict{Symbol,NamedTuple}}()
-	prepareTechs!(techIdx_arr,prepVar_dic,tsYear_dic,anyM)
-	if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
+    # XXX get dimension of expansion and capacity variables and mapping of capacity constraints
+    tsYear_dic = Dict(zip(anyM.supTs.step,collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
+    prepVar_dic = Dict{Int,Dict{Symbol,NamedTuple}}()
+    prepareTechs!(techIdx_arr,prepVar_dic,tsYear_dic,anyM)
+    if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
 
-	# remove technologies without any potential capacity variables
-	techIdx_arr = collect(keys(prepVar_dic))
-	foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),techIdx_arr))
+    # remove technologies without any potential capacity variables
+    techIdx_arr = collect(keys(prepVar_dic))
+    foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),techIdx_arr))
 
-	# XXX create all technology related elements
+    # XXX create all technology related elements
 
-	# creates dictionary that assigns combination of supordinate dispatch timestep and dispatch level to dispatch timesteps
-	allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
-	ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
+    # creates dictionary that assigns combination of supordinate dispatch timestep and dispatch level to dispatch timesteps
+    allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
+    ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
 
-	# creates dictionary that assigns combination of expansion region and dispatch level to dispatch region
-	allLvlR_arr = unique(union([getfield.(values(anyM.cInfo),x) for x in (:rDis, :rExp)]...))
-	allRExp_arr = union([getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in allLvlR_arr]...)
-	r_dic = Dict((x[1], x[2]) => anyM.sets[:R].nodes[x[1]].lvl == x[2] <= x[2] ? x[1] : getAncestors(x[1],anyM.sets[:R],:int,x[2])[1]
-																						for x in filter(x -> anyM.sets[:R].nodes[x[1]].lvl >= x[2], collect(Iterators.product(allRExp_arr,allLvlR_arr))))
+    # creates dictionary that assigns combination of expansion region and dispatch level to dispatch region
+    allLvlR_arr = unique(union([getfield.(values(anyM.cInfo),x) for x in (:rDis, :rExp)]...))
+    allRExp_arr = union([getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in allLvlR_arr]...)
+    r_dic = Dict((x[1], x[2]) => anyM.sets[:R].nodes[x[1]].lvl == x[2] <= x[2] ? x[1] : getAncestors(x[1],anyM.sets[:R],:int,x[2])[1]
+                                                                                        for x in filter(x -> anyM.sets[:R].nodes[x[1]].lvl >= x[2], collect(Iterators.product(allRExp_arr,allLvlR_arr))))
 
-	produceMessage(anyM.options,anyM.report, 3," - Determined dimension of expansion and capacity variables for technologies")
-	# loop over each tech to create variables and obtain constraint containers
-	techCnsDic_arr = iterateOverTech!(techIdx_arr,prepVar_dic,ts_dic,r_dic,parDef_dic,anyM)
-	# loops over array of dictionary with constraint container for each technology to create actual jump constraints
-	for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
-		anyM.parts.tech[techIdx_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
+    produceMessage(anyM.options,anyM.report, 3," - Determined dimension of expansion and capacity variables for technologies")
+    # loop over each tech to create variables and obtain constraint containers
+
+
+    # constraints for technologies are prepared in threaded loop and stored in an array of dictionaries
+	techCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(techIdx_arr))
+	tech_itr = collect(enumerate(techIdx_arr))
+
+	@threads for (idx,t) in tech_itr
+		techCnsDic_arr[idx] = createTech!(t,anyM.parts.tech[t],prepVar_dic[t],parDef_dic,ts_dic,r_dic,anyM)
 	end
-	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all technologies")
+
+    # loops over array of dictionary with constraint container for each technology to create actual jump constraints
+    for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
+        anyM.parts.tech[techIdx_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
+    end
+    produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all technologies")
 
 	# </editor-fold>
 

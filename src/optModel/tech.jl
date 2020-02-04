@@ -1,68 +1,58 @@
 
 # XXX iteration over all technologies to create variables and constraints
-function iterateOverTech!(techIdx_arr::Array{Int,1},prepVar_dic::Dict{Int,Dict{Symbol,NamedTuple}},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},parDef_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
+function createTech!(t::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},anyM::anyModel)
 
-	# constraints for technologies are prepared in threaded loop and stored in an array of dictionaries
-	techCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(techIdx_arr))
-	tech_itr = collect(enumerate(techIdx_arr))
+    cns_dic = Dict{Symbol,cnsCont}()
+    newHerit_dic = Dict(:lowest => (:Ts_dis => :avg_any, :R_dis => :avg_any),:reference => (:Ts_dis => :up, :R_dis => :up)) # inheritance rules after presetting
+    ratioVar_dic = Dict(:StIn => ("StIn" => "Conv"), :StOut => ("StOut" => "StIn"), :StSize => ("StSize" => "StIn")) # assignment of tech types for ratios stuff
 
-	@threads for (idx,t) in tech_itr
+    tech_str = createFullString(t,anyM.sets[:Te])
+    # presets all dispatch parameter and obtains mode-dependant variables
+    modeDep_dic = presetDispatchParameter!(part,prepTech_dic,parDef_dic,newHerit_dic,ts_dic,r_dic,anyM)
 
-		cns_dic = Dict{Symbol,cnsCont}()
-		newHerit_dic = Dict(:lowest => (:Ts_dis => :avg_any, :R_dis => :avg_any),:reference => (:Ts_dis => :up, :R_dis => :up)) # inheritance rules after presetting
-		ratioVar_dic = Dict(:StIn => ("StIn" => "Conv"), :StOut => ("StOut" => "StIn"), :StSize => ("StSize" => "StIn")) # assignment of tech types for ratios stuff
+    # creates expansion and capacity variables
+    createExpCap!(part,prepTech_dic,anyM,ratioVar_dic)
 
-		part = anyM.parts.tech[t]
-		prepTech_dic = prepVar_dic[t]
-		tech_str = createFullString(t,anyM.sets[:Te])
-		# presets all dispatch parameter and obtains mode-dependant variables
-		modeDep_dic = presetDispatchParameter!(t,part,prepTech_dic,parDef_dic,newHerit_dic,ts_dic,r_dic,anyM)
+    # connect capacity and expansion variables
+    if part.type != :stock createCapaCns!(part,prepTech_dic,cns_dic) end
 
-		# creates expansion and capacity variables
-		createExpCap!(part,prepTech_dic,anyM,ratioVar_dic)
+    # create and control commissioned capacity variables
+    if anyM.options.decomm != :none createCommVarCns!(part,cns_dic,anyM) end
+    produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
 
-		# connect capacity and expansion variables
-		if part.type != :stock createCapaCns!(part,prepTech_dic,cns_dic,anyM) end
+    # create dispatch variables
+    createDispVar!(part,modeDep_dic,ts_dic,r_dic,anyM)
+    produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
 
-		# create and control commissioned capacity variables
-		if anyM.options.decomm != :none createCommVarCns!(part,cns_dic,anyM) end
-		produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
+    # create conversion balance for conversion technologies
+    if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn))))
+        cns_dic[:convBal] = createConvBal(part,anyM)
+        produceMessage(anyM.options,anyM.report, 3," - Prepared conversion balance for technology $(tech_str)")
+    end
 
-		# create dispatch variables
-		createDispVar!(part,modeDep_dic,ts_dic,r_dic,anyM)
-		produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
+    # create storage balance for storage technologies
+    if :stLvl in keys(part.var)
+        cns_dic[:stBal] = createStBal(part,anyM)
+        produceMessage(anyM.options,anyM.report, 3," - Prepared storage balance for technology $(tech_str)")
+    end
 
-		# create conversion balance for conversion technologies
-		if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn))))
-			cns_dic[:convBal] = createConvBal(part,anyM)
-			produceMessage(anyM.options,anyM.report, 3," - Prepared conversion balance for technology $(tech_str)")
-		end
+    # create capacity restrictions
+    createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM)
+    produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for technology $(tech_str)")
 
-		# create storage balance for storage technologies
-		if :stLvl in keys(part.var)
-			cns_dic[:stBal] = createStBal(part,anyM)
-			produceMessage(anyM.options,anyM.report, 3," - Prepared storage balance for technology $(tech_str)")
-		end
+    # create ratio constraints
+    if any(map(x -> occursin("ratioEner",string(x)), collect(keys(part.par))))
+        createRatioCns!(part,cns_dic,anyM)
+        produceMessage(anyM.options,anyM.report, 3," - Prepared constraints controlling energy ratios for technology $(tech_str)")
+    end
 
-		# create capacity restrictions
-		createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM)
-		produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for technology $(tech_str)")
+    # all constraints are scaled and then written into their respective array position
+    foreach(x -> scaleCnsExpr!(x[2].data,anyM.options.coefRng,anyM.options.checkRng),collect(cns_dic))
 
-		# create ratio constraints
-		if any(map(x -> occursin("ratioEner",string(x)), collect(keys(part.par))))
-			createRatioCns!(part,cns_dic,anyM)
-			produceMessage(anyM.options,anyM.report, 3," - Prepared constraints controlling energy ratios for technology $(tech_str)")
-		end
+    produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for technology $(tech_str)")
 
-		# all constraints are scaled and then written into their respective array position
-		foreach(x -> scaleCnsExpr!(x[2].data,anyM.options.coefRng,anyM.options.checkRng),collect(cns_dic))
-		techCnsDic_arr[idx] = cns_dic
-		produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for technology $(tech_str)")
-	end
-
-	return techCnsDic_arr
+    return cns_dic
 end
-
 
 # <editor-fold desc= prepare to create expansion and capacity variables"
 
@@ -307,9 +297,9 @@ function createCommVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont}
 		commVar_sym = string(capaVar) |> (x -> Symbol(:comm,uppercase(x[1]),x[2:end]))
 		# XXX create commissioned variable
 		var_df = copy(part.var[capaVar])[!,Not(:var)]
-		var_df = createVar(var_df,string(commVar_sym),nothing,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
+		var_df = createVar(var_df,string(commVar_sym),NaN,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
 
-		part.var[commVar_sym] = orderDf(var)
+		part.var[commVar_sym] = orderDf(var_df)
 
 		# XXX create constraint to connect commissioned and installed capacity
 		var_df[!,:cnsExpr] = map(x -> x[1] - x[2],zip(var_df[!,:var],part.var[capaVar][!,:var]))
@@ -460,7 +450,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 	# add discharge parameter, if defined
 	if :stDis in keys(part.par)
 		sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
-		cns_df[!,:stDis] =  1 ./ (1 .- part.par[:stDis].data[!,:val] .^ sca_arr)
+		cns_df[!,:stDis] =  1 ./ ((1 .- part.par[:stDis].data[!,:val]) .^ sca_arr)
 	else
 		cns_df[!,:stDis] .= 1.0
 	end
@@ -483,7 +473,7 @@ function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{I
 	cnstrType_dic = Dict(:out => (dis = (:gen, :stIntIn), capa = :Conv), :in => (dis = (:use,:stIntOut), capa = :Conv),
 							:stIn => (dis = (:stExtIn, :stIntIn), capa = :StIn), :stOut => (dis = (:stExtOut, :stIntOut), capa = :StOut), :stSize => (dis = (:stLvl,), capa = :StSize))
 
-	capa_sym = anyM.options.decomm != :none ? :capaComm : :capa
+	capa_sym = anyM.options.decomm != :none ? :commCapa : :capa
 	capaRestr_gdf = groupby(part.capaRestr,:cnstrType)
 
 	# loop over groups of capacity restrictions (like out, stIn, ...)
