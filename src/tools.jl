@@ -137,7 +137,7 @@ function printObject(print_df::DataFrame,sets::Dict{Symbol,Tree},options::modOpt
 
 	# rename columns
 	colName_dic = Dict(:Ts_dis => :timestep_dispatch, :Ts_exp => :timestep_expansion, :Ts_expSup => :timestep_supordinate_expansion, :Ts_disSup => :timestep_supordinate_dispatch,
-															:R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Te => :technology,
+															:R => :region, :R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Te => :technology,
 																:cns => :constraint, :var => :variable)
 
 	rename!(print_df,map(x -> x in keys(colName_dic) ? colName_dic[x] : x, names(print_df)) )
@@ -249,6 +249,34 @@ function reportResults(objGrp::Val{:tech},anyM::anyModel)
 	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_tech")
 end
 
+# XXX summary of results for costs
+function reportResults(objGrp::Val{:costs},anyM::anyModel)
+
+	allData_df = DataFrame(Ts_disSup = Int[], R = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
+
+	for cst in filter(x -> occursin("cost",string(x)),keys(anyM.parts.obj.var))
+		cost_df = anyM.parts.obj.var[cst]
+
+		if !isempty(intersect([:R_dis,:R_exp],names(cost_df)))
+			rename!(cost_df,:R_dis in names(cost_df) ? :R_dis : :R_exp => :R)
+		end
+
+		for dim in (:Te,:C,:R)
+			if !(dim in names(cost_df))
+				cost_df[:,dim] .= 0
+			end
+		end
+
+		cost_df[:,:variable] .= string(cst)
+		cost_df[:,:value] = value.(cost_df[:,:var])
+
+		allData_df = vcat(allData_df,cost_df[:,Not(:var)])
+
+	end
+
+	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_costs")
+end
+
 # XXX print time series for in and out into seperate tables
 function reportTimeSeries(car_sym::Symbol; filterFunc = x -> true, unstackBoo::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3)
 
@@ -356,7 +384,7 @@ function reportTimeSeries(car_sym::Symbol; filterFunc = x -> true, unstackBoo::B
 	# XXX unstack data and write to csv
 	for signItr in signVar
 		data_df = allData_dic[signItr]
-		if unstackBoo
+		if unstackBoo && !isempty(data_df)
 			data_df[!,:variable] = CategoricalArray(data_df[!,:variable])
 			data_df = unstack(data_df,:variable,:value)
 		end
