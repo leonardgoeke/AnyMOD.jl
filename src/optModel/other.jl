@@ -312,7 +312,8 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 			produceMessage(anyM.options,anyM.report, 3," - Created constraints for $(lim == :Up ? "upper" : (lim == :Low ? "lower" : "fixed")) limit of variable $va")
 		end
-		produceMessage(anyM.options,anyM.report, 2," - Created constraints to limit variable $va")
+		typeLim_sym = va in (:emission,) ? "term" : "variable"
+		produceMessage(anyM.options,anyM.report, 2," - Created constraints to limit $typeLim_sym $va")
 	end
 
 	# loops over stored constraints outside of threaded loop to create actual jump constraints
