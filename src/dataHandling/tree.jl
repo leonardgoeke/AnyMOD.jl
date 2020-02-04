@@ -141,6 +141,7 @@ getNodesLvl(tree_obj::Tree, level_int::Int) = filter(r -> r.lvl == level_int, co
 
 # XXX returns (unique) tuple with strings of node itself and its parents
 function getUniName(nodeIdx_int::Int, tree_obj::Tree)
+	if nodeIdx_int == 0 return ("none",) end
 	relNodes_arr = tree_obj.nodes[nodeIdx_int].lvl == 1 ? [nodeIdx_int] : vcat(reverse(getAncestors(nodeIdx_int,tree_obj,:tup,1))..., nodeIdx_int)
 	return tuple(map(x -> tree_obj.nodes[x[1]].val, relNodes_arr)...)
 end
