@@ -378,15 +378,19 @@ function checkResiCapa(var_sym::Symbol, stockCapa_df::DataFrame, part::AbstractM
 end
 
 # XXX get a dataframe with all variable of the specified type
-function getAllVariables(va::Symbol,anyM::anyModel)
+function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> true)
 
 	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :expExc => :exc, :ctr => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
 	techIdx_arr = collect(keys(anyM.parts.tech))
 
 	if !(va in keys(varToPart_dic)) # get all variables for technologies
 		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut))
-		techType_arr = filter(x -> !isempty(x[2]),[[vaSpec,filter(y -> vaSpec in keys(anyM.parts.tech[y].var), techIdx_arr)] for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
-		allVar_df = vcat(map(x -> anyM.parts.tech[x[2]].var[x[1]], vcat(map(x -> collect(zip(fill(x[1],length(x[2])),x[2])),techType_arr)...))...)
+		techType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(anyM.parts.tech[y].var), techIdx_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
+		if !isempty(techType_arr)
+			allVar_df = vcat(map(x -> anyM.parts.tech[x[2]].var[x[1]], vcat(map(x -> collect(zip(fill(x[1],length(x[2])),x[2])),techType_arr)...))...)
+		else
+			allVar_df = DataFrame()
+		end
 	elseif va != :emission # get variables from other parts
 		if va in keys(getfield(anyM.parts,varToPart_dic[va]).var)
 			allVar_df = getfield(anyM.parts,varToPart_dic[va]).var[va]
@@ -407,6 +411,7 @@ function getAllVariables(va::Symbol,anyM::anyModel)
 		select!(allVar_df,Not(:val))
 	end
 
+	filter!(filterFunc,allVar_df)
 	return allVar_df
 end
 
