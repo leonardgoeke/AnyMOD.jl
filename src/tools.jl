@@ -149,21 +149,27 @@ end
 
 reportResults(reportType::Symbol,anyM::anyModel) = reportResults(Val{reportType}(),anyM::anyModel)
 
-# XXX summary of results for technologies
-function reportResults(objGrp::Val{:tech},anyM::anyModel)
+# XXX summary of all capacity and dispatch results
+function reportResults(objGrp::Val{:summary},anyM::anyModel)
 
     techIdx_arr = collect(keys(anyM.parts.tech))
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
 
+	# XXX get expansion and capacity variables
 	for t in techIdx_arr
 		part = anyM.parts.tech[t]
 		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
 
 		# get installed capacity values
-		for va in intersect(keys(part.var),(:capaConv, :capaStIn, :capaStOut,  :capaStSize, :commCapaConv, :commCapaStIn, :commCapaStOut, :commCapaStSize))
+		for va in intersect(keys(part.var),(:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :commCapaConv, :commCapaStIn, :commCapaStOut, :commCapaStSize))
 			capa_df = copy(part.var[va])
+			if va in (:expConv, :expStIn, :expStOut, :expStSize)
+				capa_df = flatten(capa_df,:Ts_expSup)
+				select!(capa_df,Not(:Ts_disSup))
+				rename!(capa_df,:Ts_expSup => :Ts_disSup)
+			end
 			# set carrier column to zero for conversion capacities and add a spatial dispatch column
-			if va in (:capaConv,:commCapaConv)
+			if va in (:expConv,:capaConv,:commCapaConv)
 				capa_df[!,:C] .= 0
 				capa_df[!,:R_dis] = map(x -> getAncestors(x,anyM.sets[:R],:int,part.balLvl.ref[2])[end],capa_df[!,:R_exp])
 			else
@@ -177,29 +183,52 @@ function reportResults(objGrp::Val{:tech},anyM::anyModel)
 			tech_df = vcat(tech_df,capa_df)
 		end
 
-		# get dispatch variables
-		for va in intersect(keys(part.var),(:use, :gen, :stIntOut,  :stIntIn, :stExtOut, :stExtIn))
-			disp_df = filter(x -> x.variable == (va in (:use,:gen) ? :capaConv : :capaStIn),tech_df)[!,Not([:variable,:value])]
-			# adds all relevant columns for carrier in case of conversion capacities where it is not specified by capacity
-			if va in (:use, :gen)
-				disp_df[!,:C] = fill(collect(getfield(part.carrier,va)),size(disp_df,1))
-				disp_df = flatten(disp_df,:C)
-			end
-			# comput values and add to tech data frame
-			disp_df[!,:variable] .= va
-			disp_df[!,:value] .=  value.(aggDivVar(part.var[va],disp_df, (:Ts_disSup,:R_dis,:C,:Te),anyM.sets)) ./ 1000
-			tech_df = vcat(tech_df,unique(disp_df))
-		end
-
 		# add tech dataframe to overall data frame
 		allData_df = vcat(allData_df,tech_df)
 	end
 
-	# get full load hours for conversion, storage input and storage output
+	# XXX get dispatch variables
+	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :ctr, :trdBuy, :trdSell)
+		# get all variables, group them and get respective values
+		allVar_df = getAllVariables(va,anyM)
+		if isempty(allVar_df) continue end
+
+		disp_df = by(allVar_df,intersect(intCol(allVar_df),[:Ts_disSup,:R_dis,:C,:Te]),value = [:var] => x -> value(sum(x.var)))
+		# scales values to twh (except for emissions of course)
+		if va != :emission disp_df[!,:value] = disp_df[!,:value]  ./ 1000 end
+		disp_df[!,:variable] .= va
+
+		# add empty values for non-existing columns
+		for dim in (:Te,:C)
+			if !(dim in names(disp_df))
+				disp_df[:,dim] .= 0
+			end
+		end
+
+		allData_df = vcat(allData_df,disp_df)
+	end
+
+	# XXX get exchange variables aggregated by import and export
+	allExc_df = getAllVariables(:exc,anyM)
+	if !isempty(allExc_df)
+	    # add losses to all exchange variables
+	    allExc_df = getExcLosses(convertExcCol(allExc_df),anyM.parts.exc.par,anyM.sets)
+	    # compute export and import of each region, losses are considered at import
+	    excFrom_df = rename(by(allExc_df,[:Ts_disSup,:R_a,:C],value = [:var] => x -> value(sum(x.var))),:R_a => :R_dis)
+	    excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
+
+	    excTo_df = rename(by(allExc_df,[:Ts_disSup,:R_b,:C],value = [:var,:loss] => x -> value(dot(x.var,(1 .- x.loss)))),:R_b => :R_dis)
+	    excTo_df[!,:variable] .= :import; excTo_df[!,:Te] .= 0
+
+
+	    allData_df = vcat(allData_df,vcat(excFrom_df,excTo_df))
+	end
+
+	# XXX get full load hours for conversion, storage input and storage output
 	if anyM.options.decomm == :none
-		flh_dic = Dict(:capaConv => :FlhConv, :capaStIn => :FlhStIn, :capaStOut => :FlhStOut)
+		flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
 	else
-		flh_dic = Dict(:commCapaConv => :FlhConv, :commCapaStIn => :FlhStIn, :commCapaStOut => :FlhStOut)
+		flh_dic = Dict(:commCapaConv => :flhConv, :commCapaStIn => :flhStIn, :commCapaStOut => :flhStOut)
 	end
 
 	for flhCapa in collect(keys(flh_dic))
@@ -222,11 +251,11 @@ function reportResults(objGrp::Val{:tech},anyM::anyModel)
 		allData_df = vcat(allData_df,capaFlh_df)
 	end
 
-	# comptue storage cycles
+	# XXX comptue storage cycles
 	if anyM.options.decomm == :none
-		cyc_dic = Dict(:capaStIn => :CycStIn, :capaStOut => :CycStOut)
+		cyc_dic = Dict(:capaStIn => :cycStIn, :capaStOut => :cycStOut)
 	else
-		cyc_dic = Dict(:commCapaStIn => :CycStIn, :commCapaStOut => :CycStOut)
+		cyc_dic = Dict(:commCapaStIn => :cycStIn, :commCapaStOut => :cycStOut)
 	end
 
 	for cycCapa in collect(keys(cyc_dic))
@@ -249,32 +278,65 @@ function reportResults(objGrp::Val{:tech},anyM::anyModel)
 	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_tech")
 end
 
-# XXX summary of results for costs
+# XXX results for costs
 function reportResults(objGrp::Val{:costs},anyM::anyModel)
-
+	# prepare empty dataframe
 	allData_df = DataFrame(Ts_disSup = Int[], R = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
 
+	# loops over all objective variables with keyword "cost" in it
 	for cst in filter(x -> occursin("cost",string(x)),keys(anyM.parts.obj.var))
-		cost_df = anyM.parts.obj.var[cst]
-
+		cost_df = copy(anyM.parts.obj.var[cst])
+		# rename all dispatch and expansion regions simply to region
 		if !isempty(intersect([:R_dis,:R_exp],names(cost_df)))
 			rename!(cost_df,:R_dis in names(cost_df) ? :R_dis : :R_exp => :R)
 		end
-
+		# add empty column for non-existing dimensions
 		for dim in (:Te,:C,:R)
 			if !(dim in names(cost_df))
 				cost_df[:,dim] .= 0
 			end
 		end
-
+		# obtain values and write to dataframe
 		cost_df[:,:variable] .= string(cst)
-		cost_df[:,:value] = value.(cost_df[:,:var])
-
+		cost_df[:,:value] = value.(cost_df[:,:var]) .* anyM.options.scaFac.cost
 		allData_df = vcat(allData_df,cost_df[:,Not(:var)])
-
 	end
-
 	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_costs")
+end
+
+# XXX results for exchange
+function reportResults(objGrp::Val{:exchange},anyM::anyModel)
+	allData_df = DataFrame(Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], variable = Symbol[], value = Float64[])
+	if isempty(anyM.parts.exc.var) error("No exchange data found") end
+	# XXX expansion variables
+	exp_df = copy(anyM.parts.exc.var[:expExc]) |> (x -> vcat(x,rename(x,:R_from => :R_to, :R_to => :R_from)))
+	exp_df = flatten(exp_df,:Ts_expSup)
+	select!(exp_df,Not(:Ts_disSup))
+	rename!(exp_df,:Ts_expSup => :Ts_disSup)
+
+	exp_df = by(exp_df,[:Ts_disSup,:R_from,:R_to,:C],value = [:var] => x -> value.(sum(x.var)))
+	exp_df[!,:variable] .= :expExc
+
+	# XXX capacity variables
+	capa_df = copy(anyM.parts.exc.var[:capaExc])
+	capa_df = vcat(capa_df,rename(filter(x -> x.dir == 0, capa_df),:R_from => :R_to, :R_to => :R_from))
+	capa_df = by(capa_df,[:Ts_disSup,:R_from,:R_to,:C],value = [:var] => x -> value.(sum(x.var)))
+	capa_df[!,:variable] .= :capaExc
+
+	# XXX dispatch variables
+	disp_df = getAllVariables(:exc,anyM)
+	disp_df = by(disp_df,[:Ts_disSup,:R_from,:R_to,:C],value = [:var] => x -> value.(sum(x.var)))
+	disp_df[!,:variable] .= :exc
+
+
+	# XXX get full load hours
+	flh_df = join(rename(select(capa_df,Not(:variable)),:value => :capa),rename(select(disp_df,Not(:variable)),:value => :disp),on = [:Ts_disSup,:R_from,:R_to,:C], kind = :inner)
+	flh_df[!,:value] = flh_df[!,:disp] ./ flh_df[!,:capa]
+	flh_df[!,:variable] .= :flhExc
+
+	# XXX merge and print all data
+	allData_df = vcat(exp_df,capa_df,disp_df,select(flh_df,Not([:capa,:disp])))
+	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_exchange")
 end
 
 # XXX print time series for in and out into seperate tables

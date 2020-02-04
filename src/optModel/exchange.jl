@@ -31,7 +31,7 @@ function prepareExcExpansion!(partExc::OthPart,partLim::OthPart,prepExc_dic::Dic
 	allExExp_df[!,:Ts_expSup] = map(x -> getDescendants(x,anyM.sets[:Ts],false,anyM.supTs.lvl) |> (y -> typeof(y) == Array{Int,1} ? y : [y] ), allExExp_df[!,:Ts_exp])
 
 	# filter cases where expansion is fixed to zero
-	if :expExcFix in keys(partExc.par)
+	if :expExcFix in keys(anyM.parts.lim.par)
 		allExExp_df = removeEntries([filterZero(allExExp_df,getLimPar(anyM.parts.lim,:expExcFix,anyM.sets[:Te]),anyM)],allExExp_df)
 	end
 
@@ -184,7 +184,7 @@ function createCapaRestrExc!(part::OthPart,anyM::anyModel)
 	part.cns[:capaExcRestr] = createCns(cnsCont(cns_df,:smaller),anyM.optModel)
 end
 
-# XXX obtain values for exchange losses 
+# XXX obtain values for exchange losses
 function getExcLosses(exc_df::DataFrame,excPar_dic::Dict{Symbol,ParElement},sets_dic::Dict{Symbol,Tree})
 	lossPar_obj = copy(excPar_dic[:lossExc])
 	lossPar_obj.data = lossPar_obj.data |> (x -> vcat(x,rename(x,:R_a => :R_b, :R_b => :R_a)))
