@@ -43,7 +43,7 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 	end
 	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for trade")
 end
-
+anyM.sets[:C].nodes
 # XXX create all energy balances (and curtailment variables if required)
 function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 

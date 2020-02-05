@@ -308,7 +308,8 @@ end
 function reportResults(objGrp::Val{:exchange},anyM::anyModel)
 	allData_df = DataFrame(Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc.var) error("No exchange data found") end
-	# XXX expansion variables
+
+    # XXX expansion variables
 	exp_df = copy(anyM.parts.exc.var[:expExc]) |> (x -> vcat(x,rename(x,:R_from => :R_to, :R_to => :R_from)))
 	exp_df = flatten(exp_df,:Ts_expSup)
 	select!(exp_df,Not(:Ts_disSup))
@@ -325,13 +326,14 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel)
 
 	# XXX dispatch variables
 	disp_df = getAllVariables(:exc,anyM)
-	disp_df = by(disp_df,[:Ts_disSup,:R_from,:R_to,:C],value = [:var] => x -> value.(sum(x.var)))
+	disp_df = by(disp_df,[:Ts_disSup,:R_from,:R_to,:C],value = [:var] => x -> value.(sum(x.var)) ./ 1000)
 	disp_df[!,:variable] .= :exc
 
 
 	# XXX get full load hours
-	flh_df = join(rename(select(capa_df,Not(:variable)),:value => :capa),rename(select(disp_df,Not(:variable)),:value => :disp),on = [:Ts_disSup,:R_from,:R_to,:C], kind = :inner)
-	flh_df[!,:value] = flh_df[!,:disp] ./ flh_df[!,:capa]
+	capaExt_df = replCarLeaves(copy(capa_df),anyM.sets[:C])
+	flh_df = join(rename(select(capaExt_df,Not(:variable)),:value => :capa),rename(select(disp_df,Not(:variable)),:value => :disp),on = [:Ts_disSup,:R_from,:R_to,:C], kind = :inner)
+	flh_df[!,:value] = flh_df[!,:disp] ./ flh_df[!,:capa] .* 1000
 	flh_df[!,:variable] .= :flhExc
 
 	# XXX merge and print all data

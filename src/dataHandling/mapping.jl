@@ -18,6 +18,18 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     	# gets resolution value and writes them if they can be parsed to numbers
     	resVal_dic = Dict(resLongShort_tup[x] => row[x] for x in resCol_tup)
 
+		# check, if carrier got an equality constraint or not
+		if :carrier_equality in names(row)
+			if !(row[:carrier_equality] in ("no","yes"))
+				push!(anyM.report,(3,"carrier mapping","","column carrier_equality can only contain keywords 'yes' or 'no'"))
+				continue
+			else
+				eq_boo = row[:carrier_equality] == "yes" ? true : false
+			end
+		else
+			eq_boo = false
+		end
+
     	# check if level values can be converted to integers
     	if any(map(x -> tryparse(Int,x), values(resVal_dic)) .== nothing)
     		push!(anyM.report,(1,"carrier mapping","","no resolutions written for $(createFullString(car_int,anyM.sets[:C])), provide as integer"))
@@ -32,11 +44,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     		push!(anyM.report,(3,"carrier mapping","","spatial resolution of expansion must be at least as detailed as dispatch for $(createFullString(car_int,anyM.sets[:C]))"))
     		continue
     	else
-			if !(row[:carrier_equality] in ("no","yes"))
-				push!(anyM.report,(3,"carrier mapping","","column carrier_equality resolution can only contain keywords 'yes' or 'no'"))
-				continue
-			end
-    		anyM.cInfo[car_int] = (tsDis = res_dic[:lvlTsDis],tsExp = res_dic[:lvlTsExp],rDis = res_dic[:lvlRDis],rExp = res_dic[:lvlRExp], eq = row[:carrier_equality] == "yes" ? true : false)
+    		anyM.cInfo[car_int] = (tsDis = res_dic[:lvlTsDis],tsExp = res_dic[:lvlTsExp],rDis = res_dic[:lvlRDis],rExp = res_dic[:lvlRExp], eq = eq_boo)
     	end
     end
 	if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end

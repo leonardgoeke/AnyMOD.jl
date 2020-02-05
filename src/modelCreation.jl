@@ -60,7 +60,6 @@ function createOptModel!(anyM::anyModel)
 
 	# obtain capacity dimensions solely based on expansion variables
 	prepareCapacity!(partExc,prepExc_dic,prepExc_dic[:expExc].var,:capaExc,anyM)
-
 	addResidualCapaExc!(partExc,prepExc_dic,potExc_df,anyM)
 
 	if !all(map(x -> isempty(x),values(prepExc_dic[:capaExc])))
@@ -73,7 +72,7 @@ function createOptModel!(anyM::anyModel)
 		createExcVar!(partExc,ts_dic,anyM)
 		produceMessage(anyM.options,anyM.report, 2," - Created all dispatch variables for exchange")
 		# create capacity restrictions
-		createCapaRestrExc!(partExc,anyM)
+		createCapaRestrExc!(ts_dic,r_dic,partExc,anyM)
 		produceMessage(anyM.options,anyM.report, 2," - Created all capacity restrictions for exchange")
 		produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for exchange")
 	end
@@ -86,3 +85,6 @@ function createOptModel!(anyM::anyModel)
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")
 end
+
+
+anyM.parts.exc.cns[:capaExcRestr]

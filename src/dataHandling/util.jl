@@ -220,7 +220,7 @@ end
 
 # <editor-fold desc="functions and sub-functions to aggregate variables"
 
-# XXX aggregates variables in aggregation to rows in serach, function used, if all entries of search have the same resolution (all entries in a relevant column are on the same level)
+# XXX aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if all entries of search have the same resolution (all entries in a relevant column are on the same level)
 function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Symbol,1},srcRes_tup::NamedTuple,sets_dic::Dict{Symbol,Tree})
 	if isempty(aggEtr_df) return fill(AffExpr(),size(srcEtr_df,1)) end
 
@@ -240,7 +240,7 @@ function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Sy
 	return var_arr
 end
 
-# XXX aggregates variables in aggregation to rows in serach, function used, if entries of search can have different resolutions (not all entries in a relevant column are on the same level)
+# XXX aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if entries of search can have different resolutions (not all entries in a relevant column are on the same level)
 function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, sets_dic::Dict{Symbol,Tree}; aggFilt::Tuple = ())
 
 	# XXX sanity checks regarding columns
