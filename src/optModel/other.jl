@@ -43,7 +43,7 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 	end
 	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for trade")
 end
-anyM.sets[:C].nodes
+
 # XXX create all energy balances (and curtailment variables if required)
 function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 
@@ -166,7 +166,7 @@ function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,t
 			# gets resolution and adjusts add_df in case of an agggregated technology
 			add_df = select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var])
 			tRes_tup = tech_dic[x[1]].disAgg ? (cRes_tup[1], cInfo_dic[c].rExp) : cRes_tup
-			checkTechReso!(tRes_tup,cBalRes_tup,add_df,anyM.sets)
+			checkTechReso!(tRes_tup,cBalRes_tup,add_df,sets_dic)
 
 			# adds sign to variables and adds them to overall dataframe
 			add_df[!,:var] = add_df[!,:var] .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)

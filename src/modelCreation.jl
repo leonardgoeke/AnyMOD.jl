@@ -85,6 +85,3 @@ function createOptModel!(anyM::anyModel)
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")
 end
-
-
-anyM.parts.exc.cns[:capaExcRestr]
