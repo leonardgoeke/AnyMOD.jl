@@ -1,0 +1,4 @@
+errStatus,group,instance,message
+green,carrier mapping,,carrier heat inherited resolution from children
+green,carrier mapping,,carrier gas inherited resolution from children
+yellow,timestep mapping,,"supordinate dispatch level provided via options could not be used, because it was more detailed than at least one dispatch level provided"
