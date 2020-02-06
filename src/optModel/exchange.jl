@@ -243,14 +243,4 @@ function getExcLosses(exc_df::DataFrame,excPar_dic::Dict{Symbol,ParElement},sets
 	return excLoss_df
 end
 
-# XXX replaces orginal carriers in var_df with all leaves connected to respective carrier (and itself) and flattens it
-function replCarLeaves(var_df::DataFrame,c_tree::Tree)
-
-	cToLeafes_dic = Dict(x => filter(y -> isempty(c_tree.nodes[y].down), [x,getDescendants(x,c_tree)...]) for x in unique(var_df[!,:C]))
-	var_df[!,:C] = map(x -> cToLeafes_dic[x],var_df[!,:C])
-	var_df = flatten(var_df,:C)
-
-	return var_df
-end
-
 # </editor-fold>

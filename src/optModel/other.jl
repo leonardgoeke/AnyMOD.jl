@@ -279,7 +279,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 		if occursin("capa",string(va))
 			if !(:Ts_disSup in names(allLimit_df))
 				lock(anyM.lock)
-				push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the supordinate dispatch timestep, this means the sum of capacity over all supordinate timesteps was limited
+				push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
 																												(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
 				unlock(anyM.lock)
 			elseif 0 in unique(allLimit_df[!,:Ts_disSup])
@@ -287,12 +287,12 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 				if :Te in names(relEntr_df)
 					allTe_arr = unique(relEntr_df[!,:Te])
 					for t in allTe_arr
-						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for $(createFullString(t,anyM.sets[:Te])) without specificing the supordinate dispatch timestep, this means the sum of capacity over all supordinate timesteps was limited
+						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for $(createFullString(t,anyM.sets[:Te])) without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
 																						(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
 					end
 				else
 					lock(anyM.lock)
-					push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the supordinate dispatch timestep, this means the sum of capacity over all supordinate timesteps was limited
+					push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
 																												(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
 					unlock(anyM.lock)
 				end

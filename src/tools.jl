@@ -136,7 +136,7 @@ function printObject(print_df::DataFrame,sets::Dict{Symbol,Tree},options::modOpt
     end
 
 	# rename columns
-	colName_dic = Dict(:Ts_dis => :timestep_dispatch, :Ts_exp => :timestep_expansion, :Ts_expSup => :timestep_supordinate_expansion, :Ts_disSup => :timestep_supordinate_dispatch,
+	colName_dic = Dict(:Ts_dis => :timestep_dispatch, :Ts_exp => :timestep_expansion, :Ts_expSup => :timestep_superordinate_expansion, :Ts_disSup => :timestep_superordinate_dispatch,
 															:R => :region, :R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Te => :technology,
 																:cns => :constraint, :var => :variable)
 

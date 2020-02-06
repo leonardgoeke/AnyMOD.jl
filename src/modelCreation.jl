@@ -19,7 +19,7 @@ function createOptModel!(anyM::anyModel)
 
     # XXX create all technology related elements
 
-    # creates dictionary that assigns combination of supordinate dispatch timestep and dispatch level to dispatch timesteps
+    # creates dictionary that assigns combination of superordinate dispatch timestep and dispatch level to dispatch timesteps
     allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
     ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
 

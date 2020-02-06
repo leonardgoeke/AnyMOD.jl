@@ -77,8 +77,8 @@ mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  
 # XXX check if dataframe should be considered, if energy balance is created for carriers in array
 filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in names(var_df) ? filter(r -> r.C in c_arr,var_df) : var_df
 
-# XXX creates a dictionary that assigns each dispatch timestep inputed to its supordinate dispatch timestep
-function assignSupTs(inputSteps_arr::Array{Int,1},time_Tree::Tree,supordinateLvl_int::Int)
+# XXX creates a dictionary that assigns each dispatch timestep inputed to its superordinate dispatch timestep
+function assignSupTs(inputSteps_arr::Array{Int,1},time_Tree::Tree,superordinateLvl_int::Int)
 
 	assSup_dic = Dict{Int,Int}()
 
@@ -89,13 +89,13 @@ function assignSupTs(inputSteps_arr::Array{Int,1},time_Tree::Tree,supordinateLvl
 	end
 
 	# assigns entries on or above subordinate dispatch level to itselfs
-	aboveSupTs_arr = filter(z -> time_Tree.nodes[z].lvl <= supordinateLvl_int, inputSteps_arr)
+	aboveSupTs_arr = filter(z -> time_Tree.nodes[z].lvl <= superordinateLvl_int, inputSteps_arr)
 	for x in aboveSupTs_arr assSup_dic[x] = x end
 	inputSteps_arr = setdiff(inputSteps_arr,aboveSupTs_arr)
 
 	# assigns remaining entries
 	for x in inputSteps_arr
-		assSup_dic[x] = getAncestors(x,time_Tree,:int,supordinateLvl_int)[1]
+		assSup_dic[x] = getAncestors(x,time_Tree,:int,superordinateLvl_int)[1]
 	end
 
 	return assSup_dic
@@ -113,7 +113,7 @@ function createPotDisp(c_arr::Array{Int,1},anyM::anyModel)
 
 	var_df = flatten(flatten(select(allLvl_df,Not([:lvlTs,:lvlR])),:Ts_dis),:R_dis)
 
-	# add column for supordinate dispatch timestep
+	# add column for superordinate dispatch timestep
 	supTs_dic =  Dict(x => getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(var_df[!,:Ts_dis]))
 	var_df[!,:Ts_disSup] = map(x -> supTs_dic[x], var_df[!,:Ts_dis])
 
@@ -312,7 +312,7 @@ end
 
 # <editor-fold desc="manipulate model related data frames"
 
-# XXX add supordinate dispatch timestep to expansion dataframe
+# XXX add superordinate dispatch timestep to expansion dataframe
 function addSupTsToExp(expMap_df::DataFrame,para_obj::Dict{Symbol,ParElement},type_sym::Symbol,tsYear_dic::Dict{Int,Int},anyM::anyModel)
 	if !isempty(expMap_df)
 		lftm_df = matchSetParameter(flatten(expMap_df,:Ts_expSup),para_obj[Symbol(:life,type_sym)],anyM.sets,newCol = :life)
@@ -348,7 +348,7 @@ function expandExpToCapa(in_df::DataFrame)
 	return orderDf(capa_df)
 end
 
-# XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and supordinate dispatch steps to full dispatch table
+# XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
 function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int,Int},Int},preserveTsSupTs::Bool = false)
     # adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)
 	expR_df = unique(by(inData_df,names(inData_df),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])])
@@ -413,6 +413,16 @@ function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> 
 
 	filter!(filterFunc,allVar_df)
 	return allVar_df
+end
+
+# XXX replaces orginal carriers in var_df with all leaves connected to respective carrier (and itself) and flattens it
+function replCarLeaves(var_df::DataFrame,c_tree::Tree;cCol::Symbol=:C)
+
+	cToLeafes_dic = Dict(x => filter(y -> isempty(c_tree.nodes[y].down), [x,getDescendants(x,c_tree)...]) for x in unique(var_df[!,cCol]))
+	var_df[!,:C] = map(x -> cToLeafes_dic[x],var_df[!,cCol])
+	var_df = flatten(var_df,:C)
+
+	return var_df
 end
 
 # </editor-fold>

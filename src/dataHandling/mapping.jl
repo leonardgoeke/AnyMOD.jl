@@ -99,15 +99,15 @@ end
 
 # XXX maps information about timesteps used
 function createTimestepMapping!(anyM::anyModel)
-    # XXX writes the supordinate dispatch level, the timesteps on this level and scaling factor for timesteps depending on the respective supordinate dispatch timestep and the level
+    # XXX writes the superordinate dispatch level, the timesteps on this level and scaling factor for timesteps depending on the respective superordinate dispatch timestep and the level
     supTsLvl_int = maximum(map(x -> getfield(x,:tsExp),values(anyM.cInfo)))
 
 	if anyM.options.supTsLvl != 0
 		if minimum(map(x -> getfield(x,:tsDis),values(anyM.cInfo))) >= anyM.options.supTsLvl
 			supTsLvl_int = anyM.options.supTsLvl
-			push!(anyM.report,(1,"timestep mapping","","supordinate dispatch level provided via options was used"))
+			push!(anyM.report,(1,"timestep mapping","","superordinate dispatch level provided via options was used"))
 		else
-			push!(anyM.report,(2,"timestep mapping","","supordinate dispatch level provided via options could not be used, because it was more detailed than at least one dispatch level provided"))
+			push!(anyM.report,(2,"timestep mapping","","superordinate dispatch level provided via options could not be used, because it was more detailed than at least one dispatch level provided"))
 		end
 	end
 
@@ -116,7 +116,7 @@ function createTimestepMapping!(anyM::anyModel)
     anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic)
 
     if length(anyM.supTs.step) > 50
-		push!(anyM.report,(2,"timestep mapping","","problem specification resulted in more than 50 supordinate timesteps, this looks faulty"))
+		push!(anyM.report,(2,"timestep mapping","","problem specification resulted in more than 50 superordinate timesteps, this looks faulty"))
 	end
 
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for time steps")
@@ -220,7 +220,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
 		if !isnothing(tsExp_int)
 			if tsExp_int > anyM.supTs.lvl
-				push!(anyM.report,(2,"technology mapping","expansion level","specific temporal expansion level provided for $(createFullString(t,anyM.sets[:Te])) is below supordinate dispatch level and therefore could not be used"))
+				push!(anyM.report,(2,"technology mapping","expansion level","specific temporal expansion level provided for $(createFullString(t,anyM.sets[:Te])) is below superordinate dispatch level and therefore could not be used"))
 			else
 				push!(anyM.report,(1,"technology mapping","expansion level","specific temporal expansion level provided for $(createFullString(t,anyM.sets[:Te])) was used instead of a carrier based value"))
 				expTs_int = tsExp_int
