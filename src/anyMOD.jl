@@ -1,9 +1,8 @@
 module anyMOD
 
     using Base.Threads, CSV, Colors, Compose, Dates, GraphPlot, LightGraphs, LinearAlgebra
-    using MathOptInterface, Reexport, Statistics, TableReader
+    using MathOptInterface, Reexport, Statistics
     @reexport using DataFrames, JuMP
-
 
     include("objects.jl")
     include("tools.jl")

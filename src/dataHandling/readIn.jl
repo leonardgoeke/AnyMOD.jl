@@ -18,14 +18,9 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 		if setShort_sym in keys(anyM.sets)
 			push!(anyM.report,(3,"set read-in",string(setLong_sym),"multiple input files provided for set"))
 		end
-		setData_dic[setShort_sym] = convertReadIn(readcsv(setFile;delim = anyM.options.csvDelim[1]),setFile,set_arr,setLngShrt_dic,anyM.report)
+		setData_dic[setShort_sym] = convertReadIn(CSV.read(setFile;delim = anyM.options.csvDelim[1]),setFile,set_arr,setLngShrt_dic,anyM.report,anyM.lock)
 		anyM.sets[setShort_sym] = createTree(setData_dic[setShort_sym],setLong_sym,anyM.report)
 	    produceMessage(anyM.options,anyM.report, 3," - Read-in set file: ",setFile)
-	end
-
-	for missSet in filter(x -> !(x in (:M,:id)),setdiff(values(setLngShrt_dic),keys(anyM.sets)))
-		setShrtLng_dic = Dict(Pair.(values(setLngShrt_dic),keys(setLngShrt_dic)))
-		push!(anyM.report,(3,"set read-in",string(setShrtLng_dic[missSet]),"no file provided to define set"))
 	end
 
 	# manually adds mode set, creates a top node for all modes to allow for aggregation later
@@ -34,10 +29,17 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 		anyM.sets[:M] = createTree(modes_df,:mode,anyM.report)
 	end
 
-	# reports error if carrier names are non-unique
-	strC_arr = getfield.(values(anyM.sets[:C].nodes),:val)
-	if length(strC_arr) != length(unique(strC_arr))
-		push!(anyM.report,(3,"set read-in","carrier","non-unique carrier names provided"))
+	# reports, if a required set was not defined or if non-unique carrier names were defined
+	for set in filter(x -> !(x in (:mode, :id)), collect(keys(setLngShrt_dic)))
+		if !(setLngShrt_dic[set] in keys(anyM.sets))
+			push!(anyM.report,(3,"set read-in",string(set),"no file provided to define set"))
+		elseif set == :carrier
+			# reports error if carrier names are non-unique
+			strC_arr = getfield.(values(anyM.sets[:C].nodes),:val)
+			if length(strC_arr) != length(unique(strC_arr))
+				push!(anyM.report,(3,"set read-in","carrier","non-unique carrier names provided"))
+			end
+		end
 	end
 
 	produceMessage(anyM.options,anyM.report, 2," - Read-in all set files")
@@ -55,7 +57,8 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 
 	# read-in parameter files and convert their content
 	@threads for parFile in files_dic["par"]
-		parData_df = convertReadIn(readcsv(parFile;delim = anyM.options.csvDelim[1]),parFile,set_arr,setLngShrt_dic,anyM.report,anyM.sets)
+		parData_df = convertReadIn(CSV.read(parFile;delim = anyM.options.csvDelim[1]),parFile,set_arr,setLngShrt_dic,anyM.report,anyM.lock,anyM.sets)
+		if isempty(parData_df) || any(getindex.(anyM.report,1) .== 3) continue end
 		paraTemp_dic[parFile] = writeParameter(parData_df, anyM.sets, setLngShrt_dic, parFile, anyM.report, anyM.lock)
 		produceMessage(anyM.options,anyM.report, 3," - Read-in parameter file: ",parFile)
 	end
@@ -84,36 +87,66 @@ function readInputFolder(inputFolders::Array{String,1},files_dic::Dict{String,Ar
 end
 
 # XXX filters missing and adjusts data according to "all" statements
-function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{Symbol},setLngShrt_dic::Dict{Symbol,Symbol},report::Array{Tuple,1},sets::Dict{Symbol,Tree} = Dict{Symbol,Tree}())
-    setNames_arr = filterSetColumns(readIn_df,set_arr)
+function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{Symbol},setLngShrt_dic::Dict{Symbol,Symbol},report::Array{Tuple,1},lock_::SpinLock,sets::Dict{Symbol,Tree} = Dict{Symbol,Tree}())
+
+	setNames_arr = filterSetColumns(readIn_df,set_arr)
     oprNames_arr = filterSetColumns(readIn_df,[:parameter,:variable,:value, :id])
 	readInColAll_tup = tuple(names(readIn_df)...)
 
-	# drop irrelevant column that do not relate to a set or an operator
-	foreach(col ->  DataFrames.select!(readIn_df, DataFrames.Not(col)), setdiff(readInColAll_tup,vcat(setNames_arr[1],setNames_arr[2],oprNames_arr[1])))
-	readInCol_tup = tuple(names(readIn_df)...)
+	# drop irrelevant column that do not relate to a set or an operator or are completely empty
+	select!(readIn_df, Not(setdiff(readInColAll_tup,vcat(setNames_arr[1],setNames_arr[2],oprNames_arr[1]))))
+	emptyCol_arr = filter(x -> eltype(readIn_df[!,x]) == Missing,names(readIn_df))
+	setNames_arr[1] = setdiff(setNames_arr[1],emptyCol_arr)
+	select!(readIn_df, Not(emptyCol_arr))
 
-	# XXX drop unrequired rows and convert missing values
-    types_arr = eltype.(eachcol(readIn_df))
-    for (idx, col) in enumerate(names(readIn_df))
-		# convert remaining columns to strings and replace 'missing' with empty string
-        if types_arr[idx] != Union{Missing, String}
-            readIn_df[!,col] = map(x -> string(x),readIn_df[!,col])
-            readIn_df[!,col] = replace(readIn_df[!,col] , "missing"=>"")
-         end
-		readIn_df[ismissing.(readIn_df[!,col]), col] .= ""
-    end
+	# filter value columns
+	readInCol_arr = names(readIn_df)
+	valCol_arr = filter(x -> occursin("value",string(x)),readInCol_arr)
 
-	# XXX converts type of array container to array to allow for changing the readIn_df later
-	for col in eachcol(readIn_df, true)
-		readIn_df[!,col[1]] = convert(Array{String,1},readIn_df[!,col[1]])
+	# XXX convert missing values and change array container type for editing later
+	for j in 1:size(readIn_df,2)
+		col = collect(readIn_df[!,j])
+
+		if eltype(col) >: Int
+			col = replace(string.(col),"missing" => "")
+			if readInCol_arr[j] in valCol_arr
+				replace!(col,"" => "NaN")
+				col = parse.(Float64,col)
+			end
+			readIn_df[!,j] = col
+		elseif eltype(col) >: Missing
+			act_type = eltype(col) >: String ? String : Float64
+			# convert remaining columns to strings and replace 'missing' with empty string
+			col[findall(ismissing.(col))] .= act_type == String ? "" : NaN
+			readIn_df[!,j] = convert(Array{act_type,1},col)
+		else
+			readIn_df[!,j] = col
+		end
 	end
+
+	# XXX check types of columns
+	if  !isempty(valCol_arr) && any(map(x -> eltype(readIn_df[!,x]),  findall(map(x -> x in valCol_arr, readInCol_arr))) .== String)
+		lock(lock_)
+		push!(report,(3,"parameter read-in",fileName_str,"detected strings in value column, file was not read-in"))
+		unlock(lock_)
+		return DataFrame()
+	end
+
+	for supCol in findall(eltype.(eachcol(readIn_df)) .!= String)
+		if !occursin("value",string(readInCol_arr[supCol]))
+			lock(lock_)
+			push!(report,(3,"parameter read-in",fileName_str,"entries in $(readInCol_arr[supCol]) could be transferred to string (probably provided as floats), file was not read-in"))
+			unlock(lock_)
+			return DataFrame()
+		end
+	end
+
 
     # XXX rewrites rows with all commands into full format
     for col in setNames_arr[1]
 
+		colVal_arr = readIn_df[!, col]
         # check column for keywords
-        colVal_arr = convert(Array{String,1},readIn_df[:, col])
         rowsAll_arr = map(x -> length(x) >= 3 && lowercase(x[1:3]) == "all",colVal_arr)
 
         if all(!,rowsAll_arr) continue end
@@ -139,7 +172,9 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 
 				# reports if values within all expression could not be matched to sets
 				if length(rplVal_arr) != length(allVal_arr)
+					lock(lock_)
 					push!(report,(2,"parameter read-in",fileName_str,"at least one value within all expression $(allInfo_str) could not be matched to an existing set"))
+					unlock(lock_)
 				end
             elseif occursin(",",allInfo_str)
                 allVal_arr = split(allInfo_str,",")
@@ -147,7 +182,9 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 
 				# reports if values within all expression could not be matched to sets
 				if length(rplVal_arr) != length(allVal_arr)
+					lock(lock_)
 					push!(report,(2,"parameter read-in",fileName_str,"at least one value within all expression $(allInfo_str) could not be matched to an existing set"))
+					unlock(lock_)
 				end
             else
                 rplVal_arr = colValUni_arr
@@ -155,7 +192,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 
             for addVal in rplVal_arr
                 addRow_df[col] = addVal
-                push!(readIn_df, [addRow_df[col] for col in readInCol_tup])
+                push!(readIn_df, [addRow_df[col] for col in readInCol_arr])
             end
         end
         #remove inital rows with all#
@@ -176,7 +213,9 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 			newCol_dic = Dict{Symbol,Symbol}()
 
 			if any(map(x -> tryparse(Int,x),vcat(grpCol_dic[set]...)) .== nothing)
+				lock(lock_)
 				push!(report,(3,"parameter read-in",fileName_str,"column for set $(set) does not contain a number after _"))
+				unlock(lock_)
 				continue
 			end
 
@@ -205,9 +244,6 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 				end
 
 				DataFrames.rename!(readIn_df,newCol_dic)
-			elseif length(uniLen_arr) > 2
-				push!(report,(3,"parameter read-in",fileName_str,"column for set $(set) contains more than one _"))
-				continue
 			end
 		end
 	end
@@ -421,8 +457,6 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 				push!(report,(2,"parameter read-in",fileName_str,"values provided for undefined set $(undef...)"))
 				unlock(lock_)
 			end
-
-			continue
 		end
 
 		# creates all possible combinations of found values
@@ -442,12 +476,14 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 			if par_sym == Symbol()
 				continue
 			end
+
 			# adds values to dataframe
 			if isempty(addEntry_df)
-				addEntry_df = DataFrame(val = parse(Float64,row[i[2]]))
+				if isnan(row[i[2]]) continue end
+				addEntry_df = DataFrame(val = row[i[2]])
 			else
-				if row[i[2]] == "" continue end
-				addEntry_df[!,:val] .= parse(Float64,row[i[2]])
+				if isnan(row[i[2]]) continue end
+				addEntry_df[!,:val] .= row[i[2]]
 			end
 
 			# creates empty dataframe for parameter, if non-existent so far

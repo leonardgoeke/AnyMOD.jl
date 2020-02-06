@@ -1,5 +1,5 @@
 timestep_1,carrier_1,carrier_2,technology_1,region_1,parameter,value,comment
-,coal,,,,emissionFac,389.1599997,emission factor of using coal
+,coal,,,,emissionFac,389,emission factor of using coal
 ,gas,,,,emissionFac,235,emission factor of using gas (regardless if natural or synthetic gas)
 2020,,,,West,emissionUp,180,emission limit for West in 2020
 2020,,,,East,emissionUp,170,emission limit for East in 2020

@@ -47,7 +47,9 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     		anyM.cInfo[car_int] = (tsDis = res_dic[:lvlTsDis],tsExp = res_dic[:lvlTsExp],rDis = res_dic[:lvlRDis],rExp = res_dic[:lvlRExp], eq = eq_boo)
     	end
     end
+
 	if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
+
 	 #  loops over all carriers and check consistency of resolutions and tries to inherit a resolution where none was defined, cannot be carried if above they have already been errors detected
     for c in filter(x -> x != 0, keys(anyM.sets[:C].nodes))
     	anyM.cInfo = evaluateReso(c,anyM.sets[:C],anyM.cInfo,anyM.report)
