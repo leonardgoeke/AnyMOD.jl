@@ -457,4 +457,14 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc = x -> tru
 	end
 end
 
+# XXX write dual values for constraint dataframe
+function reportDuals(cns_df::DataFrame ;filterFunc::Function = x -> true, fileName = "")
+
+    if !(:cns in names(cns_df)) error("No constraint column found!") end
+    cns_df = copy(filter(filterFunc,cns_df))
+    cns_df[!,:dual] = dual.(cns_df[!,:cns])
+
+    printObject(select(cns_df,Not(:cns)),anyM.sets,anyM.options;fileName = string("dual",fileName != "" ? "_" : "",fileName))
+end
+
 # </editor-fold>
