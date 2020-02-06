@@ -342,7 +342,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel)
 end
 
 # XXX print time series for in and out into seperate tables
-function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc = x -> true, unstackBoo::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3)
+function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstackBoo::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3)
 
 	# XXX converts carrier named provided to index
 	node_arr = filter(x -> x.val == string(car_sym),collect(values(anyM.sets[:C].nodes)))
@@ -369,7 +369,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc = x -> tru
 		dem_df[!,:value] = dem_df[!,:value] .* getResize(dem_df,anyM.sets[:Ts],anyM.supTs) .* -1
 		dem_df[!,:variable] .= "demand"
 		filter!(x -> abs(x.value) > minVal, dem_df)
-		allData_df = vcat(allData_dic[:out],select!(dem_df,Not(:C)))
+		allData_dic[:out] = vcat(allData_dic[:out],select!(dem_df,Not(:C)))
 	end
 
 	# XXX adds all technology related variables
