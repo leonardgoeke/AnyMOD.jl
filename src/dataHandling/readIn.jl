@@ -457,6 +457,8 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 				push!(report,(2,"parameter read-in",fileName_str,"values provided for undefined set $(undef...)"))
 				unlock(lock_)
 			end
+
+			continue
 		end
 
 		# creates all possible combinations of found values

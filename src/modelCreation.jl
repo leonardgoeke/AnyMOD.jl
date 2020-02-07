@@ -30,8 +30,6 @@ function createOptModel!(anyM::anyModel)
                                                                                         for x in filter(x -> anyM.sets[:R].nodes[x[1]].lvl >= x[2], collect(Iterators.product(allRExp_arr,allLvlR_arr))))
 
     produceMessage(anyM.options,anyM.report, 3," - Determined dimension of expansion and capacity variables for technologies")
-    # loop over each tech to create variables and obtain constraint containers
-
 
     # constraints for technologies are prepared in threaded loop and stored in an array of dictionaries
 	techCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(techIdx_arr))

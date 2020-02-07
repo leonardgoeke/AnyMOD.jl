@@ -189,7 +189,7 @@ end
 function prepareCapaRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},partExc::OthPart,anyM::anyModel)
 
 	c_int = cns_df[1,:C]
-	leafes_arr = filter(y -> isempty(anyM.sets[:C].nodes[y].down), [c_int,getDescendants(c_int,anyM.sets[:C])...])
+	leafes_arr = filter(y -> isempty(anyM.sets[:C].nodes[y].down), [c_int,getDescendants(c_int,anyM.sets[:C],true)...])
 	cRes_tup = anyM.cInfo[c_int] |> (x -> (Ts_dis = x.tsDis, R_from = x.rDis, R_to = x.rDis))
 
 	# extend constraint dataframe to dispatch levels

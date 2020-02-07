@@ -130,6 +130,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     lvlTech_arr = [Symbol("technology_",i) for i in 1:anyM.sets[:Te].height]
 
     # tuple of columns with input, output and stored carriers
+	typeStr_dic = Dict(:carrier_conversion_in => "conversion input", :carrier_conversion_out => "conversion output", :carrier_stored_in => "storage", :carrier_stored_out => "storage")
     carCol_tup =  (:carrier_conversion_in, :carrier_conversion_out, :carrier_stored_in, :carrier_stored_out)
 
     # maps selected strings of tech types to integers
@@ -148,6 +149,12 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     # gets string array of carriers for input, output and stored, looks up respective ids afterwards and writes to mapping file
     carStrArr_dic = Dict(y => map(x -> string.(split(x,"<")),split(replace(row_df[y]," " => ""),";")) for y in carCol_tup)
     carId_dic = Dict(y => map(x -> x == [""] ? false : lookupTupleTree(tuple(x...),anyM.sets[:C],1),carStrArr_dic[y]) |> (z -> z == [false] ? tuple() : tuple(z...)) for y in keys(carStrArr_dic))
+
+	for x in filter(x -> Int[] in carId_dic[x], collect(keys(carId_dic)))
+		push!(anyM.report,(3,"technology mapping","carrier","$(typeStr_dic[x]) carrier of technology $(createFullString(t,anyM.sets[:Te])) not entered correctly"))
+		carId_dic[x] = tuple(filter(y -> y != Int[],collect(carId_dic[x]))...)
+	end
+
     # writes all relevant type of dispatch variables and respective carriers
     carGrp_ntup = (use = carId_dic[:carrier_conversion_in], gen = carId_dic[:carrier_conversion_out], stExtIn = carId_dic[:carrier_stored_in], stExtOut = carId_dic[:carrier_stored_out],
                          stIntIn = tuple(intersect(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])...), stIntOut = tuple(intersect(carId_dic[:carrier_conversion_in],carId_dic[:carrier_stored_in])...))
@@ -155,25 +162,24 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     # report on suspicious looking carrier constellations
     if isempty(union(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])) push!(anyM.report,(2,"technology mapping","carrier","technology $(createFullString(t,anyM.sets[:Te])) has no output")) end
 
-    if isempty(intersect(carId_dic[:carrier_stored_in],union(carGrp_ntup.stIntOut,carGrp_ntup.stExtOut))) && !isempty(carId_dic[:carrier_stored_in])
+    if !isempty(setdiff(carId_dic[:carrier_stored_in],union(carGrp_ntup.stIntOut,carGrp_ntup.stExtOut))) && !isempty(carId_dic[:carrier_stored_in])
         push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology $(createFullString(t,anyM.sets[:Te])) can be charged but not discharged"))
     end
 
-    if isempty(intersect(carId_dic[:carrier_stored_out],union(carGrp_ntup.stIntIn,carGrp_ntup.stExtIn))) && !isempty(carId_dic[:carrier_stored_out])
+    if !isempty(setdiff(carId_dic[:carrier_stored_out],union(carGrp_ntup.stIntIn,carGrp_ntup.stExtIn))) && !isempty(carId_dic[:carrier_stored_out])
         push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology $(createFullString(t,anyM.sets[:Te])) can be discharged but not charged"))
     end
 
     part.carrier = filter(x -> getfield(carGrp_ntup,x) != tuple(),collect(keys(carGrp_ntup))) |> (y -> NamedTuple{Tuple(y)}(map(x -> getfield(carGrp_ntup,x), y)) )
 
     # detects if any in or out carrier is a parent of another in or out carrier, removes carrier in these cases and reports on it
-    for type in (:in,:out)
-        relCar_tup = carId_dic[Symbol(:carrier_conversion_,type)]
+    for type in (:carrier_conversion_in, :carrier_conversion_out, :carrier_stored_in, :carrier_stored_out)
+        relCar_tup = carId_dic[type]
         inherCar_tup = relCar_tup[findall(map(x -> !(isempty(filter(z -> z != x,intersect(getDescendants(x,anyM.sets[:C],true),relCar_tup)))),relCar_tup))]
         if !isempty(inherCar_tup)
             for inher in inherCar_tup
-                push!(anyM.report,(2,"technology mapping","carrier","for technology $(createFullString(t,anyM.sets[:Te])) the $(type)put carrier $(createFullString(inher,anyM.sets[:C])) is a parent of another $(type)put carrier, this is not supported, carrier was removed"))
+                push!(anyM.report,(3,"technology mapping","carrier","for technology $(createFullString(t,anyM.sets[:Te])) the $(typeStr_dic[type]) carrier $(createFullString(inher,anyM.sets[:C])) is a parent of another $(typeStr_dic[type]) carrier, this is not supported"))
             end
-            carId_dic[Symbol(:carrier_conversion_,type)] = tuple(setdiff(collect(carId_dic[Symbol(:carrier_conversion_,type)]),collect(inherCar_tup))...)
         end
     end
 

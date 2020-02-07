@@ -209,7 +209,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 			var_df = by(joinMissing(var_df,varMap_tup.resi[!,vcat(:var,join_arr...)], join_arr, :outer, Dict(:var => AffExpr(),:var_1 => AffExpr()),true),intCol(var_df,:dir),var = [:var,:var_1] => x -> sum(x))
 		end
 
-		# expands table of expansion variables to supordinate timesteps and modifies expansion variable accordingly
+		# expands table of expansion variables to superordinate timesteps and modifies expansion variable accordingly
 		if occursin("exp",string(expVar)) && !isempty(var_df)
 			noExpCol_arr = intCol(var_df)
 			allDf_arr = map(eachrow(var_df)) do x
@@ -263,7 +263,8 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
 		else
-			basis_df= orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
+			basis_df = orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
+			basis_df = replCarLeaves(basis_df,anyM.sets[:C])
 		end
 
 		# adds temporal and spatial level to dataframe
@@ -274,7 +275,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 
 		# add mode dependencies
 		modeDep_df = copy(modeDep_dic[va])
-		modeDep_df[!,:M] .= isempty(part.modes) ? [0] : [collect(part.modes)]
+		modeDep_df[!,:M] .= isempty(modeDep_df) ? [0] : [collect(part.modes)]
 		modeDep_df = flatten(modeDep_df,:M)
 
 		allVar_df = joinMissing(allVar_df,modeDep_df,names(modeDep_dic[va]),:left,Dict(:M => 0))
@@ -388,14 +389,34 @@ function createConvBal(part::TechPart,anyM::anyModel)
 
 	cns_df = rename(part.par[:effConv].data,:val => :eff)
 	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), intCol(cns_df))
-	srcRes_ntup = part.balLvl |> (x -> part.type == :emerging ? (Ts_expSup = x.exp[1], Ts_dis = x.ref[1], R_dis = x.ref[2]) : (Ts_dis = x.ref[1], R_dis = x.ref[2]))
+
+	# defines tuple specificing dimension of aggregation later
+	if part.type == :emerging
+		srcRes_ntup = part.balLvl |> (x -> (Ts_expSup = x.exp[1], Ts_dis = x.ref[1], R_dis = x.ref[2]))
+	else
+		srcRes_ntup = part.balLvl |> (x -> (Ts_dis = x.ref[1], R_dis = x.ref[2]))
+	end
+
+	# if modes are specified, gets rows of conversion dataframe where they are relevant and creates different tuples to define grouping dimensions
+	if :M in names(cns_df)
+		srcResM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(1,values(srcRes_ntup)...))...)
+		srcResNoM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(0,values(srcRes_ntup)...))...)
+		m_arr = findall(0 .!= cns_df[!,:M])
+		noM_arr = setdiff(1:size(cns_df,1),m_arr)
+	end
 
 	# add variables via aggregation
 	in_arr = intersect(keys(part.carrier),(:use,:stIntOut))
 	out_arr = intersect(keys(part.carrier),(:gen,:stIntIn))
 
 	for va in union(in_arr,out_arr)
-		cns_df[!,va] = aggUniVar(part.var[va], select(cns_df,intCol(cns_df)), agg_arr, srcRes_ntup, anyM.sets)
+		if :M in names(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
+			cns_df[!,va] .= AffExpr()
+			cns_df[m_arr,va] = aggUniVar(part.var[va], select(cns_df[m_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResM_ntup, anyM.sets)
+			cns_df[noM_arr,va] = aggUniVar(part.var[va], select(cns_df[noM_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResNoM_ntup, anyM.sets)
+		else
+			cns_df[!,va] = aggUniVar(part.var[va], select(cns_df,intCol(cns_df)), agg_arr, srcRes_ntup, anyM.sets)
+		end
 	end
 
 	# aggregate in and out variables respectively
@@ -424,46 +445,78 @@ function createStBal(part::TechPart,anyM::anyModel)
 	cns_df[!,:Ts_disNext] = map(x -> x in lastTs_arr ? lastFirstTs_dic[x] : x + 1, cns_df[!,:Ts_dis])
 	cns_df = rename(joinMissing(cns_df,part.var[:stLvl], intCol(part.var[:stLvl]) |> (x -> Pair.(replace(x,:Ts_dis => :Ts_disNext),x)), :left, Dict(:var => AffExpr())),:var => :stLvlNext)
 
-	# XXX join in and out variables and combines them with respective efficiencies
-	for typ in (:in,:out)
-		typVar_df = copy(cns_df[!,cnsDim_arr])
-		# join both types of in or out variables
-		allType_arr = intersect(keys(part.carrier),typ == :in ? (:stExtIn,:stIntIn) : (:stExtOut,:stIntOut))
-		for va in allType_arr
-			typVar_df = rename(joinMissing(typVar_df,part.var[va], cnsDim_arr, :inner,Dict(:var => AffExpr()))[!,Not(:Ts_disSup)],:var => va)
-		end
-		effPar_sym = typ == :in ? :effStIn : :effStOut
-		# join all types of in and out variables and adds efficiency
-		grpDim_arr = intCol(typVar_df)
-		typVar_df = by(typVar_df,grpDim_arr,allVar = allType_arr => x -> sum(map(y -> getfield(x,y),allType_arr)))
-		typVar_df = part.par[effPar_sym].data |> (x -> join(typVar_df,x; on = intCol(x), kind = :inner))
+	# determines dimensions for aggregating dispatch variables
+	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), cnsDim_arr)
 
-		if typ == :in
-			typVar_df = rename(by(typVar_df,grpDim_arr, allVar = [:allVar,:val] => x -> dot(x.allVar,x.val)),:allVar => typ)
+	# obtain all different carriers of level variable and create array to store the respective level constraint data
+	uniC_arr = unique(cns_df[!,:C])
+	cCns_arr = Array{DataFrame}(undef,length(uniC_arr))
+
+	for (idx,c) in enumerate(uniC_arr)
+		# get constraints relevant for carrier and find rows where mode is specified
+		cnsC_df = filter(x -> x.C == c,cns_df)
+		m_arr = findall(0 .!= cnsC_df[!,:M])
+		noM_arr = setdiff(1:size(cnsC_df,1),m_arr)
+
+		if part.type == :emerging
+			srcRes_ntup = anyM.cInfo[c] |> (x -> (Ts_expSup = x.tsExp, Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl, M = 1))
 		else
-			typVar_df = rename(by(typVar_df,grpDim_arr, allVar = [:allVar,:val] => x -> dot(x.allVar,1 ./ x.val)),:allVar => typ)
+			srcRes_ntup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl, M = 1))
 		end
-		cns_df = joinMissing(cns_df,typVar_df, cnsDim_arr,:left, Dict(typ => AffExpr()))
+
+		# XXX join in and out dispatch variables and adds efficiency to them (hence efficiency can be specific for different carriers that are stored in and out)
+		for typ in (:in,:out)
+			typVar_df = copy(cns_df[!,cnsDim_arr])
+			# create array of all dispatch variables
+			allType_arr = intersect(keys(part.carrier),typ == :in ? (:stExtIn,:stIntIn) : (:stExtOut,:stIntOut))
+			effPar_sym = typ == :in ? :effStIn : :effStOut
+			# adds dispatch variables
+			typExpr_arr = map(allType_arr) do va
+				typVar_df = filter(x -> x.C == c,part.par[effPar_sym].data) |> (x -> join(part.var[va],x; on = intCol(x), kind = :inner))
+				if typ == :in
+					typVar_df[!,:var] = typVar_df[!,:var] .* typVar_df[!,:val]
+				else
+					typVar_df[!,:var] = typVar_df[!,:var] ./ typVar_df[!,:val]
+				end
+				return typVar_df[!,Not(:val)]
+			end
+
+			# adds dispatch variable to constraint dataframe, mode dependant and non-mode dependant balances have to be aggregated seperately
+			dispVar_df = vcat(typExpr_arr...)
+			cnsC_df[!,typ] .= AffExpr()
+			cnsC_df[m_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[m_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 1,), anyM.sets)
+			cnsC_df[noM_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[noM_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 0,), anyM.sets)
+		end
+
+		# XXX adds further parameters that depend on the carrier specified in storage level (superordinate or the same as dispatch carriers)
+
+		# add discharge parameter, if defined
+		if :stDis in keys(part.par)
+			sca_arr = getResize(cnsC_df,anyM.sets[:Ts],anyM.supTs); part.par[:stDis].defVal = 0.0
+			cnsC_df = matchSetParameter(cnsC_df,part.par[:stDis],anyM.sets)
+			cnsC_df[!,:stDis] =  1 ./ ((1 .- cnsC_df[!,:val]) .^ sca_arr)
+			select!(cnsC_df,Not(:val))
+		else
+			cnsC_df[!,:stDis] .= 1.0
+		end
+
+		# add inflow parameter, if defined
+		if :stInflow in keys(part.par)
+			part.par[:stInflow].defVal = 0.0
+			cnsC_df = matchSetParameter(cnsC_df,part.par[:stInflow],anyM.sets, newCol = :stInflow)
+			if !isempty(part.modes)
+            	cnsC_df[!,:stInflow] = cnsC_df[!,:stInflow] ./ length(part.modes)
+			end
+		else
+			cnsC_df[!,:stInflow] .= 0.0
+		end
+
+		# XXX create final equation
+		cnsC_df[!,:cnsExpr] = map(x -> x.stLvl + x.stInflow + x.in - x.out - x.stLvlNext * x.stDis,eachrow(cnsC_df))
+		cCns_arr[idx] = cnsC_df
 	end
 
-	# XXX adds further parameters
-	# add discharge parameter, if defined
-	if :stDis in keys(part.par)
-		sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
-		cns_df[!,:stDis] =  1 ./ ((1 .- part.par[:stDis].data[!,:val]) .^ sca_arr)
-	else
-		cns_df[!,:stDis] .= 1.0
-	end
-
-	# add inflow parameter, if defined
-	if :stInflow in keys(part.par)
-		cns_df[!,:stInflow] = part.par[:stInflow].data[!,:val]
-	else
-		cns_df[!,:stInflow] .= 0.0
-	end
-
-	# XXX create final equation
-	cns_df[!,:cnsExpr] = map(x -> x.stLvl + x.stInflow + x.in - x.out - x.stLvlNext * x.stDis,eachrow(cns_df))
+	cns_df =  vcat(cCns_arr...)
 	return cnsCont(orderDf(cns_df[!,[cnsDim_arr...,:cnsExpr]]),:equal)
 end
 
@@ -503,7 +556,14 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 
 	conv_boo = type_sym in (:out,:in)
 	dim_arr = conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te] : [:Ts_expSup,:Ts_dis,:R_dis,:C,:Te]
-	agg_arr = conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis] : [:Ts_expSup,:Ts_dis,:R_dis,:C] |> (x -> filter(x -> part.type == :emerging || x != :Ts_expSup,x))
+	agg_arr = [:Ts_expSup,:Ts_dis,:R_dis] |> (x -> filter(x -> part.type == :emerging || x != :Ts_expSup,x))
+
+	if conv_boo
+		relC_arr = restr.car
+	else
+		filter!(x -> x.C == restr.car[1],capaVar_df)
+		relC_arr = filter(y -> isempty(sets_dic[:C].nodes[y].down), [restr.car[1],getDescendants(restr.car[1],sets_dic[:C],true)...])
+	end
 
 	# determines dimensions for aggregating dispatch variables
 	capaVar_df[!,:lvlTs] .= restr.lvlTs
@@ -522,9 +582,8 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 		grpCapaVar_df[!,:var] = aggUniVar(rename(capaVar_df,:R_exp => :R_dis),grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 	end
 
-	# expand capacity to dimensions of dispatch variables
+	# expand capacity to dimension of dispatch
 	capaDim_df = by(grpCapaVar_df[!,Not(:var)],names(grpCapaVar_df[!,Not(:var)]),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
-
 	select!(grpCapaVar_df,Not(:lvlTs))
 
 	# obtain all relevant dispatch variables
@@ -532,7 +591,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
 	for va in dispVar_arr
 		# filter dispatch variables not belonging to relevant carrier
-		allVar_df = filter(r -> r.C in restr.car, part.var[va])[!,Not(:Ts_disSup)]
+		allVar_df = filter(r -> r.C in relC_arr, part.var[va])[!,Not(:Ts_disSup)]
 
 		# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
 		ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:ava,info_ntup.capa)],sets_dic, newCol = :ava)[!,:ava]
@@ -568,11 +627,32 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyM
 		cns_df = rename(copy(part.par[ratioName_sym].data),:val => :ratio)
 
 		# joins parameter data with ratio controlled variable and all variables
-		agg1_arr = filter(r -> r != :Te && (part.type == :emerging || r != :Ts_expSup), intCol(cns_df))
-		srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> part.type == :emerging ? (Ts_expSup = part.balLvl.exp[1], Ts_dis = x[1], R_dis = x[2]) : (Ts_dis = x[1], R_dis = x[2]))
+		agg_arr = filter(r -> r != :Te && (part.type == :emerging || r != :Ts_expSup), intCol(cns_df))
 
-		cns_df[!,:ratioVar] = aggUniVar(part.var[type], select(cns_df,intCol(cns_df)), agg1_arr, srcRes_ntup, anyM.sets)
-		cns_df[!,:allVar] =	aggUniVar(part.var[type], select(cns_df,intCol(cns_df)), filter(r -> r != :C, agg1_arr), srcRes_ntup, anyM.sets)
+		if part.type == :emerging
+			srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_expSup = part.balLvl.exp[1], Ts_dis = x[1], R_dis = x[2]))
+		else
+			srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_dis = x[1], R_dis = x[2]))
+		end
+
+		if :M in names(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
+			# find cases where ratio constraint is mode dependant
+			srcResM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(1,values(srcRes_ntup)...))...)
+			srcResNoM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(0,values(srcRes_ntup)...))...)
+			m_arr = findall(0 .!= cns_df[!,:M])
+			noM_arr = setdiff(1:size(cns_df,1),m_arr)
+			# aggregate variables with defined ratio
+			cns_df[!,:ratioVar] .= AffExpr()
+			cns_df[m_arr,:ratioVar] = aggUniVar(part.var[type], select(cns_df[m_arr,:],intCol(cns_df)), agg_arr, srcResM_ntup, anyM.sets)
+			cns_df[noM_arr,:ratioVar] = aggUniVar(part.var[type], select(cns_df[noM_arr,:],intCol(cns_df)), agg_arr, srcResNoM_ntup, anyM.sets)
+			# aggregate all variables
+			cns_df[!,:allVar] .= AffExpr()
+			cns_df[m_arr,:allVar] =	aggUniVar(part.var[type], select(cns_df[m_arr,:],intCol(cns_df)), filter(x -> x != :C,agg_arr), srcResM_ntup, anyM.sets)
+			cns_df[noM_arr,:allVar] =	aggUniVar(part.var[type], select(cns_df[noM_arr,:],intCol(cns_df)), filter(x -> x != :C,agg_arr), srcResNoM_ntup, anyM.sets)
+		else
+			cns_df[!,:ratioVar] = aggUniVar(part.var[type], select(cns_df,intCol(cns_df)), agg_arr, srcRes_ntup, anyM.sets)
+			cns_df[!,:allVar] =	aggUniVar(part.var[type], select(cns_df,intCol(cns_df)), filter(r -> r != :M, agg_arr), srcRes_ntup, anyM.sets)
+		end
 
 		# create corresponding constraint
 		if occursin("Fix",string(limit))

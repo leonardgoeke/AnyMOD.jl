@@ -74,7 +74,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 
 	@threads for c in allC_arr
 
-		relC_arr = unique([c,getDescendants(c,anyM.sets[:C])...])
+		relC_arr = unique([c,getDescendants(c,anyM.sets[:C],true)...])
 		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
 
 		# XXX add demand and size it
@@ -129,7 +129,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 		cns_dic[Symbol(c_str)] = cnsCont(cns_df,anyM.cInfo[c].eq ? :equal : :greater)
 
-		produceMessage(anyM.options,anyM.report, 2," - Created energy balance for $(c_str)")
+		produceMessage(anyM.options,anyM.report, 2," - Prepared energy balance for $(c_str)")
 	end
 
 	# loops over stored constraints outside of threaded loop to create actual jump constraints
@@ -151,8 +151,20 @@ function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,t
 
 	# loops over all carriers relevant for respective energy balance
 	for (idx,c) in enumerate(relC_arr)
-		relTech_arr = vcat([intersect((:use,:gen,:stExtIn,:stExtOut),filter(y -> c in tech_dic[x].carrier[y], collect(keys(tech_dic[x].carrier)))) |> (y -> collect(zip(fill(x,length(y)),y))) for x in techIdx_arr]...)
 
+		# filters relevant technology and the respective dispatch variables for carrier
+		relTech_arr = Array{Tuple{Int,Symbol},1}()
+		for x in techIdx_arr
+			addConvTech_arr = intersect((:use,:gen),filter(y -> c in tech_dic[x].carrier[y], collect(keys(tech_dic[x].carrier))))
+			if isempty(sets_dic[:C].nodes[c].down) # actual dispatch variables for storage only exists for carriers that are leaves
+				addStTech_arr = intersect((:stExtIn,:stExtOut),filter(y -> c in union(map(z -> union([z],getDescendants(z,sets_dic[:C],true)),tech_dic[x].carrier[y])...), collect(keys(tech_dic[x].carrier))))
+			else
+				addStTech_arr = Array{Tuple{Int,Symbol},1}()
+			end
+			union(addConvTech_arr,addStTech_arr) |> (y -> append!(relTech_arr,collect(zip(fill(x,length(y)),y))))
+		end
+
+		# leaves loop for carrier, if no relevant technologies could be obtained
 		if isempty(relTech_arr)
 			techVar_arr[idx]  = fill(AffExpr(),size(src_df,1))
 			continue
@@ -165,6 +177,7 @@ function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,t
 		for x in relTech_arr
 			# gets resolution and adjusts add_df in case of an agggregated technology
 			add_df = select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var])
+			if isempty(add_df) continue end
 			tRes_tup = tech_dic[x[1]].disAgg ? (cRes_tup[1], cInfo_dic[c].rExp) : cRes_tup
 			checkTechReso!(tRes_tup,cBalRes_tup,add_df,sets_dic)
 
@@ -173,9 +186,13 @@ function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,t
 			append!(allVar_df, add_df)
 		end
 
-		grpVar_df = by(allVar_df, [:Ts_dis, :R_dis], var = [:var] => x -> sum(x.var))
-
-		techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis], :left, Dict(:var => AffExpr()))[!,:var]
+		# returns empty expression if no variales could be obtained
+		if isempty(allVar_df)
+			techVar_arr[idx]  = fill(AffExpr(),size(src_df,1))
+		else
+			grpVar_df = by(allVar_df, [:Ts_dis, :R_dis], var = [:var] => x -> sum(x.var))
+			techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis], :left, Dict(:var => AffExpr()))[!,:var]
+		end
 	end
 
 	return map(x -> sum(x),eachrow(hcat(techVar_arr...)))
