@@ -166,7 +166,7 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 	for (idx,c) in enumerate(subC_arr)
 
 		# gets technologies relevant for respective filterCarrier
-		relTech_arr = getRelTech(c,tech_dic,anyM.sets[:C])
+		relTech_arr = getRelTech(c,tech_dic,sets_dic[:C])
 
 		# leaves loop for carrier, if no relevant technologies could be obtained
 		if isempty(relTech_arr)

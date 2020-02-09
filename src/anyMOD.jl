@@ -20,5 +20,5 @@ module anyMOD
     include("dataHandling/util.jl")
 
     export anyModel, initializeModel, createOptModel!, setObjective!
-    export drawTree, printIIS, reportResults, reportTimeSeries, printObject
+    export drawTree, printIIS, reportResults, reportTimeSeries, printObject, reportDuals
 end
