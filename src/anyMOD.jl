@@ -3,9 +3,13 @@ module anyMOD
     using LightGraphs, GraphPlot, Compose, Colors, MathOptInterface, Reexport
     @reexport using DataFrames, JuMP
 
+    using Base.Threads, CSV, Colors, Compose, Dates, GraphPlot, LightGraphs, LinearAlgebra
+    using MathOptInterface, Reexport, Statistics
+    @reexport using DataFrames, JuMP
 
     include("objects.jl")
     include("tools.jl")
+    include("modelCreation.jl")
 
     include("optModel/exchange.jl")
     include("optModel/objective.jl")
@@ -19,5 +23,5 @@ module anyMOD
     include("dataHandling/util.jl")
 
     export anyModel, initializeModel, createOptModel!, setObjective!
-    export drawTree, reportResults, printIIS, printObject
+    export drawTree, printIIS, reportResults, reportTimeSeries, printObject, reportDuals
 end

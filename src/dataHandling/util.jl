@@ -1,4 +1,4 @@
-<
+
 # <editor-fold desc="reporting of calculation progress and error handling"
 
 # XXX return elapsed time since Start_date
@@ -40,8 +40,11 @@ function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::I
 
 	sty_dic[currentLvl]
     if options.reportLvl >= currentLvl
-		options.errCheckLvl >= currentLvl ? printstyled(options.name, getElapsed(options.startTime), fixedString, dynamicString; color = sty_dic[currentLvl]) :
-															printstyled(options.name,getElapsed(options.startTime), fixedString, dynamicString, "\n"; color = sty_dic[currentLvl])
+		if options.errCheckLvl >= currentLvl
+			printstyled(options.objName; color = :underline); printstyled(" ", getElapsed(options.startTime), fixedString, dynamicString; color = sty_dic[currentLvl])
+		else
+			printstyled(options.objName; color = :underline); printstyled(" ",getElapsed(options.startTime), fixedString, dynamicString, "\n"; color = sty_dic[currentLvl])
+		end
 	end
     if options.errCheckLvl >= currentLvl errorTest(report,options,write = options.errWrtLvl >= currentLvl) end
 end
@@ -53,6 +56,9 @@ end
 # XXX returns dataframe columns without value column
 removeVal(input_df::DataFrame) = filter(x -> !(x in (:val,:ratio)),names(input_df))
 removeVal(col_arr::Array{Symbol,1}) = filter(x -> !(x in (:val,:ratio))l,col_arr)
+
+# XXX return an empty integer array instead of an error, if a key is not in a dictionary
+getDicEmpty(dic::Dict,key::Any) = key in keys(dic) ? dic[key] : Int[]
 
 # XXX get names of column of type integer
 intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, eachcol(in_df, true)),1)
@@ -68,8 +74,11 @@ orderDf(in_df::DataFrame) = select(in_df,orderDim(names(in_df),intCol(in_df)))
 # XXX writes all tuples occuring in a tuple of pairs and tuples
 mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  x
 
-# XXX creates a dictionary that assigns each dispatch timestep inputed to its supordinate dispatch timestep
-function assignSupTs(inputSteps_arr::Array{Int,1},time_Tree::Tree,supordinateLvl_int::Int)
+# XXX check if dataframe should be considered, if energy balance is created for carriers in array
+filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in names(var_df) ? filter(r -> r.C in c_arr,var_df) : var_df
+
+# XXX creates a dictionary that assigns each dispatch timestep inputed to its superordinate dispatch timestep
+function assignSupTs(inputSteps_arr::Array{Int,1},time_Tree::Tree,superordinateLvl_int::Int)
 
 	assSup_dic = Dict{Int,Int}()
 
@@ -80,13 +89,13 @@ function assignSupTs(inputSteps_arr::Array{Int,1},time_Tree::Tree,supordinateLvl
 	end
 
 	# assigns entries on or above subordinate dispatch level to itselfs
-	aboveSupTs_arr = filter(z -> time_Tree.nodes[z].lvl <= supordinateLvl_int, inputSteps_arr)
+	aboveSupTs_arr = filter(z -> time_Tree.nodes[z].lvl <= superordinateLvl_int, inputSteps_arr)
 	for x in aboveSupTs_arr assSup_dic[x] = x end
 	inputSteps_arr = setdiff(inputSteps_arr,aboveSupTs_arr)
 
 	# assigns remaining entries
 	for x in inputSteps_arr
-		assSup_dic[x] = getAncestors(x,time_Tree,supordinateLvl_int)[1][1]
+		assSup_dic[x] = getAncestors(x,time_Tree,:int,superordinateLvl_int)[1]
 	end
 
 	return assSup_dic
@@ -104,8 +113,8 @@ function createPotDisp(c_arr::Array{Int,1},anyM::anyModel)
 
 	var_df = flatten(flatten(select(allLvl_df,Not([:lvlTs,:lvlR])),:Ts_dis),:R_dis)
 
-	# add column for supordinate dispatch timestep
-	supTs_dic =  Dict(x => getindex(getAncestors(x,anyM.sets[:Ts],anyM.supTs.lvl)[end],1) for x in unique(var_df[!,:Ts_dis]))
+	# add column for superordinate dispatch timestep
+	supTs_dic =  Dict(x => getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(var_df[!,:Ts_dis]))
 	var_df[!,:Ts_disSup] = map(x -> supTs_dic[x], var_df[!,:Ts_dis])
 
 	return var_df
@@ -121,9 +130,9 @@ function filterZero(src_df::DataFrame,par_obj::ParElement,anyM::anyModel)
 	if isdefined(par_obj,:name)
 	# copies parameter obj and adds ":up" to inheritance for any dimensions, otherwise variables would be created, but fixed to zero due to a zero limit on a higher level in the tree
 		modPar_obj = par_obj
-		modPar_obj.inherit = modPar_obj.inherit |> (y -> tuple(vcat(y..., map(x -> x => :up,getindex.(y,1))...)...))
+		modPar_obj.herit = modPar_obj.herit |> (y -> tuple(vcat(y..., map(x -> x => :up,getindex.(y,1))...)...))
 		# filter zero cases
-		zero_df = select!(filter(r -> r.val == 0, matchSetParameter(src_df, modPar_obj, anyM.sets, anyM.report)),Not(:val))
+		zero_df = select!(filter(r -> r.val == 0, matchSetParameter(src_df, modPar_obj, anyM.sets)),Not(:val))
 	else
 		zero_df = src_df[[],:]
 	end
@@ -153,7 +162,7 @@ function mergeDicTable(df_dic::Dict{Symbol,DataFrame},outerJoin_boo::Bool=true)
 		if outerJoin_boo
 			mergeTable_df = join(mergeTable_df, df_dic[restKey]; on = joinCol_tup, kind = :outer)
 		else
-			mergeTable_df = vcat(mergeTable_df, df_dic[restKey])
+			append!(mergeTable_df, df_dic[restKey])
 		end
 	end
 
@@ -188,20 +197,20 @@ function joinMissing(leftData_df::DataFrame, rightData_df::DataFrame, key_arr::U
 end
 
 # XXX get array of scaling factors for add_df
-function getScale(add_df::DataFrame,time_obj::Tree,supDis::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}})
+function getResize(add_df::DataFrame,time_obj::Tree,supDis::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}})
     tsDisLvl_dic = Dict(x => x == 0 ? 1 : getfield(time_obj.nodes[x],:lvl) for x in unique(add_df[!,:Ts_dis]))
 	lvl_arr = map(x -> tsDisLvl_dic[x],add_df[!,:Ts_dis])
-	aboveSupScale_flt = maximum(values(supDis.sca)) * length(supDis.step) # scaling value used for variables above the superordinate dispatch level
-	sca_arr = map(x -> supDis.lvl > x[1] ? aboveSupScale_flt : supDis.sca[(x[2],x[1])] ,zip(lvl_arr,add_df[!,:Ts_disSup]))
+	aboveSupResize_fl = maximum(values(supDis.sca)) * length(supDis.step) # scaling value used for variables above the superordinate dispatch level
+	sca_arr = map(x -> supDis.lvl > x[1] ? aboveSupResize_fl : supDis.sca[(x[2],x[1])] ,zip(lvl_arr,add_df[!,:Ts_disSup]))
     return sca_arr
 end
 
 # XXX gets the upper bound used for dispatch variables
-function getUpBound(in_df::DataFrame,anyM::anyModel)
-	if !isnothing(anyM.options.bound.disp)
-		upBound_arr = anyM.options.bound.disp * getScale(in_df,anyM.sets[:Ts],anyM.supTs)
+function getUpBound(in_df::DataFrame,dispBound_fl::Float64,supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}},treeTs::Tree)
+	if !isnan(dispBound_fl)
+		upBound_arr = dispBound_fl * getResize(in_df,treeTs,supTs)
 	else
-		upBound_arr = nothing
+		upBound_arr = fill(NaN,size(in_df,1))
 	end
 	return upBound_arr
 end
@@ -211,19 +220,34 @@ end
 
 # <editor-fold desc="functions and sub-functions to aggregate variables"
 
-# XXX creates var column for rows in srcEtr_df from rows in aggEtr_df along columns provided via aggCol_tup
-# the aggregation process is speeded-up by saving the location of set combinations that were already looked up to a dictionary
-# grpInter_tup provides tuples that defines for what combination of sets dictionaries are created (e.g. ((:Ts_dis, :Te), (:R_dis, :C)) saves looked up Ts_dis/Te and R_dis/C combinations to dictionaries)
-# these dictionaries can also be nested indicated by a pair ( e.g. (((:Ts_inv, :Te, :Ts_dis) => (:Ts_inv, :Te))) saves looks-up for Ts_inv/Te and uses these to look-up and save Ts_inv/Te/Ts_dis
-# WARNING unreasonable grpInter_tup can lead to wrong results (e.g.  (((:Ts_inv, :Te) => (:Ts_inv, :Te, :Ts_dis)))
-function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, sets_dic::Dict{Symbol,Tree};  grpInter::Tuple = (),  aggFilt::Tuple = (), srcFilt::Tuple = (), chldRows::Dict{Symbol,Dict{Int,BitSet}} =  Dict{Symbol,Dict{Int,BitSet}}())
+# XXX aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if all entries of search have the same resolution (all entries in a relevant column are on the same level)
+function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Symbol,1},srcRes_tup::NamedTuple,sets_dic::Dict{Symbol,Tree})
+	if isempty(aggEtr_df) return fill(AffExpr(),size(srcEtr_df,1)) end
+
+	# only selects relevant columns
+    aggEtr_df = select(aggEtr_df,vcat(:var,agg_arr...))
+	srcEtr_df = select(srcEtr_df,agg_arr)
+
+	# adjusts entries in aggregation dataframe to comply with resolution of search dataframe
+	for dim in intersect(keys(srcRes_tup),agg_arr)
+		set_sym = Symbol(split(string(dim),"_")[1])
+		dim_dic = Dict(x => getAncestors(x,sets_dic[set_sym],:int,getfield(srcRes_tup,dim))[end] for x in unique(aggEtr_df[!,dim]))
+		aggEtr_df[!,dim] .= map(x -> dim_dic[x],aggEtr_df[!,dim])
+	end
+
+	aggEtrGrp_df = by(aggEtr_df,agg_arr, var = [:var] => x -> sum(x.var))
+	var_arr = joinMissing(srcEtr_df,aggEtrGrp_df,agg_arr,:left,Dict(:var => AffExpr()))[!,:var]
+	return var_arr
+end
+
+# XXX aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if entries of search can have different resolutions (not all entries in a relevant column are on the same level)
+function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, sets_dic::Dict{Symbol,Tree}; aggFilt::Tuple = ())
 
 	# XXX sanity checks regarding columns
 	if all(names(aggEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to be aggregated") end
 	if all(names(srcEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to aggregate") end
 
 	select!(aggEtr_df,intCol(aggEtr_df,:var))
-
 	# XXX filter entries from aggEtr_df, that based on isolated analysis of columns will not be aggregated
 	for dim in intersect(aggFilt,agg_tup)
 		set_sym = Symbol(split(string(dim),"_")[1])
@@ -231,55 +255,49 @@ function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple
 		aggEtr_df = aggEtr_df[findall(map(x -> (x in allSrc_set),aggEtr_df[!,dim])),:]
 	end
 
-	if isempty(aggEtr_df) return fill(AffExpr(),size(srcEtr_df,1)), chldRows end
+	if isempty(aggEtr_df) return fill(AffExpr(),size(srcEtr_df,1)) end
 
 	# XXX filter entries from srcEtr_df, that based on isolated anlysis of columns will not have any values aggregated to
 	idxRel_set = BitSet(1:size(srcEtr_df,1))
-	for dim in intersect(srcFilt,agg_tup)
+	for dim in agg_tup
 		set_sym = Symbol(split(string(dim),"_")[1])
-		allAgg_set = unique(aggEtr_df[!,dim]) |> (z -> union(BitSet(z),map(y -> BitSet(getindex.(getAncestors(y,sets_dic[set_sym],0),1)), z)...))
+		allAgg_set = unique(aggEtr_df[!,dim]) |> (z -> union(BitSet(z),map(y -> BitSet(getAncestors(y,sets_dic[set_sym],:int,0)), z)...))
 		idxRel_set = intersect(idxRel_set,BitSet(findall(map(x -> x in allAgg_set, srcEtr_df[!,dim]))))
 	end
 	srcEtrAct_df = srcEtr_df[collect(idxRel_set),:]
 	# group aggregation dataframe to relevant columns and removes unrequired columns
 	aggEtrGrp_df = by(aggEtr_df,collect(agg_tup), var = [:var] => x -> sum(x.var))
 
-
 	# XXX create dictionaries in each dimension that assign rows suited for aggregation for each value
-	newChldRows_arr = setdiff(agg_tup,keys(chldRows))
-	for col in newChldRows_arr
-		set_sym = Symbol(split(string(col),"_")[1])
-		# entries that other entries can be aggregated to
-		searchVal_set = BitSet(unique(srcEtrAct_df[!,col]))
+	chldRows = Dict{Symbol,Dict{Int,BitSet}}()
+	for col in agg_tup
+		# row that are potentially aggregated
 		findCol_arr = aggEtrGrp_df[!,col]
 		findCol_set = BitSet(findCol_arr)
 
+		# entries that other entries can be aggregated to
+		searchVal_set = BitSet(unique(srcEtrAct_df[!,col]))
+
 		# to every unique value in column the value itself and its children are assigned
-		idxChild_dic = Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set) |> (z -> filter(x -> !isempty(x[2]),z))
-		# to everything occuring in values, the rows where it appears are assigned
-		childrenRow_dic = groupby(DataFrame(val = findCol_arr, id = 1:length(findCol_arr)),:val) |> (y -> Dict(x.val[1] => BitSet(sort(x[!,:id])) for x in y))
+		set_sym = Symbol(split(string(col),"_")[1])
+		idxChild_dic = Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set)
+
 		# for each unique value in column the rows with children are assigned
-		chldRows[col] = Dict(x => union(map(y -> childrenRow_dic[y],collect(idxChild_dic[x]))...) for x in keys(idxChild_dic))
+		grp_df = groupby(DataFrame(val = findCol_arr, id = 1:length(findCol_arr)),:val)
+		dicVal_dic = Dict(x.val[1] => BitSet(sort(x[!,:id])) for x in grp_df) |> (dic -> Dict(x => union(map(y -> dic[y],collect(idxChild_dic[x]))...) for x in keys(idxChild_dic)))
+		# excludes column from search, if based on it, every entry in find could be aggregated to every row in search
+		if all(length.(values(dicVal_dic)) .== length(findCol_arr))
+			select!(srcEtrAct_df,Not(col)); continue
+		else
+			chldRows[col] = dicVal_dic
+		end
 	end
 
 	# XXX finds aggregation by intersecting suited rows in each dimension
-	# for speedup already computed intersection between certain combination of sets are stored within dictionaries accoring to groupings provided
-	if isempty(grpInter) grpInter = tuple(agg_tup) end
-	saveInter_dic = Dict(x => Dict{Tuple{Vararg{Int}},BitSet}() for x in vcat(map(x -> mixedTupToTup(x),grpInter)...))
-
-	exKeys_dic = Dict(x => BitSet(keys(chldRows[x])) for x in agg_tup)
-
-	# XXX creates actual lookups
-	aggRow_arr = map(eachrow(srcEtrAct_df)) do row
-		# directly returns an empty array, if due to a single dim aggregation can already be ruled out
-		if any(map(x -> !(row[x] in exKeys_dic[x]), agg_tup)) return Int[] end
-		# creates first intersection
-		inter = lookupIntersect(row, grpInter[1],saveInter_dic,chldRows)
-		# creates remaining intersections
-		for grp in grpInter[2:end]
-			inter = intersect(inter,lookupIntersect(row, grp,saveInter_dic,chldRows))
-		end
-  		return inter
+	if isempty(chldRows)
+		aggRow_arr = fill(BitSet(),size(srcEtrAct_df,1))
+	else
+		aggRow_arr = collect(keys(chldRows)) |> (y -> map(x -> intersect(map(y -> chldRows[y][x[y]],y)...) ,eachrow(srcEtrAct_df)))
 	end
 
 	# XXX aggregates values according to lookup
@@ -287,44 +305,18 @@ function aggregateVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple
 	out_arr[collect(idxRel_set)] =  map(x -> sum(aggEtrGrp_df[x,:var]), collect.(aggRow_arr))
 	out_arr[setdiff(1:size(srcEtr_df,1),idxRel_set)] .= AffExpr()
 
-	return out_arr, chldRows
-end
-
-# XXX builds intersection of rows matching the current one in cases where no subdictionary is used, used in aggregateVar
-function lookupIntersect(row::DataFrameRow,grp::T,saveInter_dic::Dict,chldRows_dic::Dict{Symbol,Dict{Int,BitSet}}) where T <: Tuple
-	lookup_tup = tuple(collect(getproperty(row,j) for j in grp)...)
-
-	if lookup_tup in keys(saveInter_dic[grp]) # take value directly from dictionary
-		ele_arr = saveInter_dic[grp][lookup_tup]
-	else  # compute value and write to dictionary
-		ele_arr = intersect([chldRows_dic[j][getproperty(row,j)] for j in grp]...)
-		saveInter_dic[grp][lookup_tup] = ele_arr
-	end
-	return ele_arr
-end
-
-# XXX builds intersection of rows matching the current one in cases where a subdictionary is used according to the named tuple provided, used in aggregateVar
-function lookupIntersect(row::DataFrameRow,grp::T,saveInter_dic::Dict,chldRows_dic::Dict{Symbol,Dict{Int,BitSet}}) where T <: Pair
-	lookup_tup = tuple(collect(getproperty(row,j) for j in grp[1])...)
-
-	if lookup_tup in keys(saveInter_dic[grp[1]]) # take value directly from dictionary
-		ele_arr = saveInter_dic[grp[1]][lookup_tup]
-	else # compute value and write to dictionary
-		ele_arr = intersect(lookupIntersect(row,grp[2],saveInter_dic::Dict,chldRows_dic::Dict{Symbol,Dict{Int,BitSet}}),chldRows_dic[grp[1][end]][getproperty(row,grp[1][end])]) # lookup subdictionary
-		saveInter_dic[grp[1]][lookup_tup] = ele_arr
-	end
-	return ele_arr
+	return out_arr
 end
 
 # </editor-fold>
 
 # <editor-fold desc="manipulate model related data frames"
 
-# XXX add supordinate dispatch timestep to expansion dataframe
+# XXX add superordinate dispatch timestep to expansion dataframe
 function addSupTsToExp(expMap_df::DataFrame,para_obj::Dict{Symbol,ParElement},type_sym::Symbol,tsYear_dic::Dict{Int,Int},anyM::anyModel)
 	if !isempty(expMap_df)
-		lftm_df = matchSetParameter(flatten(expMap_df,:Ts_expSup),para_obj[Symbol(:life,type_sym)],anyM.sets,anyM.report,newCol = :life)
-		lftmDel_df = matchSetParameter(lftm_df,para_obj[Symbol(:delExp,type_sym)],anyM.sets,anyM.report,newCol = :del)
+		lftm_df = matchSetParameter(flatten(expMap_df,:Ts_expSup),para_obj[Symbol(:life,type_sym)],anyM.sets,newCol = :life)
+		lftmDel_df = matchSetParameter(lftm_df,para_obj[Symbol(:delExp,type_sym)],anyM.sets,newCol = :del)
 		lftmDel_df[!,:Ts_disSup] = map(x -> filter(y -> (tsYear_dic[y] >= tsYear_dic[x.Ts_expSup] + x.del) && (tsYear_dic[y] <= tsYear_dic[x.Ts_expSup] + x.life + x.del),collect(anyM.supTs.step)), eachrow(lftmDel_df))
 		select!(lftmDel_df,Not([:life,:del]))
 		grpCol_arr = intCol(expMap_df) |> (x -> :ratio in names(expMap_df) ? vcat(:ratio,x...) : x)
@@ -356,8 +348,8 @@ function expandExpToCapa(in_df::DataFrame)
 	return orderDf(capa_df)
 end
 
-# XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and supordinate dispatch steps to full dispatch table
-function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int,Int},Int},preserveTsSupTs::Bool = false)
+# XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
+function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},preserveTsSupTs::Bool = false)
     # adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)
 	expR_df = unique(by(inData_df,names(inData_df),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])])
 	expTs_df = by(expR_df,names(expR_df),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
@@ -372,7 +364,7 @@ function checkResiCapa(var_sym::Symbol, stockCapa_df::DataFrame, part::AbstractM
   resiPar_sym = Symbol(var_sym,:Resi,addSym)
    if resiPar_sym in tuple(keys(part.par)...)
 	   # search for defined residual values
-	  stock_df = filter(r -> r.val != 0.0, matchSetParameter(stockCapa_df, part.par[resiPar_sym], anyM.sets, anyM.report))
+	  stock_df = filter(r -> r.val != 0.0, matchSetParameter(stockCapa_df, part.par[resiPar_sym], anyM.sets))
    else
 	   stock_df = filter(x -> false,stockCapa_df)
 	   stock_df[!,:val] = Float64[]
@@ -386,15 +378,19 @@ function checkResiCapa(var_sym::Symbol, stockCapa_df::DataFrame, part::AbstractM
 end
 
 # XXX get a dataframe with all variable of the specified type
-function getAllVariables(va::Symbol,anyM::anyModel)
+function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> true)
 
 	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :expExc => :exc, :ctr => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
 	techIdx_arr = collect(keys(anyM.parts.tech))
 
-	if !(va in keys(varToPart_dic)) # get all variables for technology variables
+	if !(va in keys(varToPart_dic)) # get all variables for technologies
 		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut))
-		techType_arr = filter(x -> !isempty(x[2]),[[vaSpec,filter(y -> vaSpec in keys(anyM.parts.tech[y].var), techIdx_arr)] for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
-		allVar_df = vcat(map(x -> anyM.parts.tech[x[2]].var[x[1]], vcat(map(x -> collect(zip(fill(x[1],length(x[2])),x[2])),techType_arr)...))...)
+		techType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(anyM.parts.tech[y].var), techIdx_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
+		if !isempty(techType_arr)
+			allVar_df = vcat(map(x -> anyM.parts.tech[x[2]].var[x[1]], vcat(map(x -> collect(zip(fill(x[1],length(x[2])),x[2])),techType_arr)...))...)
+		else
+			allVar_df = DataFrame()
+		end
 	elseif va != :emission # get variables from other parts
 		if va in keys(getfield(anyM.parts,varToPart_dic[va]).var)
 			allVar_df = getfield(anyM.parts,varToPart_dic[va]).var[va]
@@ -404,16 +400,49 @@ function getAllVariables(va::Symbol,anyM::anyModel)
 	else va == :emission # for emission all use variables are obtained and then already matched with emission factors
 		allVar_df = vcat(map(x -> anyM.parts.tech[x].var[:use], filter(y -> :use in keys(anyM.parts.tech[y].var), techIdx_arr))...)
 
+        # TODO add (optional) exchange variables * eff, stLvl * stDis, st{in/out} * eff => best use getAllVariables with filter function for carriers
+
 		if !(:emissionFac in keys(anyM.parts.lim.par))
-			push!(anyM.report,(2,"limits","emissionUp","upper emission limits but no emission factors provided"))
+			lock(anyM.lock)
+            push!(anyM.report,(2,"limits","emissionUp","upper emission limits but no emission factors provided"))
+			unlock(anyM.lock)
 			allVar_df = DataFrame()
 		end
-		allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets,anyM.report)
+		allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)
 		allVar_df[!,:var] = allVar_df[!,:val]  ./ 1e6 .* allVar_df[!,:var]
 		select!(allVar_df,Not(:val))
 	end
 
+	filter!(filterFunc,allVar_df)
 	return allVar_df
+end
+
+# XXX replaces orginal carriers in var_df with all leafes connected to respective carrier (and itself) and flattens it
+function replCarLeafs(var_df::DataFrame,c_tree::Tree;cCol::Symbol=:C,noLeaf::Array{Int,1} = Int[])
+
+	cToLeafs_dic = Dict(x => x in noLeaf ? x : filter(y -> isempty(c_tree.nodes[y].down), [x,getDescendants(x,c_tree,true)...]) for x in unique(var_df[!,cCol]))
+	var_df[!,:C] = map(x -> cToLeafs_dic[x],var_df[!,cCol])
+	var_df = flatten(var_df,:C)
+
+	return var_df
+end
+
+# XXX returns array of technologies and respective dispatch variables relevant for input carrier
+function getRelTech(c::Int,tech_dic::Dict{Int,TechPart},c_tree::Tree)
+
+	techIdx_arr = collect(keys(tech_dic))
+	relTech_arr = Array{Tuple{Int,Symbol},1}()
+	for x in techIdx_arr
+		addConvTech_arr = intersect((:use,:gen),filter(y -> c in tech_dic[x].carrier[y], collect(keys(tech_dic[x].carrier))))
+		if isempty(c_tree.nodes[c].down) # actual dispatch variables for storage only exists for carriers that are leaves
+			addStTech_arr = intersect((:stExtIn,:stExtOut),filter(y -> c in union(map(z -> union([z],getDescendants(z,c_tree,true)),tech_dic[x].carrier[y])...), collect(keys(tech_dic[x].carrier))))
+		else
+			addStTech_arr = Array{Tuple{Int,Symbol},1}()
+		end
+		union(addConvTech_arr,addStTech_arr) |> (y -> append!(relTech_arr,collect(zip(fill(x,length(y)),y))))
+	end
+
+	return relTech_arr
 end
 
 # </editor-fold>

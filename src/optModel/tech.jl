@@ -1,53 +1,57 @@
 
 # XXX iteration over all technologies to create variables and constraints
-function iterateOverTech!(techIdx_arr::Array{Int,1},prepVar_dic::Dict{Int,Dict{Symbol,NamedTuple}},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},parDef_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
+function createTech!(t::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
-	Threads.@threads for t in techIdx_arr
-		newHerit_dic = Dict(:lowest => (:Ts_dis => :avg_any, :R_dis => :avg_any),:reference => (:Ts_dis => :up, :R_dis => :up)) # inheritance rules after presetting
-		ratioVar_dic = Dict(:StIn => ("StIn" => "Conv"), :StOut => ("StOut" => "StIn"), :StSize => ("StSize" => "StIn")) # assignment of tech types for ratios stuff
+    cns_dic = Dict{Symbol,cnsCont}()
+    newHerit_dic = Dict(:lowest => (:Ts_dis => :avg_any, :R_dis => :avg_any),:reference => (:Ts_dis => :up, :R_dis => :up)) # inheritance rules after presetting
+    ratioVar_dic = Dict(:StIn => ("StIn" => "Conv"), :StOut => ("StOut" => "StIn"), :StSize => ("StSize" => "StIn")) # assignment of tech types for ratios stuff
 
-		part = anyM.parts.tech[t]
-		prepTech_dic = prepVar_dic[t]
-		# presets all dispatch parameter and obtains mode-dependant variables
-		modeDep_dic = presetDispatchParameter!(t,part,prepTech_dic,parDef_dic,newHerit_dic,ts_dic,r_dic,anyM)
+    tech_str = createFullString(t,anyM.sets[:Te])
+    # presets all dispatch parameter and obtains mode-dependant variables
+    modeDep_dic = presetDispatchParameter!(part,prepTech_dic,parDef_dic,newHerit_dic,ts_dic,r_dic,anyM)
 
-		# creates expansion and capacity variables
-		createExpCap!(part,prepTech_dic,anyM,ratioVar_dic)
+    # creates expansion and capacity variables
+    createExpCap!(part,prepTech_dic,anyM,ratioVar_dic)
 
-		# connect capacity and expansion variables
-		if part.type != :stock createCapaCns!(part,prepTech_dic,anyM) end
+    # connect capacity and expansion variables
+    if part.type != :stock createCapaCns!(part,prepTech_dic,cns_dic) end
 
-		# create and control commissioned capacity variables
-		if anyM.options.decomm != :none createCommVarCns!(part,anyM) end
-		produceMessage(anyM.options,anyM.report, 3," - Created all variables and constraints related to expansion and capacity for technology $(createFullString(t,anyM.sets[:Te]))")
+    # create and control commissioned capacity variables
+    if anyM.options.decomm != :none createCommVarCns!(part,cns_dic,anyM) end
+    produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
 
-		# create dispatch variables
-		createDispVar!(part,modeDep_dic,ts_dic,r_dic,anyM)
-		produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(createFullString(t,anyM.sets[:Te]))")
+    # create dispatch variables
+    createDispVar!(part,modeDep_dic,ts_dic,r_dic,anyM)
+    produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
 
-		# create conversion balance for conversion technologies
-		if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn))))
-			createConvBal!(part,anyM)
-			produceMessage(anyM.options,anyM.report, 3," - Created conversion balance for technology $(createFullString(t,anyM.sets[:Te]))")
-		end
+    # create conversion balance for conversion technologies
+    if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn))))
+        cns_dic[:convBal] = createConvBal(part,anyM)
+        produceMessage(anyM.options,anyM.report, 3," - Prepared conversion balance for technology $(tech_str)")
+    end
 
-		# create storage balance for storage technologies
-		if :stLvl in keys(part.var)
-			createStBal!(part,anyM)
-			produceMessage(anyM.options,anyM.report, 3," - Created storage balance for technology $(createFullString(t,anyM.sets[:Te]))")
-		end
+    # create storage balance for storage technologies
+    if :stLvl in keys(part.var)
+        cns_dic[:stBal] = createStBal(part,anyM)
+        produceMessage(anyM.options,anyM.report, 3," - Prepared storage balance for technology $(tech_str)")
+    end
 
-		# create capacity restrictions
-		createCapaRestr!(part,ts_dic,r_dic,anyM)
-		produceMessage(anyM.options,anyM.report, 3," - Created capacity restrictions for technology $(createFullString(t,anyM.sets[:Te]))")
+    # create capacity restrictions
+    createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM)
+    produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for technology $(tech_str)")
 
-		# create ratio constraints
-		if any(map(x -> occursin("ratioEner",string(x)), collect(keys(part.par))))
-			createRatioCns!(part,anyM)
-			produceMessage(anyM.options,anyM.report, 3," - Created constraints controlling energy ratios for technology $(createFullString(t,anyM.sets[:Te]))")
-		end
-		produceMessage(anyM.options,anyM.report, 2," - Created all variables and constraints for technology $(createFullString(t,anyM.sets[:Te]))")
-	end
+    # create ratio constraints
+    if any(map(x -> occursin("ratioEner",string(x)), collect(keys(part.par))))
+        createRatioCns!(part,cns_dic,anyM)
+        produceMessage(anyM.options,anyM.report, 3," - Prepared constraints controlling energy ratios for technology $(tech_str)")
+    end
+
+    # all constraints are scaled and then written into their respective array position
+    foreach(x -> scaleCnsExpr!(x[2].data,anyM.options.coefRng,anyM.options.checkRng),collect(cns_dic))
+
+    produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for technology $(tech_str)")
+
+    return cns_dic
 end
 
 # <editor-fold desc= prepare to create expansion and capacity variables"
@@ -72,6 +76,10 @@ function prepareTechs!(techIdx_arr::Array{Int,1},prepVar_dic::Dict{Int,Dict{Symb
 
 		# map required capacity constraints
 		createCapaRestrMap!(t, anyM)
+
+		if map(x -> x in keys(prepTech_dic),(:capaStIn,:capaStOut,:capaStSize)) |> (y -> any(y) && !all(y))
+			push!(anyM.report,(3,"technology dimensions","storage","in case of $(tech_str) information for one storage capacity is missing (stIn, stOut or stSize)"))
+		end
 
 		# if any capacity variables were prepared, add these to overall dictionary
 	    if !isempty(prepTech_dic) prepVar_dic[t] = prepTech_dic end
@@ -164,7 +172,7 @@ function findStorageRatio(t_int::Int,find_df::DataFrame,st_sym::Symbol,remove_ar
 	ratio_sym = expTypeRatio_dic[st_sym]
 
 	if ratio_sym in tuple(keys(part.par)...)
-		ratioTab_df = filter(r -> r.ratio != 0, matchSetParameter(find_df,part.par[ratio_sym],anyM.sets, anyM.report, newCol = :ratio))
+		ratioTab_df = filter(r -> r.ratio != 0, matchSetParameter(find_df,part.par[ratio_sym],anyM.sets, newCol = :ratio))
 		push!(remove_arr, ratioTab_df[!,Not(:ratio)])
 	else
 		ratioTab_df = filter(x -> false,find_df)
@@ -187,14 +195,13 @@ end
 
 # <editor-fold desc= create technology related variables"
 
-# create expansion and capacity variables
+# XXX create expansion and capacity variables
 function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple},anyM::anyModel,ratioVar_dic::Dict{Symbol,Pair{String,String}} = Dict{Symbol,Pair{String,String}}())
 	for expVar in sort(collect(keys(prep_dic)))
 		varMap_tup = prep_dic[expVar]
 		# create dataframe of capacity or expansion variables by creating the required capacity variables and join them with pure residual values
-		var_df = createVar(varMap_tup.var,string(expVar),anyM.options.bound.exp,anyM.optModel,anyM.lock,anyM.sets)
+		var_df = createVar(varMap_tup.var,string(expVar),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
 		if !isempty(varMap_tup.resi)
-
 			if expVar == :capaExc # flips and repeats entries for directed exchange variabes before moving on
 				var_df = filter(r -> r.dir,var_df) |> (x -> vcat(filter(r -> !r.dir,var_df),vcat(x,rename(x,replace(names(x),:R_to => :R_from, :R_from => :R_to)))))
 			end
@@ -202,7 +209,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 			var_df = by(joinMissing(var_df,varMap_tup.resi[!,vcat(:var,join_arr...)], join_arr, :outer, Dict(:var => AffExpr(),:var_1 => AffExpr()),true),intCol(var_df,:dir),var = [:var,:var_1] => x -> sum(x))
 		end
 
-		# expands table of expansion variables to supordinate timesteps and modifies expansion variable accordingly
+		# expands table of expansion variables to superordinate timesteps and modifies expansion variable accordingly
 		if occursin("exp",string(expVar)) && !isempty(var_df)
 			noExpCol_arr = intCol(var_df)
 			allDf_arr = map(eachrow(var_df)) do x
@@ -236,7 +243,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 			# join ratios and corresponding
 			ratio_df = join(preRatio_df,part.var[ratioVar_sym]; on = join_arr, kind = :inner)
 			ratio_df[!,:var] = ratio_df[!,:var] .* ratio_df[!,:ratio]
-			var_df = vcat(ratio_df[!,Not(:ratio)],var_df)
+			var_df = ratio_df[!,Not(:ratio)] |> (x -> vcat(x,join(var_df,x, on = join_arr, kind = :anti)))
 		end
 
 		if !isempty(var_df)	part.var[expVar] = orderDf(var_df) end
@@ -244,7 +251,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 end
 
 # XXX create all dispatch variables
-function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},anyM::anyModel)
+function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,))
 
@@ -256,7 +263,10 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
 		else
-			basis_df= orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
+			basis_df = orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
+			# filter carriers that are stored-in or out internally and therefore are created even if they are not a leafe
+			intC_arr = map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...))
+			basis_df = replCarLeafs(basis_df,anyM.sets[:C],noLeaf = intC_arr)
 		end
 
 		# adds temporal and spatial level to dataframe
@@ -267,7 +277,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 
 		# add mode dependencies
 		modeDep_df = copy(modeDep_dic[va])
-		modeDep_df[!,:M] .= isempty(part.modes) ? [0] : [collect(part.modes)]
+		modeDep_df[!,:M] .= isempty(modeDep_df) ? [0] : [collect(part.modes)]
 		modeDep_df = flatten(modeDep_df,:M)
 
 		allVar_df = joinMissing(allVar_df,modeDep_df,names(modeDep_dic[va]),:left,Dict(:M => 0))
@@ -275,30 +285,28 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		# filter entries where availability is zero
 		for avaPar in relAva_dic[va]
 			if !isempty(part.par[avaPar].data) && 0.0 in part.par[avaPar].data[!,:val]
-				allVar_df = filter(x -> x.val != 0.0,  matchSetParameter(allVar_df,part.par[avaPar],anyM.sets,anyM.report))[!,Not(:val)]
+				allVar_df = filter(x -> x.val != 0.0,  matchSetParameter(allVar_df,part.par[avaPar],anyM.sets))[!,Not(:val)]
 			end
 		end
 
 		# computes value to scale up the global limit on dispatch variable that is provied per hour and create variable
-		part.var[va] = orderDf(createVar(allVar_df,string(va), getUpBound(allVar_df,anyM),anyM.optModel,anyM.lock,anyM.sets))
+		part.var[va] = orderDf(createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / anyM.options.scaFac.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.disp))
 	end
 end
 
 # XXX create variables and constraints regarding commissioned variables
-function createCommVarCns!(part::AbstractModelPart,anyM::anyModel)
+function createCommVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 	for capaVar in filter(x -> occursin("capa",string(x)),keys(part.var))
 		commVar_sym = string(capaVar) |> (x -> Symbol(:comm,uppercase(x[1]),x[2:end]))
 		# XXX create commissioned variable
 		var_df = copy(part.var[capaVar])[!,Not(:var)]
-		var_df = createVar(var_df,string(commVar_sym),nothing,anyM.optModel,anyM.lock,anyM.sets)
+		var_df = createVar(var_df,string(commVar_sym),NaN,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.commCapa)
 
-		part.var[commVar_sym] = orderDf(var)
+		part.var[commVar_sym] = orderDf(var_df)
 
 		# XXX create constraint to connect commissioned and installed capacity
-		withlock(anyM.lock) do
-			var_df[!,:cns] = map(x -> @constraint(anyM.optModel,x[1] <= x[2]),zip(var_df[!,:var],part.var[capaVar][!,:var]))
-		end
-		part.cns[commVar_sym] = orderDf(var_df[!,Not(:var)])
+		var_df[!,:cnsExpr] = map(x -> x[1] - x[2],zip(var_df[!,:var],part.var[capaVar][!,:var]))
+		cns_dic[commVar_sym] = cnsCont(select(var_df,Not(:var)),:smaller)
 
 		# XXX create constraint to prevent re-commissioning of capacity once decommissioned
 		if anyM.options.decomm == :decomm
@@ -321,20 +329,16 @@ function createCommVarCns!(part::AbstractModelPart,anyM::anyModel)
 			end
 
 			# add residual capacities of current and previous period
-
 			joinResi_arr = filter(x -> x != :Ts_disSupPrev, intCol(cns_df,:dir))
 			cns_df = rename(join(cns_df,part.var[capaVar],on = joinResi_arr, kind = :inner),:var => :resiNow)
 			cns_df[!,:resiNow] = getfield.(cns_df[!,:resiNow],:constant)
 			cns_df = rename(joinMissing(cns_df, part.var[capaVar], Pair.(replace(joinResi_arr,:Ts_disSup => :Ts_disSupPrev),joinResi_arr),:left, Dict(:resiNow => AffExpr(),:var => AffExpr())),:var => :resiPrev)
 			cns_df[!,:resiPrev] = getfield.(cns_df[!,:resiPrev],:constant)
 
-			# create actual constraint
-			cns_df = filter(x -> x.expNow != AffExpr() || x.resiNow - x.resiPrev > 0.0,cns_df)
-			withlock(anyM.lock) do
-				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel,x.commNow <= x.commPrev + x.expNow + (x.resiNow - x.resiPrev |> (l -> l > 0.0 ? l : 0.0))),eachrow(cns_df))
-			end
-			cns_ele = orderDf(cns_df[!,Not([:Ts_disSupPrev,:commNow,:commPrev,:expNow,:resiNow,:resiPrev])])
-			part.cns[string(commVar_sym) |> (x -> Symbol(:re,uppercase(x[1]),x[2:end]))] = cns_ele
+			# create actual constraint information
+			cns_df[!,:cnsExpr]  = map(x -> x.commNow + x.commPrev + x.expNow + (x.resiNow - x.resiPrev |> (l -> l > 0.0 ? l : 0.0)),eachrow(cns_df))
+			select!(cns_df,Not([:Ts_disSupPrev,:commNow,:commPrev,:expNow,:resiNow,:resiPrev]))
+			cns_dic[string(commVar_sym) |> (x -> Symbol(:re,uppercase(x[1]),x[2:end]))] = cnsCont(orderDf(cns_df),:greater)
 		end
 	end
 end
@@ -374,6 +378,7 @@ function addResidualCapa!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,t
 				mergePrepDic!(capa_sym,prepTech_dic,capaResi_df,ratioTab_df)
 			end
 		end
+
 	end
 end
 
@@ -382,18 +387,38 @@ end
 # <editor-fold desc= create technology related constraints"
 
 # XXX create conversion balance
-function createConvBal!(part::TechPart,anyM::anyModel)
+function createConvBal(part::TechPart,anyM::anyModel)
 
 	cns_df = rename(part.par[:effConv].data,:val => :eff)
-	agg_tup = tuple(intCol(cns_df)...)
+	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), intCol(cns_df))
+
+	# defines tuple specificing dimension of aggregation later
+	if part.type == :emerging
+		srcRes_ntup = part.balLvl |> (x -> (Ts_expSup = x.exp[1], Ts_dis = x.ref[1], R_dis = x.ref[2]))
+	else
+		srcRes_ntup = part.balLvl |> (x -> (Ts_dis = x.ref[1], R_dis = x.ref[2]))
+	end
+
+	# if modes are specified, gets rows of conversion dataframe where they are relevant and creates different tuples to define grouping dimensions
+	if :M in names(cns_df)
+		srcResM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(1,values(srcRes_ntup)...))...)
+		srcResNoM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(0,values(srcRes_ntup)...))...)
+		m_arr = findall(0 .!= cns_df[!,:M])
+		noM_arr = setdiff(1:size(cns_df,1),m_arr)
+	end
 
 	# add variables via aggregation
 	in_arr = intersect(keys(part.carrier),(:use,:stIntOut))
 	out_arr = intersect(keys(part.carrier),(:gen,:stIntIn))
 
-	grpAgg_tup = :M in names(cns_df) ? ((:Ts_expSup,:Ts_dis),(:Te,:R_dis,:M)) : ((:Ts_expSup,:Ts_dis),(:Te,:R_dis))
 	for va in union(in_arr,out_arr)
-		cns_df[!,va] = aggregateVar(part.var[va], cns_df, agg_tup, anyM.sets, grpInter = grpAgg_tup)[1]
+		if :M in names(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
+			cns_df[!,va] .= AffExpr()
+			cns_df[m_arr,va] = aggUniVar(part.var[va], select(cns_df[m_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResM_ntup, anyM.sets)
+			cns_df[noM_arr,va] = aggUniVar(part.var[va], select(cns_df[noM_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResNoM_ntup, anyM.sets)
+		else
+			cns_df[!,va] = aggUniVar(part.var[va], select(cns_df,intCol(cns_df)), agg_arr, srcRes_ntup, anyM.sets)
+		end
 	end
 
 	# aggregate in and out variables respectively
@@ -402,14 +427,12 @@ function createConvBal!(part::TechPart,anyM::anyModel)
 	select(cns_df,Not(vcat(in_arr,out_arr)))
 
 	# create actual constraint
-	withlock(anyM.lock) do
-		cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.in*x.eff ==  x.out),eachrow(cns_df))
-	end
-	part.cns[:convBal] = orderDf(cns_df[!,[intCol(cns_df)...,:cns]])
+	cns_df[!,:cnsExpr] = map(x -> x.in*x.eff - x.out,eachrow(cns_df))
+	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),:equal)
 end
 
 # XXX create storage balance
-function createStBal!(part::TechPart,anyM::anyModel)
+function createStBal(part::TechPart,anyM::anyModel)
 
 	# XXX get variables for storage level
 	# get variables for current storage level
@@ -424,58 +447,88 @@ function createStBal!(part::TechPart,anyM::anyModel)
 	cns_df[!,:Ts_disNext] = map(x -> x in lastTs_arr ? lastFirstTs_dic[x] : x + 1, cns_df[!,:Ts_dis])
 	cns_df = rename(joinMissing(cns_df,part.var[:stLvl], intCol(part.var[:stLvl]) |> (x -> Pair.(replace(x,:Ts_dis => :Ts_disNext),x)), :left, Dict(:var => AffExpr())),:var => :stLvlNext)
 
-	# XXX join in and out variables and combines them with respective efficiencies
-	for typ in (:in,:out)
-		typVar_df = copy(cns_df[!,cnsDim_arr])
-		# join both types of in or out variables
-		allType_arr = intersect(keys(part.carrier),typ == :in ? (:stExtIn,:stIntIn) : (:stExtOut,:stIntOut))
-		for va in allType_arr
-			typVar_df = rename(joinMissing(typVar_df,part.var[va], cnsDim_arr, :inner,Dict(:var => AffExpr()))[!,Not(:Ts_disSup)],:var => va)
-		end
-		effPar_sym = typ == :in ? :effStIn : :effStOut
-		# join all types of in and out variables and adds efficiency
-		grpDim_arr = intCol(typVar_df)
-		typVar_df = by(typVar_df,grpDim_arr,allVar = allType_arr => x -> sum(map(y -> getfield(x,y),allType_arr)))
-		typVar_df = part.par[effPar_sym].data |> (x -> join(typVar_df,x; on = intCol(x), kind = :inner))
+	# determines dimensions for aggregating dispatch variables
+	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), cnsDim_arr)
 
-		if typ == :in
-			typVar_df = rename(by(typVar_df,grpDim_arr, allVar = [:allVar,:val] => x -> dot(x.allVar,x.val)),:allVar => typ)
+	# obtain all different carriers of level variable and create array to store the respective level constraint data
+	uniC_arr = unique(cns_df[!,:C])
+	cCns_arr = Array{DataFrame}(undef,length(uniC_arr))
+
+	for (idx,c) in enumerate(uniC_arr)
+		# get constraints relevant for carrier and find rows where mode is specified
+		cnsC_df = filter(x -> x.C == c,cns_df)
+		m_arr = findall(0 .!= cnsC_df[!,:M])
+		noM_arr = setdiff(1:size(cnsC_df,1),m_arr)
+
+		if part.type == :emerging
+			srcRes_ntup = anyM.cInfo[c] |> (x -> (Ts_expSup = x.tsExp, Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl, M = 1))
 		else
-			typVar_df = rename(by(typVar_df,grpDim_arr, allVar = [:allVar,:val] => x -> dot(x.allVar,1 ./ x.val)),:allVar => typ)
+			srcRes_ntup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl, M = 1))
 		end
-		cns_df = joinMissing(cns_df,typVar_df, cnsDim_arr,:left, Dict(typ => AffExpr()))
+
+		# XXX join in and out dispatch variables and adds efficiency to them (hence efficiency can be specific for different carriers that are stored in and out)
+		for typ in (:in,:out)
+			typVar_df = copy(cns_df[!,cnsDim_arr])
+			# create array of all dispatch variables
+			allType_arr = intersect(keys(part.carrier),typ == :in ? (:stExtIn,:stIntIn) : (:stExtOut,:stIntOut))
+			effPar_sym = typ == :in ? :effStIn : :effStOut
+			# adds dispatch variables
+			typExpr_arr = map(allType_arr) do va
+				typVar_df = filter(x -> x.C == c,part.par[effPar_sym].data) |> (x -> join(part.var[va],x; on = intCol(x), kind = :inner))
+				if typ == :in
+					typVar_df[!,:var] = typVar_df[!,:var] .* typVar_df[!,:val]
+				else
+					typVar_df[!,:var] = typVar_df[!,:var] ./ typVar_df[!,:val]
+				end
+				return typVar_df[!,Not(:val)]
+			end
+
+			# adds dispatch variable to constraint dataframe, mode dependant and non-mode dependant balances have to be aggregated seperately
+			dispVar_df = vcat(typExpr_arr...)
+			cnsC_df[!,typ] .= AffExpr()
+			cnsC_df[m_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[m_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 1,), anyM.sets)
+			cnsC_df[noM_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[noM_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 0,), anyM.sets)
+		end
+
+		# XXX adds further parameters that depend on the carrier specified in storage level (superordinate or the same as dispatch carriers)
+
+		# add discharge parameter, if defined
+		if :stDis in keys(part.par)
+			sca_arr = getResize(cnsC_df,anyM.sets[:Ts],anyM.supTs); part.par[:stDis].defVal = 0.0
+			cnsC_df = matchSetParameter(cnsC_df,part.par[:stDis],anyM.sets)
+			cnsC_df[!,:stDis] =  1 ./ ((1 .- cnsC_df[!,:val]) .^ sca_arr)
+			select!(cnsC_df,Not(:val))
+		else
+			cnsC_df[!,:stDis] .= 1.0
+		end
+
+		# add inflow parameter, if defined
+		if :stInflow in keys(part.par)
+			part.par[:stInflow].defVal = 0.0
+			cnsC_df = matchSetParameter(cnsC_df,part.par[:stInflow],anyM.sets, newCol = :stInflow)
+			if !isempty(part.modes)
+            	cnsC_df[!,:stInflow] = cnsC_df[!,:stInflow] ./ length(part.modes)
+			end
+		else
+			cnsC_df[!,:stInflow] .= 0.0
+		end
+
+		# XXX create final equation
+		cnsC_df[!,:cnsExpr] = map(x -> x.stLvl + x.stInflow + x.in - x.out - x.stLvlNext * x.stDis,eachrow(cnsC_df))
+		cCns_arr[idx] = cnsC_df
 	end
 
-	# XXX adds further parameters
-	# add discharge parameter, if defined
-	if :stDis in keys(part.par)
-		sca_arr = getScale(cns_df,anyM.sets[:Ts],anyM.supTs)
-		cns_df[!,:stDis] =  1 ./ (1 .- part.par[:stDis].data[!,:val] .^ sca_arr)
-	else
-		cns_df[!,:stDis] .= 1.0
-	end
-
-	# add inflow parameter, if defined
-	if :stInflow in keys(part.par)
-		cns_df[!,:stInflow] = part.par[:stInflow].data[!,:val]
-	else
-		cns_df[!,:stInflow] .= 0.0
-	end
-
-	# XXX create final equation
-	withlock(anyM.lock) do
-		cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.stLvlNext * x.stDis == x.stLvl + x.stInflow + x.in - x.out),eachrow(cns_df))
-	end
-	part.cns[:stBal] = orderDf(cns_df[!,[cnsDim_arr...,:cns]])
+	cns_df =  vcat(cCns_arr...)
+	return cnsCont(orderDf(cns_df[!,[cnsDim_arr...,:cnsExpr]]),:equal)
 end
 
-# XXX create capacity constraints
-function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},anyM::anyModel)
+# XXX create all capacity restrictions for technology
+function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 
 	cnstrType_dic = Dict(:out => (dis = (:gen, :stIntIn), capa = :Conv), :in => (dis = (:use,:stIntOut), capa = :Conv),
 							:stIn => (dis = (:stExtIn, :stIntIn), capa = :StIn), :stOut => (dis = (:stExtOut, :stIntOut), capa = :StOut), :stSize => (dis = (:stLvl,), capa = :StSize))
 
-	capa_sym = anyM.options.decomm != :none ? :capaComm : :capa
+	capa_sym = anyM.options.decomm != :none ? :commCapa : :capa
 	capaRestr_gdf = groupby(part.capaRestr,:cnstrType)
 
 	# loop over groups of capacity restrictions (like out, stIn, ...)
@@ -484,75 +537,89 @@ function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{I
 		type_sym = Symbol(restrGrp.cnstrType[1])
 		info_ntup = cnstrType_dic[type_sym]
 
-		# determines dimensions for aggregating dispatch variables
-		conv_boo = type_sym in (:out,:in)
-		dim_arr = conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te] : [:Ts_expSup,:Ts_dis,:R_dis,:C,:Te]
-		agg_tup = conv_boo ? (:Ts_expSup,:Ts_dis,:R_dis) : (:Ts_expSup,:Ts_dis,:R_dis,:C)
-		aggFilt_tup = conv_boo ? (:Ts_expSup,:R_dis,:Ts_dis) : (:Ts_expSup,:R_dis,:Ts_dis,:C)
-
-		allCns_df = DataFrame(merge(Dict(x => Int[] for x in dim_arr),Dict(:cns => ConstraintRef[])))
+		allCns_arr = Array{DataFrame}(undef,size(restrGrp,1))
 
 		# loop over indiviudal constraints
-		for restr in eachrow(restrGrp)
-			capaVar_df = copy(part.var[Symbol(capa_sym,info_ntup.capa)])
-
-			capaVar_df[!,:lvlTs] .= restr.lvlTs
-			capaVar_df[!,:lvlR] .= restr.lvlR
-
-			# scale capacity variables temporal (expect for stSize since these are already provided in energy units)
-			if type_sym != :stSize
-				capaVar_df[!,:var]  = capaVar_df[!,:var] .* map(x -> anyM.supTs.sca[(x.Ts_disSup,x.lvlTs)],	eachrow(capaVar_df[!,[:Ts_disSup,:lvlTs]]))
-			end
-
-			# replaces expansion with dispatch regions
-			grpCapaVar_df = copy(capaVar_df) |> (y -> unique(by(y,names(y),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])]))
-
-			if restr.lvlR < part.balLvl.exp[2] # aggregate capacity variables spatial
-				grpCapaVar_df[!,:var] = aggregateVar(capaVar_df,rename(grpCapaVar_df,:R_dis => :R_exp),(:Ts_expSup,:Ts_disSup,:Te,:R_exp),anyM.sets)[1]
-			end
-
-			# expand capacity to dimensions of dispatch variables
-			capaDim_df = by(grpCapaVar_df[!,Not(:var)],names(grpCapaVar_df[!,Not(:var)]),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
-
-			select!(grpCapaVar_df,Not(:lvlTs))
-
-			# obtain all relevant dispatch variables
-			dispVar_arr = type_sym != :stSize ? intersect(keys(part.carrier),info_ntup.dis) : collect(info_ntup.dis)
-
-			for va in dispVar_arr
-				# filter dispatch variables not belonging to relevant carrier
-				allVar_df = filter(r -> r.C in restr.car, part.var[va])[!,Not(:Ts_disSup)]
-
-				# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
-				ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:ava,info_ntup.capa)],anyM.sets,anyM.report, newCol = :ava)[!,:ava]
-				if type_sym == :out
-					ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:effConv)],anyM.sets,anyM.report,newCol = :eff)[!,:eff] .* ava_arr
-				end
-				allVar_df[!,:var] = allVar_df[!,:var] .* 1 ./ ava_arr
-
-				# aggregate dispatch variables
-				capaDim_df[!,va] = aggregateVar(allVar_df, capaDim_df, agg_tup, anyM.sets, aggFilt = aggFilt_tup)[1]
-			end
-
-			# sum dispatch variables and filter cases without any
-			capaDim_df[!,:disp] = map(x -> sum(x),eachrow(capaDim_df[!,dispVar_arr]))
-			select!(capaDim_df,Not(dispVar_arr))
-			capaDim_df = filter(x -> !(x.disp == AffExpr()),capaDim_df)
-
-			# join capacity and dispatch variables to create final constraint
-			grpCapaVar_df = by(grpCapaVar_df,replace(dim_arr,:Ts_dis => :Ts_disSup),capa = [:var] => x -> sum(x))
-			cns_df = join(capaDim_df,grpCapaVar_df,on = intCol(grpCapaVar_df),kind = :inner)
-			withlock(anyM.lock) do
-				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, 0.01 * x.disp <=  0.01 * x.capa),eachrow(cns_df))
-			end
-			allCns_df = vcat(allCns_df,select(cns_df,[dim_arr...,:cns]))
+		for (idx,restr) in enumerate(eachrow(restrGrp))
+			allCns_arr[idx] = createRestr(part,copy(part.var[Symbol(capa_sym,info_ntup.capa)]),restr,type_sym,info_ntup,ts_dic,r_dic,anyM.sets,anyM.supTs)
 		end
-		part.cns[Symbol(type_sym,:Restr)] = orderDf(allCns_df[!,[intCol(allCns_df)...,:cns]])
+
+		allCns_df = vcat(allCns_arr...)
+
+		# add all constraints to part
+		allCns_df[!,:cnsExpr] = map(x -> x.disp - x.capa,eachrow(allCns_df))
+		cns_dic[Symbol(type_sym,:Restr)] = cnsCont(orderDf(allCns_df[!,[intCol(allCns_df)...,:cnsExpr]]),:smaller)
 	end
 end
 
+# XXX sub-function to create restriction
+function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow, type_sym::Symbol, info_ntup::NamedTuple,
+															ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple)
+
+	conv_boo = type_sym in (:out,:in)
+	dim_arr = conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te] : [:Ts_expSup,:Ts_dis,:R_dis,:C,:Te]
+	agg_arr = [:Ts_expSup,:Ts_dis,:R_dis] |> (x -> filter(x -> part.type == :emerging || x != :Ts_expSup,x))
+
+	# get relevant carriers for conversion and storage variables
+	relConv_arr = restr.car
+	intC_arr = map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...))
+	relSt_arr = filter(y -> isempty(sets_dic[:C].nodes[y].down) || y in intC_arr, [restr.car[1],getDescendants(restr.car[1],sets_dic[:C],true)...])
+
+	# determines dimensions for aggregating dispatch variables
+	capaVar_df[!,:lvlTs] .= restr.lvlTs
+	capaVar_df[!,:lvlR] .= restr.lvlR
+
+	# resize capacity variables (expect for stSize since these are already provided in energy units)
+	if type_sym != :stSize
+		capaVar_df[!,:var]  = capaVar_df[!,:var] .* map(x -> supTs_ntup.sca[(x.Ts_disSup,x.lvlTs)],	eachrow(capaVar_df[!,[:Ts_disSup,:lvlTs]]))
+	end
+
+	# replaces expansion with dispatch regions
+	grpCapaVar_df = copy(capaVar_df) |> (y -> unique(by(y,names(y),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])]))
+
+	if restr.lvlR < part.balLvl.exp[2] # aggregate capacity variables spatially, if necessary
+		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR)
+		grpCapaVar_df[!,:var] = aggUniVar(rename(capaVar_df,:R_exp => :R_dis),grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
+	end
+
+	# expand capacity to dimension of dispatch
+	capaDim_df = by(grpCapaVar_df[!,Not(:var)],names(grpCapaVar_df[!,Not(:var)]),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
+	select!(grpCapaVar_df,Not(:lvlTs))
+
+	# obtain all relevant dispatch variables
+	dispVar_arr = type_sym != :stSize ? intersect(keys(part.carrier),info_ntup.dis) : collect(info_ntup.dis)
+	resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
+	for va in dispVar_arr
+		# filter dispatch variables not belonging to relevant carrier
+		if va in (:gen,:use)
+			relC_arr = relConv_arr
+		else
+			relC_arr = relSt_arr
+		end
+		allVar_df = filter(r -> r.C in relC_arr, part.var[va])[!,Not(:Ts_disSup)]
+
+		# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
+		ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:ava,info_ntup.capa)],sets_dic, newCol = :ava)[!,:ava]
+		if type_sym == :out
+			ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:effConv)],sets_dic,newCol = :eff)[!,:eff] .* ava_arr
+		end
+		allVar_df[!,:var] = allVar_df[!,:var] .* 1 ./ ava_arr
+		# aggregate dispatch variables
+		capaDim_df[!,va] = aggUniVar(allVar_df, select(capaDim_df,intCol(capaDim_df)), agg_arr, resDis_ntup, sets_dic)
+	end
+	# sum dispatch variables and filter cases without any
+	capaDim_df[!,:disp] = map(x -> sum(x),eachrow(capaDim_df[!,dispVar_arr]))
+	select!(capaDim_df,Not(dispVar_arr))
+	capaDim_df = filter(x -> !(x.disp == AffExpr()),capaDim_df)
+
+	# join capacity and dispatch variables to create final constraint
+	grpCapaVar_df = by(grpCapaVar_df,replace(dim_arr,:Ts_dis => :Ts_disSup),capa = [:var] => x -> sum(x))
+	cns_df = join(capaDim_df,grpCapaVar_df,on = intCol(grpCapaVar_df),kind = :inner)
+	return cns_df
+end
+
 # XXX create ratio constraints (Fix, Low and Up for use and gen)
-function createRatioCns!(part::TechPart,anyM::anyModel)
+function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 
 	# collects all tables for equations
 	for type in intersect(keys(part.carrier),(:use, :gen)), limit in (:Up, :Low, :Fix)
@@ -564,30 +631,45 @@ function createRatioCns!(part::TechPart,anyM::anyModel)
 		# obtain variable name and parameter data
 		cns_df = rename(copy(part.par[ratioName_sym].data),:val => :ratio)
 
-		if :M in names(cns_df)
-			joinKey1_tup = (:Ts_expSup, :Ts_dis,  :R_dis, :C, :Te, :M); joinKey2_tup = (:Ts_expSup, :Ts_dis, :R_dis, :Te, :M)
-			ordDim1_tup =  ((:Ts_expSup, :Ts_dis), (:R_dis, :C, :M)); ordDim2_tup = ((:Ts_expSup, :Ts_dis), (:R_dis, :M))
+		# joins parameter data with ratio controlled variable and all variables
+		agg_arr = filter(r -> r != :Te && (part.type == :emerging || r != :Ts_expSup), intCol(cns_df))
+
+		if part.type == :emerging
+			srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_expSup = part.balLvl.exp[1], Ts_dis = x[1], R_dis = x[2]))
 		else
-			joinKey1_tup = (:Ts_expSup, :Ts_dis,  :R_dis, :C, :Te); joinKey2_tup = (:Ts_expSup, :Ts_dis, :R_dis, :Te)
-			ordDim1_tup = ((:Ts_expSup, :Ts_dis), (:R_dis, :C)); ordDim2_tup = ((:Ts_expSup, :Ts_dis), (:R_dis,))
+			srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_dis = x[1], R_dis = x[2]))
 		end
 
-		# joins parameter data with ratio controlled variable and all variables
-		cns_df[!,:ratioVar], chldRows_dic = aggregateVar(part.var[type],cns_df,joinKey1_tup, anyM.sets, grpInter = ordDim1_tup, aggFilt = (:C,))
-		cns_df[!,:allVar] = aggregateVar(part.var[type],cns_df, joinKey2_tup, anyM.sets, grpInter = ordDim2_tup, chldRows = chldRows_dic, aggFilt = (:C,))[1]
+		if :M in names(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
+			# find cases where ratio constraint is mode dependant
+			srcResM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(1,values(srcRes_ntup)...))...)
+			srcResNoM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(0,values(srcRes_ntup)...))...)
+			m_arr = findall(0 .!= cns_df[!,:M])
+			noM_arr = setdiff(1:size(cns_df,1),m_arr)
+			# aggregate variables with defined ratio
+			cns_df[!,:ratioVar] .= AffExpr()
+			cns_df[m_arr,:ratioVar] = aggUniVar(part.var[type], select(cns_df[m_arr,:],intCol(cns_df)), agg_arr, srcResM_ntup, anyM.sets)
+			cns_df[noM_arr,:ratioVar] = aggUniVar(part.var[type], select(cns_df[noM_arr,:],intCol(cns_df)), agg_arr, srcResNoM_ntup, anyM.sets)
+			# aggregate all variables
+			cns_df[!,:allVar] .= AffExpr()
+			cns_df[m_arr,:allVar] =	aggUniVar(part.var[type], select(cns_df[m_arr,:],intCol(cns_df)), filter(x -> x != :C,agg_arr), srcResM_ntup, anyM.sets)
+			cns_df[noM_arr,:allVar] =	aggUniVar(part.var[type], select(cns_df[noM_arr,:],intCol(cns_df)), filter(x -> x != :C,agg_arr), srcResNoM_ntup, anyM.sets)
+		else
+			cns_df[!,:ratioVar] = aggUniVar(part.var[type], select(cns_df,intCol(cns_df)), agg_arr, srcRes_ntup, anyM.sets)
+			cns_df[!,:allVar] =	aggUniVar(part.var[type], select(cns_df,intCol(cns_df)), filter(x -> x != :C,agg_arr), srcRes_ntup, anyM.sets)
+		end
 
 		# create corresponding constraint
-		withlock(anyM.lock) do
-			if occursin("Fix",string(limit))
-				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.ratioVar ==  x.allVar * x.ratio),eachrow(cns_df))
-			elseif occursin("Low",string(limit))
-				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.ratioVar >=  x.allVar * x.ratio),eachrow(cns_df))
-			else
-				cns_df[!,:cns] = map(x -> @constraint(anyM.optModel, x.ratioVar <=  x.allVar * x.ratio),eachrow(cns_df))
-			end
+		if occursin("Fix",string(limit))
+			sign_sym = :equal
+		elseif occursin("Low",string(limit))
+			sign_sym = :greater
+		else
+			sign_sym = :smaller
 		end
 
-		part.cns[ratioName_sym] = orderDf(cns_df[!,[intCol(cns_df)...,:cns]])
+		cns_df[!,:cnsExpr] = map(x -> x.ratioVar - x.allVar * x.ratio, eachrow(cns_df))
+		cns_dic[ratioName_sym] = cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),sign_sym)
 	end
 end
 

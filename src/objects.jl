@@ -29,10 +29,10 @@ mutable struct ParElement
             setNam = Symbol(colNam_arr[1])
 
             if !haskey(setSuf_dic,setNam) # parameter provided for a set not appearing in definition (e.g. demand depending on the technology)
-                push!(report,(2, :par, name, "parameter data was specified for $(setLongShort_dic[setNam]) set, but it is not defined to depend on this set"))
+                push!(report,(2, "parameter assignment", string(name), "parameter data was specified for $(setLongShort_dic[setNam]) set, but it is not defined to depend on this set"))
                 continue
             elseif length(setSuf_dic[setNam]) == 1 && length(colNam_arr) > 1 # they are several instances of the set provided, but it only depends on one instance (e.g. two region sets for efficiency)
-                push!(report,(2, :par, name, "parameter data was specified for several instances of $(setLongShort_dic[setNam]) set, but it is defined to depend only on one instance, additonal instances were ignored"))
+                push!(report,(2, "parameter assignment", string(name), "parameter data was specified for several instances of $(setLongShort_dic[setNam]) set, but it is defined to depend only on one instance, additonal instances were ignored"))
                 continue
             elseif setSuf_dic[setNam][1] == Symbol() # set has only one instance and no suffix => no change when converting from read-in dataframe to parameter element
                 newCol_dic[colNam] = colNam
@@ -60,10 +60,14 @@ end
 # XXX specific struct for read in process of parameter data
 mutable struct parEntry
 	colSet::Symbol
-	entry::Array{Union{Bool,String},1}
+	entry::Array{String,1}
 	lvl::Array{Int,1}
 	startLvl::Int
 end
+
+# </editor-fold>
+
+# <editor-fold desc="extensions of base functions"
 
 # XXX functions to copy parameter structs of parameter data
 import Base.copy
@@ -89,6 +93,12 @@ function copy(par_obj::ParElement,data_df::DataFrame)
 	return out
 end
 
+# XXX extends base function to avoid certain errors, that otherwise would require more costly solutions
+import Base.+
++(a::Int,b::Nothing) = a
+
+# </editor-fold>
+
 # </editor-fold>
 
 # <editor-fold desc="struct for individual parts of the model"
@@ -108,6 +118,7 @@ mutable struct TechPart <: AbstractModelPart
 	disAgg::Bool
 	modes::Tuple{Vararg{Int,N} where N}
 	TechPart(name::Tuple{Vararg{String,N} where N}) = new(name,Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())
+	TechPart() = new()
 end
 
 mutable struct OthPart <: AbstractModelPart
@@ -115,6 +126,12 @@ mutable struct OthPart <: AbstractModelPart
 	var::Dict{Symbol,DataFrame}
 	cns::Dict{Symbol,DataFrame}
 	OthPart() = new(Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())
+end
+
+# XXX container to store data defining a constraint (used to seperate definition and actual jump creation of constraints)
+struct cnsCont
+    data::DataFrame
+    sign::Symbol
 end
 
 # </editor-fold>
@@ -133,7 +150,7 @@ end
 mutable struct Tree
 	nodes::Dict{Int,Node}
 	srcTup::Dict{Tuple,Int}
-	srcStr::Dict{String,Array{Int,1}}
+	srcStr::Dict{Tuple{String,Int},Array{Int,1}}
 	up::Dict{Int,Int}
 	height::Int
 	Tree() = new(Dict{Int,Node}(),Dict{Tuple,Int}(),Dict{String,Array{Int,1}}(),Dict{Int,Int}(),1)
@@ -145,20 +162,23 @@ end
 
 # XXX defines final model object and its options
 struct modOptions
-
 	# data in- and output
 	inDir::Array{String,1}
 	outDir::String
-	name::String
+	objName::String
 	csvDelim::String
 	outStamp::String
 	# model generation
 	decomm::Symbol
 	interCapa::Symbol
-	shortExp::Int64
+	supTsLvl::Int
+	shortExp::Int
 	# managing numerical issues
-	scale::NamedTuple{(:cost,:ener,:capa,:ems),Tuple{Float64,Float64,Float64,Float64}}
-	bound::NamedTuple{(:exp,:disp, :cost),Tuple{Union{Nothing,Float64},Union{Nothing,Float64},Union{Nothing,Float64}}}
+	coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}
+	scaFac::NamedTuple{(:capa,:commCapa,:disp,:dispCost,:capaCost,:obj),Tuple{Float64,Float64,Float64,Float64,Float64,Float64}}
+	bound::NamedTuple{(:capa,:disp,:obj),Tuple{Float64,Float64,Float64}}
+	avaMin::Float64
+	checkRng::Float64
 	# reporting related options
 	reportLvl::Int
 	errCheckLvl::Int
@@ -180,8 +200,8 @@ mutable struct anyModel
 	sets::Dict{Symbol,Tree}
 	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Int,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
 
-	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; name = "", csvDelim = ",", decomm = :none, interCapa = :linear, shortExp = 10, reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1,
-																																						bound = (exp = nothing, disp = nothing, cost = nothing))
+	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decomm = :recomm, interCapa = :linear, supTsLvl = 0, shortExp = 10, reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1,
+																					coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)), scaFac = (capa = 1e1, commCapa = 1e2, disp = 1e3, dispCost = 1e0, capaCost = 1e2, obj = 1e0), bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = NaN)
 		anyM = new()
 
 		# <editor-fold desc="initialize report and options"
@@ -190,12 +210,13 @@ mutable struct anyModel
 		anyM.report = Array{Tuple,1}()
 
 		anyM.optModel = Model()
+
 		anyM.lock = SpinLock()
 
 		# XXX sets whole options object from specified directories TODO arbeite mit kwargs später
-		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, name = name, csvDelim = csvDelim, outStamp = Dates.format(now(),"yyyymmddHHMM"), decomm = decomm, interCapa = interCapa, shortExp = shortExp,
-																																			scale = (cost = 1.0, ener = 1.0,capa = 1.0, ems = 1.0), bound = bound,
-																																				reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
+		outStamp_str = string(objName,"_",Dates.format(now(),"yyyymmddHHMM"))
+		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, decomm = decomm, interCapa = interCapa, supTsLvl = supTsLvl, shortExp = shortExp,
+																					coefRng = coefRng, scaFac = scaFac, bound = bound, avaMin = avaMin, checkRng = checkRng, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
 
 		anyM.options = modOptions(defOpt_ntup...)
 
@@ -215,18 +236,14 @@ mutable struct anyModel
 		# <editor-fold desc="create part objects and general mappings"
 		# assign actual tech to parents
 		relTech_df = setData_dic[:Te][!,Symbol.(filter(x -> occursin("technology",x) && !isnothing(tryparse(Int16,string(x[end]))), string.(names(setData_dic[:Te]))))]
-		techIdx_arr = map(x -> lookupTupleTree(x,anyM.sets[:Te]),map(y -> tuple(filter(x -> x != "",collect(y))...),eachrow(relTech_df)))
+	 	techIdx_arr = filter(z -> isempty(anyM.sets[:Te].nodes[z].down), map(x -> lookupTupleTree(tuple(collect(x)...),anyM.sets[:Te],1), eachrow(relTech_df)))
 
 		anyM.parts = (tech = Dict(x => TechPart(getUniName(x,anyM.sets[:Te])) for x in techIdx_arr), trd = OthPart(), exc = OthPart(), bal = OthPart(), lim = OthPart(), obj = OthPart())
 
 		createCarrierMapping!(setData_dic,anyM)
 		createTimestepMapping!(anyM)
 
-
 		# XXX write general info about technologies
-		relTech_df = setData_dic[:Te][!,Symbol.(filter(x -> occursin("technology",x) && !isnothing(tryparse(Int16,string(x[end]))), string.(names(setData_dic[:Te]))))]
-		techIdx_arr = map(x -> lookupTupleTree(x,anyM.sets[:Te]),map(y -> tuple(filter(x -> x != "",collect(y))...),eachrow(relTech_df)))
-
 		for t in techIdx_arr createTechInfo!(t, setData_dic, anyM) end
 		produceMessage(anyM.options,anyM.report, 2," - Created all mappings among sets")
 
@@ -239,78 +256,8 @@ mutable struct anyModel
 
 		return anyM
 	end
+
+	anyModel() = new()
 end
 
 # </editor-fold>
-
-# XXX create optimization model after anyModel has been initialized
-function createOptModel!(anyM::anyModel)
-
-	# <editor-fold desc="create technology related variables and constraints"
-
-	techIdx_arr = collect(keys(anyM.parts.tech))
-	parDef_dic = defineParameter(anyM.options,anyM.report)
-
-	# XXX get dimension of expansion and capacity variables and mapping of capacity constraints
-	tsYear_dic = Dict(zip(anyM.supTs.step,collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
-	prepVar_dic = Dict{Int,Dict{Symbol,NamedTuple}}()
-	prepareTechs!(techIdx_arr,prepVar_dic,tsYear_dic,anyM)
-
-	# remove technologies without any potential capacity variables
-	techIdx_arr = collect(keys(prepVar_dic))
-	foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),techIdx_arr))
-
-	# XXX create all technology related elements
-	# creates dictionary that assigns combination of supordinate dispatch timestep and dispatch level to dispatch timesteps
-	allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
-	ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
-
-	# creates dictionary that assigns combination of expansion region and dispatch level to dispatch region
-	allLvlR_arr = unique(union([getfield.(values(anyM.cInfo),x) for x in (:rDis, :rExp)]...))
-	allRExp_arr = union([getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in allLvlR_arr]...)
-	r_dic = Dict((x[1], x[2]) => anyM.sets[:R].nodes[x[1]].lvl == x[2] <= x[2] ? x[1] : getindex.(getAncestors(x[1],anyM.sets[:R],x[2]),1)[1]
-																						for x in filter(x -> anyM.sets[:R].nodes[x[1]].lvl >= x[2], collect(Iterators.product(allRExp_arr,allLvlR_arr))))
-
-	produceMessage(anyM.options,anyM.report, 3," - Determined dimension of expansion and capacity variables for technologies")
-	# loop over each tech to create variables and constraints
-	iterateOverTech!(techIdx_arr,prepVar_dic,ts_dic,r_dic,parDef_dic,anyM)
-	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all technologies")
-	# </editor-fold>
-
-	# <editor-fold desc="create exchange related variables and constraints"
-
-	prepExc_dic = Dict{Symbol,NamedTuple}()
-	partExc = anyM.parts.exc
-	partLim = anyM.parts.lim
-
-	# obtain dimensions of expansion variables for exchange
-	potExc_df = prepareExcExpansion!(partExc,partLim,prepExc_dic,tsYear_dic,anyM)
-
-	# obtain capacity dimensions solely based on expansion variables
-	prepareCapacity!(partExc,prepExc_dic,prepExc_dic[:expExc].var,:capaExc,anyM)
-
-	addResidualCapaExc!(partExc,prepExc_dic,potExc_df,anyM)
-
-	# create expansion and capacity variables
-	createExpCap!(partExc,prepExc_dic,anyM)
-	# create capacity constraint
-	createCapaExcCns!(partExc,anyM)
-
-	produceMessage(anyM.options,anyM.report, 2," - Created all variables and constraints related to expansion and capacity for exchange")
-
-	# create dispatch related variables
-	createExcVar!(partExc,ts_dic,anyM)
-	produceMessage(anyM.options,anyM.report, 2," - Created all dispatch variables for exchange")
-
-	# create capacity restrictions
-	createCapaRestrExc!(partExc,anyM)
-	produceMessage(anyM.options,anyM.report, 2," - Created all capacity restrictions for exchange")
-
-	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for exchange")
-
-	# </editor-fold>
-
-	createTradeVarCns!(anyM.parts.trd,anyM)
-	createEnergyBal!(techIdx_arr,anyM)
-	createLimitCns!(techIdx_arr,anyM.parts.lim,anyM)
-end
