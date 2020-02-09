@@ -466,7 +466,7 @@ function reportDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x -
     cns_df = copy(filter(filterFunc,cns_df))
     cns_df[!,:dual] = dual.(cns_df[!,:cns])
 
-    printObject(select(cns_df,Not(:cns)),sets_dic,options;fileName = string("dual",fileName != "" ? "_" : "",fileName))
+    printObject(select(cns_df,Not(:cns)),anyM.sets,anyM.options;fileName = string("dual",fileName != "" ? "_" : "",fileName))
 end
 
 # </editor-fold>

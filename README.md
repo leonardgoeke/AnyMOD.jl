@@ -9,6 +9,9 @@ The framework's key characteristic is, that all sets (time-steps, regions, energ
 * The substitution of energy carriers with regard to conversion, consumption and transport can be modelled. As an example, residential and district heat can both equally satisfy overall heat demand, but technologies to produce these carriers and how they are constrained are different.
 * Inheritance within the trees can be exploited to dynamically obtain the model's parameters from the input data provided. In case of a technology’s efficiency for instance, parameters can vary by hour, day or be irrespective of time, depending on whether input data was provided hourly, daily or without any temporal dimension specified.
 
-The tool relies on the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package to create optimization problems and uses [JuliaDB](https://juliadb.org/) to store and process their elements.
+In addition, the framework provides functionalities to ensure numerical stability of the underlying optimization problem and assess it results. The tool relies on the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package to create optimization problems and uses [DataFrames](https://juliadata.github.io/DataFrames.jl/stable/) to store and process their elements. The framework requires [Julia 1.3](https://julialang.org/downloads/) since all computationally intensive steps are parallelized using multi-threading,
+The current roadmap for development is to extend documentation and introduce more technology specific features (ramping, demand-side management, etc.).
 
-The current roadmap for development is to extend documentation, speed-up model generation (especially with the release of Julia 1.3) and provide an interface for Julia packages implementing advanced solution methods (decomposition, stochastic). If you have any questions, need help or found a bug, please file a GitHub issue.
+If you have any questions, need help or found a bug, please file a GitHub issue.
+
+This development of anyMOD is receiving funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement No 773406.
