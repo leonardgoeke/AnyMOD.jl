@@ -400,6 +400,8 @@ function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> 
 	else va == :emission # for emission all use variables are obtained and then already matched with emission factors
 		allVar_df = vcat(map(x -> anyM.parts.tech[x].var[:use], filter(y -> :use in keys(anyM.parts.tech[y].var), techIdx_arr))...)
 
+        # TODO add (optional) exchange variables * eff, stLvl * stDis, st{in/out} * eff => best use getAllVariables with filter function for carriers
+
 		if !(:emissionFac in keys(anyM.parts.lim.par))
 			lock(anyM.lock)
             push!(anyM.report,(2,"limits","emissionUp","upper emission limits but no emission factors provided"))

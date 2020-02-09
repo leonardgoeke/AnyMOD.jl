@@ -299,7 +299,7 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel)
 		end
 		# obtain values and write to dataframe
 		cost_df[:,:variable] .= string(cst)
-		cost_df[:,:value] = value.(cost_df[:,:var]) .* anyM.options.scaFac.cost
+		cost_df[:,:value] = value.(cost_df[:,:var])
 		allData_df = vcat(allData_df,cost_df[:,Not(:var)])
 	end
 	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_costs")

@@ -22,14 +22,14 @@ function setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyMode
     end
 
     # XXX sets overall objective variable with upper limits and according to weights provided in dictionary
-	costBd_flt = anyM.options.bound.cost |> (x -> isnan(x) ? NaN : x / (anyM.options.scaFac.totCost * anyM.options.scaFac.cost))
-	obj_var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, !isnan(costBd_flt), costBd_flt, false, NaN, false, NaN, false, false)),"obj") * anyM.options.scaFac.totCost
+	objBd_flt = anyM.options.bound.obj |> (x -> isnan(x) ? NaN : x / scaFac.obj)
+	obj_var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, !isnan(objBd_flt), objBd_flt, false, NaN, false, NaN, false, false)),"obj") * anyM.options.scaFac.obj
 	obj_eqn = @constraint(anyM.optModel, obj_var == sum(map(x -> sum(filter(r -> r.group == x,partObj.var[:objVar])[!,:var])*obj_dic[x], collect(keys(obj_dic)))))
 
     if minimize
-        @objective(anyM.optModel, Min, obj_var / anyM.options.scaFac.cost)
+        @objective(anyM.optModel, Min, obj_var / anyM.options.scaFac.obj)
     else
-        @objective(anyM.optModel, Max, obj_var / anyM.options.scaFac.cost)
+        @objective(anyM.optModel, Max, obj_var / anyM.options.scaFac.obj)
     end
 
 	produceMessage(anyM.options,anyM.report, 1," - Set objective function according to inputs")
@@ -95,7 +95,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
 		# XXX groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
 		allExp_df = by(allExp_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C], expr = [:disFac,:exp,:costAnn] => x -> sum(x.disFac .* x.exp .* x.costAnn))
-		transferCostEle!(allExp_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.cost,anyM.options.checkRng)
+		transferCostEle!(allExp_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.capaCost,anyM.options.checkRng)
 	end
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for expansion costs")
 
@@ -118,7 +118,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
 		# XXX groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
 		allCapa_df = by(allCapa_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C], expr = [:disFac,:capa,:costOpr] => x -> sum(x.disFac .* x.capa .* x.costOpr))
-		transferCostEle!(allCapa_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.cost,anyM.options.checkRng)
+		transferCostEle!(allCapa_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.capaCost,anyM.options.checkRng)
 	end
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for capacity costs")
 
@@ -170,7 +170,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
 		# XXX groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
 		allDisp_df = by(allDisp_df,va != :exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C], expr = [:disFac,:disp,:costVar] => x -> sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0)
-		transferCostEle!(allDisp_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.cost,anyM.options.checkRng)
+		transferCostEle!(allDisp_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.dispCost,anyM.options.checkRng)
 	end
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for variables costs")
 
@@ -181,7 +181,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		allCrt_df = matchSetParameter(rename(allCrt_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
 		# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
 		allCrt_df = by(allCrt_df, [:Ts_disSup,:R_exp,:C], expr = [:disFac,:crt,:costCrt] => x -> sum(x.disFac .* x.crt .* x.costCrt) ./ 1000.0)
-		transferCostEle!(allCrt_df, partObj,:costCrt,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.cost,anyM.options.checkRng, NaN)
+		transferCostEle!(allCrt_df, partObj,:costCrt,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.dispCost,anyM.options.checkRng, NaN)
 	end
 
 	# XXX add elements for trade costs of energy carriers (buy and sell)
@@ -192,7 +192,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allTrd_df = matchSetParameter(rename(allTrd_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
 			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
 			allTrd_df = by(allTrd_df, [:Ts_disSup,:R_exp,:C], expr = [:disFac,:trd,:costTrd] => x -> sum(x.disFac .* x.trd .* x.costTrd) ./ (va == :trdSell ? -1000.0 : 1000.0) )
-			transferCostEle!(allTrd_df, partObj,Symbol(:cost,uppercase(string(va)[1]),string(va)[2:end]),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.cost,anyM.options.checkRng,(va == :trdSell ? NaN : 0.0))
+			transferCostEle!(allTrd_df, partObj,Symbol(:cost,uppercase(string(va)[1]),string(va)[2:end]),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.dispCost,anyM.options.checkRng,(va == :trdSell ? NaN : 0.0))
 		end
 	end
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for curtailment and trade costs")
@@ -226,7 +226,7 @@ function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symb
 
 	# scales cost expression
 	scaleCnsExpr!(cost_df,coefRng_tup,checkRng_fl)
-	cost_df[!,:var] = cost_df[!,:var] ./ scaCost_fl
+	cost_df[!,:var] = cost_df[!,:var]
 
 	# writes equations and variables
 	partObj.cns[costPar_sym] = createCns(cnsCont(select(cost_df,Not(:var)),:equal),optModel)
