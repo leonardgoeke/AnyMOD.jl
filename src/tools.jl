@@ -11,14 +11,15 @@ function printIIS(anyM::anyModel)
 
     for cns in allCns_pair
 		if cns[1] == :objEqn continue end
-        allConstr_arr = findall(DB.select(cns[2],:eqn =>  x -> MOI.get(anyM.optModel.moi_backend, Gurobi.ConstraintConflictStatus(), x.index)))
+
+        allConstr_arr = findall(map(x -> MOI.get(anyM.optModel.moi_backend, Gurobi.ConstraintConflictStatus(), x.index),cns[2][!,:cns]))
         # prints constraints within iis
         if !isempty(allConstr_arr)
             println("$(length(allConstr_arr)) of IIS in $(cns[1]) constraints.")
-            colSet_dic = Dict(x => Symbol(split(string(x),"_")[1]) for x in eqnObj.dim)
+            colSet_dic = Dict(x => Symbol(split(string(x),"_")[1]) for x in intCol(cns[2]))
             for iisConstr in allConstr_arr
                 row = cns[2][iisConstr,:]
-                dimStr_arr = map(x -> row[x] == 0 ?  "" : string(x,": ",createFullString(row[x], anyM.sets[colSet_dic[x]],true)),collect(keys(colSet_dic)))
+                dimStr_arr = map(x -> row[x] == 0 ?  "" : string(x,": ",join(getUniName(row[x], anyM.sets[colSet_dic[x]])," < ")),collect(keys(colSet_dic)))
                 println("$(join(filter(x -> x != "",dimStr_arr),", ")), constraint: $(row[:cns])")
             end
         end
@@ -214,10 +215,10 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel)
 	    # add losses to all exchange variables
 	    allExc_df = getExcLosses(convertExcCol(allExc_df),anyM.parts.exc.par,anyM.sets)
 	    # compute export and import of each region, losses are considered at import
-	    excFrom_df = rename(by(allExc_df,[:Ts_disSup,:R_a,:C],value = [:var] => x -> value(sum(x.var))),:R_a => :R_dis)
+	    excFrom_df = rename(by(allExc_df,[:Ts_disSup,:R_a,:C],value = [:var] => x -> value(sum(x.var))/1000),:R_a => :R_dis)
 	    excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
 
-	    excTo_df = rename(by(allExc_df,[:Ts_disSup,:R_b,:C],value = [:var,:loss] => x -> value(dot(x.var,(1 .- x.loss)))),:R_b => :R_dis)
+	    excTo_df = rename(by(allExc_df,[:Ts_disSup,:R_b,:C],value = [:var,:loss] => x -> value(dot(x.var,(1 .- x.loss)))/1000),:R_b => :R_dis)
 	    excTo_df[!,:variable] .= :import; excTo_df[!,:Te] .= 0
 
 
@@ -275,7 +276,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel)
 		allData_df = vcat(allData_df,capaCyc_df)
 	end
 
-	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_tech")
+	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_summary")
 end
 
 # XXX results for costs
@@ -331,7 +332,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel)
 
 
 	# XXX get full load hours
-	capaExt_df = replCarLeaves(copy(capa_df),anyM.sets[:C])
+	capaExt_df = replCarLeafs(copy(capa_df),anyM.sets[:C])
 	flh_df = join(rename(select(capaExt_df,Not(:variable)),:value => :capa),rename(select(disp_df,Not(:variable)),:value => :disp),on = [:Ts_disSup,:R_from,:R_to,:C], kind = :inner)
 	flh_df[!,:value] = flh_df[!,:disp] ./ flh_df[!,:capa] .* 1000
 	flh_df[!,:variable] .= :flhExc
@@ -377,7 +378,8 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	relType_tup = map(x -> x in signVar ? (x == :in ? (:use, :stExtIn) : (:gen,:stExtOut)) : tuple(),(:in,:out)) |> (x -> tuple(vcat(collect.(x)...)...))
 
 	for c in relC_arr
-		relTech_arr = vcat([intersect(relType_tup,filter(y -> c in anyM.parts.tech[x].carrier[y], collect(keys(anyM.parts.tech[x].carrier)))) |> (y -> collect(zip(fill(x,length(y)),y))) for x in collect(keys(anyM.parts.tech))]...)
+		# gets technologies relevant for respective filterCarrier
+		relTech_arr = getRelTech(c,anyM.parts.tech,anyM.sets[:C])
 
 		if isempty(relTech_arr) continue end
 
@@ -391,6 +393,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 			# filter values based on filter function and minimum value reported
 			add_df = by(add_df,[:Ts_disSup,:Ts_dis,:R_dis],var = [:var] => x -> sum(x.var))
 			filter!(filterFunc,add_df)
+            if isempty(add_df) continue end
 			add_df[!,:value] = value.(add_df[!,:var]) .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
 			add_df[!,:variable] .= string(x[2],"; ", createFullString(x[1],anyM.sets[:Te]))
 			filter!(x -> abs(x.value) > minVal, add_df)
@@ -418,7 +421,6 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		excTo_df[!,:variable] .= :import
 		filter!(x -> abs(x.value) > minVal, excTo_df)
 		if !isempty(excTo_df)
-			allData_df = vcat(allData_df,excTo_df)
 			allData_dic[:in] = vcat(allData_dic[:in],excTo_df)
 		end
 	end

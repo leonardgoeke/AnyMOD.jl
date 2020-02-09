@@ -349,7 +349,7 @@ function expandExpToCapa(in_df::DataFrame)
 end
 
 # XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
-function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int,Int},Int},preserveTsSupTs::Bool = false)
+function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},preserveTsSupTs::Bool = false)
     # adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)
 	expR_df = unique(by(inData_df,names(inData_df),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])])
 	expTs_df = by(expR_df,names(expR_df),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
@@ -415,14 +415,32 @@ function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> 
 	return allVar_df
 end
 
-# XXX replaces orginal carriers in var_df with all leaves connected to respective carrier (and itself) and flattens it
-function replCarLeaves(var_df::DataFrame,c_tree::Tree;cCol::Symbol=:C)
+# XXX replaces orginal carriers in var_df with all leafes connected to respective carrier (and itself) and flattens it
+function replCarLeafs(var_df::DataFrame,c_tree::Tree;cCol::Symbol=:C,noLeaf::Array{Int,1} = Int[])
 
-	cToLeafes_dic = Dict(x => filter(y -> isempty(c_tree.nodes[y].down), [x,getDescendants(x,c_tree,true)...]) for x in unique(var_df[!,cCol]))
-	var_df[!,:C] = map(x -> cToLeafes_dic[x],var_df[!,cCol])
+	cToLeafs_dic = Dict(x => x in noLeaf ? x : filter(y -> isempty(c_tree.nodes[y].down), [x,getDescendants(x,c_tree,true)...]) for x in unique(var_df[!,cCol]))
+	var_df[!,:C] = map(x -> cToLeafs_dic[x],var_df[!,cCol])
 	var_df = flatten(var_df,:C)
 
 	return var_df
+end
+
+# XXX returns array of technologies and respective dispatch variables relevant for input carrier
+function getRelTech(c::Int,tech_dic::Dict{Int,TechPart},c_tree::Tree)
+
+	techIdx_arr = collect(keys(tech_dic))
+	relTech_arr = Array{Tuple{Int,Symbol},1}()
+	for x in techIdx_arr
+		addConvTech_arr = intersect((:use,:gen),filter(y -> c in tech_dic[x].carrier[y], collect(keys(tech_dic[x].carrier))))
+		if isempty(c_tree.nodes[c].down) # actual dispatch variables for storage only exists for carriers that are leaves
+			addStTech_arr = intersect((:stExtIn,:stExtOut),filter(y -> c in union(map(z -> union([z],getDescendants(z,c_tree,true)),tech_dic[x].carrier[y])...), collect(keys(tech_dic[x].carrier))))
+		else
+			addStTech_arr = Array{Tuple{Int,Symbol},1}()
+		end
+		union(addConvTech_arr,addStTech_arr) |> (y -> append!(relTech_arr,collect(zip(fill(x,length(y)),y))))
+	end
+
+	return relTech_arr
 end
 
 # </editor-fold>

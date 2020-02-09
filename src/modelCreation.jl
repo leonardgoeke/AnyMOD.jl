@@ -26,8 +26,7 @@ function createOptModel!(anyM::anyModel)
     # creates dictionary that assigns combination of expansion region and dispatch level to dispatch region
     allLvlR_arr = unique(union([getfield.(values(anyM.cInfo),x) for x in (:rDis, :rExp)]...))
     allRExp_arr = union([getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in allLvlR_arr]...)
-    r_dic = Dict((x[1], x[2]) => anyM.sets[:R].nodes[x[1]].lvl == x[2] <= x[2] ? x[1] : getAncestors(x[1],anyM.sets[:R],:int,x[2])[1]
-                                                                                        for x in filter(x -> anyM.sets[:R].nodes[x[1]].lvl >= x[2], collect(Iterators.product(allRExp_arr,allLvlR_arr))))
+    r_dic = Dict((x[1], x[2]) => getDescendants(x[1], anyM.sets[:R],false,x[2]) |> (y -> isempty(y) ? getAncestors(x[1],anyM.sets[:R],:int,x[2])[end] : y) |> (z -> typeof(z) <: Array ? z : [z]) for x in Iterators.product(allRExp_arr,allLvlR_arr))
 
     produceMessage(anyM.options,anyM.report, 3," - Determined dimension of expansion and capacity variables for technologies")
 
@@ -70,7 +69,7 @@ function createOptModel!(anyM::anyModel)
 		createExcVar!(partExc,ts_dic,anyM)
 		produceMessage(anyM.options,anyM.report, 2," - Created all dispatch variables for exchange")
 		# create capacity restrictions
-		createCapaRestrExc!(ts_dic,r_dic,partExc,anyM)
+		createRestrExc!(ts_dic,partExc,anyM)
 		produceMessage(anyM.options,anyM.report, 2," - Created all capacity restrictions for exchange")
 		produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for exchange")
 	end

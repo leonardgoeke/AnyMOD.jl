@@ -362,7 +362,8 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
 end
 
 # XXX perform pre-setting of dispatch parameters for all technologies
-function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},newHerit_dic::Dict{Symbol,Tuple{Pair{Symbol,Symbol},Pair{Symbol,Symbol}}},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},anyM::anyModel)
+function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},newHerit_dic::Dict{Symbol,Tuple{Pair{Symbol,Symbol},Pair{Symbol,Symbol}}},
+                                                                                                ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
 	relPar_arr = filter(x -> :techPre in keys(parDef_dic[x]) && (!(isempty(part.par[x].data)) || occursin("eff",string(x))), collect(keys(part.par)))
 	parPre_dic = Dict(x => parDef_dic[x].techPre.preset for x in relPar_arr)
@@ -395,7 +396,8 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
                 capaLvl_df[!,:C] .= car_arr
                 capaLvl_df = flatten(capaLvl_df,:C)
 			else
-                capaLvl_df = replCarLeaves(capaLvl_df,anyM.sets[:C])
+                intC_arr = map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...))
+                capaLvl_df = replCarLeafs(capaLvl_df,anyM.sets[:C],noLeaf = intC_arr)
 				car_arr = unique(capaLvl_df[!,:C])
 			end
 
@@ -447,7 +449,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
                     modeItr_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],modeItr_df[!,:C])
                     modeItr_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],modeItr_df[!,:C])
 
-                    # expands dataframe along spatial and temporal level
+                    # expands dataframe along spatial and temporal level according to resolution of respective carriers
                     for dim in (:R,:Ts)
                         dimCol = Symbol(dim,:_dis); lvl = Symbol(:lvl,dim)
                         dim_dic = Dict((x[dimCol],x[lvl]) =>  getDescendants(x[dimCol], anyM.sets[dim],false,x[lvl]) |> (y -> isempty(y) ? getAncestors(x[dimCol],anyM.sets[dim],:int,x[lvl])[end] : y)
@@ -459,9 +461,10 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
                     modeDep_dic[va] = unique(vcat(modeDep_dic[va],modeItr_df))
                 end
             end
-            # rounds availability values to the third digits to avoid numerical troubles with small availabilites
+            # set lower limit for availabilities to avoid really small but non-zero values
             if parItr in (:avaConv, :avaStIn, :avaStOut, :avaStSize)
-                newPar_obj.data[!,:val] = max.(newPar_obj.data[!,:val],anyM.options.avaMin)
+                lowVal_arr = newPar_obj.data[!,:val] .< anyM.options.avaMin
+                newPar_obj.data[lowVal_arr,:val] .= 0.0
             end
 
             part.par[parItr] = newPar_obj

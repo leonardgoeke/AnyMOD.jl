@@ -1,6 +1,6 @@
 
 # XXX iteration over all technologies to create variables and constraints
-function createTech!(t::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},anyM::anyModel)
+function createTech!(t::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
     cns_dic = Dict{Symbol,cnsCont}()
     newHerit_dic = Dict(:lowest => (:Ts_dis => :avg_any, :R_dis => :avg_any),:reference => (:Ts_dis => :up, :R_dis => :up)) # inheritance rules after presetting
@@ -251,7 +251,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 end
 
 # XXX create all dispatch variables
-function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},anyM::anyModel)
+function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,))
 
@@ -264,7 +264,9 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			basis_df = orderDf(flatten(basis_df,:C))
 		else
 			basis_df = orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
-			basis_df = replCarLeaves(basis_df,anyM.sets[:C])
+			# filter carriers that are stored-in or out internally and therefore are created even if they are not a leafe
+			intC_arr = map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...))
+			basis_df = replCarLeafs(basis_df,anyM.sets[:C],noLeaf = intC_arr)
 		end
 
 		# adds temporal and spatial level to dataframe
@@ -298,7 +300,7 @@ function createCommVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont}
 		commVar_sym = string(capaVar) |> (x -> Symbol(:comm,uppercase(x[1]),x[2:end]))
 		# XXX create commissioned variable
 		var_df = copy(part.var[capaVar])[!,Not(:var)]
-		var_df = createVar(var_df,string(commVar_sym),NaN,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
+		var_df = createVar(var_df,string(commVar_sym),NaN,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.commCapa)
 
 		part.var[commVar_sym] = orderDf(var_df)
 
@@ -521,7 +523,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 end
 
 # XXX create all capacity restrictions for technology
-function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
+function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 
 	cnstrType_dic = Dict(:out => (dis = (:gen, :stIntIn), capa = :Conv), :in => (dis = (:use,:stIntOut), capa = :Conv),
 							:stIn => (dis = (:stExtIn, :stIntIn), capa = :StIn), :stOut => (dis = (:stExtOut, :stIntOut), capa = :StOut), :stSize => (dis = (:stLvl,), capa = :StSize))
@@ -552,18 +554,16 @@ end
 
 # XXX sub-function to create restriction
 function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow, type_sym::Symbol, info_ntup::NamedTuple,
-															ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Int64}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple)
+															ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple)
 
 	conv_boo = type_sym in (:out,:in)
 	dim_arr = conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te] : [:Ts_expSup,:Ts_dis,:R_dis,:C,:Te]
 	agg_arr = [:Ts_expSup,:Ts_dis,:R_dis] |> (x -> filter(x -> part.type == :emerging || x != :Ts_expSup,x))
 
-	if conv_boo
-		relC_arr = restr.car
-	else
-		filter!(x -> x.C == restr.car[1],capaVar_df)
-		relC_arr = filter(y -> isempty(sets_dic[:C].nodes[y].down), [restr.car[1],getDescendants(restr.car[1],sets_dic[:C],true)...])
-	end
+	# get relevant carriers for conversion and storage variables
+	relConv_arr = restr.car
+	intC_arr = map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...))
+	relSt_arr = filter(y -> isempty(sets_dic[:C].nodes[y].down) || y in intC_arr, [restr.car[1],getDescendants(restr.car[1],sets_dic[:C],true)...])
 
 	# determines dimensions for aggregating dispatch variables
 	capaVar_df[!,:lvlTs] .= restr.lvlTs
@@ -591,6 +591,11 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
 	for va in dispVar_arr
 		# filter dispatch variables not belonging to relevant carrier
+		if va in (:gen,:use)
+			relC_arr = relConv_arr
+		else
+			relC_arr = relSt_arr
+		end
 		allVar_df = filter(r -> r.C in relC_arr, part.var[va])[!,Not(:Ts_disSup)]
 
 		# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
@@ -651,7 +656,7 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyM
 			cns_df[noM_arr,:allVar] =	aggUniVar(part.var[type], select(cns_df[noM_arr,:],intCol(cns_df)), filter(x -> x != :C,agg_arr), srcResNoM_ntup, anyM.sets)
 		else
 			cns_df[!,:ratioVar] = aggUniVar(part.var[type], select(cns_df,intCol(cns_df)), agg_arr, srcRes_ntup, anyM.sets)
-			cns_df[!,:allVar] =	aggUniVar(part.var[type], select(cns_df,intCol(cns_df)), filter(r -> r != :M, agg_arr), srcRes_ntup, anyM.sets)
+			cns_df[!,:allVar] =	aggUniVar(part.var[type], select(cns_df,intCol(cns_df)), filter(x -> x != :C,agg_arr), srcRes_ntup, anyM.sets)
 		end
 
 		# create corresponding constraint

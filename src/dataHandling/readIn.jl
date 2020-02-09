@@ -33,11 +33,13 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 	for set in filter(x -> !(x in (:mode, :id)), collect(keys(setLngShrt_dic)))
 		if !(setLngShrt_dic[set] in keys(anyM.sets))
 			push!(anyM.report,(3,"set read-in",string(set),"no file provided to define set"))
-		elseif set == :carrier
-			# reports error if carrier names are non-unique
-			strC_arr = getfield.(values(anyM.sets[:C].nodes),:val)
-			if length(strC_arr) != length(unique(strC_arr))
-				push!(anyM.report,(3,"set read-in","carrier","non-unique carrier names provided"))
+		elseif set == :carrier || set == :technology
+			for setType in (:carrier,:technology)
+				# reports error if carrier names are non-unique
+				strSet_arr = getfield.(values(anyM.sets[setLngShrt_dic[setType]].nodes),:val)
+				if length(strSet_arr) != length(unique(strSet_arr))
+					push!(anyM.report,(3,"set read-in","carrier","non-unique $setType names provided"))
+				end
 			end
 		end
 	end

@@ -68,13 +68,26 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	# </editor-fold>
 
 	# <editor-fold desc="create actual balance"
-	allC_arr = unique(allDim_df[!,:C])
 
-	cns_dic = Dict{Symbol,cnsCont}()
+	# finds all carriers that require an energy balance (not required for carriers that can only be shifted (temporal or spatial), e.g. that only have storage or exchange defined for them)
+	relC_arr = Array{Int,1}()
 
-	@threads for c in allC_arr
+	if :dem in keys(anyM.parts.bal.par) append!(relC_arr,unique(anyM.parts.bal.par[:dem].data[!,:C])) end
+	if :crt in keys(anyM.parts.bal.var) append!(relC_arr,unique(anyM.parts.bal.var[:crt][!,:C])) end
+	if :trdSell in keys(anyM.parts.trd.var) append!(relC_arr,unique(anyM.parts.trd.var[:trdSell][!,:C])) end
+	if :trdBuy in keys(anyM.parts.trd.var) append!(relC_arr,unique(anyM.parts.trd.var[:trdBuy][!,:C])) end
 
-		relC_arr = unique([c,getDescendants(c,anyM.sets[:C],true)...])
+	# add carriers beings generated or used
+	append!(relC_arr,union(union(map(x -> anyM.parts.tech[x].carrier |> (y -> map(z -> getfield(y,z),intersect(keys(y),(:gen,:use)))),techIdx_arr)...)...))
+	relC_arr = unique(relC_arr)
+
+	# create object to write constraint data too
+	cns_arr = Array{Pair{Symbol,cnsCont}}(undef,length(relC_arr))
+	itrC_arr = collect(enumerate(relC_arr))
+
+	@threads for (idx,c) in itrC_arr
+
+		subC_arr = unique([c,getDescendants(c,anyM.sets[:C],true)...])
 		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
 
 		# XXX add demand and size it
@@ -86,25 +99,25 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
 
 		# add tech variables
-		cns_df[!,:techVar] = getTechEnerBal(c,relC_arr,src_df,techIdx_arr,anyM.parts.tech,anyM.cInfo,anyM.sets)
+		cns_df[!,:techVar] = getTechEnerBal(c,subC_arr,src_df,techIdx_arr,anyM.parts.tech,anyM.cInfo,anyM.sets)
 
 		# add curtailment variables
 		if :crt in keys(partBal.var)
-			cns_df[!,:crtVar] = filterCarrier(partBal.var[:crt],relC_arr) |> (x -> aggUniVar(x,src_df,agg_arr, cRes_tup,anyM.sets))
+			cns_df[!,:crtVar] = filterCarrier(partBal.var[:crt],subC_arr) |> (x -> aggUniVar(x,src_df,agg_arr, cRes_tup,anyM.sets))
 		else
 			cns_df[!,:crtVar] .= AffExpr()
 		end
 
 		# add trade variables
 		if !isempty(anyM.parts.trd.var)
-			cns_df[!,:trdVar] = sum([filterCarrier(anyM.parts.trd.var[trd],relC_arr) |> (x -> aggUniVar(x,src_df,agg_arr,cRes_tup,anyM.sets) |> (y -> trd != :trdSell ? y : -1.0 * y)) for trd in keys(anyM.parts.trd.var)])
+			cns_df[!,:trdVar] = sum([filterCarrier(anyM.parts.trd.var[trd],subC_arr) |> (x -> aggUniVar(x,src_df,agg_arr,cRes_tup,anyM.sets) |> (y -> trd != :trdSell ? y : -1.0 * y)) for trd in keys(anyM.parts.trd.var)])
 		else
 			cns_df[!,:trdVar] .= AffExpr()
 		end
 
 		# add exchange variables
 		if !isempty(anyM.parts.exc.var)
-			excVarTo_df = filterCarrier(anyM.parts.exc.var[:exc],relC_arr)
+			excVarTo_df = filterCarrier(anyM.parts.exc.var[:exc],subC_arr)
 			excVarFrom_df = convertExcCol(copy(excVarTo_df))
 
 			# get loss values and apply them to variables
@@ -127,14 +140,14 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 		cns_df[!,:cnsExpr] = map(x -> x.techVar + x.excVar + x.trdVar - x.dem - x.crtVar, eachrow(cns_df))
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
-		cns_dic[Symbol(c_str)] = cnsCont(cns_df,anyM.cInfo[c].eq ? :equal : :greater)
+		cns_arr[idx] = Symbol(c_str) => cnsCont(cns_df,anyM.cInfo[c].eq ? :equal : :greater)
 
 		produceMessage(anyM.options,anyM.report, 2," - Prepared energy balance for $(c_str)")
 	end
 
 	# loops over stored constraints outside of threaded loop to create actual jump constraints
-	for cnsSym in keys(cns_dic)
-		partBal.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
+	for cns in cns_arr
+		partBal.cns[cns[1]] = createCns(cns[2],anyM.optModel)
 	end
 
 	produceMessage(anyM.options,anyM.report, 1," - Created energy balances for all carriers")
@@ -142,27 +155,18 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 end
 
 # XXX aggregate all technology variables for energy balance
-function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,techIdx_arr::Array{Int,1},tech_dic::Dict{Int,TechPart},
+function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,techIdx_arr::Array{Int,1},tech_dic::Dict{Int,TechPart},
 																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}},sets_dic::Dict{Symbol,Tree})
-	techVar_arr = Array{Array{AffExpr,1}}(undef,length(relC_arr))
+	techVar_arr = Array{Array{AffExpr,1}}(undef,length(subC_arr))
 
 	# get temporal and spatial resolution for carrier being balanced
 	cBalRes_tup = cInfo_dic[cBal_int] |> (x -> (x.tsDis, x.rDis))
 
 	# loops over all carriers relevant for respective energy balance
-	for (idx,c) in enumerate(relC_arr)
+	for (idx,c) in enumerate(subC_arr)
 
-		# filters relevant technology and the respective dispatch variables for carrier
-		relTech_arr = Array{Tuple{Int,Symbol},1}()
-		for x in techIdx_arr
-			addConvTech_arr = intersect((:use,:gen),filter(y -> c in tech_dic[x].carrier[y], collect(keys(tech_dic[x].carrier))))
-			if isempty(sets_dic[:C].nodes[c].down) # actual dispatch variables for storage only exists for carriers that are leaves
-				addStTech_arr = intersect((:stExtIn,:stExtOut),filter(y -> c in union(map(z -> union([z],getDescendants(z,sets_dic[:C],true)),tech_dic[x].carrier[y])...), collect(keys(tech_dic[x].carrier))))
-			else
-				addStTech_arr = Array{Tuple{Int,Symbol},1}()
-			end
-			union(addConvTech_arr,addStTech_arr) |> (y -> append!(relTech_arr,collect(zip(fill(x,length(y)),y))))
-		end
+		# gets technologies relevant for respective filterCarrier
+		relTech_arr = getRelTech(c,tech_dic,anyM.sets[:C])
 
 		# leaves loop for carrier, if no relevant technologies could be obtained
 		if isempty(relTech_arr)
@@ -179,7 +183,12 @@ function getTechEnerBal(cBal_int::Int,relC_arr::Array{Int,1},src_df::DataFrame,t
 			add_df = select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var])
 			if isempty(add_df) continue end
 			tRes_tup = tech_dic[x[1]].disAgg ? (cRes_tup[1], cInfo_dic[c].rExp) : cRes_tup
-			checkTechReso!(tRes_tup,cBalRes_tup,add_df,sets_dic)
+			try
+				checkTechReso!(tRes_tup,cBalRes_tup,add_df,sets_dic)
+			catch
+				println(x,c,cBal_int)
+				continue
+			end
 
 			# adds sign to variables and adds them to overall dataframe
 			add_df[!,:var] = add_df[!,:var] .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)

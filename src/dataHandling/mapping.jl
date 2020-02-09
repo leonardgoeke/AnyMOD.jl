@@ -32,7 +32,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
 
     	# check if level values can be converted to integers
     	if any(map(x -> tryparse(Int,x), values(resVal_dic)) .== nothing)
-    		push!(anyM.report,(1,"carrier mapping","","no resolutions written for $(createFullString(car_int,anyM.sets[:C])), provide as integer"))
+    		push!(anyM.report,(2,"carrier mapping","","no resolutions written for $(createFullString(car_int,anyM.sets[:C])), provide as integer, carrier was skipped"))
     		continue
     	end
     	res_dic = Dict(resLongShort_tup[x] => parse(Int,row[x]) for x in resCol_tup)
@@ -126,29 +126,25 @@ end
 function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
     part = anyM.parts.tech[t]
-
-    lvlTech_arr = [Symbol("technology_",i) for i in 1:anyM.sets[:Te].height]
+    lvlTech_arr = Symbol.(:technology_,1:anyM.sets[:Te].height)
 
     # tuple of columns with input, output and stored carriers
 	typeStr_dic = Dict(:carrier_conversion_in => "conversion input", :carrier_conversion_out => "conversion output", :carrier_stored_in => "storage", :carrier_stored_out => "storage")
     carCol_tup =  (:carrier_conversion_in, :carrier_conversion_out, :carrier_stored_in, :carrier_stored_out)
 
+	# maps carrier strings to their id
+	nameC_dic = Dict(collect(values(anyM.sets[:C].nodes)) |> (y -> Pair.(getfield.(y,:val),getfield.(y,:idx))))
+
     # maps selected strings of tech types to integers
     typeStringInt_dic = Dict("stock" => 0, "mature" => 1,"emerging" => 2)
 
-    # gets index for respective technology
-    name_tup = getUniName(t,anyM.sets[:Te])
-    allRow_df = eachrow(setData_dic[:Te])
-
-    for i in unique(vcat((t,anyM.sets[:Te].nodes[t].lvl),getAncestors(t,anyM.sets[:Te],:tup,1)...))
-		allRow_df = filter(r -> r[Symbol(:technology_,i[2])] == anyM.sets[:Te].nodes[i[1]].val,allRow_df)
-	end
-    row_df = allRow_df[1]
+    # gets datarow for respective technology
+	row_df = anyM.sets[:Te].nodes[t].val |> (z -> filter(x -> any(map(y -> z == x[y],lvlTech_arr)) ,setData_dic[:Te])[1,:])
 
     # XXX writes carrier info
     # gets string array of carriers for input, output and stored, looks up respective ids afterwards and writes to mapping file
-    carStrArr_dic = Dict(y => map(x -> string.(split(x,"<")),split(replace(row_df[y]," " => ""),";")) for y in carCol_tup)
-    carId_dic = Dict(y => map(x -> x == [""] ? false : lookupTupleTree(tuple(x...),anyM.sets[:C],1),carStrArr_dic[y]) |> (z -> z == [false] ? tuple() : tuple(z...)) for y in keys(carStrArr_dic))
+    carStrArr_dic = Dict(y => split(replace(row_df[y]," " => ""),";") |> (z -> filter(x -> !isempty(x),z)) for y in carCol_tup)
+	carId_dic = Dict(z => tuple(map(x -> getDicEmpty(nameC_dic,x),carStrArr_dic[z])...) for z in keys(carStrArr_dic))
 
 	for x in filter(x -> Int[] in carId_dic[x], collect(keys(carId_dic)))
 		push!(anyM.report,(3,"technology mapping","carrier","$(typeStr_dic[x]) carrier of technology $(createFullString(t,anyM.sets[:Te])) not entered correctly"))
@@ -279,17 +275,16 @@ function createCapaRestrMap!(t::Int,anyM::anyModel)
                 if j == 2 ([carDisSort_arr[y][1] for y in 1:x], carDisSort_arr[x][2], minimum([carDisSort_arr[y][3] for y in 1:x]))
                 else ([carDisSort_arr[y][1] for y in 1:x], minimum([carDisSort_arr[y][2] for y in 1:x]), carDisSort_arr[x][3]) end
             end
-            # filters entries that are on the reference level or exceed it
-            carIt_arr = carIt_arr[findall(x -> j == 2 ? x[2] > balLvl_ntup.ref[1] : x[3] > balLvl_ntup.ref[2],carIt_arr)]
+            # filters entries that exceed the reference level or at not below the reference level, if already a constraint on the reference level exists from the previous iteration
+			if side == :use && isempty(setdiff((:use,:gen),keys(carGrp_ntup)))
+				carIt_arr = carIt_arr[findall(x -> j == 2 ? x[2] > balLvl_ntup.ref[1] : x[3] > balLvl_ntup.ref[2],carIt_arr)]
+			else
+            	carIt_arr = carIt_arr[findall(x -> j == 2 ? x[2] >= balLvl_ntup.ref[1] : x[3] >= balLvl_ntup.ref[2],carIt_arr)]
+			end
             push!(carConstr_arr, carIt_arr...)
         end
 
-        # adds balance on reference levels, if so far no capacity constraint exists
-        if isempty(carConstr_arr) && (side == :gen || !haskey(carGrp_ntup,:gen))
-            push!(carConstr_arr,(collect(getfield(carGrp_ntup,side)), balLvl_ntup.ref[1], balLvl_ntup.ref[2]))
-        end
-
-        #  identifies and addresses "crossings" (one carrier is temporal more  but spatially less detailed than another one)
+        #  identifies and addresses "crossings" (one carrier is temporal more  but spatially less detailed than another one) by converting into new restriction mappings
         carConstrUni_arr = unique(carConstr_arr)
         cross_arr = filter(x -> (any(map(z -> (x[2] > z[2] && x[3] < z[3]) || (x[3] > z[3] && x[2] < z[2]), carConstrUni_arr))),carConstrUni_arr)
         if !isempty(cross_arr)
@@ -306,8 +301,7 @@ function createCapaRestrMap!(t::Int,anyM::anyModel)
                         ((x[2] .<= carConstrUni_arr2[2]) .& (x[3] .<= carConstrUni_arr2[3]))))	.& BitArray(map(y -> y != x,carConstrUni_arr)))) end
 
         carConFilt_arr2 = map(i -> map(x -> x[i],carConFilt_arr),1:3)
-
-        typeCapa_sym = side == :use ? "in" : "out"
+		typeCapa_sym = side == :use ? "in" : "out"
 
         # adds necessary capacity restrictions below reference level
         map(x -> push!(capaDispRestr_arr,(typeCapa_sym, carConFilt_arr2[1][x], carConFilt_arr2[2][x], carConFilt_arr2[3][x])),1:length(carConFilt_arr))

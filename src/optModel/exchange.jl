@@ -46,9 +46,8 @@ end
 function createExcVar!(partExc::OthPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},anyM::anyModel)
 	# XXX extend capacity variables to dispatch variables
 	capa_df = partExc.var[:capaExc][!,Not([:var,:dir])] |> (x -> unique(vcat(x,rename(x,replace(names(x),:R_from => :R_to, :R_to => :R_from)))))
-	# replace orginal carrier with leaves
-	capa_df = replCarLeaves(capa_df,anyM.sets[:C])
-
+	# replace orginal carrier with leafs
+	capa_df = replCarLeafs(capa_df,anyM.sets[:C])
 
 	cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, anyM.cInfo[x].rDis) for x in unique(capa_df[!,:C]))
 	capa_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],capa_df[!,:C])
@@ -168,7 +167,7 @@ function createCapaExcCns!(partExc::OthPart,anyM::anyModel)
 end
 
 # XXX create capacity restriction for exchange
-function createCapaRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},partExc::OthPart,anyM::anyModel)
+function createRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc::OthPart,anyM::anyModel)
 
 	# group exchange capacities by carrier
 	grpCapa_df = groupby(rename(partExc.var[:capaExc],:var => :capa),:C)
@@ -179,14 +178,14 @@ function createCapaRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_d
 
 	# create restrictions
 	@threads for x in itrRestr
-		restr_arr[x[1]] = prepareCapaRestrExc(copy(x[2]),ts_dic,r_dic,partExc,anyM)
+		restr_arr[x[1]] = prepareRestrExc(copy(x[2]),ts_dic,partExc,anyM)
 	end
 
-	anyM.parts.exc.cns[:capaExcRestr] = createCns(cnsCont(vcat(restr_arr...),:smaller),anyM.optModel)
+	anyM.parts.exc.cns[:excRestr] = createCns(cnsCont(vcat(restr_arr...),:smaller),anyM.optModel)
 end
 
 # XXX prepare capacity restriction for specific carrier
-function prepareCapaRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Int64},partExc::OthPart,anyM::anyModel)
+function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc::OthPart,anyM::anyModel)
 
 	c_int = cns_df[1,:C]
 	leafes_arr = filter(y -> isempty(anyM.sets[:C].nodes[y].down), [c_int,getDescendants(c_int,anyM.sets[:C],true)...])

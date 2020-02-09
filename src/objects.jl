@@ -175,7 +175,7 @@ struct modOptions
 	shortExp::Int
 	# managing numerical issues
 	coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}
-	scaFac::NamedTuple{(:capa,:disp, :cost, :totCost),Tuple{Float64,Float64,Float64,Float64}}
+	scaFac::NamedTuple{(:capa,:commCapa,:disp,:cost,:totCost),Tuple{Float64,Float64,Float64,Float64,Float64}}
 	bound::NamedTuple{(:capa,:disp, :cost),Tuple{Float64,Float64,Float64}}
 	avaMin::Float64
 	checkRng::Float64
@@ -201,7 +201,7 @@ mutable struct anyModel
 	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Int,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
 
 	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decomm = :recomm, interCapa = :linear, supTsLvl = 0, shortExp = 10, reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1,
-																					coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)), scaFac = (capa = 1e1, disp = 1e3, cost = 1e0, totCost = 1e0), bound = (capa = NaN, disp = NaN, cost = NaN), avaMin = 0.01, checkRng = NaN)
+																					coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)), scaFac = (capa = 1e1, commCapa = 1e2, disp = 1e3, cost = 1e0, totCost = 1e0), bound = (capa = NaN, disp = NaN, cost = NaN), avaMin = 0.01, checkRng = NaN)
 		anyM = new()
 
 		# <editor-fold desc="initialize report and options"
