@@ -137,7 +137,7 @@ function getDescendants(startNode_int::Int,tree_obj::Tree,getAll::Bool = false, 
 end
 
 # XXX returns all nodes of tree on the level provided
-getNodesLvl(tree_obj::Tree, level_int::Int) = filter(r -> r.lvl == level_int, collect(values(tree_obj.nodes)))
+getNodesLvl(tree_obj::Tree, level_int::Int) = filter(r -> r.lvl == level_int, sort(collect(values(tree_obj.nodes)), by = x -> x.idx))
 
 # XXX returns (unique) tuple with strings of node itself and its parents
 function getUniName(nodeIdx_int::Int, tree_obj::Tree)
