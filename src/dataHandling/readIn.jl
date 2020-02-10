@@ -143,7 +143,6 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 		end
 	end
 
-
     # XXX rewrites rows with all commands into full format
     for col in setNames_arr[1]
 
