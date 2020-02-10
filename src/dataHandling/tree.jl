@@ -14,7 +14,7 @@ function lookupTupleTree(input_uni::Tuple{Vararg{String,N} where N},tree_obj::Tr
 	gap_arr = findall(input_uni .== "")
 
 	if startLvl_int == 1 && isempty(gap_arr)
-		return getDicEmpty(tree_obj.srcTup,input_uni)
+		return [getDicEmpty(tree_obj.srcTup,input_uni)]
 	else
 		noGap_arr = reverse(setdiff(1:length(input_uni),gap_arr))
 
@@ -25,7 +25,7 @@ function lookupTupleTree(input_uni::Tuple{Vararg{String,N} where N},tree_obj::Tr
 		# checks which nodes found initially actually comply with rest of input_uni
 		for i in noGap_arr[2:end]
 			crtLvlItr_int = i + startLvl_int - 1
-			found_arr = getDicEmpty(tree_obj.srcStr,(input_uni[i],crtLvlItr_int)) |> (y -> filter(x -> goUp(x,tree_obj.up,crtLvl_int-crtLvlItr_int) in y,found_arr))
+			found_arr = getDicEmpty(tree_obj.srcStr,(input_uni[i],crtLvlItr_int)) |> (y -> filter(x -> goUp(x,tree_obj.up,crtLvl_int-crtLvlItr_int,tree_obj.nodes) in y,found_arr))
 		end
 	end
 	return found_arr
@@ -52,9 +52,12 @@ function sortSiblings(nodesIndex_arr::Array{Int,1},tree_obj::Tree)
 end
 
 # XXX goes up the tree from x for the number of steps defined by steps_int
-function goUp(x::Int,up::Dict{Int,Int},steps_int::Int)
-	for l in 1:steps_int
+function goUp(x::Int,up::Dict{Int,Int},steps_int::Int,nodes_dic::Dict{Int,Node})
+	startLvl_int = nodes_dic[x].lvl
+	steps_ctr = 0
+	while steps_ctr < steps_int
 		x = up[x]
+		steps_ctr = startLvl_int - nodes_dic[x].lvl
 	end
 	return x
 end
