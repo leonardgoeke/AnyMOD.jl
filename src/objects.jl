@@ -173,6 +173,7 @@ struct modOptions
 	interCapa::Symbol
 	supTsLvl::Int
 	shortExp::Int
+	emissionLoss::Bool
 	# managing numerical issues
 	coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}
 	scaFac::NamedTuple{(:capa,:commCapa,:disp,:dispCost,:capaCost,:obj),Tuple{Float64,Float64,Float64,Float64,Float64,Float64}}
@@ -200,8 +201,10 @@ mutable struct anyModel
 	sets::Dict{Symbol,Tree}
 	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Int,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
 
-	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decomm = :recomm, interCapa = :linear, supTsLvl = 0, shortExp = 10, reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1,
-																					coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)), scaFac = (capa = 1e1, commCapa = 1e2, disp = 1e3, dispCost = 1e0, capaCost = 1e2, obj = 1e0), bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = NaN)
+	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decomm = :recomm, interCapa = :linear, supTsLvl = 0, shortExp = 10, emissionLoss = true,
+																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)),
+																											scaFac = (capa = 1e1, commCapa = 1e2, disp = 5e4, dispCost = 1e1, capaCost = 1e2, obj = 1e0),
+																																bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = NaN)
 		anyM = new()
 
 		# <editor-fold desc="initialize report and options"
@@ -215,8 +218,9 @@ mutable struct anyModel
 
 		# XXX sets whole options object from specified directories TODO arbeite mit kwargs später
 		outStamp_str = string(objName,"_",Dates.format(now(),"yyyymmddHHMM"))
-		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, decomm = decomm, interCapa = interCapa, supTsLvl = supTsLvl, shortExp = shortExp,
-																					coefRng = coefRng, scaFac = scaFac, bound = bound, avaMin = avaMin, checkRng = checkRng, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
+		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, decomm = decomm, interCapa = interCapa,
+																					supTsLvl = supTsLvl, shortExp = shortExp, emissionLoss = emissionLoss, coefRng = coefRng, scaFac = scaFac, bound = bound,
+																						avaMin = avaMin, checkRng = checkRng, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
 
 		anyM.options = modOptions(defOpt_ntup...)
 

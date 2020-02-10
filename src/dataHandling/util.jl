@@ -398,15 +398,56 @@ function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> 
 			allVar_df = DataFrame()
 		end
 	else va == :emission # for emission all use variables are obtained and then already matched with emission factors
-		allVar_df = vcat(map(x -> anyM.parts.tech[x].var[:use], filter(y -> :use in keys(anyM.parts.tech[y].var), techIdx_arr))...)
-
-        # TODO add (optional) exchange variables * eff, stLvl * stDis, st{in/out} * eff => best use getAllVariables with filter function for carriers
+		# get all carriers that might be relevant to comput emissions
+		emC_arr = vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],unique(anyM.parts.lim.par[:emissionFac].data[!,:C]))...)
 
 		if !(:emissionFac in keys(anyM.parts.lim.par))
 			lock(anyM.lock)
-            push!(anyM.report,(2,"limits","emissionUp","upper emission limits but no emission factors provided"))
+			push!(anyM.report,(2,"limits","emissionUp","upper emission limits but no emission factors provided"))
 			unlock(anyM.lock)
 			allVar_df = DataFrame()
+		else
+			# get use variables
+			allVar_df = getAllVariables(:use,anyM, filterFunc = x -> x.C in emC_arr)
+			# get expressions for storage and exchange losses, if this is enabled
+			if true
+				# get all storage variables where storage losses can lead to emissions
+				stVar_dic = Dict((string(st) |> (y -> Symbol(uppercase(y[1]),y[2:end]))) => getAllVariables(st,anyM, filterFunc = x -> x.C in emC_arr) for st in (:stIn,:stOut))
+				stLvl_df = getAllVariables(:stLvl,anyM, filterFunc = x -> x.C in emC_arr)
+
+				# loop over relevant storage technologies to obtain los vallues
+				tSt_arr = unique(stLvl_df[!,:Te])
+				for t in tSt_arr
+					part = anyM.parts.tech[t]
+					# add expression quantifying storage losses for storage in- and and output
+					for st in keys(stVar_dic)
+						stVar_df = stVar_dic[st]
+						stVar_df = matchSetParameter(filter(x -> x.Te == t,stVar_df),part.par[Symbol(:eff,st)],anyM.sets)
+						stVar_df[!,:var] = stVar_df[!,:var] .* (1 .- stVar_df[!,:val])
+						select!(stVar_df,Not(:val))
+						allVar_df = vcat(allVar_df,stVar_df)
+					end
+
+					# add expression quantifying storage losses for storage discharge
+					if :stDis in keys(part.par)
+						sca_arr = getResize(stLvl_df,anyM.sets[:Ts],anyM.supTs)
+						stLvl_df = matchSetParameter(filter(x -> x.Te == t,stLvl_df),part.par[:effStOut],anyM.sets)
+						stOut_df[!,:var] = stOut_df[!,:var] .* (1 .- (1 .- stOut_df[!,:val]) .^ sca_arr)
+						select!(stOut_df,Not(:val))
+						allVar_df = vcat(allVar_df,stOut_df)
+					end
+				end
+
+				# add expressions for exchange losses
+				exc_df = getAllVariables(:exc,anyM, filterFunc = x -> x.C in emC_arr)
+				exc_df = getExcLosses(convertExcCol(exc_df),anyM.parts.exc.par,anyM.sets)
+				# exchange losses are equally split between import and export region
+				exc_df[!,:var] = exc_df[!,:var] .* exc_df[!,:loss] .* 0.5
+				exc_df = rename(by(vcat(exc_df,rename(exc_df,:R_a => :R_b,:R_b => :R_a)),filter(x -> x != :R_b,intCol(exc_df)),var = [:var] => x -> sum(x.var)),:R_a => :R_dis)
+				# dimensions not relevant for exchange are set to 0
+				exc_df[!,:Te] .= 0; exc_df[!,:Ts_expSup] .= 0; exc_df[!,:M] .= 0
+				allVar_df = vcat(allVar_df,exc_df)
+			end
 		end
 		allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)
 		allVar_df[!,:var] = allVar_df[!,:val]  ./ 1e6 .* allVar_df[!,:var]

@@ -223,13 +223,13 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:trdSellCap]  =   (dim = (:Ts_dis, :R_dis, :C, :id), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any), part = :trd)
 
     # exchange (=exchange between explicit regions) parameters
-    parDef_dic[:avaExc]     =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = 1.0,     herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any), part = :exc)
-    parDef_dic[:lossExc]    =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = 0.0,     herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any), part = :exc)
-    parDef_dic[:costVarExc] =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any), part = :obj)
+    parDef_dic[:avaExc]     =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = 1.0,     herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :exc)
+    parDef_dic[:lossExc]    =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = 0.0,     herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :exc)
+    parDef_dic[:costVarExc] =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :obj)
 
-    parDef_dic[:avaExcDir]     =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any), part = :exc)
-    parDef_dic[:lossExcDir]    =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any), part = :exc)
-    parDef_dic[:costVarExcDir] =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any), part = :obj)
+    parDef_dic[:avaExcDir]     =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :exc)
+    parDef_dic[:lossExcDir]    =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :exc)
+    parDef_dic[:costVarExcDir] =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :obj)
 
     # </editor-fold>
 

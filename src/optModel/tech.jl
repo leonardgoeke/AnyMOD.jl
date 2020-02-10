@@ -263,7 +263,9 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
 		else
+            lock(anyM.lock)
 			basis_df = orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
+			unlock(anyM.lock)
 			# filter carriers that are stored-in or out internally and therefore are created even if they are not a leafe
 			intC_arr = map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...))
 			basis_df = replCarLeafs(basis_df,anyM.sets[:C],noLeaf = intC_arr)
