@@ -183,12 +183,7 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 			add_df = select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var])
 			if isempty(add_df) continue end
 			tRes_tup = tech_dic[x[1]].disAgg ? (cRes_tup[1], cInfo_dic[c].rExp) : cRes_tup
-			try
-				checkTechReso!(tRes_tup,cBalRes_tup,add_df,sets_dic)
-			catch
-				println(x,c,cBal_int)
-				continue
-			end
+			checkTechReso!(tRes_tup,cBalRes_tup,add_df,sets_dic)
 
 			# adds sign to variables and adds them to overall dataframe
 			add_df[!,:var] = add_df[!,:var] .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
@@ -347,7 +342,6 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 	# loops over stored constraints outside of threaded loop to create actual jump constraints
 	for cnsSym in keys(cns_dic)
-		println(cnsSym)
 		partLim.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
 	end
 
