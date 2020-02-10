@@ -16,16 +16,14 @@ end
 function errorTest(report::Array{Tuple,1},options::modOptions;write::Bool = false, inCode::Bool = false)
     errStatus_dic = Dict(1 => :green, 2 => :yellow,3 => :red)
     if any(getindex.(report,1) .== 3)
-		output_df = DataFrame(type = Int[], group = String[], instance = String[],  message = String[])
-		push!(output_df,report...)
+		output_df = DataFrame(map(idx -> getindex.(report, idx), eachindex(first(report))), [:type, :group, :instance, :message])
         CSV.write("$(options.outDir)/reporting_$(options.outStamp).csv",  insertcols!(output_df[!,2:end], 1, :errStatus => map(x -> errStatus_dic[x],output_df[!,:type])))
 		printstyled("$(inCode ? "" : " - " )Errors encountered! Wrote reporting_$(options.outStamp).csv for details!"; color = :light_red)
         error()
     else
 		numWarn = length(findall(getindex.(report,1) .== 2))
         if write && length(report) > 0
-			output_df = DataFrame(type = Int[], group = String[], instance = String[],  message = String[])
-			push!(output_df,report...)
+			output_df = DataFrame(map(idx -> getindex.(report, idx), eachindex(first(report))), [:type, :group, :instance, :message])
             CSV.write("$(options.outDir)/reporting_$(options.outStamp).csv",  insertcols!(output_df[!,2:end], 1, :errStatus => map(x -> errStatus_dic[x],output_df[!,:type])))
 			printstyled("$(inCode ? "" : " - " )No errors and $numWarn warning(s) encountered. Wrote reporting_$(options.outStamp).csv for details! \n"; color = numWarn > 0 ? :light_yellow : :light_green)
         else
