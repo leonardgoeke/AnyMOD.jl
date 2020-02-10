@@ -11,10 +11,12 @@ function lookupTupleTree(input_uni::Tuple{Vararg{String,N} where N},tree_obj::Tr
 	startLvl_int = startLvl_int + firstVal_int - 1
 	input_uni = input_uni[firstVal_int:lastVal_int]
 
-	if startLvl_int == 1
+	gap_arr = findall(input_uni .== "")
+
+	if startLvl_int == 1 && isempty(gap_arr)
 		return getDicEmpty(tree_obj.srcTup,input_uni)
 	else
-		noGap_arr = reverse(findall(input_uni .!= ""))
+		noGap_arr = reverse(setdiff(1:length(input_uni),gap_arr))
 
 		# initialize by searching for last entry in input tuple
 		crtLvl_int = noGap_arr[1] + startLvl_int - 1
