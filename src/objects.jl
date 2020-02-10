@@ -203,7 +203,7 @@ mutable struct anyModel
 
 	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decomm = :recomm, interCapa = :linear, supTsLvl = 0, shortExp = 10, emissionLoss = true,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)),
-																											scaFac = (capa = 1e1, commCapa = 1e2, disp = 5e4, dispCost = 1e1, capaCost = 1e2, obj = 1e0),
+																											scaFac = (capa = 1e1, commCapa = 1e2, disp = 1e3, dispCost = 1e0, capaCost = 1e2, obj = 1e0),
 																																bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = NaN)
 		anyM = new()
 
