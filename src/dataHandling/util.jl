@@ -410,7 +410,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> 
 			# get use variables
 			allVar_df = getAllVariables(:use,anyM, filterFunc = x -> x.C in emC_arr)
 			# get expressions for storage and exchange losses, if this is enabled
-			if true
+			if anyM.options.emissionLoss
 				# get all storage variables where storage losses can lead to emissions
 				stVar_dic = Dict((string(st) |> (y -> Symbol(uppercase(y[1]),y[2:end]))) => getAllVariables(st,anyM, filterFunc = x -> x.C in emC_arr) for st in (:stIn,:stOut))
 				stLvl_df = getAllVariables(:stLvl,anyM, filterFunc = x -> x.C in emC_arr)
@@ -431,10 +431,10 @@ function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> 
 					# add expression quantifying storage losses for storage discharge
 					if :stDis in keys(part.par)
 						sca_arr = getResize(stLvl_df,anyM.sets[:Ts],anyM.supTs)
-						stLvl_df = matchSetParameter(filter(x -> x.Te == t,stLvl_df),part.par[:effStOut],anyM.sets)
-						stOut_df[!,:var] = stOut_df[!,:var] .* (1 .- (1 .- stOut_df[!,:val]) .^ sca_arr)
-						select!(stOut_df,Not(:val))
-						allVar_df = vcat(allVar_df,stOut_df)
+						stLvl_df = matchSetParameter(filter(x -> x.Te == t,stLvl_df),part.par[:stDis],anyM.sets)
+						stLvl_df[!,:var] = stLvl_df[!,:var] .* (1 .- (1 .- stLvl_df[!,:val]) .^ sca_arr)
+						select!(stLvl_df,Not(:val))
+						allVar_df = vcat(allVar_df,stLvl_df)
 					end
 				end
 
@@ -442,11 +442,14 @@ function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> 
 				exc_df = getAllVariables(:exc,anyM, filterFunc = x -> x.C in emC_arr)
 				exc_df = getExcLosses(convertExcCol(exc_df),anyM.parts.exc.par,anyM.sets)
 				# exchange losses are equally split between import and export region
-				exc_df[!,:var] = exc_df[!,:var] .* exc_df[!,:loss] .* 0.5
-				exc_df = rename(by(vcat(exc_df,rename(exc_df,:R_a => :R_b,:R_b => :R_a)),filter(x -> x != :R_b,intCol(exc_df)),var = [:var] => x -> sum(x.var)),:R_a => :R_dis)
-				# dimensions not relevant for exchange are set to 0
-				exc_df[!,:Te] .= 0; exc_df[!,:Ts_expSup] .= 0; exc_df[!,:M] .= 0
-				allVar_df = vcat(allVar_df,exc_df)
+				filter!(x -> x.loss != 0.0,exc_df)
+				if !isempty(exc_df)
+	                exc_df[!,:var] = exc_df[!,:var] .* exc_df[!,:loss] .* 0.5
+					exc_df = rename(by(vcat(exc_df,rename(exc_df,:R_a => :R_b,:R_b => :R_a)),filter(x -> x != :R_b,intCol(exc_df)),var = [:var] => x -> sum(x.var)),:R_a => :R_dis)
+					# dimensions not relevant for exchange are set to 0
+					exc_df[!,:Te] .= 0; exc_df[!,:Ts_expSup] .= 0; exc_df[!,:M] .= 0
+					allVar_df = vcat(allVar_df,exc_df)
+				end
 			end
 		end
 		allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)

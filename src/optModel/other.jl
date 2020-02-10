@@ -17,7 +17,7 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 			# match all potential variables with defined prices
 			var_df = matchSetParameter(var_df,partTrd.par[trdPrc_sym],anyM.sets)[!,Not(:val)]
 
-			var_df = createVar(var_df,string(:trd,type),getUpBound(var_df,anyM.options.bound.disp / anyM.options.scaFac.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.disp)
+			var_df = createVar(var_df,string(:trd,type),getUpBound(var_df,anyM.options.bound.disp / anyM.options.scaFac.dispTrd,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispTrd)
 			partTrd.var[trd_sym] = orderDf(var_df)
 			produceMessage(anyM.options,anyM.report, 3," - Created variables for $(type == :Buy ? "buying" : "selling") carriers")
 			# </editor-fold>
@@ -63,7 +63,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 
 	# obtain upper bound for variables and create them
 	if !isempty(varCrt_df)
-		partBal.var[:crt] = orderDf(createVar(varCrt_df,"crt",getUpBound(varCrt_df,anyM.options.bound.disp / anyM.options.scaFac.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.disp))
+		partBal.var[:crt] = orderDf(createVar(varCrt_df,"crt",getUpBound(varCrt_df,anyM.options.bound.disp / anyM.options.scaFac.dispTrd,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispTrd))
 	end
 	# </editor-fold>
 
@@ -347,6 +347,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 	# loops over stored constraints outside of threaded loop to create actual jump constraints
 	for cnsSym in keys(cns_dic)
+		println(cnsSym)
 		partLim.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
 	end
 
@@ -452,13 +453,13 @@ function checkExprRng(expr_arr::Array{AffExpr,1},rngThres_fl::Float64)
 end
 
 # XXX creates an actual jump constraint based on the constraint container provided
-function createCns(cnsCont::cnsCont,optModel::Model)
-	cns_df = cnsCont.data
-	if cnsCont.sign == :equal
+function createCns(cnsCont_obj::cnsCont,optModel::Model)
+	cns_df = cnsCont_obj.data
+	if cnsCont_obj.sign == :equal
 		cns_df[!,:cns] = map(x -> @constraint(optModel, x.cnsExpr == 0),eachrow(cns_df))
-	elseif cnsCont.sign == :greater
+	elseif cnsCont_obj.sign == :greater
 		cns_df[!,:cns] = map(x -> @constraint(optModel, x.cnsExpr >= 0),eachrow(cns_df))
-	elseif cnsCont.sign == :smaller
+	elseif cnsCont_obj.sign == :smaller
 		cns_df[!,:cns] = map(x -> @constraint(optModel, x.cnsExpr <= 0),eachrow(cns_df))
 	end
 	return select!(cns_df,Not(:cnsExpr))

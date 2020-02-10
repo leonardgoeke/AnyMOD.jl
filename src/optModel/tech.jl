@@ -292,7 +292,12 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		end
 
 		# computes value to scale up the global limit on dispatch variable that is provied per hour and create variable
-		part.var[va] = orderDf(createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / anyM.options.scaFac.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.disp))
+        if conv_boo
+			scaFac_fl = anyM.options.scaFac.dispConv
+		else
+			scaFac_fl = anyM.options.scaFac.dispSt
+		end
+		part.var[va] = orderDf(createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / scaFac_fl,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = scaFac_fl))
 	end
 end
 
