@@ -170,7 +170,7 @@ end
 function createRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc::OthPart,anyM::anyModel)
 
 	# group exchange capacities by carrier
-	grpCapa_df = groupby(rename(partExc.var[:capaExc],:var => :capa),:C)
+	grpCapa_df = groupby(rename(partExc.var[anyM.options.decomm != :none ? :commCapaExc : :capaExc],:var => :capa),:C)
 
 	# pre-allocate array of dataframes for restrictions
 	restr_arr = Array{DataFrame}(undef,length(grpCapa_df))
