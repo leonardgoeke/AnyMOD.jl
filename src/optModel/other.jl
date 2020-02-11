@@ -215,7 +215,6 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal)
 
 	@threads for va in allKeys_arr
-		println(va)
 		varToPart_dic = Dict(:exc => :exc, :crt => :bal,:trdSell => :trd, :trdBuy => :trd)
 
 		# obtain all variables relevant for limits
