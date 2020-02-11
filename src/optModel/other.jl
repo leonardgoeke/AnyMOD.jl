@@ -215,6 +215,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal)
 
 	@threads for va in allKeys_arr
+		println(va)
 		varToPart_dic = Dict(:exc => :exc, :crt => :bal,:trdSell => :trd, :trdBuy => :trd)
 
 		# obtain all variables relevant for limits
@@ -289,7 +290,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 		# value is fixed, but still a upper a lower limit is provided
 		if :Fix in limitCol_arr && (:Low in limitCol_arr || :Up in limitCol_arr)
-			if !isempty(limitCol_arr |> (z -> filter(x -> all([!isnothing(x.Fix),any(.!isnothing.(x[z]))]) ,allLimit_df)))
+			if !isempty(filter(x -> x != :Fix, limitCol_arr) |> (z -> filter(x -> all([!isnothing(x.Fix),any(.!isnothing.(collect(x[z])))]) ,eachrow(allLimit_df))))
 				lock(anyM.lock)
 				push!(anyM.report,(2,"limit",string(va),"upper and/or lower limit detected, although variable is already fixed"))
 				unlock(anyM.lock)
