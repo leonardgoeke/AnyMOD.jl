@@ -139,6 +139,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 		c_str = Symbol(anyM.sets[:C].nodes[c].val)
 		cns_df[!,:cnsExpr] = map(x -> x.techVar + x.excVar + x.trdVar - x.dem - x.crtVar, eachrow(cns_df))
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
+		filter!(x -> x.cnsExpr != AffExpr(),cns_df)
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 		cns_arr[idx] = Symbol(c_str) => cnsCont(cns_df,anyM.cInfo[c].eq ? :equal : :greater)
 
