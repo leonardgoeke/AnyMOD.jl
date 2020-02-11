@@ -270,7 +270,7 @@ function createTree(readIn_df::DataFrame, setLoad_sym::Symbol, report::Array{Tup
 
 	for (idx, node) in enumerate(sort(topNodes_arr))
 	    tree_obj.nodes[idx] = Node(idx,node,1,idx,Int[])
-		tree_obj.srcTup[(node,)] = idx
+		tree_obj.srcTup[(node,)] = [idx]
 		tree_obj.up[idx] = 0
 	end
 	tree_obj.nodes[0].down = collect(keys(tree_obj.up))
@@ -353,7 +353,7 @@ function createNodes!(upToLow_dic::Dict{Int64,SubArray{String,1,Array{String,1},
 			keyStr_tup[i] = lowerNode
 			foreach(x -> keyStr_tup[x[2]] = tree_obj.nodes[x[1]].val, getAncestors(newIdx_int,tree_obj,:tup,1))
 
-			tree_obj.srcTup[tuple(keyStr_tup...)] = newIdx_int
+			tree_obj.srcTup[tuple(keyStr_tup...)] = [newIdx_int]
 		end
 		tree_obj.nodes[upperNodeId].down = union(tree_obj.nodes[upperNodeId].down,collect((numRow_int+1):(numRow_int+length(upToLowSort_dic[upperNodeId]))))
 	end

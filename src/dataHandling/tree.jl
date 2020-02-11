@@ -14,7 +14,7 @@ function lookupTupleTree(input_uni::Tuple{Vararg{String,N} where N},tree_obj::Tr
 	gap_arr = findall(input_uni .== "")
 
 	if startLvl_int == 1 && isempty(gap_arr)
-		return [getDicEmpty(tree_obj.srcTup,input_uni)]
+		return getDicEmpty(tree_obj.srcTup,input_uni)
 	else
 		noGap_arr = reverse(setdiff(1:length(input_uni),gap_arr))
 

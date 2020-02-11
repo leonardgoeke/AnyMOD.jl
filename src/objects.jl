@@ -149,7 +149,7 @@ end
 
 mutable struct Tree
 	nodes::Dict{Int,Node}
-	srcTup::Dict{Tuple,Int}
+	srcTup::Dict{Tuple,Array{Int,1}}
 	srcStr::Dict{Tuple{String,Int},Array{Int,1}}
 	up::Dict{Int,Int}
 	height::Int
@@ -173,8 +173,8 @@ struct modOptions
 	interCapa::Symbol
 	supTsLvl::Int
 	shortExp::Int
-	emissionLoss::Bool
 	# managing numerical issues
+	emissionLoss::Bool
 	coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Vararg{Float64,2}}}}
 	scaFac::NamedTuple{(:capa,:commCapa,:dispConv,:dispSt,:dispExc, :dispTrd, :costDisp,:costCapa,:obj),Tuple{Vararg{Float64,9}}}
 	bound::NamedTuple{(:capa,:disp,:obj),Tuple{Vararg{Float64,3}}}
