@@ -47,7 +47,7 @@ function createTech!(t::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple}
     end
 
     # all constraints are scaled and then written into their respective array position
-    foreach(x -> scaleCnsExpr!(x[2].data,anyM.options.coefRng,anyM.options.checkRng),collect(cns_dic))
+    foreach(x -> scaleCnsExpr!(x[2].data,anyM.options.coefRng,anyM.options.checkRng), collect(cns_dic))
 
     produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for technology $(tech_str)")
 
@@ -318,8 +318,8 @@ function createCommVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont}
 		# XXX create constraint to prevent re-commissioning of capacity once decommissioned
 		if anyM.options.decomm == :decomm
 			# add previous period and its capacity variable to table
-			prevTs_dic = Dict(x => findall(x .== anyM.supTs.step)[1]-1 for x in anyM.supTs.step[2:end])
-			select!(var_df, Not(:cns))
+			prevTs_dic = Dict(x => anyM.supTs.step[findall(x .== anyM.supTs.step)[1]]-1 for x in anyM.supTs.step[2:end])
+			select!(var_df, Not(:cnsExpr))
 			cns_df = rename(filter(r -> r.Ts_disSup != anyM.supTs.step[1],var_df),:var => :commNow)
 			cns_df[!,:Ts_disSupPrev] = map(x -> prevTs_dic[x] ,cns_df[!,:Ts_disSup])
 			cns_df = rename(join(cns_df,var_df; on = intCol(var_df,:dir) |> (x -> Pair.(replace(x,:Ts_disSup => :Ts_disSupPrev),x)), kind = :inner),:var => :commPrev)
@@ -343,7 +343,7 @@ function createCommVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont}
 			cns_df[!,:resiPrev] = getfield.(cns_df[!,:resiPrev],:constant)
 
 			# create actual constraint information
-			cns_df[!,:cnsExpr]  = map(x -> x.commNow + x.commPrev + x.expNow + (x.resiNow - x.resiPrev |> (l -> l > 0.0 ? l : 0.0)),eachrow(cns_df))
+			cns_df[!,:cnsExpr]  = map(x -> - x.commNow + x.commPrev + x.expNow + (x.resiNow - x.resiPrev |> (l -> l > 0.0 ? l : 0.0)),eachrow(cns_df))
 			select!(cns_df,Not([:Ts_disSupPrev,:commNow,:commPrev,:expNow,:resiNow,:resiPrev]))
 			cns_dic[string(commVar_sym) |> (x -> Symbol(:re,uppercase(x[1]),x[2:end]))] = cnsCont(orderDf(cns_df),:greater)
 		end

@@ -405,6 +405,8 @@ end
 # XXX scales expressions in the dataframe to be within the range defined within options
 function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}},checkRng_fl::Float64)
 
+	if isempty(cnsExpr_df) return end
+
 	if !all(isnan.(coefRng.rhs))
 		# scale expression defining constraint so rhs coefficients are within desired range
 		rhs_arr = abs.(getfield.(cnsExpr_df[!,:cnsExpr],:constant))
