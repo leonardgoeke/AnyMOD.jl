@@ -16,13 +16,13 @@ function setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyMode
 		partObj.cns[:objEqn] = DataFrame(name = Symbol[], group = Symbol[], cns = ConstraintRef[])
 	end
 
-    # XXX create variables and equations required for specified objectives, TODO hier anders machen
+    # XXX create variables and equations required for specified objectives
     for objGrp in setdiff(keys(obj_dic),unique(partObj.var[:objVar][!,:group]))
         createObjective!(objGrp,partObj,anyM)
     end
 
     # XXX sets overall objective variable with upper limits and according to weights provided in dictionary
-	objBd_flt = anyM.options.bound.obj |> (x -> isnan(x) ? NaN : x / scaFac.obj)
+	objBd_flt = anyM.options.bound.obj |> (x -> isnan(x) ? NaN : x / anyM.options.scaFac.obj)
 	obj_var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, !isnan(objBd_flt), objBd_flt, false, NaN, false, NaN, false, false)),"obj") * anyM.options.scaFac.obj
 	obj_eqn = @constraint(anyM.optModel, obj_var == sum(map(x -> sum(filter(r -> r.group == x,partObj.var[:objVar])[!,:var])*obj_dic[x], collect(keys(obj_dic)))))
 
