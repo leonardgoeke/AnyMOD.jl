@@ -151,10 +151,28 @@ end
 reportResults(reportType::Symbol,anyM::anyModel) = reportResults(Val{reportType}(),anyM::anyModel)
 
 # XXX summary of all capacity and dispatch results
-function reportResults(objGrp::Val{:summary},anyM::anyModel)
+function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSing::Bool = true)
 
     techIdx_arr = collect(keys(anyM.parts.tech))
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
+
+	# XXX get demand values
+	dem_df = copy(anyM.parts.bal.par[:dem].data)
+	dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, dem_df[!,:C])
+
+	# aggregates demand values
+	ts_dic = Dict(x => anyM.sets[:Ts].nodes[x].lvl == anyM.supTs.lvl ? x : getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(dem_df[!,:Ts_dis]))
+	allR_arr = unique(dem_df[!,:R_dis])
+	allLvlR_arr = unique(dem_df[!,:lvlR])
+	r_dic = Dict((x[1], x[2]) => getDescendants(x[1], anyM.sets[:R],false,x[2]) |> (y -> isempty(y) ? getAncestors(x[1],anyM.sets[:R],:int,x[2])[end] : y) for x in Iterators.product(allR_arr,allLvlR_arr))
+
+	dem_df[!,:Ts_disSup] = map(x -> ts_dic[x],dem_df[!,:Ts_dis])
+	dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis,x.lvlR],eachrow(dem_df[!,[:R_dis,:lvlR]]))
+	dem_df = by(dem_df,[:Ts_disSup,:R_dis,:C],value = [:val] => x -> sum(x.val) / 1000)
+	dem_df[!,:Te] .= 0
+	dem_df[!,:variable] .= :demand
+	if wrtSing dem_df[!,:value] = dem_df[!,:value] .* -1 end
+	allData_df = vcat(allData_df,dem_df)
 
 	# XXX get expansion and capacity variables
 	for t in techIdx_arr
@@ -189,7 +207,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel)
 	end
 
 	# XXX get dispatch variables
-	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :ctr, :trdBuy, :trdSell)
+	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :crt, :trdBuy, :trdSell)
 		# get all variables, group them and get respective values
 		allVar_df = getAllVariables(va,anyM)
 		if isempty(allVar_df) continue end
@@ -206,6 +224,9 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel)
 			end
 		end
 
+		# adjust sign, if enabled
+		if wrtSing && va in (:use,:stIn,:stIntIn,:stExtIn,:crt,:trdSell) disp_df[!,:value] = disp_df[!,:value] .* -1 end
+
 		allData_df = vcat(allData_df,disp_df)
 	end
 
@@ -217,10 +238,10 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel)
 	    # compute export and import of each region, losses are considered at import
 	    excFrom_df = rename(by(allExc_df,[:Ts_disSup,:R_a,:C],value = [:var] => x -> value(sum(x.var))/1000),:R_a => :R_dis)
 	    excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
+		if wrtSing excFrom_df[!,:value] = excFrom_df[!,:value] .* -1 end
 
 	    excTo_df = rename(by(allExc_df,[:Ts_disSup,:R_b,:C],value = [:var,:loss] => x -> value(dot(x.var,(1 .- x.loss)))/1000),:R_b => :R_dis)
 	    excTo_df[!,:variable] .= :import; excTo_df[!,:Te] .= 0
-
 
 	    allData_df = vcat(allData_df,vcat(excFrom_df,excTo_df))
 	end
@@ -244,7 +265,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel)
 			elseif flhCapa in (:commCapaStOut,:capaStOut)
 				var_arr = [:stIntOut,:stExtOut]
 			end
-			return sum(filter(y -> y.variable in var_arr,relRow_df)[!,:value])/row.value*1000
+			return sum(abs.(filter(y -> y.variable in var_arr,relRow_df)[!,:value]))/row.value*1000
 		end
 		capaFlh_df[!,:value] = vlh_arr
 		capaFlh_df[!,:variable] .= flh_dic[flhCapa]
@@ -269,7 +290,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel)
 			elseif cycCapa in (:commCapaStOut,:capaStOut)
 				var_arr = [:stIntOut,:stExtOut]
 			end
-			return sum(filter(y -> y.variable in var_arr,relRow_df)[!,:value])/row.value*1000
+			return sum(abs.(filter(y -> y.variable in var_arr,relRow_df)[!,:value]))/row.value*1000
 		end
 		capaCyc_df[!,:value] = cyc_arr
 		capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
@@ -343,7 +364,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel)
 end
 
 # XXX print time series for in and out into seperate tables
-function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstackBoo::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3)
+function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstackBoo::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3, mergeVar::Bool = true)
 
 	# XXX converts carrier named provided to index
 	node_arr = filter(x -> x.val == string(car_sym),collect(values(anyM.sets[:C].nodes)))
@@ -448,14 +469,27 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	end
 
 	# XXX unstack data and write to csv
-	for signItr in signVar
-		data_df = allData_dic[signItr]
+	if mergeVar
+		# merges in and out files and writes to same csv file
+		data_df = vcat(values(allData_dic)...)
+
 		if unstackBoo && !isempty(data_df)
 			data_df[!,:variable] = CategoricalArray(data_df[!,:variable])
 			data_df = unstack(data_df,:variable,:value)
 		end
 
-		printObject(data_df,anyM.sets,anyM.options, fileName = string("timeSeries_",car_sym,"_",signItr))
+		printObject(data_df,anyM.sets,anyM.options, fileName = string("timeSeries_",car_sym,))
+	else
+		# loops over different signs and writes to different csv files
+		for signItr in signVar
+			data_df = allData_dic[signItr]
+			if unstackBoo && !isempty(data_df)
+				data_df[!,:variable] = CategoricalArray(data_df[!,:variable])
+				data_df = unstack(data_df,:variable,:value)
+			end
+
+			printObject(data_df,anyM.sets,anyM.options, fileName = string("timeSeries_",car_sym,"_",signItr))
+		end
 	end
 end
 

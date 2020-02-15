@@ -378,7 +378,7 @@ end
 # XXX get a dataframe with all variable of the specified type
 function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> true)
 
-	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :expExc => :exc, :ctr => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
+	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :expExc => :exc, :crt => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
 	techIdx_arr = collect(keys(anyM.parts.tech))
 
 	if !(va in keys(varToPart_dic)) # get all variables for technologies
@@ -455,8 +455,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> 
 		select!(allVar_df,Not(:val))
 	end
 
-	filter!(filterFunc,allVar_df)
-	return allVar_df
+	return filter(filterFunc,allVar_df)
 end
 
 # XXX replaces orginal carriers in var_df with all leafes connected to respective carrier (and itself) and flattens it
