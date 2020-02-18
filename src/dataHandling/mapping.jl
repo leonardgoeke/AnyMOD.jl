@@ -143,7 +143,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
     # XXX writes carrier info
     # gets string array of carriers for input, output and stored, looks up respective ids afterwards and writes to mapping file
-    carStrArr_dic = Dict(y => split(replace(row_df[y]," " => ""),";") |> (z -> filter(x -> !isempty(x),z)) for y in carCol_tup)
+    carStrArr_dic = Dict(y => y in names(row_df) ? split(replace(row_df[y]," " => ""),";") |> (z -> filter(x -> !isempty(x),z)) : String[] for y in carCol_tup)
 	carId_dic = Dict(z => tuple(map(x -> getDicEmpty(nameC_dic,x),carStrArr_dic[z])...) for z in keys(carStrArr_dic))
 
 	for x in filter(x -> Int[] in carId_dic[x], collect(keys(carId_dic)))
@@ -169,7 +169,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     part.carrier = filter(x -> getfield(carGrp_ntup,x) != tuple(),collect(keys(carGrp_ntup))) |> (y -> NamedTuple{Tuple(y)}(map(x -> getfield(carGrp_ntup,x), y)) )
 
     # detects if any in or out carrier is a parent of another in or out carrier, removes carrier in these cases and reports on it
-    for type in (:carrier_conversion_in, :carrier_conversion_out, :carrier_stored_in, :carrier_stored_out)
+    for type in (:carrier_conversion_in, :carrier_conversion_out)
         relCar_tup = carId_dic[type]
         inherCar_tup = relCar_tup[findall(map(x -> !(isempty(filter(z -> z != x,intersect(getDescendants(x,anyM.sets[:C],true),relCar_tup)))),relCar_tup))]
         if !isempty(inherCar_tup)
