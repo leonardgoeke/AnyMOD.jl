@@ -409,7 +409,7 @@ function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLngSh
 
     # determines relevant parameter/value columns
     oprNames_arr = filterSetColumns(parData_df,[:parameter,:variable,:value],true)[1]
-    oprLvl_arr = filter(x -> x != nothing,map(x -> tryparse(Int,x[end:end]),oprNames_arr))
+    oprLvl_arr = filter(x -> x != nothing,map(x -> tryparse(Int,split(x,"_")[end]),oprNames_arr))
     parVal_arr = isempty(oprLvl_arr) ? [[:parameter,:value]] : [[Symbol("parameter_",j),Symbol("value_",j)] for j in unique(oprLvl_arr)]
 
     # converts parameter columns to symbols
