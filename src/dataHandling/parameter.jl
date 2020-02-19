@@ -243,7 +243,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     end
 
     if !isempty(wrongRulesHerit_arr)
-        push!(report,(3, "parameter definition", "", "invalid inheritance rule: $(join(wrongRulesHerit_arr,", "))"))
+        push!(report,(3, "parameter read-in", "definition", "invalid inheritance rule: $(join(wrongRulesHerit_arr,", "))"))
     end
 
     return parDef_dic
@@ -261,7 +261,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
     parDef_dic = defineParameter(anyM.options,anyM.report)
     undefinedPar_arr = setdiff(unique(vcat(values(parToFile_dic)...)),keys(parDef_dic))
     if !isempty(undefinedPar_arr)
-        for undefined in undefinedPar_arr push!(anyM.report,(3,"parameter assignment",string(undefined),"parameter was not defined in parameter.jl")) end
+        for undefined in undefinedPar_arr push!(anyM.report,(3,"parameter read-in","definition","parameter with the name $(string(undefined)) does not exist")) end
         print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options)
     end
 
@@ -299,7 +299,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
         # XXX checks for duplicates and removes them in case
         nonUnique_bool = nonunique(allParData_df)
         if any(nonUnique_bool)
-            push!(anyM.report,(1,"parameter read-in",string(parIt),"non-unique entries discovered"))
+            push!(anyM.report,(1,"parameter read-in","validity check","non-unique entries discovered for $(string(parIt))"))
             deleterows!(allParData_df,nonUnique_bool)
         end
 
@@ -308,7 +308,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
         if !isempty(rmvVal_df)
             contradic_bool = nonunique(allParData_df[:,rmvVal_df])
             if any(contradic_bool)
-                 push!(anyM.report,(3,"parameter read-in",string(parIt),"contradicting entries discovered"))
+                 push!(anyM.report,(3,"parameter read-in","validity check","contradicting entries discovered for $(string(parIt))"))
             end
         end
 
