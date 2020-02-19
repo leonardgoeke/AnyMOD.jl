@@ -437,16 +437,18 @@ function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> 
 				end
 
 				# add expressions for exchange losses
-				exc_df = getAllVariables(:exc,anyM, filterFunc = x -> x.C in emC_arr)
-				exc_df = getExcLosses(convertExcCol(exc_df),anyM.parts.exc.par,anyM.sets)
-				# exchange losses are equally split between import and export region
-				filter!(x -> x.loss != 0.0,exc_df)
-				if !isempty(exc_df)
-	                exc_df[!,:var] = exc_df[!,:var] .* exc_df[!,:loss] .* 0.5
-					exc_df = rename(by(vcat(exc_df,rename(exc_df,:R_a => :R_b,:R_b => :R_a)),filter(x -> x != :R_b,intCol(exc_df)),var = [:var] => x -> sum(x.var)),:R_a => :R_dis)
-					# dimensions not relevant for exchange are set to 0
-					exc_df[!,:Te] .= 0; exc_df[!,:Ts_expSup] .= 0; exc_df[!,:M] .= 0
-					allVar_df = vcat(allVar_df,exc_df)
+                if :exc in keys(anyM.parts.exc.var)
+					exc_df = getAllVariables(:exc,anyM, filterFunc = x -> x.C in emC_arr)
+					exc_df = getExcLosses(convertExcCol(exc_df),anyM.parts.exc.par,anyM.sets)
+					# exchange losses are equally split between import and export region
+					filter!(x -> x.loss != 0.0,exc_df)
+					if !isempty(exc_df)
+		                exc_df[!,:var] = exc_df[!,:var] .* exc_df[!,:loss] .* 0.5
+						exc_df = rename(by(vcat(exc_df,rename(exc_df,:R_a => :R_b,:R_b => :R_a)),filter(x -> x != :R_b,intCol(exc_df)),var = [:var] => x -> sum(x.var)),:R_a => :R_dis)
+						# dimensions not relevant for exchange are set to 0
+						exc_df[!,:Te] .= 0; exc_df[!,:Ts_expSup] .= 0; exc_df[!,:M] .= 0
+						allVar_df = vcat(allVar_df,exc_df)
+					end
 				end
 			end
 		end
