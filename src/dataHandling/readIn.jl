@@ -26,8 +26,10 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 	# manually adds mode set, creates a top node for all modes to allow for aggregation later
 	if :mode in names(setData_dic[:Te])
 		modes_df = DataFrame(mode_1 = vcat(map(y -> split(replace(y," " => ""),";"),filter(x -> x != "",setData_dic[:Te][!,:mode]))...))
-		anyM.sets[:M] = createTree(modes_df,:mode,anyM.report)
+	else
+		modes_df = DataFrame(mode_1 = String[])
 	end
+	anyM.sets[:M] = createTree(modes_df,:mode,anyM.report)
 
 	# reports, if a required set was not defined or if non-unique carrier names were defined
 	for set in filter(x -> !(x in (:mode, :id)), collect(keys(setLngShrt_dic)))

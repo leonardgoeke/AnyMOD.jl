@@ -116,7 +116,7 @@ function createTimestepMapping!(anyM::anyModel)
     anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic)
 
     if length(anyM.supTs.step) > 50
-		push!(anyM.report,(2,"timestep mapping","","problem specification resulted in more than 50 superordinate timesteps, this looks faulty"))
+		push!(anyM.report,(2,"timestep mapping","","problem specification resulted in more than 50 superordinate dispatch timesteps, this looks faulty"))
 	end
 
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for time steps")
@@ -205,7 +205,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     part.disAgg = disAgg_boo
 
     # XXX writes modes of technology
-    if haskey(anyM.sets,:M)
+    if length(anyM.sets[:M].nodes) > 1
         part.modes = tuple(collect(lookupTupleTree(tuple(string(x),),anyM.sets[:M],1)[1] for x in filter(x -> x != "",split(replace(row_df[:mode]," " => ""),";")))...)
     else
         part.modes = tuple()
