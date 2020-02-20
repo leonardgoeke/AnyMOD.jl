@@ -141,16 +141,16 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			end
 			noDirCost_df = matchSetParameter(join(convertExcCol(allDisp_df),dirCost_df, on = intCol(dirCost_df), kind = :anti),anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
 
-			allDisp_df = convertExcCol(vcat(dirCost_df,noDirCost_df))
+			allDisp_df = rename(convertExcCol(vcat(dirCost_df,noDirCost_df)),:var => :disp)
 		elseif va == :use && :emissionPrc in parObj_arr && :emissionFac in keys(anyM.parts.lim.par)
 			# get emission prices as a costs entry
-			emPrc_df = matchSetParameter(select(allDisp_df,Not(:var)),partObj.par[:emissionPrc],anyM.sets, newCol = :prc)
+			emPrc_df = matchSetParameter(select(allDisp_df,Not(:disp)),partObj.par[:emissionPrc],anyM.sets, newCol = :prc)
 			emPrc_df = matchSetParameter(emPrc_df,anyM.parts.lim.par[:emissionFac],anyM.sets, newCol = :fac)
 			emPrc_df[!,:costEms] = emPrc_df[!,:prc] .*  emPrc_df[!,:fac] ./ 1000
 			select!(emPrc_df,Not([:prc,:fac]))
 			# merge emission costs with other variable costs or just use emission costs if there are not any other
 			if costPar_sym in parObj_arr
-				otherVar_df = matchSetParameter(select(allDisp_df,Not(:var)),anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
+				otherVar_df = matchSetParameter(select(allDisp_df,Not(:disp)),anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
 				allCost_df = joinMissing(otherVar_df,emPrc_df,intCol(emPrc_df),:outer,merge(Dict{Symbol,Any}(:costVar => 0.0, :costEms => 0.0),Dict{Symbol,Any}(x => 0 for x in intCol(emPrc_df))) )
 				allCost_df[!,:costVar] = allCost_df[!,:costVar] .+ allCost_df[!,:costEms]
 				select!(allCost_df,Not(:costEms))
