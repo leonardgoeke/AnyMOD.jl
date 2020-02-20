@@ -382,7 +382,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
         # creates dataframe depending on the respective pre-set mode
 		if preType == :lowest
 			carConv_arr = union(map(x -> getfield(part.carrier,x), intersect((:gen,:use),keys(part.carrier)))...)
-			lowest_tup = map(x -> anyM.cInfo[x],carConv_arr) |> (y -> map(z -> maximum(getfield.(y,z)),(:tsDis,part.disAgg ? :rExp : :rDis)))
+			lowest_tup = map(x -> anyM.cInfo[x],carConv_arr) |> (y -> [maximum(getfield.(y,:tsDis)), part.disAgg ? part.balLvl.exp[2] : maximum(getfield.(y,:rDis))])
             capaLvl_df[!,:lvlTs] .= lowest_tup[1]; capaLvl_df[!,:lvlR] .= lowest_tup[2]
 		elseif preType == :reference
 			ref_tup = part.balLvl.ref
@@ -401,7 +401,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 				car_arr = unique(capaLvl_df[!,:C])
 			end
 
-			resC_dic = Dict(x => anyM.cInfo[x] |> (y -> map(z -> getfield(y,z),(:tsDis,part.disAgg ? :rExp : :rDis))) for x in car_arr)
+			resC_dic = Dict(x => anyM.cInfo[x] |> (y -> [getfield(y,:tsDis), part.disAgg ? part.balLvl.exp[2] : getfield(y,:rDis)]) for x in car_arr)
             capaLvl_df = by(capaLvl_df,names(capaLvl_df),:C => x -> resC_dic[x[1]] |> (y -> (lvlTs = y[1], lvlR = y[2])))
 		elseif preType == :minUse || preType == :minGen
 			car_arr = (preType == :minUse ? :use : :gen) |> (y -> haskey(part.carrier,y) ? collect(getfield(part.carrier,y)) : Int[])
@@ -410,7 +410,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
             insertcols!(capaLvl_df,1,:C => fill(car_arr,size(capaLvl_df,1)))
             capaLvl_df = flatten(capaLvl_df,:C)
 
-            reso_tup = map(x -> anyM.cInfo[x],car_arr) |> (y -> map(z -> minimum(getfield.(y,z)),(:tsDis,part.disAgg ? :rExp : :rDis)))
+            reso_tup = map(x -> anyM.cInfo[x],car_arr) |> (y -> [minimum(getfield.(y,:tsDis)), part.disAgg ? part.balLvl.exp[2] : minimum(getfield.(y,:rDis))])
             capaLvl_df[!,:lvlTs] .= reso_tup[1]; capaLvl_df[!,:lvlR] .= reso_tup[2];
 		end
 
@@ -445,7 +445,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
                     end
 
                     # adds temporal and spatial level to dataframe
-                    cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis,getfield(anyM.cInfo[x], part.disAgg ? :rExp : :rDis)) for x in car_arr)
+                    cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[x].rDis) for x in car_arr)
                     modeItr_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],modeItr_df[!,:C])
                     modeItr_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],modeItr_df[!,:C])
 

@@ -72,7 +72,15 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	# finds all carriers that require an energy balance (not required for carriers that can only be shifted (temporal or spatial), e.g. that only have storage or exchange defined for them)
 	relC_arr = Array{Int,1}()
 
-	if :dem in keys(anyM.parts.bal.par) append!(relC_arr,unique(anyM.parts.bal.par[:dem].data[!,:C])) end
+	# if demand does not specific a carrier, it is assumed all carriers are relevant
+	if !isempty(anyM.parts.bal.par[:dem].data)
+		if :C in unique(anyM.parts.bal.par[:dem].data[!,:C])
+			append!(relC_arr,unique(anyM.parts.bal.par[:dem].data[!,:C]))
+		else
+			append!(relC_arr,c_arr)
+		end
+	end
+
 	if :crt in keys(anyM.parts.bal.var) append!(relC_arr,unique(anyM.parts.bal.var[:crt][!,:C])) end
 	if :trdSell in keys(anyM.parts.trd.var) append!(relC_arr,unique(anyM.parts.trd.var[:trdSell][!,:C])) end
 	if :trdBuy in keys(anyM.parts.trd.var) append!(relC_arr,unique(anyM.parts.trd.var[:trdBuy][!,:C])) end
@@ -183,7 +191,7 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 			# gets resolution and adjusts add_df in case of an agggregated technology
 			add_df = select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var])
 			if isempty(add_df) continue end
-			tRes_tup = tech_dic[x[1]].disAgg ? (cRes_tup[1], cInfo_dic[c].rExp) : cRes_tup
+			tRes_tup = tech_dic[x[1]].disAgg ? (cRes_tup[1], tech_dic[x[1]].balLvl.exp[2]) : cRes_tup
 			checkTechReso!(tRes_tup,cBalRes_tup,add_df,sets_dic)
 
 			# adds sign to variables and adds them to overall dataframe

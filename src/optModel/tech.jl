@@ -272,7 +272,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		end
 
 		# adds temporal and spatial level to dataframe
-		cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, part.disAgg ? anyM.cInfo[x].rExp : anyM.cInfo[x].rDis) for x in unique(basis_df[!,:C]))
+		cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[x].rDis) for x in unique(basis_df[!,:C]))
 		basis_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],basis_df[!,:C])
 		basis_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],basis_df[!,:C])
 		allVar_df = orderDf(expandExpToDisp(basis_df,ts_dic,r_dic,true))

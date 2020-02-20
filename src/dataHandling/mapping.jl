@@ -188,21 +188,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     end
     part.type = Symbol(type_str)
 
-    # XXX checks if dispatch variables can should be disaggregated if expansion regions are more detailed than dispatch regions
-    if :region_disaggregate in names(row_df)
-        daggR_str = row_df[:region_disaggregate]
-        if daggR_str == "yes"
-            disAgg_boo = true
-        elseif daggR_str == "no"
-            disAgg_boo = false
-        else
-            push!(anyM.report,(3,"technology mapping","spatial aggregation","unknown keyword $type_str used to control spatial aggregation, please use 'yes' or 'no'"))
-            return
-        end
-    else
-        disAgg_boo = false
-    end
-    part.disAgg = disAgg_boo
+
 
     # XXX writes modes of technology
     if length(anyM.sets[:M].nodes) > 1
@@ -211,31 +197,68 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
         part.modes = tuple()
     end
 
-    # XXX determines resolution
+    # XXX determines resolution of expansion
+    # determines carrier based expansion resolutions
+	tsExp_int = maximum(map(y -> getfield(anyM.cInfo[y],:tsExp), vcat(collect.(values(carGrp_ntup))...)))
+	rExp_int = maximum(map(y -> getfield(anyM.cInfo[y],:rExp), vcat(collect.(values(carGrp_ntup))...)))
 
-    # determines expansion timesteps (lowest level of expansion among all carriers, temporal level can be overwritten by technology specific values)
-	expR_int = maximum(map(y -> getfield(anyM.cInfo[y],:rExp), vcat(collect.(values(carGrp_ntup))...)))
-	expTs_int = maximum(map(y -> getfield(anyM.cInfo[y],:tsExp), vcat(collect.(values(carGrp_ntup))...)))
-
+	# check if carrier based temporal resolution is overwritten by a technology specifc value
 	if :timestep_expansion in names(row_df)
-		tsExp_int = tryparse(Int,row_df[:timestep_expansion])
+		tsExpSpc_int = tryparse(Int,row_df[:timestep_expansion])
 
-		if !isnothing(tsExp_int)
-			if tsExp_int > anyM.supTs.lvl
+		if !isnothing(tsExpSpc_int)
+			if tsExpSpc_int > anyM.supTs.lvl
 				push!(anyM.report,(2,"technology mapping","expansion level","specific temporal expansion level provided for $(createFullString(t,anyM.sets[:Te])) is below superordinate dispatch level and therefore could not be used"))
 			else
 				push!(anyM.report,(1,"technology mapping","expansion level","specific temporal expansion level provided for $(createFullString(t,anyM.sets[:Te])) was used instead of a carrier based value"))
-				expTs_int = tsExp_int
+				tsExp_int = tsExpSpc_int
 			end
 		end
 	end
-    expLvl_tup = (expTs_int,expR_int)
+
+	# check if carrier based spatial resolution is overwritten by a technology specifc value
+	if :region_expansion in names(row_df)
+		rExpSpc_int = tryparse(Int,row_df[:region_expansion])
+
+		if !isnothing(rExpSpc_int)
+			if rExpSpc_int <= maximum(map(x -> anyM.cInfo[x].rDis,union(values(part.carrier)...)))
+				push!(anyM.report,(2,"technology mapping","expansion level","specific spatial expansion level provided for $(createFullString(t,anyM.sets[:Te])) is above dispatch level of one carrier and therefore could not be used"))
+			else
+				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for $(createFullString(t,anyM.sets[:Te])) was used instead of a carrier based value"))
+				rExp_int = rExpSpc_int
+			end
+		end
+	end
+
+    expLvl_tup = (tsExp_int,rExp_int)
     if isempty(keys(carGrp_ntup)) return end
 
-    # determines reference level for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
+	# XXX checks if dispatch variables should be disaggregated by expansion regions
+	rExpOrg_int = maximum(map(y -> getfield(anyM.cInfo[y],:rDis), vcat(collect.(values(carGrp_ntup))...)))
+
+	if :region_disaggregate in names(row_df) && rExp_int > rExpOrg_int # relies on information in explicit column, if disaggregation is possible and column exists
+		daggR_str = row_df[:region_disaggregate]
+		if daggR_str == "yes"
+			disAgg_boo = true
+		elseif daggR_str == "no"
+			disAgg_boo = false
+		else
+			push!(anyM.report,(3,"technology mapping","spatial aggregation","unknown keyword $type_str used to control spatial aggregation, please use 'yes' or 'no'"))
+			return
+		end
+	elseif rExp_int > rExpOrg_int # disaggregate by default, if it makes sense
+		disAgg_boo = true
+	else
+		disAgg_boo = false
+	end
+
+	part.disAgg = disAgg_boo
+
+
+    # XXX determines reference resolution for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
     if !isempty(union(carGrp_ntup.use,carGrp_ntup.gen))
 		refTs_int = minimum([maximum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
-		refR_int = minimum([maximum([getproperty(anyM.cInfo[x], disAgg_boo ? :rExp : :rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
+		refR_int = disAgg_boo ? rExp_int : minimum([maximum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
         refLvl_tup = (refTs_int, refR_int)
     else
         refLvl_tup = nothing
@@ -262,7 +285,7 @@ function createCapaRestrMap!(t::Int,anyM::anyModel)
         # get respective carrier and their reference level
         carDis_tup = map(getfield(carGrp_ntup,side)) do x
                 carRow_ntup = anyM.cInfo[x]
-                return x, carRow_ntup.tsDis, getproperty(carRow_ntup,disAgg_boo ? :rExp : :rDis)
+                return x, carRow_ntup.tsDis, disAgg_boo ? balLvl_ntup.exp[2] : carRow_ntup.rDis
         end
 
         carConstr_arr = Tuple{Array{Int,1},Int,Int}[]
@@ -315,7 +338,7 @@ function createCapaRestrMap!(t::Int,anyM::anyModel)
             carRow_ntup = anyM.cInfo[x]
             # storage on carrier level, but at least on reference level, if region is disaggregated balance on expansion (which is at least lower)
             tsLvl_int = balLvl_ntup.ref != nothing ? max(balLvl_ntup.ref[1], carRow_ntup.tsDis) : carRow_ntup.tsDis
-            rLvl_int  = balLvl_ntup.ref != nothing ? max(balLvl_ntup.ref[2], getfield(carRow_ntup,disAgg_boo ? :rExp : :rDis)) : getfield(carRow_ntup,disAgg_boo ? :rExp : :rDis)
+            rLvl_int  = disAgg_boo ? balLvl_ntup.exp[2] : carRow_ntup.rDis |> (z -> balLvl_ntup.ref != nothing ? max(balLvl_ntup.ref[2], z) : z)
             if !isempty(stInVar_arr) push!(capaDispRestr_arr,("stIn", [x], tsLvl_int, rLvl_int)) end
             if !isempty(stOutVar_arr) push!(capaDispRestr_arr,("stOut", [x], tsLvl_int, rLvl_int)) end
             push!(capaDispRestr_arr,("stSize", [x], tsLvl_int, rLvl_int))

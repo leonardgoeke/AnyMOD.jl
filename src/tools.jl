@@ -158,21 +158,31 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSing::Bool = tru
 
 	# XXX get demand values
 	dem_df = copy(anyM.parts.bal.par[:dem].data)
-	dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, dem_df[!,:C])
+	if !isempty(dem_df)
+		dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, :C in names(dem_df) ? dem_df[!,:C] : filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx)))
 
-	# aggregates demand values
-	ts_dic = Dict(x => anyM.sets[:Ts].nodes[x].lvl == anyM.supTs.lvl ? x : getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(dem_df[!,:Ts_dis]))
-	allR_arr = unique(dem_df[!,:R_dis])
-	allLvlR_arr = unique(dem_df[!,:lvlR])
-	r_dic = Dict((x[1], x[2]) => getDescendants(x[1], anyM.sets[:R],false,x[2]) |> (y -> isempty(y) ? getAncestors(x[1],anyM.sets[:R],:int,x[2])[end] : y) for x in Iterators.product(allR_arr,allLvlR_arr))
+		# aggregates demand values
 
-	dem_df[!,:Ts_disSup] = map(x -> ts_dic[x],dem_df[!,:Ts_dis])
-	dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis,x.lvlR],eachrow(dem_df[!,[:R_dis,:lvlR]]))
-	dem_df = by(dem_df,[:Ts_disSup,:R_dis,:C],value = [:val] => x -> sum(x.val) / 1000)
-	dem_df[!,:Te] .= 0
-	dem_df[!,:variable] .= :demand
-	if wrtSing dem_df[!,:value] = dem_df[!,:value] .* -1 end
-	allData_df = vcat(allData_df,dem_df)
+		# artificially add dispatch dimensions, if none exist
+		if :Ts_dis in names(dem_df)
+			ts_dic = Dict(x => anyM.sets[:Ts].nodes[x].lvl == anyM.supTs.lvl ? x : getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(dem_df[!,:Ts_dis]))
+			dem_df[!,:Ts_disSup] = map(x -> ts_dic[x],dem_df[!,:Ts_dis])
+		else
+			dem_df[!,:Ts_disSup] .= anyM.supTs.step
+			dem_df = flatten(dem_df,:Ts_disSup)
+		end
+
+		allR_arr = :R_dis in names(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
+		allLvlR_arr = unique(dem_df[!,:lvlR])
+		r_dic = Dict((x[1], x[2]) => getDescendants(x[1], anyM.sets[:R],false,x[2]) |> (y -> isempty(y) ? getAncestors(x[1],anyM.sets[:R],:int,x[2])[end] : y) for x in Iterators.product(allR_arr,allLvlR_arr))
+		dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis,x.lvlR],eachrow(dem_df[!,[:R_dis,:lvlR]]))
+
+		dem_df = by(dem_df,[:Ts_disSup,:R_dis,:C],value = [:val] => x -> sum(x.val) / 1000)
+		dem_df[!,:Te] .= 0
+		dem_df[!,:variable] .= :demand
+		if wrtSing dem_df[!,:value] = dem_df[!,:value] .* -1 end
+		allData_df = vcat(allData_df,dem_df)
+	end
 
 	# XXX get expansion and capacity variables
 	for t in techIdx_arr
@@ -408,7 +418,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 
 			# gets resolution and adjusts add_df in case of an agggregated technology
 			add_df = select(filter(r -> r.C == c,anyM.parts.tech[x[1]].var[x[2]]),[:Ts_disSup,:Ts_dis,:R_dis,:var])
-			tRes_tup = anyM.parts.tech[x[1]].disAgg ? (cRes_tup[1], anyM.cInfo[c].rExp) : (cRes_tup[1], cRes_tup[2])
+			tRes_tup = anyM.parts.tech[x[1]].disAgg ? (cRes_tup[1], anyM.parts.tech[x[1]].balLvl.exp[2]) : (cRes_tup[1], cRes_tup[2])
 			checkTechReso!(tRes_tup,cBalRes_tup,add_df,anyM.sets)
 
 			# filter values based on filter function and minimum value reported
