@@ -426,23 +426,25 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	end
 
 	# XXX add import and export variables
-	exc_df = filterCarrier(anyM.parts.exc.var[:exc],relC_arr)
-	if :out in signVar
-		excFrom_df = by(filter(filterFunc,rename(copy(exc_df),:R_from => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis],value = [:var] => x -> value(sum(x.var)) * -1)
-		excFrom_df[!,:variable] .= :export
-		filter!(x -> abs(x.value) > minVal, excFrom_df)
-		if !isempty(excFrom_df)
-			allData_dic[:out] = vcat(allData_dic[:out],excFrom_df)
+    if :exc in keys(anyM.parts.exc.var)
+		exc_df = filterCarrier(anyM.parts.exc.var[:exc],relC_arr)
+		if :out in signVar
+			excFrom_df = by(filter(filterFunc,rename(copy(exc_df),:R_from => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis],value = [:var] => x -> value(sum(x.var)) * -1)
+			excFrom_df[!,:variable] .= :export
+			filter!(x -> abs(x.value) > minVal, excFrom_df)
+			if !isempty(excFrom_df)
+				allData_dic[:out] = vcat(allData_dic[:out],excFrom_df)
+			end
 		end
-	end
 
-	if :in in signVar
-		addLoss_df = rename(getExcLosses(convertExcCol(exc_df),anyM.parts.exc.par,anyM.sets),:R_b => :R_dis)
-		excTo_df = by(filter(filterFunc,addLoss_df), [:Ts_disSup,:Ts_dis,:R_dis],value = [:var,:loss] => x -> value(dot(x.var,(1 .- x.loss))))
-		excTo_df[!,:variable] .= :import
-		filter!(x -> abs(x.value) > minVal, excTo_df)
-		if !isempty(excTo_df)
-			allData_dic[:in] = vcat(allData_dic[:in],excTo_df)
+		if :in in signVar
+			addLoss_df = rename(getExcLosses(convertExcCol(exc_df),anyM.parts.exc.par,anyM.sets),:R_b => :R_dis)
+			excTo_df = by(filter(filterFunc,addLoss_df), [:Ts_disSup,:Ts_dis,:R_dis],value = [:var,:loss] => x -> value(dot(x.var,(1 .- x.loss))))
+			excTo_df[!,:variable] .= :import
+			filter!(x -> abs(x.value) > minVal, excTo_df)
+			if !isempty(excTo_df)
+				allData_dic[:in] = vcat(allData_dic[:in],excTo_df)
+			end
 		end
 	end
 
