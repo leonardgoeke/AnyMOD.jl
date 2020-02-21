@@ -24,7 +24,8 @@ function createOptModel!(anyM::anyModel)
     ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
 
     # creates dictionary that assigns combination of expansion region and dispatch level to dispatch region
-    allLvlR_arr = unique(union([getfield.(values(anyM.cInfo),x) for x in (:rDis, :rExp)]...))
+    allLvlR_arr = unique(getindex.(getfield.(getfield.(values(anyM.parts.tech),:balLvl),:exp),2))
+
     allRExp_arr = union([getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in allLvlR_arr]...)
     r_dic = Dict((x[1], x[2]) => getDescendants(x[1], anyM.sets[:R],false,x[2]) |> (y -> isempty(y) ? getAncestors(x[1],anyM.sets[:R],:int,x[2])[end] : y) |> (z -> typeof(z) <: Array ? z : [z]) for x in Iterators.product(allRExp_arr,allLvlR_arr))
 

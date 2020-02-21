@@ -221,8 +221,10 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 		rExpSpc_int = tryparse(Int,row_df[:region_expansion])
 
 		if !isnothing(rExpSpc_int)
-			if rExpSpc_int <= maximum(map(x -> anyM.cInfo[x].rDis,union(values(part.carrier)...)))
-				push!(anyM.report,(2,"technology mapping","expansion level","specific spatial expansion level provided for $(createFullString(t,anyM.sets[:Te])) is above dispatch level of one carrier and therefore could not be used"))
+			if rExpSpc_int < rExp_int
+				push!(anyM.report,(2,"technology mapping","expansion level","specific spatial expansion level provided for $(createFullString(t,anyM.sets[:Te])) is less detailed than default value obtained from carriers and therefore could not be used"))
+			elseif rExpSpc_int == rExp_int
+				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for $(createFullString(t,anyM.sets[:Te])) is equal to default value obtained from carriers"))
 			else
 				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for $(createFullString(t,anyM.sets[:Te])) was used instead of a carrier based value"))
 				rExp_int = rExpSpc_int
