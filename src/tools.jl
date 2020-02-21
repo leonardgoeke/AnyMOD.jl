@@ -148,10 +148,10 @@ end
 
 # <editor-fold desc="reporting of results"
 
-reportResults(reportType::Symbol,anyM::anyModel) = reportResults(Val{reportType}(),anyM::anyModel)
+reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{reportType}(),anyM::anyModel; kwargs...)
 
 # XXX summary of all capacity and dispatch results
-function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSing::Bool = true)
+function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true)
 
     techIdx_arr = collect(keys(anyM.parts.tech))
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
@@ -180,7 +180,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSing::Bool = tru
 		dem_df = by(dem_df,[:Ts_disSup,:R_dis,:C],value = [:val] => x -> sum(x.val) / 1000)
 		dem_df[!,:Te] .= 0
 		dem_df[!,:variable] .= :demand
-		if wrtSing dem_df[!,:value] = dem_df[!,:value] .* -1 end
+		if wrtSgn dem_df[!,:value] = dem_df[!,:value] .* -1 end
 		allData_df = vcat(allData_df,dem_df)
 	end
 
@@ -235,7 +235,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSing::Bool = tru
 		end
 
 		# adjust sign, if enabled
-		if wrtSing && va in (:use,:stIn,:stIntIn,:stExtIn,:crt,:trdSell) disp_df[!,:value] = disp_df[!,:value] .* -1 end
+		if wrtSgn && va in (:use,:stIn,:stIntIn,:stExtIn,:crt,:trdSell) disp_df[!,:value] = disp_df[!,:value] .* -1 end
 
 		allData_df = vcat(allData_df,disp_df)
 	end
@@ -248,7 +248,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSing::Bool = tru
 	    # compute export and import of each region, losses are considered at import
 	    excFrom_df = rename(by(allExc_df,[:Ts_disSup,:R_a,:C],value = [:var] => x -> value(sum(x.var))/1000),:R_a => :R_dis)
 	    excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
-		if wrtSing excFrom_df[!,:value] = excFrom_df[!,:value] .* -1 end
+		if wrtSgn excFrom_df[!,:value] = excFrom_df[!,:value] .* -1 end
 
 	    excTo_df = rename(by(allExc_df,[:Ts_disSup,:R_b,:C],value = [:var,:loss] => x -> value(dot(x.var,(1 .- x.loss)))/1000),:R_b => :R_dis)
 	    excTo_df[!,:variable] .= :import; excTo_df[!,:Te] .= 0
@@ -306,6 +306,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSing::Bool = tru
 		capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
 		allData_df = vcat(allData_df,capaCyc_df)
 	end
+	return allData_df
 
 	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_summary")
 end
