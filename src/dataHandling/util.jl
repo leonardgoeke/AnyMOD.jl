@@ -67,7 +67,7 @@ orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:T
 orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
 
 # XXX puts dataframes columns in consistent order
-orderDf(in_df::DataFrame) = select(in_df,orderDim(names(in_df),intCol(in_df)))
+orderDf(in_df::DataFrame) = select(in_df,orderDim(names(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
 
 # XXX writes all tuples occuring in a tuple of pairs and tuples
 mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  x
@@ -284,7 +284,8 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 		grp_df = groupby(DataFrame(val = findCol_arr, id = 1:length(findCol_arr)),:val)
 		dicVal_dic = Dict(x.val[1] => BitSet(sort(x[!,:id])) for x in grp_df) |> (dic -> Dict(x => union(map(y -> dic[y],collect(idxChild_dic[x]))...) for x in keys(idxChild_dic)))
 		# excludes column from search, if based on it, every entry in find could be aggregated to every row in search
-		if all(length.(values(dicVal_dic)) .== length(findCol_arr))
+		# (if this holds true for all columns, make an exception for the last one and dont remove it to, because otherwise correct aggregation cannot happen )
+		if all(length.(values(dicVal_dic)) .== length(findCol_arr)) && !(col == agg_tup[end] && length(chldRows) < 1)
 			select!(srcEtrAct_df,Not(col)); continue
 		else
 			chldRows[col] = dicVal_dic

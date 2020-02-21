@@ -224,6 +224,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal)
 
 	@threads for va in allKeys_arr
+
 		varToPart_dic = Dict(:exc => :exc, :crt => :bal,:trdSell => :trd, :trdBuy => :trd)
 
 		# obtain all variables relevant for limits
@@ -251,7 +252,11 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 			# try to aggregate variables to limits directly provided via inputs
 			limit_df = copy(par_obj.data)
-			limit_df[!,:var] = aggDivVar(grpVar_df, limit_df[!,Not(:val)], agg_tup, anyM.sets, aggFilt = agg_tup)
+			if size(limit_df,2) != 1
+				limit_df[!,:var] = aggDivVar(grpVar_df, limit_df[!,Not(:val)], agg_tup, anyM.sets, aggFilt = agg_tup)
+			else
+				limit_df[!,:var] .= sum(grpVar_df[!,:var])
+			end
 
 			# gets provided limit parameters, that no variables could assigned to so far and tests if via inheritance any could be assigned
 			mtcPar_arr, noMtcPar_arr  = findall(map(x -> x != AffExpr(),limit_df[!,:var])) |>  (x -> [x, setdiff(1:size(par_obj.data,1),x)])
@@ -264,8 +269,10 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 				aggPar_obj.data = matchSetParameter(grpVar_df[!,Not(:var)],aggPar_obj,anyM.sets, useNew = false)
 				# again performs aggregation for inherited parameter data and merges if original limits
 				aggLimit_df = copy(aggPar_obj.data)
-				aggLimit_df[!,:var]  = aggDivVar(grpVar_df, aggLimit_df, agg_tup, anyM.sets, aggFilt = agg_tup)
-				limit_df = vcat(limit_df,aggLimit_df)
+				if !isempty(aggLimit_df)
+					aggLimit_df[!,:var]  = aggDivVar(grpVar_df, aggLimit_df, agg_tup, anyM.sets, aggFilt = agg_tup)
+					limit_df = vcat(limit_df,aggLimit_df)
+				end
 			end
 
 			# merge limit constraint to other limits for the same variables
