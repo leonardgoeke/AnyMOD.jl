@@ -607,8 +607,8 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 
 		# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
 		ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:ava,info_ntup.capa)],sets_dic, newCol = :ava)[!,:ava]
-		if type_sym == :out
-			ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:effConv)],sets_dic,newCol = :eff)[!,:eff] .* ava_arr
+		if type_sym in (:out,:stOut)
+			ava_arr = matchSetParameter(allVar_df,part.par[type_sym == :out ? :effConv : :effStOut],sets_dic,newCol = :eff)[!,:eff] .* ava_arr
 		end
 		allVar_df[!,:var] = allVar_df[!,:var] .* 1 ./ ava_arr
 		# aggregate dispatch variables

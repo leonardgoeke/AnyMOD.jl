@@ -306,7 +306,6 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
 		allData_df = vcat(allData_df,capaCyc_df)
 	end
-	return allData_df
 
 	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_summary")
 end
