@@ -374,7 +374,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel)
 end
 
 # XXX print time series for in and out into seperate tables
-function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstackBoo::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3, mergeVar::Bool = true)
+function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstack::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3, mergeVar::Bool = true)
 
 	# XXX converts carrier named provided to index
 	node_arr = filter(x -> x.val == string(car_sym),collect(values(anyM.sets[:C].nodes)))
@@ -485,7 +485,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		# merges in and out files and writes to same csv file
 		data_df = vcat(values(allData_dic)...)
 
-		if unstackBoo && !isempty(data_df)
+		if unstack && !isempty(data_df)
 			data_df[!,:variable] = CategoricalArray(data_df[!,:variable])
 			data_df = unstack(data_df,:variable,:value)
 		end
@@ -495,7 +495,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		# loops over different signs and writes to different csv files
 		for signItr in signVar
 			data_df = allData_dic[signItr]
-			if unstackBoo && !isempty(data_df)
+			if unstack && !isempty(data_df)
 				data_df[!,:variable] = CategoricalArray(data_df[!,:variable])
 				data_df = unstack(data_df,:variable,:value)
 			end
