@@ -151,7 +151,7 @@ end
 reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{reportType}(),anyM::anyModel; kwargs...)
 
 # XXX summary of all capacity and dispatch results
-function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true)
+function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnDf = false)
 
     techIdx_arr = collect(keys(anyM.parts.tech))
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
@@ -308,10 +308,11 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	end
 
 	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_summary")
+	if rtnDf allData_df end
 end
 
 # XXX results for costs
-function reportResults(objGrp::Val{:costs},anyM::anyModel)
+function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnDf = false)
 	# prepare empty dataframe
 	allData_df = DataFrame(Ts_disSup = Int[], R = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
 
@@ -334,10 +335,11 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel)
 		allData_df = vcat(allData_df,cost_df[:,Not(:var)])
 	end
 	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_costs")
+	if rtnDf allData_df end
 end
 
 # XXX results for exchange
-function reportResults(objGrp::Val{:exchange},anyM::anyModel)
+function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnDf = false)
 	allData_df = DataFrame(Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc.var) error("No exchange data found") end
 
@@ -371,10 +373,11 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel)
 	# XXX merge and print all data
 	allData_df = vcat(exp_df,capa_df,disp_df,select(flh_df,Not([:capa,:disp])))
 	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_exchange")
+	if rtnDf allData_df end
 end
 
 # XXX print time series for in and out into seperate tables
-function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3, mergeVar::Bool = true)
+function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3, mergeVar::Bool = true, rtnDf = false)
 
 	# XXX converts carrier named provided to index
 	node_arr = filter(x -> x.val == string(car_sym),collect(values(anyM.sets[:C].nodes)))
@@ -512,16 +515,20 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 			printObject(data_df,anyM.sets,anyM.options, fileName = string("timeSeries_",car_sym,"_",signItr))
 		end
 	end
+
+	if rtnDf allData_df end
 end
 
 # XXX write dual values for constraint dataframe
-function reportDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x -> true, fileName = "")
+function reportDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x -> true, fileName = "", rtnDf = false)
 
     if !(:cns in names(cns_df)) error("No constraint column found!") end
     cns_df = copy(filter(filterFunc,cns_df))
     cns_df[!,:dual] = dual.(cns_df[!,:cns])
 
     printObject(select(cns_df,Not(:cns)),anyM.sets,anyM.options;fileName = string("dual",fileName != "" ? "_" : "",fileName))
+
+	if rtnDf allData_df end
 end
 
 # </editor-fold>
