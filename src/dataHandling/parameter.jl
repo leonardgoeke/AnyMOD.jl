@@ -40,11 +40,11 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:costExpStSize] = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
     parDef_dic[:costExpExc]    = (dim = (:Ts_expSup, :R_a, :R_b, :C),  defVal = nothing, herit = (:Ts_expSup => :up, :R_a => :avg_any, :R_b => :avg_any, :C => :up), part = :obj)
 
-    parDef_dic[:rateExpConv]   = (dim = (:Ts_expSup, :R_exp, :Te),     defVal = 0.03, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
-    parDef_dic[:rateExpStIn]   = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = 0.03, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
-    parDef_dic[:rateExpStOut]  = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = 0.03, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
-    parDef_dic[:rateExpStSize] = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = 0.03, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
-    parDef_dic[:rateExpExc]    = (dim = (:Ts_expSup, :R_a, :R_b, :C),  defVal = 0.03, herit = (:Ts_expSup => :up, :R_a => :avg_any, :R_b => :avg_any, :C => :up), part = :obj)
+    parDef_dic[:rateExpConv]   = (dim = (:Ts_expSup, :R_exp, :Te),     defVal = 0.02, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
+    parDef_dic[:rateExpStIn]   = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = 0.02, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
+    parDef_dic[:rateExpStOut]  = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = 0.02, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
+    parDef_dic[:rateExpStSize] = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = 0.02, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
+    parDef_dic[:rateExpExc]    = (dim = (:Ts_expSup, :R_a, :R_b, :C),  defVal = 0.02, herit = (:Ts_expSup => :up, :R_a => :avg_any, :R_b => :avg_any, :C => :up), part = :obj)
 
     parDef_dic[:costOprConv]   = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te),     defVal = nothing, herit = (:Ts_disSup => :up, :Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
     parDef_dic[:costOprStIn]   = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Ts_disSup => :up, :Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
@@ -163,6 +163,10 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:crtLow]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
     parDef_dic[:crtFix]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
 
+    parDef_dic[:lssUp]   =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
+    parDef_dic[:lssLow]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
+    parDef_dic[:lssFix]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
+
     parDef_dic[:trdBuyUp]   =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
     parDef_dic[:trdBuyLow]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any),  part = :lim)
     parDef_dic[:trdBuyFix]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any),  part = :lim)
@@ -215,6 +219,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     # XXX further dispatch properties
     parDef_dic[:dem]     =  (dim = (:Ts_dis, :R_dis, :C), defVal = 0.0, herit = (:Ts_dis => :avg_any, :R_dis  => :sum_any), part = :bal)
     parDef_dic[:costCrt] =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
+    parDef_dic[:costLss] = (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
 
     # trade (=sell or buy to an external market) parameters
     parDef_dic[:trdBuyPrc]   =   (dim = (:Ts_dis, :R_dis, :C, :id), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any), part = :trd)

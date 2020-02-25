@@ -109,7 +109,7 @@ function drawTree(tree_sym::Symbol, anyM::anyModel; args...)
 
     Tree_pl = gplot(Tree_gra, LocX_arr, LocY_arr, nodelabel=NodeLabel_arr, nodelabeldist=2, nodelabelangleoffset= π/4, NODELABELSIZE = opt[:labelsize], EDGELINEWIDTH=1, nodefillc = color_arr)
 
-    draw(SVG("$(anyM.options.outDir)/$(tree_sym).svg", 60cm, 60*opt[:ratio]cm), Tree_pl)
+    draw(SVG("$(anyM.options.outDir)/$(tree_sym)_$(options.outStamp).svg", 60cm, 60*opt[:ratio]cm), Tree_pl)
 end
 
 
@@ -217,7 +217,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	end
 
 	# XXX get dispatch variables
-	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :crt, :trdBuy, :trdSell)
+	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :crt, :lss, :trdBuy, :trdSell)
 		# get all variables, group them and get respective values
 		allVar_df = getAllVariables(va,anyM)
 		if isempty(allVar_df) continue end
@@ -374,7 +374,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel)
 end
 
 # XXX print time series for in and out into seperate tables
-function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstack::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3, mergeVar::Bool = true)
+function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3, mergeVar::Bool = true)
 
 	# XXX converts carrier named provided to index
 	node_arr = filter(x -> x.val == string(car_sym),collect(values(anyM.sets[:C].nodes)))
@@ -480,12 +480,21 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		allData_dic[:out] = vcat(allData_dic[:out],select(crt_df,Not(:C)))
 	end
 
+	# XXX add losted load
+	if :lss in keys(anyM.parts.bal.var)
+		lss_df = copy(relDim_df)
+		lss_df[!,:value] = value.(filterCarrier(anyM.parts.bal.var[:lss],relC_arr) |> (x -> aggUniVar(x,lss_df,agg_arr, cRes_tup,anyM.sets)))
+		lss_df[!,:variable] .= :lss
+		filter!(x -> abs(x.value) > minVal, lss_df)
+		allData_dic[:in] = vcat(allData_dic[:in],select(lss_df,Not(:C)))
+	end
+
 	# XXX unstack data and write to csv
 	if mergeVar
 		# merges in and out files and writes to same csv file
 		data_df = vcat(values(allData_dic)...)
 
-		if unstack && !isempty(data_df)
+		if unstck && !isempty(data_df)
 			data_df[!,:variable] = CategoricalArray(data_df[!,:variable])
 			data_df = unstack(data_df,:variable,:value)
 		end
@@ -495,7 +504,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		# loops over different signs and writes to different csv files
 		for signItr in signVar
 			data_df = allData_dic[signItr]
-			if unstack && !isempty(data_df)
+			if unstck && !isempty(data_df)
 				data_df[!,:variable] = CategoricalArray(data_df[!,:variable])
 				data_df = unstack(data_df,:variable,:value)
 			end

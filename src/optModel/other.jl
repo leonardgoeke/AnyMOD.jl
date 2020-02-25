@@ -53,17 +53,19 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	bal_tup = (:C,:Ts_dis)
 	agg_arr = [:Ts_dis, :R_dis, :C]
 
-	# <editor-fold desc="create potential curtailment variables
+	# <editor-fold desc="create potential curtailment and loss loss load variables
 
-	# get defined entries
-	varCrt_df = DataFrame()
-	for crtPar in intersect(keys(partBal.par),(:crtUp,:crtLow,:crtFix,:costCrt))
-		append!(varCrt_df,matchSetParameter(allDim_df,partBal.par[crtPar],anyM.sets)[!,Not(:val)])
-	end
+	for varType in (:crt,:lss)
+		# get defined entries
+		var_df = DataFrame()
+		for par in intersect(keys(partBal.par),vcat(varType == :crt ? :costCrt : :costLss, Symbol.(varType,[:Up,:Low,:Fix])...))
+			append!(var_df,matchSetParameter(copy(allDim_df),partBal.par[par],anyM.sets)[!,Not(:val)])
+		end
 
-	# obtain upper bound for variables and create them
-	if !isempty(varCrt_df)
-		partBal.var[:crt] = orderDf(createVar(varCrt_df,"crt",getUpBound(varCrt_df,anyM.options.bound.disp / anyM.options.scaFac.dispTrd,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispTrd))
+		# obtain upper bound for variables and create them
+		if !isempty(var_df)
+			partBal.var[varType] = orderDf(createVar(var_df,string(varType),getUpBound(var_df,anyM.options.bound.disp / anyM.options.scaFac.dispTrd,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispTrd))
+		end
 	end
 	# </editor-fold>
 
@@ -82,6 +84,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	end
 
 	if :crt in keys(anyM.parts.bal.var) append!(relC_arr,unique(anyM.parts.bal.var[:crt][!,:C])) end
+	if :lss in keys(anyM.parts.bal.var) append!(relC_arr,unique(anyM.parts.bal.var[:lss][!,:C])) end
 	if :trdSell in keys(anyM.parts.trd.var) append!(relC_arr,unique(anyM.parts.trd.var[:trdSell][!,:C])) end
 	if :trdBuy in keys(anyM.parts.trd.var) append!(relC_arr,unique(anyM.parts.trd.var[:trdBuy][!,:C])) end
 
@@ -110,10 +113,12 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 		cns_df[!,:techVar] = getTechEnerBal(c,subC_arr,src_df,techIdx_arr,anyM.parts.tech,anyM.cInfo,anyM.sets)
 
 		# add curtailment variables
-		if :crt in keys(partBal.var)
-			cns_df[!,:crtVar] = filterCarrier(partBal.var[:crt],subC_arr) |> (x -> aggUniVar(x,src_df,agg_arr, cRes_tup,anyM.sets))
-		else
-			cns_df[!,:crtVar] .= AffExpr()
+		for varType in (:crt,:lss)
+			if varType in keys(partBal.var)
+				cns_df[!,Symbol(varType,:Var)] = filterCarrier(partBal.var[varType],subC_arr) |> (x -> aggUniVar(x,src_df,agg_arr, cRes_tup,anyM.sets))
+			else
+				cns_df[!,Symbol(varType,:Var)] .= AffExpr()
+			end
 		end
 
 		# add trade variables
@@ -145,7 +150,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 
 		# prepare, scale and save constraints to dictionary
 		c_str = Symbol(anyM.sets[:C].nodes[c].val)
-		cns_df[!,:cnsExpr] = map(x -> x.techVar + x.excVar + x.trdVar - x.dem - x.crtVar, eachrow(cns_df))
+		cns_df[!,:cnsExpr] = map(x -> x.techVar + x.excVar + x.trdVar + x.lssVar - x.dem - x.crtVar, eachrow(cns_df))
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		filter!(x -> x.cnsExpr != AffExpr(),cns_df)
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)

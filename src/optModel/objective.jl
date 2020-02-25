@@ -174,14 +174,17 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 	end
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for variables costs")
 
-	# XXX add elements curtailment costs of energy carriers
-	if :crt in keys(anyM.parts.bal.var)
-		# compute discounted curtailment costs
-		allCrt_df = rename(matchSetParameter(anyM.parts.bal.var[:crt],anyM.parts.bal.par[:costCrt],anyM.sets,newCol = :costCrt),:var => :crt)
-		allCrt_df = matchSetParameter(rename(allCrt_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
-		# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
-		allCrt_df = by(allCrt_df, [:Ts_disSup,:R_exp,:C], expr = [:disFac,:crt,:costCrt] => x -> sum(x.disFac .* x.crt .* x.costCrt) ./ 1000.0)
-		transferCostEle!(allCrt_df, partObj,:costCrt,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng, NaN)
+	# XXX add elements for curtailment and loss of load costs of energy carriers
+	for varType in [:crt,:lss]
+		if varType in keys(anyM.parts.bal.var)
+			cost_sym = varType == :crt ? :costCrt : :costLss
+			# compute discounted curtailment costs
+			allVar_df = rename(matchSetParameter(copy(anyM.parts.bal.var[varType]),anyM.parts.bal.par[cost_sym],anyM.sets,newCol = :cost),:var => varType)
+			allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
+			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
+			allVar_df = by(allVar_df, [:Ts_disSup,:R_exp,:C], expr = [:disFac,varType,:cost] => x -> sum(x.disFac .* getfield(x,varType) .* x.cost) ./ 1000.0)
+			transferCostEle!(allVar_df, partObj,cost_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng, NaN)
+		end
 	end
 
 	# XXX add elements for trade costs of energy carriers (buy and sell)
