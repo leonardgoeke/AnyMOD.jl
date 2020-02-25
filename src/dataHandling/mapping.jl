@@ -199,6 +199,11 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
     # XXX determines resolution of expansion
     # determines carrier based expansion resolutions
+    if isempty(vcat(collect.(values(carGrp_ntup))...))
+		push!(anyM.report,(3,"technology mapping","carrier","for technology $(createFullString(t,anyM.sets[:Te])) no carriers were provided"))
+		return
+	end
+
 	tsExp_int = maximum(map(y -> getfield(anyM.cInfo[y],:tsExp), vcat(collect.(values(carGrp_ntup))...)))
 	rExp_int = maximum(map(y -> getfield(anyM.cInfo[y],:rExp), vcat(collect.(values(carGrp_ntup))...)))
 
