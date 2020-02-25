@@ -229,7 +229,6 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal)
 
 	@threads for va in allKeys_arr
-
 		varToPart_dic = Dict(:exc => :exc, :crt => :bal,:trdSell => :trd, :trdBuy => :trd)
 
 		# obtain all variables relevant for limits
@@ -248,7 +247,9 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 		for lim in varToPar_dic[va]
 			par_obj = copy(partLim.par[Symbol(va,lim)])
 			if va in (:capaExc,:commCapaExc)
-				par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_a => :R_b,:R_b => :R_a))
+				if :R_a in names(par_obj.data) && :R_b in names(par_obj.data)
+					par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_a => :R_b,:R_b => :R_a))
+				end
 			end
 			agg_tup = tuple(intCol(par_obj.data)...)
 
@@ -358,7 +359,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 			produceMessage(anyM.options,anyM.report, 3," - Created constraints for $(lim == :Up ? "upper" : (lim == :Low ? "lower" : "fixed")) limit of variable $va")
 		end
 		typeLim_sym = va in (:emission,) ? "term" : "variable"
-		produceMessage(anyM.options,anyM.report, 2," - Created constraints to limit $typeLim_sym $va")
+		produceMessage(anyM.options,anyM.report, 2," - Prepared constraints to limit $typeLim_sym $va")
 	end
 
 	# loops over stored constraints outside of threaded loop to create actual jump constraints

@@ -232,7 +232,9 @@ end
 # XXX obtain values for exchange losses
 function getExcLosses(exc_df::DataFrame,excPar_dic::Dict{Symbol,ParElement},sets_dic::Dict{Symbol,Tree})
 	lossPar_obj = copy(excPar_dic[:lossExc])
-	lossPar_obj.data = lossPar_obj.data |> (x -> vcat(x,rename(x,:R_a => :R_b, :R_b => :R_a)))
+	if :R_a in names(lossPar_obj.data) && :R_b in names(lossPar_obj.data)
+		lossPar_obj.data = lossPar_obj.data |> (x -> vcat(x,rename(x,:R_a => :R_b, :R_b => :R_a)))
+	end
 	excLoss_df = matchSetParameter(exc_df,lossPar_obj,sets_dic,newCol = :loss)
 
 	# overwrite symmetric losses with any directed losses provided
