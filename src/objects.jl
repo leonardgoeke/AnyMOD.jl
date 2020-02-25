@@ -160,6 +160,9 @@ end
 
 # <editor-fold desc="options for model and model itself"
 
+# create abstract model object to reference before creation (avoid circular type definiton)
+abstract type AbstractModel end
+
 # XXX defines final model object and its options
 struct modOptions
 	# data in- and output
@@ -187,8 +190,105 @@ struct modOptions
 	startTime::DateTime
 end
 
+# XXX flow graph object that defines relations between technologies and carriers (and among carriers)
+struct flowGraph
+	nodeC::Dict{Int64,Int64}
+	nodeTe::Dict{Int64,Int64}
+	edgeC::Array{Pair{Int,Int},1}
+	edgeTe::Array{Pair{Int,Int},1}
+
+	function flowGraph(anyM::AbstractModel)
+
+		# creates dictionary mapping carrier id to node id
+		nodeC_dic = Dict(x[2] => x[1] for x in enumerate(sort(filter(x -> x != 0,getfield.(collect(values(anyM.sets[:C].nodes)),:idx)))))
+
+		# get all relevant technology, a technology is not relevant, where all children of a parent have the same carriers (in this case only the parent is relevant)
+		t_tree = anyM.sets[:Te]
+
+		allTech_arr =  getfield.(collect(values(t_tree.nodes)),:idx)
+		tleaf_dic = Dict(x => unique(filter(y -> y in keys(anyM.parts.tech), [x,getDescendants(x,t_tree,true)...])) for x in allTech_arr)
+		relTech_arr = Array{Int,1}()
+
+		for t in keys(tleaf_dic)
+		    subCar_arr = map(y -> anyM.parts.tech[y].carrier,tleaf_dic[t])
+		    if length(unique(subCar_arr)) == 1
+		        push!(relTech_arr,t)
+		    else
+		        append!(relTech_arr,collect(tleaf_dic[t]))
+		    end
+		end
+
+		# creates dictionary mapping each relevant id to node id
+		nodeTe_dic = Dict(x[2] => x[1] + length(nodeC_dic) for x in enumerate(filter(x -> isempty(intersect(getAncestors(x,t_tree,:int),relTech_arr)),unique(relTech_arr))))
+
+		# creates edges between technologies
+		edgeTe_arr = Array{Pair{Int,Int},1}()
+
+		for t in keys(nodeTe_dic)
+		    gotTech_boo = false; tItr = t
+		    while !gotTech_boo
+		        if tItr in keys(anyM.parts.tech)
+		            gotTech_boo = true
+		        else
+		            tItr = intersect(getDescendants(t,anyM.sets[:Te],true),keys(anyM.parts.tech))[1]
+		        end
+		    end
+
+		    car_ntup = anyM.parts.tech[tItr].carrier
+
+		    for cIn in map(x -> getfield(car_ntup,x),intersect(keys(car_ntup),(:use,:stExtIn))) |> (y -> isempty(y) ? y : union(y...))
+		        push!(edgeTe_arr, nodeC_dic[cIn] => nodeTe_dic[t])
+		    end
+
+		    for cOut in map(x -> getfield(car_ntup,x),intersect(keys(car_ntup),(:gen,:stExtOut))) |> (y -> isempty(y) ? y : union(y...))
+		        push!(edgeTe_arr, nodeTe_dic[t] => nodeC_dic[cOut])
+		    end
+		end
+
+		# creates edges between carriers
+		edgeC_arr = Array{Pair{Int,Int},1}()
+
+		for c in keys(nodeC_dic)
+		    for cChild in anyM.sets[:C].nodes[c].down
+		        push!(edgeC_arr, nodeC_dic[cChild] => nodeC_dic[c])
+		    end
+		end
+
+		return new(nodeC_dic,nodeTe_dic,edgeTe_arr,edgeC_arr)
+	end
+end
+
+# XXX specific information for graphical evaluation
+mutable struct graInfo
+	graph::flowGraph
+	names::Dict{String,String}
+	colors::Dict{String,Tuple{Float64,Float64,Float64}}
+
+	function graInfo(anyM::AbstractModel)
+		# create default options for names and colors
+
+		graph_obj = flowGraph(anyM)
+
+		# specificy some default names and colors used in visualisations
+		namesDef_arr = ["coalPlant" => "coal power plant", "gasPlant" => "gas plant", "districtHeat" => "district heat", "naturalGas" => "natural gas", "synthGas" => "synthetic gas", "fossilGas" => "fossil gas"]
+
+		# create dictionary assigning internal model names to names used within visualisations
+		allVal_arr = unique(vcat(map(x -> getfield.(values(anyM.sets[x].nodes),:val) ,collect(keys(anyM.sets)))...))
+		names_dic = setdiff(allVal_arr,getindex.(namesDef_arr,1))  |> (z -> Dict(vcat(namesDef_arr,Pair.(z,z))))
+
+		# define default colors for default energy carriers
+		colorsCar_arr = ["electricity" => (1.0, 0.9215, 0.2313),"heat" => (0.769,0.176,0.290),"districtHeat" => (0.6,0.0,0.169), "gas" => (1.0,0.416,0.212),
+									"naturalGas" => (1.0,0.506,0.294),"fossilGas" => (0.898,0.259,0.075), "synthGas" => (0.235,0.506,0.325), "hydrogen" => (0.329,0.447,0.827),
+													"coal" => (0.459,0.286,0.216),"biomass" => (0.682,0.898,0.443),"bioGas" => (0.682,0.898,0.443)]
+
+		colors_dic = setdiff(getfield.(values(anyM.sets[:C].nodes),:val),getindex.(colorsCar_arr,1)) |> (z -> Dict(vcat(colorsCar_arr,Pair.(z,fill((0.85,0.85,0.85),length(z))))))
+
+		return new(graph_obj,names_dic,colors_dic)
+	end
+end
+
 # XXX finally, the model object itself
-mutable struct anyModel
+mutable struct anyModel <: AbstractModel
 
 	options::modOptions
 	report::Array{Tuple,1}
@@ -200,6 +300,8 @@ mutable struct anyModel
 
 	sets::Dict{Symbol,Tree}
 	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Int,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
+
+	graInfo::graInfo
 
 	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decomm = :recomm, interCapa = :linear, supTsLvl = 0, shortExp = 10, emissionLoss = true,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)),
@@ -254,6 +356,9 @@ mutable struct anyModel
 		# XXX assign parameters to model parts
 		parDef_dic = parameterToParts!(paraTemp_dic, techIdx_arr, anyM)
 		produceMessage(anyM.options,anyM.report, 2," - Assigned parameter data to model parts")
+
+		# XXX create object for data visualization
+		anyM.graInfo = graInfo(anyM)
 
 		produceMessage(anyM.options,anyM.report, 1," - Prepared creation of optimzation model")
 		# </editor-fold>
