@@ -57,7 +57,12 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		if !(costPar_sym in parObj_arr) continue end
 
 		# get all variables
-		allExp_df = rename(getAllVariables(var_sym,anyM),:var => :exp)
+        allExp_df = getAllVariables(var_sym,anyM)
+		if isempty(allExp_df)
+			continue
+		else
+			allExp_df = rename(allExp_df,:var => :exp)
+		end
 
 		# add economic lifetime to table where it is defined
 		if Symbol(:lifeEco,va) in parObj_arr
@@ -79,14 +84,23 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		else
 			lifePar_obj = anyM.parts.exc.par[:lifeExc]
 		end
-
 		techLife_df = matchSetParameter(filter(x -> isnothing(x.life),allExp_df)[!,Not(:life)],lifePar_obj,anyM.sets,newCol = :life)
 		allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),allExp_df))
 
 		# gets expansion costs and interest reat to compute annuity
 		allExp_df = matchSetParameter(convertExcCol(allExp_df),partObj.par[costPar_sym],anyM.sets,newCol = :costExp)
-		allExp_df = matchSetParameter(allExp_df,partObj.par[Symbol(:rateExp,va)],anyM.sets,newCol = :rate)
-		allExp_df[!,:costAnn] = map(x -> x.costExp * (x.rate * (1 + x.rate)^x.life) / ((1 + x.rate)^x.life-1), eachrow(allExp_df))
+
+		# uses tech specific discount rate and fall back on rate as default
+		if Symbol(:rateExp,va) in keys(partObj.par)
+			techRate_df = matchSetParameter(allExp_df,partObj.par[Symbol(:rateExp,va)],anyM.sets,newCol = :rate)
+		else
+			techRate_df = filter(x -> false,allExp_df); techRate_df[!,:rate] .= Float64[]
+		end
+		generRate_df = matchSetParameter(rename(join(allExp_df,techRate_df,on = intCol(techRate_df), kind = :anti), :Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup),partObj.par[:rateDisc],anyM.sets,newCol = :rate)
+		allExp_df = vcat(techRate_df,rename(generRate_df, :Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup))
+
+		# compute annuity costs
+		allExp_df[!,:costAnn] = map(x -> x.costExp * (x.rate == 0.0 ? 1/x.life : (x.rate * (1 + x.rate)^x.life) / ((1 + x.rate)^x.life-1)), eachrow(allExp_df))
 		select!(allExp_df,Not([:costExp,:life,:rate]))
 		allExp_df = flatten(allExp_df,:Ts_disSup)
 
@@ -163,6 +177,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		else
 			allDisp_df = matchSetParameter(allDisp_df,anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
 		end
+		if isempty(allDisp_df) continue end
 
 		# renames dispatch regions to enable join with discount factors
 		if va != :exc rename!(allDisp_df,:R_dis => :R_exp) end

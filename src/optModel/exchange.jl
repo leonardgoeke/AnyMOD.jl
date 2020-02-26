@@ -19,7 +19,7 @@ function prepareExcExpansion!(partExc::OthPart,partLim::OthPart,prepExc_dic::Dic
 		append!(exExp_df,matchSetParameter(potExc_df,partExc.par[excPar],anyM.sets)[!,[:R_a,:R_b,:C]])
 	end
 
-	for excPar in intersect((:capaExcUp, :capaExcLow, :capaExFix, :expExcUp, :expExcLow, :expExcFix),keys(partLim.par))
+	for excPar in intersect((:capaExcUp, :capaExcLow, :capaExcFix, :expExcUp, :expExcLow, :expExcFix),keys(partLim.par))
 		append!(exExp_df,matchSetParameter(potExc_df,partLim.par[excPar],anyM.sets)[!,[:R_a,:R_b,:C]])
 	end
 

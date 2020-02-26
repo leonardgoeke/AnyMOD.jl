@@ -76,7 +76,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 
 	# if demand does not specific a carrier, it is assumed all carriers are relevant
 	if !isempty(anyM.parts.bal.par[:dem].data)
-		if :C in unique(anyM.parts.bal.par[:dem].data[!,:C])
+		if :C in names(anyM.parts.bal.par[:dem].data)
 			append!(relC_arr,unique(anyM.parts.bal.par[:dem].data[!,:C]))
 		else
 			append!(relC_arr,c_arr)
@@ -246,10 +246,8 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 		# XXX loop over respective type of limits to obtain data
 		for lim in varToPar_dic[va]
 			par_obj = copy(partLim.par[Symbol(va,lim)])
-			if va in (:capaExc,:commCapaExc)
-				if :R_a in names(par_obj.data) && :R_b in names(par_obj.data)
-					par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_a => :R_b,:R_b => :R_a))
-				end
+			if va in (:capaExc,:commCapaExc) && :R_a in names(par_obj.data) && :R_b in names(par_obj.data)
+				par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_a => :R_b,:R_b => :R_a))
 			end
 			agg_tup = tuple(intCol(par_obj.data)...)
 
