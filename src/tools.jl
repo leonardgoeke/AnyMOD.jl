@@ -172,6 +172,8 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 			dem_df = flatten(dem_df,:Ts_disSup)
 		end
 
+		dem_df[!,:val] = dem_df[!,:val]	.* getResize(dem_df,anyM.sets[:Ts],anyM.supTs)
+
 		allR_arr = :R_dis in names(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
 		allLvlR_arr = unique(dem_df[!,:lvlR])
 		r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl <= x[2] ? getDescendants(x[1], anyM.sets[:R],false,x[2]) : getAncestors(x[1],anyM.sets[:R],:int,x[2])[end]) for x in Iterators.product(allR_arr,allLvlR_arr))
