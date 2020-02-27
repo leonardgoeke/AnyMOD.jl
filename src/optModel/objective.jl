@@ -90,13 +90,21 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		# gets expansion costs and interest reat to compute annuity
 		allExp_df = matchSetParameter(convertExcCol(allExp_df),partObj.par[costPar_sym],anyM.sets,newCol = :costExp)
 
-		# uses tech specific discount rate and fall back on rate as default
+		# uses tech specific discount rate and fall back on general discount rate as default
 		if Symbol(:rateExp,va) in keys(partObj.par)
 			techRate_df = matchSetParameter(allExp_df,partObj.par[Symbol(:rateExp,va)],anyM.sets,newCol = :rate)
 		else
 			techRate_df = filter(x -> false,allExp_df); techRate_df[!,:rate] .= Float64[]
 		end
-		generRate_df = matchSetParameter(rename(join(allExp_df,techRate_df,on = intCol(techRate_df), kind = :anti), :Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup),partObj.par[:rateDisc],anyM.sets,newCol = :rate)
+		# obtains general discount rate
+		generRate_df = rename(join(allExp_df,techRate_df,on = intCol(techRate_df), kind = :anti),:Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup)
+		if va != :Exc
+			generRate_df = matchSetParameter(generRate_df, partObj.par[:rateDisc],anyM.sets,newCol = :rate)
+		else
+			rateB_arr = matchSetParameter(rename(generRate_df,:R_a => :R_exp), partObj.par[:rateDisc],anyM.sets,newCol = :rateA)[!,:rateA]
+			rateA_arr = matchSetParameter(rename(generRate_df,:R_b => :R_exp), partObj.par[:rateDisc],anyM.sets,newCol = :rateB)[!,:rateB]
+			generRate_df[!,:rate] = 0.5 .* (rateA_arr .+ rateB_arr)
+		end
 		allExp_df = vcat(techRate_df,rename(generRate_df, :Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup))
 
 		# compute annuity costs
