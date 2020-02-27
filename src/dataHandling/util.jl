@@ -377,7 +377,7 @@ function checkResiCapa(var_sym::Symbol, stockCapa_df::DataFrame, part::AbstractM
 end
 
 # XXX get a dataframe with all variable of the specified type
-function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> true)
+function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, filterFunc::Function = x -> true)
 
 	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :expExc => :exc, :crt => :bal, :lss => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
 	techIdx_arr = collect(keys(anyM.parts.tech))
@@ -456,6 +456,10 @@ function getAllVariables(va::Symbol,anyM::anyModel; filterFunc::Function = x -> 
 		allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)
 		allVar_df[!,:var] = allVar_df[!,:val]  ./ 1e6 .* allVar_df[!,:var]
 		select!(allVar_df,Not(:val))
+	end
+
+	if !(va in (:capaConv,:capaStIn,:capaStOut,:capaStSize,:commCapaConv,:commCapaStIn,:commCapaStOut,:commCapaStSize,:expConv,:expStIn,:expStOut,:expStSize)) && !isempty(allVar_df) && reflectRed
+		allVar_df[!,:var] .= allVar_df[!,:var] .* 1/anyM.options.redStep
 	end
 
 	return filter(filterFunc,allVar_df)
