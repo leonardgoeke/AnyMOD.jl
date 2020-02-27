@@ -602,8 +602,9 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
 
     # directly returns default values if no data was provided for the parameter
     if isempty(par_obj.data) || length(names(par_obj.data)) == 1
-        srcSetIn_df[!,newCol] = fill(isempty(par_obj.data) ? par_obj.defVal : par_obj.data[1,:val],size(srcSetIn_df,1))
-        return srcSetIn_df
+        paraMatch_df = copy(srcSetIn_df)
+        paraMatch_df[!,newCol] = fill(isempty(par_obj.data) ? par_obj.defVal : par_obj.data[1,:val],size(paraMatch_df,1))
+        return paraMatch_df
     end
 
     searchCol_arr = names(srcSetIn_df)

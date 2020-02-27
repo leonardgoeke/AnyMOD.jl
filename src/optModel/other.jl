@@ -59,7 +59,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 		# get defined entries
 		var_df = DataFrame()
 		for par in intersect(keys(partBal.par),vcat(varType == :crt ? :costCrt : :costLss, Symbol.(varType,[:Up,:Low,:Fix])...))
-			append!(var_df,matchSetParameter(copy(allDim_df),partBal.par[par],anyM.sets)[!,Not(:val)])
+			append!(var_df,matchSetParameter(allDim_df,partBal.par[par],anyM.sets)[!,Not(:val)])
 		end
 
 		# obtain upper bound for variables and create them

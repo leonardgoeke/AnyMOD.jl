@@ -194,7 +194,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		if varType in keys(anyM.parts.bal.var)
 			cost_sym = varType == :crt ? :costCrt : :costLss
 			# compute discounted curtailment costs
-			allVar_df = rename(matchSetParameter(copy(anyM.parts.bal.var[varType]),anyM.parts.bal.par[cost_sym],anyM.sets,newCol = :cost),:var => varType)
+			allVar_df = rename(matchSetParameter(anyM.parts.bal.var[varType],anyM.parts.bal.par[cost_sym],anyM.sets,newCol = :cost),:var => varType)
 			allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
 			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
 			allVar_df = by(allVar_df, [:Ts_disSup,:R_exp,:C], expr = [:disFac,varType,:cost] => x -> sum(x.disFac .* getfield(x,varType) .* x.cost) ./ 1000.0)
