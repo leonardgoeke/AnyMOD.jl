@@ -498,10 +498,11 @@ function createStBal(part::TechPart,anyM::anyModel)
 		end
 
 		# XXX adds further parameters that depend on the carrier specified in storage level (superordinate or the same as dispatch carriers)
+		sca_arr = getResize(cnsC_df,anyM.sets[:Ts],anyM.supTs)
 
 		# add discharge parameter, if defined
 		if :stDis in keys(part.par)
-			sca_arr = getResize(cnsC_df,anyM.sets[:Ts],anyM.supTs); part.par[:stDis].defVal = 0.0
+			part.par[:stDis].defVal = 0.0
 			cnsC_df = matchSetParameter(cnsC_df,part.par[:stDis],anyM.sets)
 			cnsC_df[!,:stDis] =  1 ./ ((1 .- cnsC_df[!,:val]) .^ sca_arr)
 			select!(cnsC_df,Not(:val))
@@ -514,7 +515,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 			part.par[:stInflow].defVal = 0.0
 			cnsC_df = matchSetParameter(cnsC_df,part.par[:stInflow],anyM.sets, newCol = :stInflow)
 			if !isempty(part.modes)
-            	cnsC_df[!,:stInflow] = cnsC_df[!,:stInflow] ./ length(part.modes)
+            	cnsC_df[!,:stInflow] = cnsC_df[!,:stInflow] ./ length(part.modes) .* sca_arr
 			end
 		else
 			cnsC_df[!,:stInflow] .= 0.0
