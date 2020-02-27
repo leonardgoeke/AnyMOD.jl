@@ -114,8 +114,8 @@ end
 
 
 # XXX prints dataframe to csv file
-function printObject(print_df::DataFrame,sets::Dict{Symbol,Tree},options::modOptions; fileName::String = "", filterFunc::Function = x -> true)
-	# initialize
+function printObject(print_df::DataFrame,sets::Dict{Symbol,Tree},options::modOptions; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true)
+
 	colNam_arr = names(print_df)
     cntCol_int = size(colNam_arr,1)
 
@@ -142,8 +142,11 @@ function printObject(print_df::DataFrame,sets::Dict{Symbol,Tree},options::modOpt
 																:cns => :constraint, :var => :variable)
 
 	rename!(print_df,map(x -> x in keys(colName_dic) ? colName_dic[x] : x, names(print_df)) )
+	if :csv in rtnDf
+    	CSV.write("$(options.outDir)/$(fileName)_$(options.outStamp).csv",  print_df)
+	end
 
-    CSV.write("$(options.outDir)/$(fileName)_$(options.outStamp).csv",  print_df)
+	if :csvDf in rtnDf return print_df end
 end
 
 # <editor-fold desc="reporting of results"
@@ -151,7 +154,7 @@ end
 reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{reportType}(),anyM::anyModel; kwargs...)
 
 # XXX summary of all capacity and dispatch results
-function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnDf = false)
+function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
     techIdx_arr = collect(keys(anyM.parts.tech))
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
@@ -309,11 +312,25 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		allData_df = vcat(allData_df,capaCyc_df)
 	end
 
-	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_summary")
+	# return dataframes and write csv files based on specified inputs
+	if :csv in rtnOpt || :csvDf in rtnOpt
+		csvData_df = printObject(allData_df,anyM.sets,anyM.options, fileName = "results_summary",rtnDf = rtnOpt)
+	end
+
+	if :raw in rtnOpt
+		CSV.write("$(anyM.options.outDir)/results_summary_$(anyM.options.outStamp).csv", allData_df)
+	end
+
+	if :rawDf in rtnOpt && :csvDf in rtnOpt
+		return allData_df, csvData_df
+	else
+		if :rawDf in rtnOpt return allData_df end
+		if :csvDf in rtnOpt return csvData_df end
+	end
 end
 
 # XXX results for costs
-function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnDf = false)
+function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 	# prepare empty dataframe
 	allData_df = DataFrame(Ts_disSup = Int[], R = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
 
@@ -335,12 +352,26 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnDf = false)
 		cost_df[:,:value] = value.(cost_df[:,:var])
 		allData_df = vcat(allData_df,cost_df[:,Not(:var)])
 	end
-	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_costs")
-	if rtnDf allData_df end
+
+	# return dataframes and write csv files based on specified inputs
+	if :csv in rtnOpt || :csvDf in rtnOpt
+		csvData_df = printObject(allData_df,anyM.sets,anyM.options, fileName = "results_costs", rtnDf = rtnOpt)
+	end
+
+	if :raw in rtnOpt
+		CSV.write("$(anyM.options.outDir)/results_costs_$(anyM.options.outStamp).csv", allData_df)
+	end
+
+	if :rawDf in rtnOpt && :csvDf in rtnOpt
+		return allData_df, csvData_df
+	else
+		if :rawDf in rtnOpt return allData_df end
+		if :csvDf in rtnOpt return csvData_df end
+	end
 end
 
 # XXX results for exchange
-function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnDf = false)
+function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 	allData_df = DataFrame(Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc.var) error("No exchange data found") end
 
@@ -373,12 +404,26 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnDf = false)
 
 	# XXX merge and print all data
 	allData_df = vcat(exp_df,capa_df,disp_df,select(flh_df,Not([:capa,:disp])))
-	printObject(allData_df,anyM.sets,anyM.options, fileName = "results_exchange")
-	if rtnDf allData_df end
+
+	# return dataframes and write csv files based on specified inputs
+	if :csv in rtnOpt || :csvDf in rtnOpt
+		csvData_df = printObject(allData_df,anyM.sets,anyM.options, fileName = "results_exchange", rtnDf = rtnOpt)
+	end
+
+	if :raw in rtnOpt
+		CSV.write("$(anyM.options.outDir)/results_exchange_$(anyM.options.outStamp).csv", allData_df)
+	end
+
+	if :rawDf in rtnOpt && :csvDf in rtnOpt
+		return allData_df, csvData_df
+	else
+		if :rawDf in rtnOpt return allData_df end
+		if :csvDf in rtnOpt return csvData_df end
+	end
 end
 
 # XXX print time series for in and out into seperate tables
-function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3, mergeVar::Bool = true, rtnDf = false)
+function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3, mergeVar::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
 	# XXX converts carrier named provided to index
 	node_arr = filter(x -> x.val == string(car_sym),collect(values(anyM.sets[:C].nodes)))
@@ -503,7 +548,13 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 			data_df = unstack(data_df,:variable,:value)
 		end
 
-		printObject(data_df,anyM.sets,anyM.options, fileName = string("timeSeries_",car_sym,))
+		if :csv in rtnOpt || :csvDf in rtnOpt
+			csvData_df = printObject(data_df,anyM.sets,anyM.options, fileName = string("timeSeries_",car_sym,), rtnDf = rtnOpt)
+		end
+
+		if :raw in rtnOpt
+			CSV.write("$(anyM.options.outDir)/$(string("timeSeries_",car_sym,))_$(anyM.options.outStamp).csv", data_df)
+		end
 	else
 		# loops over different signs and writes to different csv files
 		for signItr in signVar
@@ -513,23 +564,47 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 				data_df = unstack(data_df,:variable,:value)
 			end
 
-			printObject(data_df,anyM.sets,anyM.options, fileName = string("timeSeries_",car_sym,"_",signItr))
+			if :csv in rtnOpt || :csvDf in rtnOpt
+				csvData_df = printObject(data_df,anyM.sets,anyM.options, fileName = string("timeSeries_",car_sym,"_",signItr), rtnDf = rtnOpt)
+			end
+
+			if :raw in rtnOpt
+				CSV.write("$(anyM.options.outDir)/$(string("timeSeries_",car_sym,"_",signItr))_$(anyM.options.outStamp).csv", data_df)
+			end
 		end
 	end
 
-	if rtnDf allData_df end
+	# return dataframes based on specified inputs
+	if :rawDf in rtnOpt && :csvDf in rtnOpt
+		return data_df, csvData_df
+	else
+		if :rawDf in rtnOpt return data_df end
+		if :csvDf in rtnOpt return csvData_df end
+	end
 end
 
 # XXX write dual values for constraint dataframe
-function reportDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x -> true, fileName = "", rtnDf = false)
+function reportDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x -> true, fileName::String = "", rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
     if !(:cns in names(cns_df)) error("No constraint column found!") end
     cns_df = copy(filter(filterFunc,cns_df))
     cns_df[!,:dual] = dual.(cns_df[!,:cns])
 
-    printObject(select(cns_df,Not(:cns)),anyM.sets,anyM.options;fileName = string("dual",fileName != "" ? "_" : "",fileName))
+	if :csv in rtnOpt || :csvDf in rtnOpt
+    	csvData_df = printObject(select(cns_df,Not(:cns)),anyM.sets,anyM.options;fileName = string("dual",fileName != "" ? "_" : "",fileName), rtnDf = rtnOpt)
+	end
 
-	if rtnDf allData_df end
+	if :rawDf in rtnOpt
+		CSV.write("$(anyM.options.outDir)/$(string("dual",fileName != "" ? "_" : "",fileName))_$(anyM.options.outStamp).csv", data_df)
+	end
+
+	# return dataframes based on specified inputs
+	if :rawDf in rtnOpt && :csvDf in rtnOpt
+		return select(cns_df,Not(:cns)), csvData_df
+	else
+		if :rawDf in rtnOpt return data_df end
+		if :csvDf in rtnOpt return csvData_df end
+	end
 end
 
 # </editor-fold>
