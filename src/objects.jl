@@ -192,11 +192,12 @@ struct modOptions
 end
 
 # XXX flow graph object that defines relations between technologies and carriers (and among carriers)
-struct flowGraph
+mutable struct flowGraph
 	nodeC::Dict{Int64,Int64}
 	nodeTe::Dict{Int64,Int64}
 	edgeC::Array{Pair{Int,Int},1}
 	edgeTe::Array{Pair{Int,Int},1}
+	nodePos::Dict{Int,Array{Float64,1}}
 
 	function flowGraph(anyM::AbstractModel)
 
@@ -265,13 +266,14 @@ mutable struct graInfo
 	names::Dict{String,String}
 	colors::Dict{String,Tuple{Float64,Float64,Float64}}
 
+
 	function graInfo(anyM::AbstractModel)
 		# create default options for names and colors
-
 		graph_obj = flowGraph(anyM)
 
 		# specificy some default names and colors used in visualisations
-		namesDef_arr = ["coalPlant" => "coal power plant", "gasPlant" => "gas plant", "districtHeat" => "district heat", "naturalGas" => "natural gas", "synthGas" => "synthetic gas", "fossilGas" => "fossil gas"]
+		namesDef_arr = ["coalPlant" => "coal power plant", "gasPlant" => "gas plant", "districtHeat" => "district heat", "naturalGas" => "natural gas", "synthGas" => "synthetic gas", "fossilGas" => "fossil gas", 
+									"demand" => "final demand", "export" => "export", "import" => "import", "crt" => "curtailment", "lss" => "loss of load", "trdSell" => "trade sell", "trdBuy" => "trade buy"]
 
 		# create dictionary assigning internal model names to names used within visualisations
 		allVal_arr = unique(vcat(map(x -> getfield.(values(anyM.sets[x].nodes),:val) ,collect(keys(anyM.sets)))...))

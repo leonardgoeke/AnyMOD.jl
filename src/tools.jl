@@ -26,93 +26,6 @@ function printIIS(anyM::anyModel)
     end
 end
 
-# XXX plots tree graph for input set
-"""
-    drawNodeTree(Tree_df::DataFrame, options::modOptions; args...)
-Draw a tree for all nodes provided by the set data frame and copies it to the output directory defined within options.
-
-# Options and default values:
-- `trans = 4.5`
-    - Controls fading of color going further down the tree.
-- `wide = fill(1.0,maximum(Tree_df[!,:lvl]))`
-    - Ratio of distances between nodes that have and do not have the same parent (separate on each level).
-- `labelsize = 7`
-    - Size of labels in graph.
-- `ratio = 1.0`
-	- Aspect ratio of output graph.
-"""
-function drawTree(tree_sym::Symbol, anyM::anyModel; args...)
-
-	name_dic = Dict(:region => :R,:timestep => :Ts,:carrier => :C,:tech => :Te)
-
-	# convert tree object into a data frame
-	treeObj = anyM.sets[name_dic[tree_sym]]
-	data_arr = filter(x -> x.idx != 0,collect(values(treeObj.nodes))) |> (y -> map(x -> getfield.(y,x),(:idx,:val,:lvl,:down,:subIdx)))
-	tree_df = DataFrame(idx = data_arr[1], val = data_arr[2], lvl =  data_arr[3], down = data_arr[4], subIdx = data_arr[5], up =map(x -> treeObj.up[x],data_arr[1]))
-
-	# sets options
-	col_dic = Dict(:region => (0.251,0.388,0.847),:timestep => (0.133, 0.545, 0.133),:carrier => (0.584, 0.345, 0.698),:tech => (0.796,0.235,0.2))
-	defOpt_ntup = Dict(:trans => 4.5, :wide => fill(1.0,maximum(tree_df[!,:lvl])), :labelsize => 7, :ratio => 1.0)
-	opt = merge(args,Dict(x => defOpt_ntup[x] for x in filter(x -> !(x in keys(args)), collect(keys(defOpt_ntup)))))
-
-	# adds a new dummy top node
-	push!(tree_df,(0,"",0,treeObj.nodes[0].down ,0,1))
-	nodes_int = nrow(tree_df)
-	idxPos_dic = Dict(zip(tree_df[:,:idx], 1:(nodes_int)))
-
-    # create vertical position and labels from input tree
-    LocY_arr = float(tree_df[!,:lvl]) .+ 1.2
-    NodeLabel_arr = tree_df[!,:val]
-	NodeLabel_arr = maximum(length.(NodeLabel_arr)) |> (k -> map(x -> string(x,fill("&#160;",(k-length(x))*2)...) ,NodeLabel_arr))
-
-    # horizontal position is computed in a two step process
-    LocX_arr = zeros(Float64, nodes_int)
-
-    # first step, filter all nodes at end of a respective branch and sort them correctly
-    LowLvl_df = tree_df[isempty.(tree_df[!,:down]),:]
-    LowLvl_df = LowLvl_df[map(y -> findall(x -> x == y, LowLvl_df[:,:idx])[1],sortSiblings(convert(Array{Int64,1},LowLvl_df[:,:idx]),treeObj)),:]
-
-    # set position of starting node
-    LocX_arr[map(x -> idxPos_dic[x],LowLvl_df[1,:idx])] = 0
-
-    # sets distance from next node on the left depending on if they are part of the same subtree
-    for (idx2, lowNode) in Iterators.drop(enumerate(eachrow(LowLvl_df)),1)
-		if lowNode[:up] == LowLvl_df[idx2-1,:up] distance_fl = opt[:wide][lowNode[:lvl]] else distance_fl = 1 end
-		LocX_arr[idxPos_dic[lowNode[:idx]]] = LocX_arr[idxPos_dic[LowLvl_df[idx2-1,:idx]]] + distance_fl
-    end
-
-    # second step, remaining horizontal nodes are place in the middle of their children
-    HighLvl_df = tree_df[false .== isempty.(tree_df[!,:down]),:]
-
-    for highNode in reverse(eachrow(HighLvl_df))
-		children_arr = map(x -> idxPos_dic[x], filter(x -> x.idx != highNode.idx && x.up == highNode.idx, tree_df)[!,:idx])
-		LocX_arr[idxPos_dic[highNode[:idx]]] = Statistics.mean(LocX_arr[children_arr])
-    end
-
-    LocX_arr[end] = Statistics.mean(LocX_arr[map(x -> idxPos_dic[x],tree_df[findall(tree_df[:,:lvl] .== 1),:idx])])
-
-    # draw final tree
-    Tree_gra = SimpleGraph(nodes_int+1)
-    for rowTree in eachrow(tree_df)
-      # 0 node in tree_df becomes last node in graph, because there is 0 node within the plots
-      if rowTree[:up] == 0 pare_int = nodes_int else pare_int = idxPos_dic[rowTree[:up]] end
-      add_edge!(Tree_gra, idxPos_dic[rowTree[:idx]], pare_int)
-    end
-
-    color_arr = col_dic[tree_sym] |> (y -> [RGB24(min(1,y[1]*(1+x/opt[:trans])),min(1,y[2]*(1+x/opt[:trans])),min(1,y[3]*(1+x/opt[:trans]))) for x in LocY_arr])
-
-    # add invisible dummy node on right side to avoid text being pushed out of the frame
-    push!(LocX_arr,maximum(LocX_arr)*1.1)
-    push!(LocY_arr,maximum(LocY_arr)*1.1)
-    push!(color_arr,RGB24(1,1,1))
-    push!(NodeLabel_arr,"")
-
-    Tree_pl = gplot(Tree_gra, LocX_arr, LocY_arr, nodelabel=NodeLabel_arr, nodelabeldist=2, nodelabelangleoffset= π/4, NODELABELSIZE = opt[:labelsize], EDGELINEWIDTH=1, nodefillc = color_arr)
-
-    draw(SVG("$(anyM.options.outDir)/$(tree_sym)_$(anyM.options.outStamp).svg", 60cm, 60*opt[:ratio]cm), Tree_pl)
-end
-
-
 # XXX prints dataframe to csv file
 function printObject(print_df::DataFrame,sets::Dict{Symbol,Tree},options::modOptions; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true)
 
@@ -149,7 +62,7 @@ function printObject(print_df::DataFrame,sets::Dict{Symbol,Tree},options::modOpt
 	if :csvDf in rtnDf return print_df end
 end
 
-# <editor-fold desc="reporting of results"
+# <editor-fold desc="report results to csv files"
 
 reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{reportType}(),anyM::anyModel; kwargs...)
 
@@ -605,6 +518,460 @@ function reportDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x -
 		if :rawDf in rtnOpt return data_df end
 		if :csvDf in rtnOpt return csvData_df end
 	end
+end
+
+# </editor-fold>
+
+# <editor-fold desc="plotting tools"
+
+# XXX plots tree graph for input set
+"""
+    drawNodeTree(Tree_df::DataFrame, options::modOptions; args...)
+Plots a tree for all nodes provided by the set data frame and copies it to the output directory defined within options.
+
+# Options and default values:
+- `trans = 4.5`
+    - Controls fading of color going further down the tree.
+- `wide = fill(1.0,maximum(Tree_df[!,:lvl]))`
+    - Ratio of distances between nodes that have and do not have the same parent (separate on each level).
+- `labelsize = 7`
+    - Size of labels in graph.
+- `ratio = 1.0`
+	- Aspect ratio of output graph.
+"""
+function plotTree(tree_sym::Symbol, anyM::anyModel; args...)
+
+	name_dic = Dict(:region => :R,:timestep => :Ts,:carrier => :C,:tech => :Te)
+
+	# convert tree object into a data frame
+	treeObj = anyM.sets[name_dic[tree_sym]]
+	data_arr = filter(x -> x.idx != 0,collect(values(treeObj.nodes))) |> (y -> map(x -> getfield.(y,x),(:idx,:val,:lvl,:down,:subIdx)))
+	tree_df = DataFrame(idx = data_arr[1], val = data_arr[2], lvl =  data_arr[3], down = data_arr[4], subIdx = data_arr[5], up =map(x -> treeObj.up[x],data_arr[1]))
+
+	# sets options
+	col_dic = Dict(:region => (0.251,0.388,0.847),:timestep => (0.133, 0.545, 0.133),:carrier => (0.584, 0.345, 0.698),:tech => (0.796,0.235,0.2))
+	defOpt_ntup = Dict(:trans => 4.5, :wide => fill(1.0,maximum(tree_df[!,:lvl])), :labelsize => 7, :ratio => 1.0)
+	opt = merge(args,Dict(x => defOpt_ntup[x] for x in filter(x -> !(x in keys(args)), collect(keys(defOpt_ntup)))))
+
+	# adds a new dummy top node
+	push!(tree_df,(0,"",0,treeObj.nodes[0].down ,0,1))
+	nodes_int = nrow(tree_df)
+	idxPos_dic = Dict(zip(tree_df[:,:idx], 1:(nodes_int)))
+
+    # create vertical position and labels from input tree
+    LocY_arr = float(tree_df[!,:lvl]) .+ 1.2
+    NodeLabel_arr = tree_df[!,:val]
+	NodeLabel_arr = maximum(length.(NodeLabel_arr)) |> (k -> map(x -> string(x,fill("&#160;",(k-length(x))*2)...) ,NodeLabel_arr))
+
+    # horizontal position is computed in a two step process
+    LocX_arr = zeros(Float64, nodes_int)
+
+    # first step, filter all nodes at end of a respective branch and sort them correctly
+    LowLvl_df = tree_df[isempty.(tree_df[!,:down]),:]
+    LowLvl_df = LowLvl_df[map(y -> findall(x -> x == y, LowLvl_df[:,:idx])[1],sortSiblings(convert(Array{Int64,1},LowLvl_df[:,:idx]),treeObj)),:]
+
+    # set position of starting node
+    LocX_arr[map(x -> idxPos_dic[x],LowLvl_df[1,:idx])] = 0
+
+    # sets distance from next node on the left depending on if they are part of the same subtree
+    for (idx2, lowNode) in Iterators.drop(enumerate(eachrow(LowLvl_df)),1)
+		if lowNode[:up] == LowLvl_df[idx2-1,:up] distance_fl = opt[:wide][lowNode[:lvl]] else distance_fl = 1 end
+		LocX_arr[idxPos_dic[lowNode[:idx]]] = LocX_arr[idxPos_dic[LowLvl_df[idx2-1,:idx]]] + distance_fl
+    end
+
+    # second step, remaining horizontal nodes are place in the middle of their children
+    HighLvl_df = tree_df[false .== isempty.(tree_df[!,:down]),:]
+
+    for highNode in reverse(eachrow(HighLvl_df))
+		children_arr = map(x -> idxPos_dic[x], filter(x -> x.idx != highNode.idx && x.up == highNode.idx, tree_df)[!,:idx])
+		LocX_arr[idxPos_dic[highNode[:idx]]] = Statistics.mean(LocX_arr[children_arr])
+    end
+
+    LocX_arr[end] = Statistics.mean(LocX_arr[map(x -> idxPos_dic[x],tree_df[findall(tree_df[:,:lvl] .== 1),:idx])])
+
+    # draw final tree
+    Tree_gra = SimpleGraph(nodes_int+1)
+    for rowTree in eachrow(tree_df)
+      # 0 node in tree_df becomes last node in graph, because there is 0 node within the plots
+      if rowTree[:up] == 0 pare_int = nodes_int else pare_int = idxPos_dic[rowTree[:up]] end
+      add_edge!(Tree_gra, idxPos_dic[rowTree[:idx]], pare_int)
+    end
+
+    color_arr = col_dic[tree_sym] |> (y -> [RGB24(min(1,y[1]*(1+x/opt[:trans])),min(1,y[2]*(1+x/opt[:trans])),min(1,y[3]*(1+x/opt[:trans]))) for x in LocY_arr])
+
+    # add invisible dummy node on right side to avoid text being pushed out of the frame
+    push!(LocX_arr,maximum(LocX_arr)*1.1)
+    push!(LocY_arr,maximum(LocY_arr)*1.1)
+    push!(color_arr,RGB24(1,1,1))
+    push!(NodeLabel_arr,"")
+
+    Tree_pl = gplot(Tree_gra, LocX_arr, LocY_arr, nodelabel=NodeLabel_arr, nodelabeldist=2, nodelabelangleoffset= π/4, NODELABELSIZE = opt[:labelsize], EDGELINEWIDTH=1, nodefillc = color_arr)
+
+    draw(SVG("$(anyM.options.outDir)/$(tree_sym)_$(anyM.options.outStamp).svg", 60cm, 60*opt[:ratio]cm), Tree_pl)
+end
+
+plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
+
+# XXX plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
+function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; replot::Bool = false, scaDist::Float64 = 0.5, maxIter::Int = 5000, initTemp::Float64 = 2.0, carPosLab::Float64 = 0.06)
+
+    # XXX import python function
+    netw = pyimport("networkx")
+    plt = pyimport("matplotlib.pyplot")
+    PyCall.fixqtpath()
+
+    # <editor-fold desc="create graph and map edges"
+
+    graph_obj = netw.DiGraph()
+    flowGrap_obj = anyM.graInfo.graph
+
+    edges_arr =  vcat(collect.(flowGrap_obj.edgeC),collect.(flowGrap_obj.edgeTe))
+    for x in edges_arr
+        graph_obj.add_edge(x[1],x[2])
+    end
+
+    # </editor-fold>
+
+    # <editor-fold desc="obtain and order graph properties (colors, names, etc.)"
+
+    # maps node id to node names
+    idToC_arr = map(x -> x[2] => anyM.sets[:C].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), collect(flowGrap_obj.nodeC)))
+    idToTe_arr  = map(x -> x[2] => anyM.sets[:Te].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), collect(flowGrap_obj.nodeTe)))
+    idToName_dic = Dict(vcat(idToC_arr,idToTe_arr))
+
+    nodesCnt_int = length(idToName_dic)
+
+    # converts edges to sparse matrix for flowLayout function
+    edges_mat = convert(Array{Int64,2},zeros(nodesCnt_int,nodesCnt_int))
+    foreach(x -> edges_mat[x[1],x[2]] = 1, edges_arr)
+    edges_smat = SparseArrays.sparse(edges_mat)
+
+    # obtain colors of nodes
+    ordC_arr = intersect(unique(vcat(edges_arr...)),getindex.(idToC_arr,1))
+    nodeCol_arr = map(x -> anyM.graInfo.colors[idToName_dic[x]], ordC_arr)
+
+    # compute position of nodes
+    if replot || !(isdefined(flowGrap_obj,:nodePos))
+        flowGrap_obj.nodePos = flowLayout(nodesCnt_int,edges_smat; scaDist = scaDist, maxIter = maxIter, initTemp = initTemp)
+    end
+
+    # seperate into edges between technologies and carriers and between carriers, then get respective colors
+    cEdges_arr = filter(x -> x[1] in ordC_arr && x[2] in ordC_arr, collect(graph_obj.edges))
+    edgeColC_arr = map(x -> anyM.graInfo.colors[idToName_dic[x[1]]], cEdges_arr)
+
+    teEdges_arr = filter(x -> !(x[1] in ordC_arr && x[2] in ordC_arr), collect(graph_obj.edges))
+    edgeColTe_arr = map(x -> x[1] in ordC_arr ? anyM.graInfo.colors[idToName_dic[x[1]]] : anyM.graInfo.colors[idToName_dic[x[2]]], teEdges_arr)
+
+    # </editor-fold>
+
+    # <editor-fold desc="draw and save graph with python"
+
+    # plot final graph object
+    plt.clf()
+    netw.draw_networkx_nodes(graph_obj, flowGrap_obj.nodePos, nodelist = ordC_arr, node_shape="s", node_size = 300, node_color = nodeCol_arr)
+    netw.draw_networkx_nodes(graph_obj, flowGrap_obj.nodePos, nodelist = intersect(unique(vcat(edges_arr...)),getindex.(idToTe_arr,1)), node_shape="o", node_size = 185,node_color = [(0.85,0.85,0.85)])
+
+    netw.draw_networkx_edges(graph_obj, flowGrap_obj.nodePos, edgelist = cEdges_arr, edge_color = edgeColC_arr, arrowsize  = 16.2, width = 1.62)
+    netw.draw_networkx_edges(graph_obj, flowGrap_obj.nodePos, edgelist = teEdges_arr, edge_color = edgeColTe_arr)
+
+    posTech_dic = Dict(x => flowGrap_obj.nodePos[x] |> (y -> [y[1],y[2]+ (x in ordC_arr ? 0.0 : 0.05)]) for x in keys(flowGrap_obj.nodePos))
+
+    posLabC_dic = netw.draw_networkx_labels(graph_obj, flowGrap_obj.nodePos, labels = Dict(y[1] => anyM.graInfo.names[y[2]] for y in filter(x -> x[1] in ordC_arr,idToName_dic)), font_weight = "bold", font_family = "arial")
+    netw.draw_networkx_labels(graph_obj, posTech_dic, font_family = "arial", labels = Dict(y[1] => anyM.graInfo.names[y[2]] for y in filter(x -> !(x[1] in ordC_arr),idToName_dic)))
+
+    # adjusts position of carrier labels so that they are right from node, uses code provided by ImportanceOfBeingErnest from here https://stackoverflow.com/questions/43894987/networkx-node-labels-relative-position
+    figure = plt.gcf()
+    r = figure.canvas.get_renderer()
+    trans = plt.gca().transData.inverted()
+    for x in collect(filter(x -> x[1] in ordC_arr,posLabC_dic))
+        bb = x[2].get_window_extent(renderer=r)
+        bbdata = bb.transformed(trans)
+        radius = bbdata.width/2.0
+        x[2].set_position([carPosLab + x[2]."_x" + radius,x[2]."_y"])
+        x[2].set_clip_on(false)
+    end
+
+    plt.axis("off")
+
+    # size plot and save
+    figure.set_size_inches(16,9)
+    plt.savefig("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp)", dpi = 600, bbox_inches="tight")
+
+    # </editor-fold>
+end
+
+# XXX plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
+function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep), rmvNode::Tuple{Vararg{String,N} where N} = tuple())
+  plt = pyimport("plotly")
+  flowGrap_obj = anyM.graInfo.graph
+
+  # <editor-fold desc="initialize data"
+
+  if !isempty(setdiff(dropDown,[:region,:timestep]))
+    error("dropDown only accepts array :region and :timestep as content")
+  end
+
+  # get mappings to create buttons of dropdown menue
+  drop_dic = Dict(:region => :R_dis, :timestep => :Ts_disSup)
+  dropDim_arr = collect(map(x -> drop_dic[x], dropDown))
+
+  # get summarised data and filter dispatch variables
+  data_df = reportResults(:summary,anyM,rtnOpt = (:rawDf,))
+  filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
+
+  # filter non relevant entries
+  filter!(x -> abs(x.value) > minVal, data_df)
+  filter!(filterFunc, data_df)
+
+  # create dictionaries for nodes that are neither technology nor carrier
+  othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])))))
+  othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
+
+  # </editor-fold>
+
+  # <editor-fold desc="prepare labels and colors"
+  # prepare name and color assignment
+  names_dic = anyM.graInfo.names
+  revNames_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
+  col_dic = anyM.graInfo.colors
+
+  sortTe_arr = getindex.(sort(collect(flowGrap_obj.nodeTe),by = x -> x[2]),1)
+  cColor_dic = Dict(x => anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[col_dic[z]] : (0.85,0.85,0.85))) for x in sort(collect(keys(flowGrap_obj.nodeC))))
+
+  # create array of node labels
+  cLabel_arr = map(x -> names_dic[anyM.sets[:C].nodes[x].val],sort(collect(keys(flowGrap_obj.nodeC))))
+  teLabel_arr = map(x -> names_dic[anyM.sets[:Te].nodes[x].val],sortTe_arr)
+  othLabel_arr = map(x -> names_dic[String(othNodeId_dic[x][2])],sort(collect(keys(othNodeId_dic))))
+  nodeLabel_arr = vcat(cLabel_arr, teLabel_arr, othLabel_arr)
+  revNodelLabel_arr = map(x -> revNames_dic[x],nodeLabel_arr)
+
+  # create array of node colors
+  cColor_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[col_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(flowGrap_obj.nodeC))))
+  teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[col_dic[z]] : (0.85,0.85,0.85))),sortTe_arr)
+  othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[col_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(othNodeId_dic))))
+  nodeColor_arr = vcat(map(x -> replace.(string.("rgb",string.(map(z -> z .* 255.0,x)))," " => ""),[cColor_arr, teColor_arr, othColor_arr])...)
+
+  dropData_arr = Array{Dict{Symbol,Any},1}()
+
+  # </editor-fold>
+
+  # XXX loop over potential buttons in dropdown menue
+  for drop in eachrow(unique(data_df[!,dropDim_arr]))
+    # <editor-fold desc="filter data and create flow array"
+
+    dropData_df = copy(data_df)
+    if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,anyM.sets[:R],true)...] end
+    for d in dropDown
+      filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
+    end
+
+    flow_arr = Array{Tuple,1}()
+
+    # write flows reported in data summary
+    for x in eachrow(dropData_df)
+      a = Array{Any,1}(undef,3)
+
+      # technology related entries
+      if x.variable in (:demand,:export,:trdSell,:crt)
+        a[1] = flowGrap_obj.nodeC[x.C]
+        a[2] = othNode_dic[(x.C,x.variable)]
+      elseif x.variable in (:import,:trdBuy,:lss)
+        a[1] = othNode_dic[(x.C,x.variable)]
+        a[2] = flowGrap_obj.nodeC[x.C]
+      elseif x.variable in (:gen,:stOut)
+        a[1] = flowGrap_obj.nodeTe[x.Te]
+        a[2] = flowGrap_obj.nodeC[x.C]
+      else
+        a[1] = flowGrap_obj.nodeC[x.C]
+        a[2] = flowGrap_obj.nodeTe[x.Te]
+      end
+
+      a[3] = abs(x.value)
+
+      push!(flow_arr,tuple(a...))
+    end
+
+    # create flows connecting different carriers
+    idToC_dic = Dict(map(x -> x[2] => x[1], collect(flowGrap_obj.nodeC)))
+    for x in filter(x -> anyM.sets[:C].up[x] != 0,intersect(union(getindex.(flow_arr,1),getindex.(flow_arr,2)),values(flowGrap_obj.nodeC)))
+      a = Array{Any,1}(undef,3)
+      a[1] = flowGrap_obj.nodeC[x]
+      a[2] = flowGrap_obj.nodeC[anyM.sets[:C].up[x]]
+      a[3] = (getindex.(filter(y -> y[2] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z))) - (getindex.(filter(y -> y[1] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z)))
+      push!(flow_arr,tuple(a...))
+    end
+
+    # merges flows for different regions that connect the same nodes
+    flow_arr = map(unique(map(x -> x[1:2],flow_arr))) do fl
+      allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
+      return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
+    end
+
+    # removes nodes accoring function input provided
+    for rmv in rmvNode
+      # splits remove expression by semicolon and searches for first part
+      rmvStr_arr = split(rmv,"; ")
+      relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
+      if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
+      if isempty(relNodes_arr) error("remove string contained a node not found in graph, check for typos") end
+
+      if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
+        relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
+        if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
+        if isempty(relC_arr) error("remove string contained a carrier not found in graph, check for typos") else c_int = relC_arr[1] end
+        filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)),flow_arr)
+      elseif length(rmvStr_arr) > 2
+        error("one remove string contained more then one semicolon, this is not supported")
+      else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
+        out_tup = filter(x -> x[1] == relNodes_arr[1],flow_arr)
+        in_tup = filter(x -> x[2] == relNodes_arr[1],flow_arr)
+
+        if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
+          filter!(x -> !(x in (out_tup[1],in_tup[1])),flow_arr)
+          push!(flow_arr,(in_tup[1][1],out_tup[1][2],in_tup[1][3]))
+        elseif length(out_tup) == 0 # only ingoing flows
+          filter!(x -> !(x in in_tup),flow_arr)
+        elseif length(in_tup) == 0 # only outgoing flows
+          filter!(x -> !(x in out_tup),flow_arr)
+        end
+      end
+    end
+
+    # </editor-fold>
+
+    # <editor-fold desc="create dictionaries for later plotting"
+
+    # collect data for drop in a dictionary
+
+    linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
+		(z -> replace(string("rgba",string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...)))," " => "")), flow_arr)
+    link_dic = Dict(:source => getindex.(flow_arr,1) .- 1, :target => getindex.(flow_arr,2) .- 1, :value => getindex.(flow_arr,3), :color => linkColor_arr)
+
+    fullData_arr = [Dict(:link => link_dic, :node => Dict(:label => nodeLabel_arr, :color => nodeColor_arr))]
+
+    # pushes dictionary to overall array
+    label_str = string("<b>",join(map(y -> anyM.sets[Symbol(split(String(y),"_")[1])].nodes[drop[y]].val,dropDim_arr),", "),"</b>")
+    push!(dropData_arr,Dict(:args => fullData_arr, :label => label_str, :method => "restyle"))
+
+    # </editor-fold>
+  end
+
+  # <editor-fold desc="create various dictionaries to define format and create plot"
+
+  menues_dic =[Dict(:buttons => dropData_arr, :direction => "down", :pad => Dict(:l => 10, :t => 10), :font => Dict(:size => 16, :family => "Arial"), :showactive => true, :x => 0.01, :xanchor => "center", :y => 1.1, :yanchor => "middle")]
+  data_dic = Dict(:type => "sankey", :orientation => "h", :valueformat => ".0f", :textfont => Dict(:family => "Arial"), :node => Dict(:pad => 8, :thickness => 36, :line => Dict(:color => "white",:width => 0.01), :hoverinfo => "skip"))
+  layout_dic = Dict(:width => 2000, :height => 1125, :updatemenus => menues_dic, :font => Dict(:size => 32, :family => "Arial"))
+
+  fig = Dict(:data => [data_dic], :layout => layout_dic)
+  plt.offline.plot(fig, filename="$(anyM.options.outDir)/energyFlowSankey_$(anyM.options.outStamp).html")
+
+  # </editor-fold>
+end
+
+# XXX define postions of nodes in energy flow graph
+# function is mostly taken from [GraphPlot.jl](https://github.com/JuliaGraphs/GraphPlot.jl), who again reference the following source [IainNZ](https://github.com/IainNZ)'s [GraphLayout.jl](https://github.com/IainNZ/GraphLayout.jl)
+function flowLayout(nodesCnt_int::Int,edges_smat::SparseMatrixCSC{Int64,Int64}, locsX_arr::Array{Float64,1} = 2*rand(nodesCnt_int).-1.0, locsY_arr::Array{Float64,1} = 2*rand(nodesCnt_int).-1.0; scaDist::Float64 = 0.5, maxIter::Int=5000, initTemp::Float64=2.0)
+
+    # optimal distance bewteen vertices
+    k = scaDist * sqrt(4.0 / nodesCnt_int)
+    k² = k * k
+
+    # store forces and apply at end of iteration all at once
+    force_x = zeros(nodesCnt_int)
+    force_y = zeros(nodesCnt_int)
+
+    # iterate maxIter times
+    @inbounds for iter = 1:maxIter
+        # Calculate forces
+        for i = 1:nodesCnt_int
+            force_vec_x = 0.0
+            force_vec_y = 0.0
+            for j = 1:nodesCnt_int
+                i == j && continue
+                d_x = locsX_arr[j] - locsX_arr[i]
+                d_y = locsY_arr[j] - locsY_arr[i]
+                dist²  = (d_x * d_x) + (d_y * d_y)
+                dist = sqrt(dist²)
+
+                if !( iszero(edges_smat[i,j]) && iszero(edges_smat[j,i]) )
+                    # Attractive + repulsive force
+                    # F_d = dist² / k - k² / dist # original FR algorithm
+                    F_d = dist / k - k² / dist²
+                else
+                    # Just repulsive
+                    # F_d = -k² / dist  # original FR algorithm
+                    F_d = -k² / dist²
+                end
+                force_vec_x += F_d*d_x
+                force_vec_y += F_d*d_y
+            end
+            force_x[i] = force_vec_x
+            force_y[i] = force_vec_y
+        end
+        # Cool down
+        temp = initTemp / iter
+        # Now apply them, but limit to temperature
+        for i = 1:nodesCnt_int
+            fx = force_x[i]
+            fy = force_y[i]
+            force_mag  = sqrt((fx * fx) + (fy * fy))
+            scale      = min(force_mag, temp) / force_mag
+            locsX_arr[i] += force_x[i] * scale
+            locsY_arr[i] += force_y[i] * scale
+        end
+    end
+
+    # Scale to unit square
+    min_x, max_x = minimum(locsX_arr), maximum(locsX_arr)
+    min_y, max_y = minimum(locsY_arr), maximum(locsY_arr)
+    function scaler(z, a, b)
+        2.0*((z - a)/(b - a)) - 1.0
+    end
+    map!(z -> scaler(z, min_x, max_x), locsX_arr, locsX_arr)
+    map!(z -> scaler(z, min_y, max_y), locsY_arr, locsY_arr)
+
+    # converts positions into dictionary
+    pos_dic = Dict(z => [locsX_arr[z]*16/9,locsY_arr[z]] for z in 1:nodesCnt_int)
+
+    return pos_dic
+end
+
+# XXX move a node after positions were created within energy flow graph
+function moveNode!(anyM::anyModel,newPos_arr::Union{Array{Tuple{String,Array{Float64,1}},1},Tuple{String,Array{Float64,1}}})
+
+    flowGrap_obj = anyM.graInfo.graph
+
+    if !isdefined(flowGrap_obj,:nodePos)
+        error("Initial positions are not yet defined. Run 'plotEnergyFlow' first.")
+    end
+
+    # gets assignment between node ids and names
+    edges_arr =  vcat(collect.(flowGrap_obj.edgeC),collect.(flowGrap_obj.edgeTe))
+
+    cToId_arr = map(x -> anyM.sets[:C].nodes[x[1]].val => x[2], filter(y -> y[2] in union(edges_arr...), collect(flowGrap_obj.nodeC)))
+    teToId_arr  = map(x -> anyM.sets[:Te].nodes[x[1]].val => x[2], filter(y -> y[2] in union(edges_arr...), collect(flowGrap_obj.nodeTe)))
+    nameToId_dic = Dict(vcat(teToId_arr,cToId_arr))
+
+    # if input is just a single tuple and not an array convert to array
+    if typeof(newPos_arr) == Tuple{String,Array{Float64,1}}
+        newPos_arr = [newPos_arr]
+    end
+
+    switchNames_dic = Dict(map(x -> x[2] => x[1],collect(anyM.graInfo.names)))
+
+    # loops overa array of moved notes
+    for newPos in newPos_arr
+        # get id of node depending on whether it is an orignial name or name just used in plot
+        if newPos[1] in keys(nameToId_dic)
+            x = nameToId_dic[newPos[1]]
+        elseif newPos[1] in values(anyM.graInfo.names)
+            x = nameToId_dic[switchNames_dic[newPos[1]]]
+        else
+            error("Node name not recognized!")
+        end
+        # actually adjust node position
+        flowGrap_obj.nodePos[x] = [flowGrap_obj.nodePos[x][1] + newPos[2][1]*2, flowGrap_obj.nodePos[x][2] + newPos[2][2]*2]
+    end
 end
 
 # </editor-fold>
