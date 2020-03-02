@@ -1,8 +1,12 @@
 module anyMOD
 
-    using Base.Threads, CSV, Colors, Compose, Dates, GraphPlot, LightGraphs, LinearAlgebra
-    using MathOptInterface, Reexport, Statistics
+    using Base.Threads, CSV, Dates, LinearAlgebra
+    using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays
     @reexport using DataFrames, JuMP
+
+    pyimport_conda("networkx","networkx")
+    pyimport_conda("matplotlib.pyplot","matplotlib")
+    pyimport_conda("plotly","plotly")
 
     include("objects.jl")
     include("tools.jl")
@@ -20,5 +24,6 @@ module anyMOD
     include("dataHandling/util.jl")
 
     export anyModel, initializeModel, createOptModel!, setObjective!
-    export drawTree, printIIS, reportResults, reportTimeSeries, printObject, reportDuals
+    export printIIS, reportResults, reportTimeSeries, printObject, reportDuals
+    export plotTree, plotEnergyFlow, moveNode!
 end

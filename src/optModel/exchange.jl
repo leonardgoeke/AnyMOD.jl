@@ -90,14 +90,14 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 		excDimP_arr = replace(excDim_arr,:R_a => :R_b, :R_b => :R_a)
 
 		#  entries, where a directed capacity is provided and a symmetric one already exists
-		bothExc_df = vcat(join(directExc_df, capaResi_df; on = excDim_arr, kind = :inner, makeunique = true), join(directExc_df, capaResi_df; on = Pair.(excDim_arr,excDimP_arr), kind = :inner, makeunique = true))
+		bothExc_df = vcat(join(directExc_df, capaResi_df; on = excDim_arr, makeunique = true, kind = :inner), join(directExc_df, capaResi_df; on = Pair.(excDim_arr,excDimP_arr), makeunique = true, kind = :inner))
 		bothExc_df = by(bothExc_df,excDim_arr,var = [:var,:var_1] => x -> sum(x))
 		if !(:var in names(bothExc_df)) bothExc_df[!,:var] = AffExpr[] end
 		 # entries, where only a directed capacity was provided
 		onlyDirExc_df = join(directExc_df, bothExc_df; on = excDim_arr, kind = :anti)
 
 		# entries originally symmetric that now become directed, because a directed counterpart was introduced
-		flipSym_df = join(join(capaResi_df, bothExc_df[!,Not(:var)]; on = excDim_arr, kind = :inner),bothExc_df[!,Not(:var)]; on = excDim_arr .=> excDimP_arr, kind = :anti)
+			flipSym_df = join(join(capaResi_df, bothExc_df[!,Not(:var)]; on = excDim_arr, kind = :inner),bothExc_df[!,Not(:var)]; on = excDim_arr .=> excDimP_arr, kind = :anti)
 
 		swtExc_df = vcat(bothExc_df,flipSym_df)
 
@@ -116,7 +116,7 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 		allVar_df = prepExc_dic[:capaExc].var
 		if !isempty(prepExc_dic[:capaExc].var)
 			undirBoth_df = vcat(dirExc_df,rename(dirExc_df,replace(names(dirExc_df),:R_a => :R_b, :R_b => :R_a)))[!,Not(:dir)]
-			dirVar_df = convertExcCol(join(convertExcCol(allVar_df[!,Not(:dir)]), vcat(undirBoth_df,swtExc_df)[!,Not(:var)],on = excDim_arr, kind = :inner ))
+			dirVar_df = convertExcCol(join(convertExcCol(allVar_df[!,Not(:dir)]), vcat(undirBoth_df,swtExc_df)[!,Not(:var)],on = excDim_arr, kind = :inner))
 			dirVar_df[!,:dir] .= true
 			adjVar_df = vcat(dirVar_df,join(allVar_df,dirVar_df,on = [:C, :R_from, :R_to, :Ts_disSup], kind = :anti))
 		else

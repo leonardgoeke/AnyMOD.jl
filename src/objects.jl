@@ -93,10 +93,6 @@ function copy(par_obj::ParElement,data_df::DataFrame)
 	return out
 end
 
-# XXX extends base function to avoid certain errors, that otherwise would require more costly solutions
-import Base.+
-+(a::Int,b::Nothing) = a
-
 # </editor-fold>
 
 # </editor-fold>
@@ -272,7 +268,7 @@ mutable struct graInfo
 		graph_obj = flowGraph(anyM)
 
 		# specificy some default names and colors used in visualisations
-		namesDef_arr = ["coalPlant" => "coal power plant", "gasPlant" => "gas plant", "districtHeat" => "district heat", "naturalGas" => "natural gas", "synthGas" => "synthetic gas", "fossilGas" => "fossil gas", 
+		namesDef_arr = ["coalPlant" => "coal power plant", "gasPlant" => "gas plant", "districtHeat" => "district heat", "naturalGas" => "natural gas", "synthGas" => "synthetic gas", "fossilGas" => "fossil gas",
 									"demand" => "final demand", "export" => "export", "import" => "import", "crt" => "curtailment", "lss" => "loss of load", "trdSell" => "trade sell", "trdBuy" => "trade buy"]
 
 		# create dictionary assigning internal model names to names used within visualisations

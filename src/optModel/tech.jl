@@ -622,7 +622,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 
 	# join capacity and dispatch variables to create final constraint
 	grpCapaVar_df = by(grpCapaVar_df,replace(dim_arr,:Ts_dis => :Ts_disSup),capa = [:var] => x -> sum(x))
-	cns_df = join(capaDim_df,grpCapaVar_df,on = intCol(grpCapaVar_df),kind = :inner)
+	cns_df = join(capaDim_df,grpCapaVar_df,on = intCol(grpCapaVar_df), kind = :inner)
 	return cns_df
 end
 

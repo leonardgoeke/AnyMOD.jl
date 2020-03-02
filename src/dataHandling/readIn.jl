@@ -312,7 +312,7 @@ function createTreeLevel!(readIn_df::DataFrame, tree_obj::Tree, setLoad_str::Str
 	lowerNodes_gdf = groupby(grpIn_df,grpRel_arr)
 
 	# checks for nodes wihtout any upper node assigned
-	noUp_arr = findall(map(x -> all(values(x) .== ""),keys(lowerNodes_gdf)))
+	noUp_arr = findall(map(x -> all(x .== ""), [collect(parent(lowerNodes_gdf)[i, groupvars(lowerNodes_gdf)]) for i in lowerNodes_gdf.starts]))
 	up_arr = setdiff(1:length(lowerNodes_gdf),noUp_arr)
 	if !isempty(noUp_arr)
 		noUpVal_arr = setdiff(union(map(x -> collect(x[!,i]),collect(lowerNodes_gdf[noUp_arr]))...),union(map(x -> collect(x[!,i]),collect(lowerNodes_gdf[up_arr]))...))
