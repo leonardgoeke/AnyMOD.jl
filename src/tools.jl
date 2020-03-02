@@ -543,6 +543,7 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Number,Numbe
 
     netw = pyimport("networkx")
     plt = pyimport("matplotlib.pyplot")
+    PyCall.fixqtpath()
 
     # <editor-fold desc="initialize variables"
     treeName_dic = Dict(:region => :R,:timestep => :Ts,:carrier => :C,:tech => :Te)
