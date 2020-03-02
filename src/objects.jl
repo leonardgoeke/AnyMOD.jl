@@ -252,7 +252,7 @@ mutable struct flowGraph
 		    end
 		end
 
-		return new(nodeC_dic,nodeTe_dic,edgeTe_arr,edgeC_arr)
+		return new(nodeC_dic,nodeTe_dic,edgeC_arr,edgeTe_arr)
 	end
 end
 

@@ -336,7 +336,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 end
 
 # XXX print time series for in and out into seperate tables
-function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in,:out), minVal::Float64 = 1e-3, mergeVar::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
+function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in,:out), minVal::Number = 1e-3, mergeVar::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
 	# XXX converts carrier named provided to index
 	node_arr = filter(x -> x.val == string(car_sym),collect(values(anyM.sets[:C].nodes)))
@@ -539,7 +539,7 @@ Plots a tree for all nodes provided by the set data frame and copies it to the o
 - `ratio = 1.0`
 	- Aspect ratio of output graph.
 """
-function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Number,Number} = (8.0,4.5), fontSize = 12, useColor::Bool = true, wide::Array{Float64,1} = fill(1.0,30))
+function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Number,Number} = (8.0,4.5), fontSize = 12, useColor::Bool = true, wide::Array{Number,1} = fill(1.0,30))
 
     netw = pyimport("networkx")
     plt = pyimport("matplotlib.pyplot")
@@ -651,7 +651,7 @@ end
 plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
 
 # XXX plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
-function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize = 12, replot::Bool = true, scaDist::Float64 = 0.5, maxIter::Int = 5000, initTemp::Float64 = 2.0, useTeColor = false)
+function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor = false)
 
     # XXX import python function
     netw = pyimport("networkx")
@@ -672,34 +672,41 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 
     # <editor-fold desc="obtain and order graph properties (colors, names, etc.)"
 
-    # maps node id to node names
-    idToC_arr = map(x -> x[2] => anyM.sets[:C].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), collect(flowGrap_obj.nodeC)))
+	# get carriers that should be plotted, because they are connected with a technology
+	relNodeC1_arr = filter(x -> x[2] in vcat(getindex.(flowGrap_obj.edgeTe,1),getindex.(flowGrap_obj.edgeTe,2)), collect(flowGrap_obj.nodeC))
+	# get carriers that shold be plotted, because they are connected with another carrier that should be plotted
+	relNodeC2_arr = filter(x -> any(map(y -> x[2] in y && !isempty(intersect(getindex.(relNodeC1_arr,2),y)) , collect.(flowGrap_obj.edgeC))), collect(flowGrap_obj.nodeC))
+
+	# maps node id to node names
+    idToC_arr = map(x -> x[2] => anyM.sets[:C].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), intersect(flowGrap_obj.nodeC, union(relNodeC1_arr,relNodeC2_arr))))
     idToTe_arr  = map(x -> x[2] => anyM.sets[:Te].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), collect(flowGrap_obj.nodeTe)))
     idToName_dic = Dict(vcat(idToC_arr,idToTe_arr))
 
-    nodesCnt_int = length(idToName_dic)
-
-    # converts edges to sparse matrix for flowLayout function
-    edges_mat = convert(Array{Int64,2},zeros(nodesCnt_int,nodesCnt_int))
-    foreach(x -> edges_mat[x[1],x[2]] = 1, edges_arr)
-    edges_smat = SparseArrays.sparse(edges_mat)
-
     # obtain colors of nodes
-    ordC_arr = intersect(unique(vcat(edges_arr...)),getindex.(idToC_arr,1))
-	ordTe_arr = intersect(unique(vcat(edges_arr...)),getindex.(idToTe_arr,1))
+    ordC_arr = intersect(unique(vcat(edges_arr...)), getindex.(idToC_arr,1))
+	ordTe_arr = intersect(unique(vcat(edges_arr...)), getindex.(idToTe_arr,1))
     nodeC_arr = getNodeColors(ordC_arr,idToName_dic,anyM)
 	nodeTe_arr = useTeColor ? getNodeColors(ordTe_arr,idToName_dic,anyM) : [(0.85,0.85,0.85)]
 
+	nodesCnt_int = length(idToName_dic)
+
+	# converts edges to sparse matrix for flowLayout function
+	id_arr = vcat(getindex.(idToC_arr,1), getindex.(idToTe_arr,1))
+	edges_mat = convert(Array{Int64,2},zeros(nodesCnt_int,nodesCnt_int))
+	foreach(x -> edges_mat[findall(id_arr .== x[1])[1],findall(id_arr .== x[2])[1]] = 1, filter(x -> x[1] in id_arr && x[2] in id_arr,edges_arr))
+	edges_smat = SparseArrays.sparse(edges_mat)
+
     # compute position of nodes
     if replot || !(isdefined(flowGrap_obj,:nodePos))
-        flowGrap_obj.nodePos = flowLayout(nodesCnt_int,edges_smat; scaDist = scaDist, maxIter = maxIter, initTemp = initTemp)
+        pos_dic = flowLayout(nodesCnt_int,edges_smat; scaDist = scaDist, maxIter = maxIter, initTemp = initTemp)
+		flowGrap_obj.nodePos = Dict(id_arr[x] => pos_dic[x] for x in keys(pos_dic))
     end
 
     # seperate into edges between technologies and carriers and between carriers, then get respective colors
     cEdges_arr = filter(x -> x[1] in ordC_arr && x[2] in ordC_arr, collect(graph_obj.edges))
     edgeColC_arr = map(x -> anyM.graInfo.colors[idToName_dic[x[1]]], cEdges_arr)
 
-    teEdges_arr = filter(x -> !(x[1] in ordC_arr && x[2] in ordC_arr), collect(graph_obj.edges))
+    teEdges_arr = filter(x -> x[1] in ordTe_arr || x[2] in ordTe_arr, collect(graph_obj.edges))
     edgeColTe_arr = map(x -> x[1] in ordC_arr ? anyM.graInfo.colors[idToName_dic[x[1]]] : anyM.graInfo.colors[idToName_dic[x[2]]], teEdges_arr)
 
     # </editor-fold>
@@ -708,8 +715,9 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 
     # plot final graph object
     plt.clf()
+
     netw.draw_networkx_nodes(graph_obj, flowGrap_obj.nodePos, nodelist = ordC_arr, node_shape="s", node_size = 300, node_color = nodeC_arr)
-    netw.draw_networkx_nodes(graph_obj, flowGrap_obj.nodePos, nodelist = intersect(unique(vcat(edges_arr...)),getindex.(idToTe_arr,1)), node_shape="o", node_size = 185,node_color = nodeTe_arr)
+    netw.draw_networkx_nodes(graph_obj, flowGrap_obj.nodePos, nodelist = ordTe_arr, node_shape="o", node_size = 185,node_color = nodeTe_arr)
 
     netw.draw_networkx_edges(graph_obj, flowGrap_obj.nodePos, edgelist = cEdges_arr, edge_color = edgeColC_arr, arrowsize  = 16.2, width = 1.62)
     netw.draw_networkx_edges(graph_obj, flowGrap_obj.nodePos, edgelist = teEdges_arr, edge_color = edgeColTe_arr)
@@ -729,7 +737,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
         bbdata = bb.transformed(trans)
 		# computes offset of label for leaves and non-leaves by first moving according to size auf letters itself (bbdata) and then by size of the node
 		# (node-size in pixel is devided by dpi and plot size to get relative offset)
-		offset_arr = [cNode_boo ? (bbdata.width/2.0 + (500/plotSize[1]/600)) : 0.0, cNode_boo ? 0.0 : (bbdata.height/2.0 + 200.0/plotSize[2]/600)]
+		offset_arr = [cNode_boo ? (bbdata.width/2.0 + (500/plotSize[1]/600)) : 0.0, cNode_boo ? 0.0 : (bbdata.height/2.0 + 200/plotSize[2]/600)]
 		x[2].set_position([x[2]."_x" + offset_arr[1],x[2]."_y" + offset_arr[2]])
         x[2].set_clip_on(false)
     end
@@ -737,7 +745,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
     plt.axis("off")
 
     # size plot and save
-    plt.savefig("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp)", dpi = 600, bbox_inches="tight")
+    plt.savefig("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp)", dpi = 600)
 
     # </editor-fold>
 end
@@ -912,7 +920,7 @@ end
 
 # XXX define postions of nodes in energy flow graph
 # function is mostly taken from [GraphPlot.jl](https://github.com/JuliaGraphs/GraphPlot.jl), who again reference the following source [IainNZ](https://github.com/IainNZ)'s [GraphLayout.jl](https://github.com/IainNZ/GraphLayout.jl)
-function flowLayout(nodesCnt_int::Int,edges_smat::SparseMatrixCSC{Int64,Int64}, locsX_arr::Array{Float64,1} = 2*rand(nodesCnt_int).-1.0, locsY_arr::Array{Float64,1} = 2*rand(nodesCnt_int).-1.0; scaDist::Float64 = 0.5, maxIter::Int=5000, initTemp::Float64=2.0)
+function flowLayout(nodesCnt_int::Int,edges_smat::SparseMatrixCSC{Int64,Int64}, locsX_arr::Array{Float64,1} = 2*rand(nodesCnt_int).-1.0, locsY_arr::Array{Float64,1} = 2*rand(nodesCnt_int).-1.0; scaDist::Number = 0.5, maxIter::Int=5000, initTemp::Number=2.0)
 
     # optimal distance bewteen vertices
     k = scaDist * sqrt(4.0 / nodesCnt_int)
