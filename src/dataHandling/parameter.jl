@@ -600,6 +600,13 @@ end
 # XXX matches set with input parameters, uses inheritance rules for unmatched cases
 function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Dict{Symbol,Tree}; newCol::Symbol =:val, useDef::Bool = true, useNew::Bool = true)
 
+     # directly return search dataframes with added empty column if it is empty itself
+    if isempty(srcSetIn_df)
+        paraMatch_df = copy(srcSetIn_df)
+        paraMatch_df[!,newCol]  = Float64[]
+        return paraMatch_df 
+    end
+
     # directly returns default values if no data was provided for the parameter
     if isempty(par_obj.data) || length(names(par_obj.data)) == 1
         paraMatch_df = copy(srcSetIn_df)
