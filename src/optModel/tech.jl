@@ -181,7 +181,9 @@ function findStorageRatio(t_int::Int,find_df::DataFrame,st_sym::Symbol,remove_ar
 	# writes a report, if limits (upper/lower/fixed) on the storage expansion were ignored due to these ratios provided
 	if !isempty(ratioTab_df) && (kind_sym == :exp || (kind_sym == :capa && part.type == :stock) )
 		for limPar in intersect(keys(part.par),map(x -> Symbol(kind_sym,st_sym,x),kind_sym == :exp ? [:Up,:Low,:Fix] : [:Up,:Low,:Fix,:Resi]))
-			both_df = getLimPar(anyM.parts.lim,limPar,anyM.sets[:Te], tech = t_int) |> (x -> join(ratioTab_df,x, on = intersect(intCol(ratioTab_df),intCol(x)), kind = :inner))
+			lim_obj = getLimPar(anyM.parts.lim,limPar,anyM.sets[:Te], tech = t_int)
+			if !(isdefined(lim_obj,:name)) continue end
+			both_df =  join(ratioTab_df,lim_obj.data, on = intersect(intCol(ratioTab_df),intCol(lim_obj.data)), kind = :inner)
 			if !isempty(both_df)
 				push!(anyM.report,(1,:variable,:expansion,"for $(join(part.name, " < ")) $(strLim_dic[Symbol(split(string(limPar),string(st_sym))[end])]) for $(strRatio_dic[st_sym]) were ignored since an conversion/storage input ratio was provided"))
 			end
@@ -401,7 +403,7 @@ function createConvBal(part::TechPart,anyM::anyModel)
 
 	# defines tuple specificing dimension of aggregation later
 	if part.type == :emerging
-		srcRes_ntup = part.balLvl |> (x -> (Ts_expSup = x.exp[1], Ts_dis = x.ref[1], R_dis = x.ref[2]))
+		srcRes_ntup = part.balLvl |> (x -> (Ts_expSup = anyM.supTs.lvl, Ts_dis = x.ref[1], R_dis = x.ref[2]))
 	else
 		srcRes_ntup = part.balLvl |> (x -> (Ts_dis = x.ref[1], R_dis = x.ref[2]))
 	end
@@ -462,13 +464,23 @@ function createStBal(part::TechPart,anyM::anyModel)
 	cCns_arr = Array{DataFrame}(undef,length(uniC_arr))
 
 	for (idx,c) in enumerate(uniC_arr)
+
 		# get constraints relevant for carrier and find rows where mode is specified
 		cnsC_df = filter(x -> x.C == c,cns_df)
+
+		# does not write a balance, if storage balance would be created on supordinate dispatch level
+		if cnsC_df[!,:Ts_disSup] == cnsC_df[!,:Ts_dis]
+			filter!(x -> false,cnsC_df)
+			cnsC_df[!,:cnsExpr] = AffExpr[]
+			cCns_arr[idx] = cnsC_df
+			continue
+		end
+
 		m_arr = findall(0 .!= cnsC_df[!,:M])
 		noM_arr = setdiff(1:size(cnsC_df,1),m_arr)
 
 		if part.type == :emerging
-			srcRes_ntup = anyM.cInfo[c] |> (x -> (Ts_expSup = x.tsExp, Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl, M = 1))
+			srcRes_ntup = anyM.cInfo[c] |> (x -> (Ts_expSup = anyM.supTs.lvl, Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl, M = 1))
 		else
 			srcRes_ntup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl, M = 1))
 		end
@@ -643,7 +655,7 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyM
 		agg_arr = filter(r -> r != :Te && (part.type == :emerging || r != :Ts_expSup), intCol(cns_df))
 
 		if part.type == :emerging
-			srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_expSup = part.balLvl.exp[1], Ts_dis = x[1], R_dis = x[2]))
+			srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_expSup = anyM.supTs.lvl, Ts_dis = x[1], R_dis = x[2]))
 		else
 			srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_dis = x[1], R_dis = x[2]))
 		end
