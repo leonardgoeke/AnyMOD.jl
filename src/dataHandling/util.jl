@@ -414,30 +414,35 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			allVar_df = getAllVariables(:use,anyM, filterFunc = x -> x.C in emC_arr)
 			# get expressions for storage and exchange losses, if this is enabled
 			if anyM.options.emissionLoss
-				# get all storage variables where storage losses can lead to emissions
-				stVar_dic = Dict((string(st) |> (y -> Symbol(uppercase(y[1]),y[2:end]))) => getAllVariables(st,anyM, filterFunc = x -> x.C in emC_arr) for st in (:stIn,:stOut))
-				stLvl_df = getAllVariables(:stLvl,anyM, filterFunc = x -> x.C in emC_arr)
 
-				# loop over relevant storage technologies to obtain los vallues
-				tSt_arr = unique(stLvl_df[!,:Te])
-				for t in tSt_arr
-					part = anyM.parts.tech[t]
-					# add expression quantifying storage losses for storage in- and and output
-					for st in keys(stVar_dic)
-						stVar_df = stVar_dic[st]
-						stVar_df = matchSetParameter(filter(x -> x.Te == t,stVar_df),part.par[Symbol(:eff,st)],anyM.sets)
-						stVar_df[!,:var] = stVar_df[!,:var] .* (1 .- stVar_df[!,:val])
-						select!(stVar_df,Not(:val))
-						allVar_df = vcat(allVar_df,stVar_df)
-					end
+				allStEm_arr = unique(vcat(vcat(map(x -> map(y -> intersect(emC_arr,x.carrier[y]),intersect(keys(x.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))),values(anyM.parts.tech))...)...))
 
-					# add expression quantifying storage losses for storage discharge
-					if :stDis in keys(part.par)
-						sca_arr = getResize(stLvl_df,anyM.sets[:Ts],anyM.supTs)
-						stLvl_df = matchSetParameter(filter(x -> x.Te == t,stLvl_df),part.par[:stDis],anyM.sets)
-						stLvl_df[!,:var] = stLvl_df[!,:var] .* (1 .- (1 .- stLvl_df[!,:val]) .^ sca_arr)
-						select!(stLvl_df,Not(:val))
-						allVar_df = vcat(allVar_df,stLvl_df)
+				if !isempty(allStEm_arr)
+					# get all storage variables where storage losses can lead to emissions
+					stVar_dic = Dict((string(st) |> (y -> Symbol(uppercase(y[1]),y[2:end]))) => getAllVariables(st,anyM, filterFunc = x -> x.C in emC_arr) for st in (:stIn,:stOut))
+					stLvl_df = getAllVariables(:stLvl,anyM, filterFunc = x -> x.C in emC_arr)
+
+					# loop over relevant storage technologies to obtain los vallues
+					tSt_arr = unique(stLvl_df[!,:Te])
+					for t in tSt_arr
+						part = anyM.parts.tech[t]
+						# add expression quantifying storage losses for storage in- and and output
+						for st in keys(stVar_dic)
+							stVar_df = stVar_dic[st]
+							stVar_df = matchSetParameter(filter(x -> x.Te == t,stVar_df),part.par[Symbol(:eff,st)],anyM.sets)
+							stVar_df[!,:var] = stVar_df[!,:var] .* (1 .- stVar_df[!,:val])
+							select!(stVar_df,Not(:val))
+							allVar_df = vcat(allVar_df,stVar_df)
+						end
+
+						# add expression quantifying storage losses for storage discharge
+						if :stDis in keys(part.par)
+							sca_arr = getResize(stLvl_df,anyM.sets[:Ts],anyM.supTs)
+							stLvl_df = matchSetParameter(filter(x -> x.Te == t,stLvl_df),part.par[:stDis],anyM.sets)
+							stLvl_df[!,:var] = stLvl_df[!,:var] .* (1 .- (1 .- stLvl_df[!,:val]) .^ sca_arr)
+							select!(stLvl_df,Not(:val))
+							allVar_df = vcat(allVar_df,stLvl_df)
+						end
 					end
 				end
 

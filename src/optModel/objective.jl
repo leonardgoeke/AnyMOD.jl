@@ -132,7 +132,12 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		if !(costPar_sym in parObj_arr) continue end
 
 		# get all variables
-		allCapa_df = rename(getAllVariables(var_sym,anyM),:var => :capa)
+        allCapa_df = getAllVariables(var_sym,anyM)
+        if isempty(allCapa_df)
+            continue
+        else
+            allCapa_df = rename(allCapa_df,:var => :capa)
+        end
 
 		# joins costs and discount factors to create cost expression
 		allCapa_df = matchSetParameter(convertExcCol(allCapa_df),partObj.par[costPar_sym],anyM.sets,newCol = :costOpr)

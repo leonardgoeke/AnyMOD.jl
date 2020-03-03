@@ -21,7 +21,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
 		# check, if carrier got an equality constraint or not
 		if :carrier_equality in names(row)
 			if !(row[:carrier_equality] in ("no","yes"))
-				push!(anyM.report,(3,"carrier mapping","","column carrier_equality can only contain keywords 'yes' or 'no'"))
+				push!(anyM.report,(2,"carrier mapping","","column carrier_equality can only contain keywords 'yes' or 'no'"))
 				continue
 			else
 				eq_boo = row[:carrier_equality] == "yes" ? true : false
@@ -151,11 +151,22 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 		carId_dic[x] = tuple(filter(y -> y != Int[],collect(carId_dic[x]))...)
 	end
 
+	# avoid storage of carriers that are balanced on superordinate dispatch level (e.g. if gas is balanced yearly, there is no need for gas storage)
+	for type in (:carrier_stored_out, :carrier_stored_in)
+		for c in carId_dic[type]
+			if anyM.supTs.lvl == anyM.cInfo[c].tsDis
+				carId_dic[type] = tuple(filter(x -> x != c,collect(carId_dic[type]))...)
+				push!(anyM.report,(2,"technology mapping","carrier","carrier $(createFullString(c,anyM.sets[:C])) of technology $(createFullString(t,anyM.sets[:Te])) cannot be stored, because carrier is balanced on supordiante dispatch level"))
+			end
+		end
+	end
+
     # writes all relevant type of dispatch variables and respective carriers
     carGrp_ntup = (use = carId_dic[:carrier_conversion_in], gen = carId_dic[:carrier_conversion_out], stExtIn = carId_dic[:carrier_stored_in], stExtOut = carId_dic[:carrier_stored_out],
                          stIntIn = tuple(intersect(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])...), stIntOut = tuple(intersect(carId_dic[:carrier_conversion_in],carId_dic[:carrier_stored_in])...))
 
-    # report on suspicious looking carrier constellations
+
+	# report on suspicious looking carrier constellations
     if isempty(union(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])) push!(anyM.report,(2,"technology mapping","carrier","technology $(createFullString(t,anyM.sets[:Te])) has no output")) end
 
     if !isempty(setdiff(carId_dic[:carrier_stored_in],union(carGrp_ntup.stIntOut,carGrp_ntup.stExtOut))) && !isempty(carId_dic[:carrier_stored_in])
@@ -189,7 +200,6 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     part.type = Symbol(type_str)
 
 
-
     # XXX writes modes of technology
     if length(anyM.sets[:M].nodes) > 1
         part.modes = tuple(collect(lookupTupleTree(tuple(string(x),),anyM.sets[:M],1)[1] for x in filter(x -> x != "",split(replace(row_df[:mode]," " => ""),";")))...)
@@ -199,16 +209,17 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
     # XXX determines resolution of expansion
     # determines carrier based expansion resolutions
+	cEx_boo = true
     if isempty(vcat(collect.(values(carGrp_ntup))...))
-		push!(anyM.report,(3,"technology mapping","carrier","for technology $(createFullString(t,anyM.sets[:Te])) no carriers were provided"))
-		return
+		push!(anyM.report,(2,"technology mapping","carrier","for technology $(createFullString(t,anyM.sets[:Te])) no carriers were provided"))
+		cEx_boo = false
 	end
 
-	tsExp_int = maximum(map(y -> getfield(anyM.cInfo[y],:tsExp), vcat(collect.(values(carGrp_ntup))...)))
-	rExp_int = maximum(map(y -> getfield(anyM.cInfo[y],:rExp), vcat(collect.(values(carGrp_ntup))...)))
+	tsExp_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:tsExp), vcat(collect.(values(carGrp_ntup))...))) : 0
+	rExp_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:rExp), vcat(collect.(values(carGrp_ntup))...))) : 0
 
 	# check if carrier based temporal resolution is overwritten by a technology specifc value
-	if :timestep_expansion in names(row_df)
+	if cEx_boo && :timestep_expansion in names(row_df)
 		tsExpSpc_int = tryparse(Int,row_df[:timestep_expansion])
 
 		if !isnothing(tsExpSpc_int)
@@ -222,7 +233,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 	end
 
 	# check if carrier based spatial resolution is overwritten by a technology specifc value
-	if :region_expansion in names(row_df)
+	if cEx_boo && :region_expansion in names(row_df)
 		rExpSpc_int = tryparse(Int,row_df[:region_expansion])
 
 		if !isnothing(rExpSpc_int)
@@ -238,10 +249,9 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 	end
 
     expLvl_tup = (tsExp_int,rExp_int)
-    if isempty(keys(carGrp_ntup)) return end
 
 	# XXX checks if dispatch variables should be disaggregated by expansion regions
-	rExpOrg_int = maximum(map(y -> getfield(anyM.cInfo[y],:rDis), vcat(collect.(values(carGrp_ntup))...)))
+	rExpOrg_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:rDis), vcat(collect.(values(carGrp_ntup))...))) : 0
 
 	if :region_disaggregate in names(row_df) && rExp_int > rExpOrg_int # relies on information in explicit column, if disaggregation is possible and column exists
 		daggR_str = row_df[:region_disaggregate]
@@ -352,5 +362,5 @@ function createCapaRestrMap!(t::Int,anyM::anyModel)
         end
     end
 
-    part.capaRestr = categorical(rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR))
+    part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : categorical(rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR))
 end

@@ -468,14 +468,6 @@ function createStBal(part::TechPart,anyM::anyModel)
 		# get constraints relevant for carrier and find rows where mode is specified
 		cnsC_df = filter(x -> x.C == c,cns_df)
 
-		# does not write a balance, if storage balance would be created on supordinate dispatch level
-		if cnsC_df[!,:Ts_disSup] == cnsC_df[!,:Ts_dis]
-			filter!(x -> false,cnsC_df)
-			cnsC_df[!,:cnsExpr] = AffExpr[]
-			cCns_arr[idx] = cnsC_df
-			continue
-		end
-
 		m_arr = findall(0 .!= cnsC_df[!,:M])
 		noM_arr = setdiff(1:size(cnsC_df,1),m_arr)
 
