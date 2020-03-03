@@ -145,7 +145,7 @@ end
 function removeEntries(remove_arr::Array{DataFrame,1},input_df::DataFrame)
     if !isempty(remove_arr)
         remove_df = length(remove_arr) == 1 ? remove_arr[1] : vcat(remove_arr...)
-        colRemove_arr = names(input_df)
+        colRemove_arr = names(remove_df)
 		out_df = join(input_df,remove_df; on = colRemove_arr, kind = :anti)
 		return out_df
     else
@@ -457,9 +457,12 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 				end
 			end
 		end
+
 		allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)
-		allVar_df[!,:var] = allVar_df[!,:val]  ./ 1e6 .* allVar_df[!,:var]
-		select!(allVar_df,Not(:val))
+		if !isempty(allVar_df)
+			allVar_df[!,:var] = allVar_df[!,:val]  ./ 1e6 .* allVar_df[!,:var]
+			select!(allVar_df,Not(:val))
+		end
 	end
 
 	if !(va in (:capaConv,:capaStIn,:capaStOut,:capaStSize,:commCapaConv,:commCapaStIn,:commCapaStOut,:commCapaStSize,:expConv,:expStIn,:expStOut,:expStSize)) && !isempty(allVar_df) && reflectRed
