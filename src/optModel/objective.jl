@@ -152,7 +152,12 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		if !(costPar_sym in parObj_arr || (va == :use && :emissionPrc in parObj_arr && :emissionFac in keys(anyM.parts.lim.par))) continue end
 
 		# obtain all variables
-		allDisp_df = rename(getAllVariables(va,anyM),:var => :disp)
+		allDisp_df = getAllVariables(va,anyM)
+		if isempty(allDisp_df)
+			continue
+		else
+			allDisp_df = rename(allDisp_df,:var => :disp)
+		end
 
 		# special case for variable costs of exchange (direct and symmetric values need to be considered both) and of use (emission price needs to be considered)
 		if va == :exc
