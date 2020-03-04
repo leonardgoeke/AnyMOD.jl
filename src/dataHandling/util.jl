@@ -401,7 +401,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			allVar_df = DataFrame()
 		end
 	else va == :emission # for emission all use variables are obtained and then already matched with emission factors
-		# get all carriers that might be relevant to comput emissions
+		# get all carriers that might be relevant to compute emissions
 		emC_arr = vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],unique(anyM.parts.lim.par[:emissionFac].data[!,:C]))...)
 
 		if !(:emissionFac in keys(anyM.parts.lim.par))
@@ -415,9 +415,10 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			# get expressions for storage and exchange losses, if this is enabled
 			if anyM.options.emissionLoss
 
-				allStEm_arr = unique(vcat(vcat(map(x -> map(y -> intersect(emC_arr,x.carrier[y]),intersect(keys(x.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))),values(anyM.parts.tech))...)...))
+				# get all carriers being stored
+				allSt_arr = unique(vcat(vcat(map(x -> map(y -> collect(x.carrier[y]),intersect(keys(x.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))),values(anyM.parts.tech))...)...))
 
-				if !isempty(allStEm_arr)
+				if !isempty(intersect(emC_arr,vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],allSt_arr)...)))
 					# get all storage variables where storage losses can lead to emissions
 					stVar_dic = Dict((string(st) |> (y -> Symbol(uppercase(y[1]),y[2:end]))) => getAllVariables(st,anyM, filterFunc = x -> x.C in emC_arr) for st in (:stIn,:stOut))
 					stLvl_df = getAllVariables(:stLvl,anyM, filterFunc = x -> x.C in emC_arr)
