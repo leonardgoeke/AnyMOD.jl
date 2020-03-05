@@ -780,6 +780,7 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
   # </editor-fold>
 
   # <editor-fold desc="prepare labels and colors"
+
   # prepare name and color assignment
   names_dic = anyM.graInfo.names
   revNames_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
@@ -819,6 +820,7 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 
     # write flows reported in data summary
     for x in eachrow(dropData_df)
+		println(x)
       a = Array{Any,1}(undef,3)
 
       # technology related entries
@@ -829,11 +831,22 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
         a[1] = othNode_dic[(x.C,x.variable)]
         a[2] = flowGrap_obj.nodeC[x.C]
       elseif x.variable in (:gen,:stOut)
-        a[1] = flowGrap_obj.nodeTe[x.Te]
-        a[2] = flowGrap_obj.nodeC[x.C]
+
+		  if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
+			  a[1] = flowGrap_obj.nodeTe[x.Te]
+		  else
+			  a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+		  end
+
+		  a[2] = flowGrap_obj.nodeC[x.C]
       else
         a[1] = flowGrap_obj.nodeC[x.C]
-        a[2] = flowGrap_obj.nodeTe[x.Te]
+
+		if x.Te in keys(flowGrap_obj.nodeTe)
+			a[2] = flowGrap_obj.nodeTe[x.Te]
+		else
+			a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+		end
       end
 
       a[3] = abs(x.value)
