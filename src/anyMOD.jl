@@ -1,6 +1,6 @@
 module anyMOD
 
-    using Base.Threads, CSV, Dates, LinearAlgebra
+    using Base.Threads, CSV, Dates, LinearAlgebra, Gurobi
     using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays
     @reexport using DataFrames, JuMP
 
