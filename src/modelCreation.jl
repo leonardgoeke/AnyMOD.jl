@@ -36,7 +36,7 @@ function createOptModel!(anyM::anyModel)
 	tech_itr = collect(enumerate(techIdx_arr))
 
 	@threads for (idx,t) in tech_itr
-		techCnsDic_arr[idx] = createTech!(t,anyM.parts.tech[t],prepVar_dic[t],parDef_dic,ts_dic,r_dic,anyM)
+		techCnsDic_arr[idx] = createTech!(t,anyM.parts.tech[t],prepVar_dic[t],copy(parDef_dic),ts_dic,r_dic,anyM)
 	end
 
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
