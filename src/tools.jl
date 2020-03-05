@@ -875,7 +875,7 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
       rmvStr_arr = split(rmv,"; ")
       relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
       if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
-      if isempty(relNodes_arr) error("remove string contained a node not found in graph, check for typos") end
+      if isempty(relNodes_arr) continue end
 
       if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
         relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
