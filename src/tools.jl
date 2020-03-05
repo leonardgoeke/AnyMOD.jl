@@ -820,7 +820,6 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 
     # write flows reported in data summary
     for x in eachrow(dropData_df)
-		println(x)
       a = Array{Any,1}(undef,3)
 
       # technology related entries
