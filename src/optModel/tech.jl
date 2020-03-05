@@ -77,8 +77,10 @@ function prepareTechs!(techIdx_arr::Array{Int,1},prepVar_dic::Dict{Int,Dict{Symb
 		# map required capacity constraints
 		createCapaRestrMap!(t, anyM)
 
+		filter!(x -> !(isempty(x[2].var) && isempty(x[2].resi) && occursin("capa",string(x[1]))), prepTech_dic)
+
 		if map(x -> x in keys(prepTech_dic),(:capaStIn,:capaStOut,:capaStSize)) |> (y -> any(y) && !all(y))
-			push!(anyM.report,(3,"technology dimensions","storage","in case of $(tech_str) information for one storage capacity is missing (stIn, stOut or stSize)"))
+			push!(anyM.report,(3,"technology dimensions","storage","in case of $(createFullString(t,anyM.sets[:Te])) information for one storage capacity is missing (stIn, stOut or stSize)"))
 		end
 
 		# if any capacity variables were prepared, add these to overall dictionary

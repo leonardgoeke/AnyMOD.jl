@@ -143,6 +143,8 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		allCapa_df = matchSetParameter(convertExcCol(allCapa_df),partObj.par[costPar_sym],anyM.sets,newCol = :costOpr)
 		allCapa_df = matchSetParameter(convertExcCol(allCapa_df),partObj.par[va != :Exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
 
+		if isempty(allCapa_df) continue end
+
 		# XXX groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
 		allCapa_df = by(allCapa_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C], expr = [:disFac,:capa,:costOpr] => x -> sum(x.disFac .* x.capa .* x.costOpr))
 		transferCostEle!(allCapa_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng)
