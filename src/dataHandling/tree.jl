@@ -8,7 +8,7 @@ function lookupTupleTree(input_uni::Tuple{Vararg{String,N} where N},tree_obj::Tr
 	lastVal_int = findlast(x -> x != "",input_uni)
 
 	# adjust input uni and start level according to removed values
-	startLvl_int = startLvl_int + firstVal_int - 1
+	startLvl_int = plus(firstVal_int,startLvl_int) - 1
 	input_uni = input_uni[firstVal_int:lastVal_int]
 
 	gap_arr = findall(input_uni .== "")

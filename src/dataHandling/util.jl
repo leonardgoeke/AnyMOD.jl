@@ -51,9 +51,10 @@ end
 
 # <editor-fold desc="miscellaneous data processing"
 
-# XXX new plus function to avoid error when one element being added up is nothing, TODO unclear where this was used
+# XXX new plus function to avoid error when one element being added up is nothing
 plus(a::Int,b::Int) = a + b
 plus(a::Int,b::Nothing) = a
+plus(a::Nothing,b::Int) = b
 
 # XXX returns dataframe columns without value column
 removeVal(input_df::DataFrame) = filter(x -> !(x in (:val,:ratio)),names(input_df))
