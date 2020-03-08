@@ -539,7 +539,7 @@ Plots a tree for all nodes provided by the set data frame and copies it to the o
 - `ratio = 1.0`
 	- Aspect ratio of output graph.
 """
-function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Number,Number} = (8.0,4.5), fontSize = 12, useColor::Bool = true, wide::Array{Number,1} = fill(1.0,30))
+function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Float64} = (8.0,4.5), fontSize::Int = 12, useColor::Bool = true, wide::Array{Float64,1} = fill(1.0,30))
 
     netw = pyimport("networkx")
     plt = pyimport("matplotlib.pyplot")
