@@ -312,8 +312,8 @@ function createCapaRestrMap!(t::Int,anyM::anyModel)
             # sorts descinding by j-th column and ascending by other column
             carDisSort_arr = sort(collect(carDis_tup), by = x -> x[j], rev=true)
             carIt_arr =	map(1:length(carDis_tup)) do x
-                if j == 2 ([carDisSort_arr[y][1] for y in 1:x], carDisSort_arr[x][2], minimum([carDisSort_arr[y][3] for y in 1:x]))
-                else ([carDisSort_arr[y][1] for y in 1:x], minimum([carDisSort_arr[y][2] for y in 1:x]), carDisSort_arr[x][3]) end
+                if j == 2 (sort([carDisSort_arr[y][1] for y in 1:x]), carDisSort_arr[x][2], minimum([carDisSort_arr[y][3] for y in 1:x]))
+                else (sort([carDisSort_arr[y][1] for y in 1:x]), minimum([carDisSort_arr[y][2] for y in 1:x]), carDisSort_arr[x][3]) end
             end
             # filters entries that exceed the reference level or at not below the reference level, if already a constraint on the reference level exists from the previous iteration
 			if side == :use && isempty(setdiff((:use,:gen),keys(carGrp_ntup)))
