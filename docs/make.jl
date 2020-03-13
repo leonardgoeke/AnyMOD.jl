@@ -7,11 +7,12 @@ makedocs(sitename="anyMOD.jl",
         "Introduction" => "index.md",
         "Model Elements" => Any["Sets" => "sets.md",
                                 "Parameter" => "parameter.md",
-                                "Variables and Constraints" => "var_const.md",
-                                "Objective" => "objective.md"],
-        "Obtain results" => Any["Reporting and Options" => "reportOpt.md",
-                                "Visualizations" => "vis.md",
-                                "CSV Tables" => "csvtab.md"]
+                                "Parts" => "parts.md"],
+        "Tools" => Any["Reporting" => "reporting.md",
+                        "Results" => "results.md",
+                        "Plots" => "plots.md",
+                        "Numerical stability" => "numerical_stability.md"],
+        "Annex" => Any["References" => "references.md", "Parameter list" => "parameter_list.md"]
         ],
     )
 

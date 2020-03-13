@@ -3,41 +3,65 @@ anyMOD
 
 [anyMOD.jl](https://github.com/leonardgoeke/anyMOD.jl) is a [Julia](https://julialang.org/) framework to set up large scale linear energy system models with a focus on multi-period capacity expansion. It was developed to address the challenges in modelling high-levels of intermittent generation and sectoral integration.
 
-The framework's key characteristic is, that all sets (time-steps, regions, energy carriers, and technlogies) are each organized within a hierarchical tree structure. This allows for several unique features:
+The framework's key characteristic is, that all sets (time-steps, regions, energy carriers, and technologies) are each organized within a hierarchical tree structure. This allows for several unique features:
 
 * The spatial and temporal resolution at which generation, use and transport of energy is modelled can be varied by energy carrier. For example, within the same model electricity can be modelled at an hourly, but gas at a daily resolution, while still allowing for technologies that convert gas to electricity, or vice versa. As a result, a substantial decrease of computational effort can be achieved.
 * The substitution of energy carriers with regard to conversion, consumption and transport can be modelled. As an example, residential and district heat can both equally satisfy overall heat demand, but technologies to produce these carriers and how they are constrained are different.
 * Inheritance within the trees can be exploited to dynamically obtain the model's parameters from the input data provided. In case of a technology’s efficiency for instance, parameters can vary by hour, day or be irrespective of time, depending on whether input data was provided hourly, daily or without any temporal dimension specified.
 
-The tool relies on the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package to create optimization problems and uses [JuliaDB](https://juliadb.org/) to store and process their elements.
-
+In addition, the framework provides functionalities to ensure numerical stability of the underlying optimization problem and assess it results. The tool relies on the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package to create optimization problems and uses [DataFrames](https://juliadata.github.io/DataFrames.jl/stable/) to store and process their elements. The framework requires [Julia 1.3](https://julialang.org/downloads/) since all computationally intensive steps are parallelized using multi-threading.
 
 Quick Start
 =================
 
-The example project "demo" is used to introduce the packages’ top-level functions. After adding anyMOD to your project, the function `anyModel` constructs an anyMOD model object by reading in the csv files found within the directory specified by the first argument. The second argument specifies a directory all model outputs are written to. Furthermore, default model options can be overwritten via optional arguments. In this case, the distance between investment time-steps is set to 10 instead of 5 years as per default and the level of reporting is extended to 3 to produce more detailed output messages.
+The example project "demo" is used to introduce some of packages’ core functions and give an idea about the workflow. First of all, anyMOD is installed by switching into Julia package mode by typing `]` into the console and then run `add https://github.com/leonardgoeke/anyMOD.jl`. After leaving the package mode again by pressing backspace and adding anyMOD to your project, the function `anyModel` constructs an anyMOD model object by reading in the csv files found within the directory specified by the first argument. The second argument specifies a directory all model outputs are written to. Furthermore, default model options can be overwritten via optional arguments. In this case, the model is assigned the name "demo", which will be added to name of each output file later. 
 
 ```
 using anyMOD
-anyM = anyModel("examples/demo","output"; shortInvest = 10, reportLvl = 3)
+anyM = anyModel("examples/demo","results", objName = "demo")
 ```
 
-`addVariables!` and `addConstraints!` determine, which optimization variables and constraints the specific model requires and adds them.
+During the construction process, all input files are read-in and checked for errors. Afterwards sets are mapped to each other and parameter data is assigned to the different model parts. During the whole process status updates are printed to the console and more important reports are written to a dedicated csv file. Since after construction, all qualitative model information, meaning all sets and their interrelations, is written, several graphs describing a models´ structure can be plotted.
 
 ```
-addVariables!(anyM)
-addConstraints!(anyM)
+plotTree(:region,anyM)
+plotTree(:carrier,anyM)
+plotTree(:tech,anyM, plotSize = (28.0,5.0))
+plotEnergyFlow(:graph,anyM)
 ```
 
-Afterwards, `setObjective!` sets the objective function of the optimization problem. The first argument serves as a key for the respective objective. To enable multi-objective optimization, instead of a single symbol this can also be a dictionary that assigns a respective keyword to its weight in the final objective function. So far only costs have been implemented as an objective.
+All of these plots will be written to the specified results folder. The first three graphs plotted by `plotTree` show the rooted tree defining the sets of regions, carriers, and technologies, respectively. As an example, the rooted tree for carriers is displayed below.
+
+![](assets/carrier.png)
+
+The fourth graph created by using `plotEnergyFlow` with keyword `:graph` gives a visual qualitative overview of all energy flows within a model. Nodes either correspond to technologies (grey dots) or energy carriers (colored squares). Edges between technology and energy carrier nodes indicate the carrier is either an input (entering edge) or an output (leaving edge) of the respective technology. Edges between carriers indicate the same relationships as displayed in the tree above.
+
+![](assets/energyFlowGraph.png)
+
+To create the variables and constraints of the model's underlying optimization problem, the model object is passed to the `createOptModel!` function. Afterwards, the `setObjective!` function is used to set the objective function for optimizing. The function requires a keyword input to indicate what is optimized, but so far only `:costs` has been implemented. Again, updates and reports are written to the console and to a dedicated reporting file.
 
 ```
+createOptModel!(anyM)
 setObjective!(:costs,anyM)
 ```
 
-Finally, the JuMP model object of is be passed to a solver. Afterwards, the value of optimization variables can be printed to csv files via the `printObject` command.
+To actually solve the created optimization problem, the field of the model structure containing the corresponding JuMP object is passed to the functions of the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package used for this purpose. The JuMP package itself is part of anyMOD’s dependencies and therefore does not have to be added separately, but the solver does. In this case we used Gurobi, but CPLEX or a non-commercial server could have been used as well.
+
 ```
 using Gurobi
-JuMP.optimize!(anyM.optModel,with_optimizer(Gurobi.Optimizer, OutputFlag=1, Method = 1))
-printObject(anyM.variables[:capaConv],anyM.sets , anyM.options)
+set_optimizer(anyM.optModel)
+optimize!(anyM.optModel)
 ```
+
+Once a model is solved, results can be obtained and analyzed by the following functions:
+
+```
+reportResults(:summary,anyM)
+reportTimeSeries(:electricity, anyM)
+plotEnergyFlow(:sankey,anyM)
+
+```
+
+Depending on the keyword provided, `reportResults` writes aggregated results to a csv file. `:summary` gives an overview of installed capacities and yearly use and generation of energy carriers. Other keywords available are `:costs` and `:exchange`. `reportTimeSeries` will write the energy balance and the value of each term within the energy balance of the carrier provided as a keyword. Finally, `plotEnergyFlow` used with the keyword `:sankey` creates a sankey diagram that visualizes the quantitative energy flows in the solved model.
+
+![](assets/sankey.png)
