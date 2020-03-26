@@ -620,7 +620,7 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
 
     # draw graph object
     plt.clf()
-    graph_obj = netw.DiGraph()
+    graph_obj = netw.Graph()
 
     netw.draw_networkx_nodes(graph_obj, pos_dic; nodelist = collect(1:nodes_int), node_color = col_arr)
     netw.draw_networkx_edges(graph_obj, pos_dic; edgelist = edges_arr)
