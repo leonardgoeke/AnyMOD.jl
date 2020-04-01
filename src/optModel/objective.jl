@@ -87,8 +87,9 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		techLife_df = matchSetParameter(filter(x -> isnothing(x.life),allExp_df)[!,Not(:life)],lifePar_obj,anyM.sets,newCol = :life)
 		allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),allExp_df))
 
-		# gets expansion costs and interest reat to compute annuity
+		# gets expansion costs and interest rate to compute annuity
 		allExp_df = matchSetParameter(convertExcCol(allExp_df),partObj.par[costPar_sym],anyM.sets,newCol = :costExp)
+		if isempty(allExp_df) continue end
 
 		# uses tech specific discount rate and fall back on general discount rate as default
 		if Symbol(:rateExp,va) in keys(partObj.par)
