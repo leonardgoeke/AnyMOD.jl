@@ -402,8 +402,6 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			allVar_df = DataFrame()
 		end
 	else va == :emission # for emission all use variables are obtained and then already matched with emission factors
-		# get all carriers that might be relevant to compute emissions
-		emC_arr = vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],unique(anyM.parts.lim.par[:emissionFac].data[!,:C]))...)
 
 		if !(:emissionFac in keys(anyM.parts.lim.par))
 			lock(anyM.lock)
@@ -411,6 +409,8 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			unlock(anyM.lock)
 			allVar_df = DataFrame()
 		else
+			# get all carriers that might be relevant to compute emissions
+			emC_arr = vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],unique(anyM.parts.lim.par[:emissionFac].data[!,:C]))...)
 			# get use variables
 			allVar_df = getAllVariables(:use,anyM, filterFunc = x -> x.C in emC_arr)
 			# get expressions for storage and exchange losses, if this is enabled
@@ -463,9 +463,11 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 					end
 				end
 			end
+
+			allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)
 		end
 
-		allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)
+
 		if !isempty(allVar_df)
 			allVar_df[!,:var] = allVar_df[!,:val]  ./ 1e6 .* allVar_df[!,:var]
 			select!(allVar_df,Not(:val))
