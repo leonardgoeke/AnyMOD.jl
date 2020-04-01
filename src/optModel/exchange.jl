@@ -152,16 +152,16 @@ function createCapaExcCns!(partExc::OthPart,anyM::anyModel)
 		cns_df = intCol(cns_df,:dir) |> (x -> orderDf(cns_df[!,[x...,:cnsExpr]]))
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 		partExc.cns[:excCapa] = createCns(cnsCont(cns_df,:equal),anyM.optModel)
+	end
 
-		# create and control commissioned capacity variables
-		if anyM.options.decomm != :none
-			# constraints for commissioned capacities are saved into a dictionary of containers and then actually created
-			cns_dic = Dict{Symbol,cnsCont}()
-			createCommVarCns!(partExc,cns_dic,anyM)
-			for cnsSym in keys(cns_dic)
-				scaleCnsExpr!(cns_dic[cnsSym].data,anyM.options.coefRng,anyM.options.checkRng)
-				partExc.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
-			end
+	# create and control commissioned capacity variables
+	if anyM.options.decomm != :none && :capaExc in keys(partExc.var)
+		# constraints for commissioned capacities are saved into a dictionary of containers and then actually created
+		cns_dic = Dict{Symbol,cnsCont}()
+		createCommVarCns!(partExc,cns_dic,anyM)
+		for cnsSym in keys(cns_dic)
+			scaleCnsExpr!(cns_dic[cnsSym].data,anyM.options.coefRng,anyM.options.checkRng)
+			partExc.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
 		end
 	end
 end
