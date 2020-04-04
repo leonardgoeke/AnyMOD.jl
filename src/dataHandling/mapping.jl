@@ -274,8 +274,8 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
     # XXX determines reference resolution for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
     if !isempty(union(carGrp_ntup.use,carGrp_ntup.gen))
-		refTs_int = minimum([maximum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
-		refR_int = disAgg_boo ? rExp_int : minimum([maximum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
+		refTs_int = minimum([minimum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
+		refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
         refLvl_tup = (refTs_int, refR_int)
     else
         refLvl_tup = nothing
@@ -315,7 +315,7 @@ function createCapaRestrMap!(t::Int,anyM::anyModel)
                 if j == 2 (sort([carDisSort_arr[y][1] for y in 1:x]), carDisSort_arr[x][2], minimum([carDisSort_arr[y][3] for y in 1:x]))
                 else (sort([carDisSort_arr[y][1] for y in 1:x]), minimum([carDisSort_arr[y][2] for y in 1:x]), carDisSort_arr[x][3]) end
             end
-            # filters entries that exceed the reference level or at not below the reference level, if already a constraint on the reference level exists from the previous iteration
+            # filters entries that exceed the reference level or are not below the reference level, if already a constraint on the reference level exists from the previous iteration
 			if side == :use && isempty(setdiff((:use,:gen),keys(carGrp_ntup)))
 				carIt_arr = carIt_arr[findall(x -> j == 2 ? x[2] > balLvl_ntup.ref[1] : x[3] > balLvl_ntup.ref[2],carIt_arr)]
 			else
