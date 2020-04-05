@@ -161,10 +161,17 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 		end
 	end
 
-    # writes all relevant type of dispatch variables and respective carriers
+    # writes all relevant type of dispatch variables and respective carrier
     carGrp_ntup = (use = carId_dic[:carrier_conversion_in], gen = carId_dic[:carrier_conversion_out], stExtIn = carId_dic[:carrier_stored_in], stExtOut = carId_dic[:carrier_stored_out],
                          stIntIn = tuple(intersect(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])...), stIntOut = tuple(intersect(carId_dic[:carrier_conversion_in],carId_dic[:carrier_stored_in])...))
 
+	if :carrier_stored_active in names(row_df)
+		actStStr_arr = split(replace(row_df[:carrier_stored_active]," " => ""),";") |> (z -> filter(x -> !isempty(x),z))
+		actSt_tup = tuple(map(x -> getDicEmpty(nameC_dic,x),actStStr_arr)...)
+	else
+		actSt_tup = tuple()
+	end
+	part.actSt = actSt_tup
 
 	# report on suspicious looking carrier constellations
     if isempty(union(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])) push!(anyM.report,(2,"technology mapping","carrier","technology $(createFullString(t,anyM.sets[:Te])) has no output")) end
@@ -176,6 +183,12 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     if !isempty(setdiff(carId_dic[:carrier_stored_out],union(carGrp_ntup.stIntIn,carGrp_ntup.stExtIn))) && !isempty(carId_dic[:carrier_stored_out])
         push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology $(createFullString(t,anyM.sets[:Te])) can be discharged but not charged"))
     end
+
+	for c in part.actSt
+		if !(c in vcat(map(x -> vcat(getDescendants(3,anyM.sets[:C],true)...,x), union(carGrp_ntup.stExtIn,carGrp_ntup.stExtOut))...))
+			push!(anyM.report,(3,"technology mapping","carrier","$(createFullString(c,anyM.sets[:C])) for active storage of technology $(createFullString(t,anyM.sets[:Te])) is not stored or a descendant of a stored carrier"))
+		end
+	end
 
     part.carrier = filter(x -> getfield(carGrp_ntup,x) != tuple(),collect(keys(carGrp_ntup))) |> (y -> NamedTuple{Tuple(y)}(map(x -> getfield(carGrp_ntup,x), y)) )
 
@@ -268,9 +281,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 	else
 		disAgg_boo = false
 	end
-
 	part.disAgg = disAgg_boo
-
 
     # XXX determines reference resolution for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
     if !isempty(union(carGrp_ntup.use,carGrp_ntup.gen))

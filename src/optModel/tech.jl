@@ -270,9 +270,11 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
             lock(anyM.lock)
 			basis_df = orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
 			unlock(anyM.lock)
-			# filter carriers that are stored-in or out internally and therefore are created even if they are not a leafe
-			intC_arr = map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...))
+			# filter carriers that are can be actively stored, although they got descendants
+			intC_arr = union(collect(part.actSt),map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...)))
 			basis_df = replCarLeafs(basis_df,anyM.sets[:C],noLeaf = intC_arr)
+			# filter entries that are already descendants of carrier being actively stored
+			unique(vcat(map(x -> getDescendants(x,anyM.sets[:C],true),unique(basis_df[!,:C]))...)) |> (z -> filter!(x -> !(x.C in z) || x.C in intC_arr,basis_df))
 		end
 
 		# adds temporal and spatial level to dataframe
@@ -576,7 +578,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 
 	# get relevant carriers for conversion and storage variables
 	relConv_arr = restr.car
-	intC_arr = map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...))
+	intC_arr = union(collect(part.actSt),map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...)))
 	relSt_arr = filter(y -> isempty(sets_dic[:C].nodes[y].down) || y in intC_arr, [restr.car[1],getDescendants(restr.car[1],sets_dic[:C],true)...])
 
 	# determines dimensions for aggregating dispatch variables

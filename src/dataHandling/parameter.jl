@@ -401,9 +401,13 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
                 capaLvl_df[!,:C] .= car_arr
                 capaLvl_df = flatten(capaLvl_df,:C)
 			else
-                intC_arr = map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...))
+                # filter carriers that are can be actively stored, although they got descendants
+                intC_arr = union(collect(part.actSt),map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...)))
                 capaLvl_df = replCarLeafs(capaLvl_df,anyM.sets[:C],noLeaf = intC_arr)
-				car_arr = unique(capaLvl_df[!,:C])
+                # filter entries that are already descendants of carrier being actively stored
+
+                unique(vcat(map(x -> getDescendants(x,anyM.sets[:C],true),unique(capaLvl_df[!,:C]))...)) |> (z -> filter!(x -> !(x.C in z) || x.C in intC_arr,capaLvl_df))
+                car_arr = unique(capaLvl_df[!,:C])
 			end
 
 			resC_dic = Dict(x => anyM.cInfo[x] |> (y -> [getfield(y,:tsDis), part.disAgg ? part.balLvl.exp[2] : getfield(y,:rDis)]) for x in car_arr)

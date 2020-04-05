@@ -484,7 +484,7 @@ end
 # XXX replaces orginal carriers in var_df with all leafes connected to respective carrier (and itself) and flattens it
 function replCarLeafs(var_df::DataFrame,c_tree::Tree;cCol::Symbol=:C,noLeaf::Array{Int,1} = Int[])
 
-	cToLeafs_dic = Dict(x => x in noLeaf ? x : filter(y -> isempty(c_tree.nodes[y].down), [x,getDescendants(x,c_tree,true)...]) for x in unique(var_df[!,cCol]))
+	cToLeafs_dic = Dict(x => filter(y -> isempty(c_tree.nodes[y].down) || y in noLeaf,[x,getDescendants(x,c_tree,true)...]) for x in unique(var_df[!,cCol]))
 	var_df[!,:C] = map(x -> cToLeafs_dic[x],var_df[!,cCol])
 	var_df = flatten(var_df,:C)
 

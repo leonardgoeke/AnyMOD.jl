@@ -110,6 +110,7 @@ mutable struct TechPart <: AbstractModelPart
 	carrier::NamedTuple
 	balLvl::NamedTuple{(:exp,:ref),Tuple{Tuple{Int,Int},Union{Nothing,Tuple{Int,Int}}}}
 	capaRestr::DataFrame
+	actSt::Tuple
 	type::Symbol
 	disAgg::Bool
 	modes::Tuple{Vararg{Int,N} where N}
