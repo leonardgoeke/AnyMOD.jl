@@ -2,7 +2,7 @@
 <img src="docs/src/assets/schriftzug_plus_logo.png" alt="logo" width="950px"/>
 
 [anyMOD.jl](https://github.com/leonardgoeke/anyMOD.jl) is a [Julia](https://julialang.org/) framework to set up large scale linear energy system models with a focus on multi-period capacity expansion. It was developed to address the challenges in modelling high-levels of intermittent generation and sectoral integration. The documentation can be found here https://leonardgoeke.github.io/anyMOD.jl/dev/.
-A working paper introducing the framework’s underlying method in greater detail can be found [here](https://github.com/leonardgoeke/anyMOD.jl/raw/master/docs/src/assets/anyMOD_working_paper.pdf).
+A working paper introducing the framework’s underlying method in greater detail can be found [here](https://github.com/leonardgoeke/anyMOD.jl/raw/master/docs/src/assets/anyMOD_workingPaper.pdf).
 
 The framework's key characteristic is, that all sets (time-steps, regions, energy carriers, and technologies) are each organized within a hierarchical tree structure. This allows for several unique features:
 
