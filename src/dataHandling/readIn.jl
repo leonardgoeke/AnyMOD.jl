@@ -39,7 +39,7 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 			# reports error if carrier names are non-unique
 			strSet_arr = getfield.(values(anyM.sets[setLngShrt_dic[set]].nodes),:val)
 			if length(strSet_arr) != length(unique(strSet_arr))
-				push!(anyM.report,(3,"set read-in","carrier","non-unique $setType names provided"))
+				push!(anyM.report,(3,"set read-in",set,"non-unique $set names provided"))
 			end
 		end
 	end
