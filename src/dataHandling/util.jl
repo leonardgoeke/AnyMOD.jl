@@ -125,7 +125,6 @@ end
 
 # </editor-fold>
 
-
 # <editor-fold desc="data frame based manipulations"
 
 # XXX finds entries where expansion or capacity would be fixed to zero
@@ -219,7 +218,6 @@ function getUpBound(in_df::DataFrame,dispBound_fl::Float64,supTs::NamedTuple{(:l
 end
 
 # </editor-fold>
-
 
 # <editor-fold desc="functions and sub-functions to aggregate variables"
 

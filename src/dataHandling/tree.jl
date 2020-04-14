@@ -118,7 +118,7 @@ function getDescendants(startNode_int::Int,tree_obj::Tree,getAll::Bool = false, 
 	# sets limits to maximum value if none provided
 	if limitLvl_int == 0 limitLvl_int = tree_obj.height end
 
-	if startLvl_int == limitLvl_int return startNode_int end
+	if startLvl_int == limitLvl_int || (getAll && isempty(tree_obj.nodes[startNode_int].down)) return [startNode_int] end
 
 	startIdx_arr = tree_obj.nodes[startNode_int].down
 

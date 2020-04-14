@@ -274,7 +274,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			intC_arr = union(collect(part.actSt),map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...)))
 			basis_df = replCarLeafs(basis_df,anyM.sets[:C],noLeaf = intC_arr)
 			# filter entries that are already descendants of carrier being actively stored
-			unique(vcat(map(x -> getDescendants(x,anyM.sets[:C],true),unique(basis_df[!,:C]))...)) |> (z -> filter!(x -> !(x.C in z) || x.C in intC_arr,basis_df))
+			unique(vcat(map(x -> filter(y -> x != y,getDescendants(x,anyM.sets[:C],true)),unique(basis_df[!,:C]))...)) |> (z -> filter!(x -> !(x.C in z) || x.C in intC_arr,basis_df))
 		end
 
 		# adds temporal and spatial level to dataframe

@@ -64,7 +64,7 @@ end
 
 # XXX checks carrier for errors in resolution or derive resolution from lower carriers
 function evaluateReso(startIdx_int::Int,car_tree::Tree,cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}},report::Array{Tuple,1})
-	# extracts all chidlren and all columns related to resolution
+	# extracts all children and all columns related to resolution
 	carName_str = createFullString(startIdx_int,car_tree)
 	allChildIdx_arr = getDescendants(startIdx_int,car_tree)
 
@@ -185,7 +185,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     end
 
 	for c in part.actSt
-		if !(c in vcat(map(x -> vcat(getDescendants(3,anyM.sets[:C],true)...,x), union(carGrp_ntup.stExtIn,carGrp_ntup.stExtOut))...))
+		if !(c in vcat(map(x -> vcat(getDescendants(x,anyM.sets[:C],true)...,x), union(carGrp_ntup.stExtIn,carGrp_ntup.stExtOut))...))
 			push!(anyM.report,(3,"technology mapping","carrier","$(createFullString(c,anyM.sets[:C])) for active storage of technology $(createFullString(t,anyM.sets[:Te])) is not stored or a descendant of a stored carrier"))
 		end
 	end
