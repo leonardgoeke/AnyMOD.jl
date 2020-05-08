@@ -408,7 +408,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			allVar_df = DataFrame()
 		else
 			# get all carriers that might be relevant to compute emissions
-			emC_arr = vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],unique(anyM.parts.lim.par[:emissionFac].data[!,:C]))...)
+			emC_arr = unique(vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],unique(filter(x -> x.Te == 0,anyM.parts.lim.par[:emissionFac].data)[!,:C]))...))
 			# get use variables
 			allVar_df = getAllVariables(:use,anyM, filterFunc = x -> x.C in emC_arr)
 			# get expressions for storage and exchange losses, if this is enabled
