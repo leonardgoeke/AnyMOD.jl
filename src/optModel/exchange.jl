@@ -35,6 +35,9 @@ function prepareExcExpansion!(partExc::OthPart,partLim::OthPart,prepExc_dic::Dic
 		allExExp_df = removeEntries([filterZero(allExExp_df,getLimPar(anyM.parts.lim,:expExcFix,anyM.sets[:Te]),anyM)],allExExp_df)
 	end
 
+	# filter cases where in and out region are the same
+	filter!(x -> x.R_a != x.R_b, allExExp_df)
+
 	# save result to dictionary for variable creation
 	exp_df = addSupTsToExp(allExExp_df,partExc.par,:Exc,tsYear_dic,anyM)
 	prepExc_dic[:expExc] = (var = convertExcCol(exp_df),ratio = DataFrame(), resi = DataFrame())
@@ -126,6 +129,9 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 		capaResi_df[!,:dir] .= false
 		adjVar_df = prepExc_dic[:capaExc].var
 	end
+
+	# filter cases where in and out region are the same
+	filter!(x -> x.R_a != x.R_b, capaResi_df)
 
 	# adjust dictionary accordingly
 	capaResi_df[!,:Ts_expSup] .= 0
