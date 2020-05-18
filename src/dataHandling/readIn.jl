@@ -197,7 +197,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
             end
         end
         #remove inital rows with all#
-        deleterows!(readIn_df,findall(rowsAll_arr))
+        delete!(readIn_df,findall(rowsAll_arr))
     end
 
 	# XXX convert column names if sets are defined for multiple insances (e.g. two regions in case of trade related parameters)
@@ -312,7 +312,7 @@ function createTreeLevel!(readIn_df::DataFrame, tree_obj::Tree, setLoad_str::Str
 	lowerNodes_gdf = groupby(grpIn_df,grpRel_arr)
 
 	# checks for nodes wihtout any upper node assigned
-	noUp_arr = findall(map(x -> all(x .== ""), [collect(parent(lowerNodes_gdf)[i, groupvars(lowerNodes_gdf)]) for i in lowerNodes_gdf.starts]))
+	noUp_arr = findall(map(x -> all(x .== ""), [collect(parent(lowerNodes_gdf)[i, groupcols(lowerNodes_gdf)]) for i in lowerNodes_gdf.starts]))
 	up_arr = setdiff(1:length(lowerNodes_gdf),noUp_arr)
 	if !isempty(noUp_arr)
 		noUpVal_arr = setdiff(union(map(x -> collect(x[!,i]),collect(lowerNodes_gdf[noUp_arr]))...),union(map(x -> collect(x[!,i]),collect(lowerNodes_gdf[up_arr]))...))
@@ -340,7 +340,7 @@ end
 
 # XXX create specific node on branch
 function createNodes!(upToLow_dic::Dict{Int64,SubArray{String,1,Array{String,1},Tuple{Array{Int64,1}},false}},tree_obj::Tree,i::Int)
-	upToLowSort_dic = sort(upToLow_dic)
+	upToLowSort_dic = Dict(map(x -> x => upToLow_dic[x] ,sort(collect(keys(upToLow_dic)))))
 	for upperNodeId in sortSiblings(collect(keys(upToLowSort_dic)),tree_obj)
 		numRow_int = length(tree_obj.nodes) -1
 		exUp_int = length(tree_obj.nodes[upperNodeId].down)
