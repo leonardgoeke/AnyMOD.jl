@@ -58,6 +58,7 @@ plus(a::Nothing,b::Int) = b
 
 # XXX provides names of columns as array of symbols ('names' function itself was changed from strings to symbols)
 namesSym(df::DataFrame) = map(x -> Symbol(x),names(df))
+namesSym(df::DataFrameRow) = map(x -> Symbol(x),names(df))
 
 # XXX returns dataframe columns without value column
 removeVal(input_df::DataFrame) = filter(x -> !(x in (:val,:ratio)),namesSym(input_df))
