@@ -24,7 +24,7 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 	end
 
 	# manually adds mode set, creates a top node for all modes to allow for aggregation later
-	if :mode in names(setData_dic[:Te])
+	if :mode in namesSym(setData_dic[:Te])
 		modes_df = DataFrame(mode_1 = vcat(map(y -> split(replace(y," " => ""),";"),filter(x -> x != "",setData_dic[:Te][!,:mode]))...))
 	else
 		modes_df = DataFrame(mode_1 = String[])
@@ -93,16 +93,16 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 
 	setNames_arr = filterSetColumns(readIn_df,set_arr)
     oprNames_arr = filterSetColumns(readIn_df,[:parameter,:variable,:value, :id])
-	readInColAll_tup = tuple(names(readIn_df)...)
+	readInColAll_tup = tuple(namesSym(readIn_df)...)
 
 	# drop irrelevant column that do not relate to a set or an operator or are completely empty
 	select!(readIn_df, Not(setdiff(readInColAll_tup,vcat(setNames_arr[1],setNames_arr[2],oprNames_arr[1]))))
-	emptyCol_arr = filter(x -> eltype(readIn_df[!,x]) == Missing,names(readIn_df))
+	emptyCol_arr = filter(x -> eltype(readIn_df[!,x]) == Missing,namesSym(readIn_df))
 	setNames_arr[1] = setdiff(setNames_arr[1],emptyCol_arr)
 	select!(readIn_df, Not(emptyCol_arr))
 
 	# filter value columns
-	readInCol_arr = names(readIn_df)
+	readInCol_arr = namesSym(readIn_df)
 	valCol_arr = filter(x -> occursin("value",string(x)),readInCol_arr)
 
 	# XXX convert missing values and change array container type for editing later
@@ -203,7 +203,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 	# XXX convert column names if sets are defined for multiple insances (e.g. two regions in case of trade related parameters)
 	if split(fileName_str,"/")[end][1:3] == "par"
 		# creates a dictionary that assigns everything after the set name seperated with a "_" to the respective set
-		splitCol_arr = map(x -> split(String(x),"_"),setdiff(names(readIn_df),oprNames_arr[1]))
+		splitCol_arr = map(x -> split(String(x),"_"),setdiff(namesSym(readIn_df),oprNames_arr[1]))
 		setCol_arr = unique(map(x -> Symbol(x[1]),splitCol_arr))
 		grpCol_dic = Dict(x => map(z -> z[2:end],filter(y -> String(x) == y[1],splitCol_arr)) for x in setCol_arr)
 
@@ -266,7 +266,7 @@ function createTree(readIn_df::DataFrame, setLoad_sym::Symbol, report::Array{Tup
 
 	# writes values of first column
 	firstCol_sym = Symbol(setLoad_str,"_1")
-	topNodes_arr =  filter(x -> !isempty(x),convert(Matrix,unique(readIn_df[!,names(readIn_df) .== firstCol_sym])))
+	topNodes_arr =  filter(x -> !isempty(x),convert(Matrix,unique(readIn_df[!,namesSym(readIn_df) .== firstCol_sym])))
 
 	for (idx, node) in enumerate(sort(topNodes_arr))
 	    tree_obj.nodes[idx] = Node(idx,node,1,idx,Int[])
@@ -286,7 +286,7 @@ function createTree(readIn_df::DataFrame, setLoad_sym::Symbol, report::Array{Tup
 	end
 
 	# loop over subsequent columns and add respective tree levels
-	height_int = maximum((map(x -> parse(Int,x[end]), filter(x-> (tryparse(Int,string(x[end])) != nothing) && x[1:minimum([length(x),length(setLoad_str)])] .== setLoad_str,[String(names(readIn_df)[i]) for i = 1:size(readIn_df,2)]))))
+	height_int = maximum((map(x -> parse(Int,x[end]), filter(x-> (tryparse(Int,string(x[end])) != nothing) && x[1:minimum([length(x),length(setLoad_str)])] .== setLoad_str,[String(namesSym(readIn_df)[i]) for i = 1:size(readIn_df,2)]))))
 	for i in 2:height_int
 		createTreeLevel!(readIn_df, tree_obj, setLoad_str, i, report)
 	end
@@ -299,7 +299,7 @@ end
 
 # XXX adds nodex on level i to tree object
 function createTreeLevel!(readIn_df::DataFrame, tree_obj::Tree, setLoad_str::String, i::Int, report::Array{Tuple,1})
-	colNames_arr = filter(x -> occursin(setLoad_str,string(x)), names(readIn_df))
+	colNames_arr = filter(x -> occursin(setLoad_str,string(x)), namesSym(readIn_df))
 	loLvl_Sym = Symbol(setLoad_str,"_",i)
 
 	# removes upper columns with empty values only
@@ -493,15 +493,15 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 			if !in(par_sym,keys(para_dic)) para_dic[par_sym] = DataFrame(val = Float64[]) end
 
 			# adds 0 to dictionary for sets the parameter depends on, but that dont appear in the current file/row
-			for missKey in setdiff(names(para_dic[par_sym]),names(addEntry_df)) addEntry_df[!,missKey] .= 0 end
+			for missKey in setdiff(namesSym(para_dic[par_sym]),namesSym(addEntry_df)) addEntry_df[!,missKey] .= 0 end
 
 			# adds new column to dataframe for respective parameter if required
 			rows_int = nrow(para_dic[par_sym])
-			for key in setdiff(names(addEntry_df),names(para_dic[par_sym]))
+			for key in setdiff(namesSym(addEntry_df),namesSym(para_dic[par_sym]))
 				para_dic[par_sym][!,key] = zeros(Int, rows_int)
 			end
 
-			select!(addEntry_df, names(para_dic[par_sym]))
+			select!(addEntry_df, namesSym(para_dic[par_sym]))
 			append!(para_dic[par_sym],addEntry_df)
 		end
 	end
@@ -509,7 +509,7 @@ end
 
 # XXX filters all columns of dataframe that are related to the sets
 function filterSetColumns(input_df::DataFrame,input_arr::Array{Symbol},outStr_boo::Bool = false)
-    colNames_arr = [String(names(input_df)[i]) for i = 1:size(input_df,2)]
+    colNames_arr = [String(namesSym(input_df)[i]) for i = 1:size(input_df,2)]
 
     # filters columns that relate to input array and further splits them based on "_" seperators
     inRelColNames_arr = collect(Iterators.flatten(map(y -> filter(x -> x[1:minimum([length(y),length(x)])] == y, colNames_arr),map(x-> string(x),input_arr))))

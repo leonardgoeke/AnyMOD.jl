@@ -285,9 +285,9 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
 
         # ensures all dataframes with data from single files have the same columns so they can be merged
         relFiles_arr = collect(filter(y -> parIt in parToFile_dic[y],keys(paraTemp_dic)))
-        allCol_arr = unique(vcat(map(x -> names(paraTemp_dic[x][parIt]), relFiles_arr)...))
+        allCol_arr = unique(vcat(map(x -> namesSym(paraTemp_dic[x][parIt]), relFiles_arr)...))
         for parFile in relFiles_arr
-            misCol_arr = setdiff(allCol_arr,names(paraTemp_dic[parFile][parIt]))
+            misCol_arr = setdiff(allCol_arr,namesSym(paraTemp_dic[parFile][parIt]))
             for mis in misCol_arr
                 paraTemp_dic[parFile][parIt][!,mis] = fill(convert(Int32,0),nrow(paraTemp_dic[parFile][parIt]))
             end
@@ -296,7 +296,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
         allParData_df = vcat(map(x -> paraTemp_dic[x][parIt],relFiles_arr)...)
 
         # order regions in ascending order so regions are not ambivalent anymore and duplicates can be identified
-        if :R_b in names(allParData_df) && !(occursin("Dir",string(parIt)))
+        if :R_b in namesSym(allParData_df) && !(occursin("Dir",string(parIt)))
             sortR_mat = sort(hcat([allParData_df[!,x] for x in (:R,:R_b)]...);dims = 2)
             for (index,col) in enumerate((:R,:R_b)) allParData_df[!,col] = sortR_mat[:,index] end
         end
@@ -325,7 +325,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
             # adds parameter to non-technology parts
             getfield(anyM.parts,parPart_sym).par[parIt] = ParElement(allParData_df,parDef_tup,parIt,anyM.report)
         else
-            allParTech_arr = :Te in names(allParData_df) ? unique(allParData_df[!,:Te]) : [0]
+            allParTech_arr = :Te in namesSym(allParData_df) ? unique(allParData_df[!,:Te]) : [0]
             # determines how technology might inherit from other technology nodes (not at all, by going up, by going down or both)
             heritRules_arr = map(x -> x[2],filter(x -> x[1] == :Te, collect(parDef_tup.herit)))
             if isempty(heritRules_arr)
@@ -341,9 +341,9 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
             end
             for relTech in filter(x -> !isempty(intersect(allParTech_arr,techToPar_dic[herit_sym][x])), parPart_sym == :techSt ? stTechIdx_arr : convTechIdx_arr)
                 # filters all entries of possible inheritance for each technology
-                filtParData_df = :Te in names(allParData_df) ? filter(row -> row.Te in techToPar_dic[herit_sym][relTech], allParData_df) : allParData_df
+                filtParData_df = :Te in namesSym(allParData_df) ? filter(row -> row.Te in techToPar_dic[herit_sym][relTech], allParData_df) : allParData_df
                 # removes potential zero columns from data being actually written to part
-                rmvZeroParData_df = filtParData_df[!,filter(x -> unique(filtParData_df[!,x]) != [0] || x == :val,names(filtParData_df))]
+                rmvZeroParData_df = filtParData_df[!,filter(x -> unique(filtParData_df[!,x]) != [0] || x == :val,namesSym(filtParData_df))]
                 anyM.parts.tech[relTech].par[parIt] = ParElement(rmvZeroParData_df,parDef_tup,parIt,anyM.report)
             end
         end
@@ -379,7 +379,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 
 	for preType in preType_arr
 		# get all relevant carriers
-		specMode_boo = !isempty(part.modes) && !isempty(filter(y -> :M in names(part.par[y].data), keys(filter(x -> x[2] == preType,parPre_dic))))
+		specMode_boo = !isempty(part.modes) && !isempty(filter(y -> :M in namesSym(part.par[y].data), keys(filter(x -> x[2] == preType,parPre_dic))))
 
         # creates table of relevant capacity resolutions and the level of pre-setting
         capaLvl_df = unique(vcat(map(x -> select(x,intCol(x)),values(prepTech_dic[preType != :carrierSt ? :capaConv : :capaStSize]))...)) |> (x -> select(copy(x),intCol(x)))
@@ -410,7 +410,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 			end
 
 			resC_dic = Dict(x => anyM.cInfo[x] |> (y -> [getfield(y,:tsDis), part.disAgg ? part.balLvl.exp[2] : getfield(y,:rDis)]) for x in car_arr)
-            capaLvl_df = by(capaLvl_df,names(capaLvl_df),:C => x -> resC_dic[x[1]] |> (y -> (lvlTs = y[1], lvlR = y[2])))
+            capaLvl_df = by(capaLvl_df,namesSym(capaLvl_df),:C => x -> resC_dic[x[1]] |> (y -> (lvlTs = y[1], lvlR = y[2])))
 		elseif preType == :minUse || preType == :minGen
 			car_arr = (preType == :minUse ? :use : :gen) |> (y -> haskey(part.carrier,y) ? collect(getfield(part.carrier,y)) : Int[])
 			if isempty(car_arr) continue end
@@ -435,9 +435,9 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
         # loops over all parameters of specific pre-setting type
 		for parItr in keys(filter(x -> x[2] == preType,parPre_dic))
             parPef_ntup = parDef_dic[parItr]
-			newPar_obj, report = resetParameter(:M in names(part.par[parItr].data) ? dispResoM_df : dispReso_df, part.par[parItr], anyM.sets, anyM.options, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
+			newPar_obj, report = resetParameter(:M in namesSym(part.par[parItr].data) ? dispResoM_df : dispReso_df, part.par[parItr], anyM.sets, anyM.options, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
 
-            if :M in names(newPar_obj.data)
+            if :M in namesSym(newPar_obj.data)
                 mode_df = unique(filter(x -> x.M != 0, newPar_obj.data)[!,Not([:val,:M])])
 
                 # loops over all types of relevant variables (:gen, :use etc.) that have to be mode specific
@@ -485,13 +485,13 @@ end
 # XXX pre-sets specific dispatch parameter
 function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{Symbol,Tree}, options::modOptions, cntM_int::Int = 0, newherit_tup::Tuple = ())
     # gets dimension of search tables and parameter without mode
-    newData_df = select(newData_df,intersect(names(newData_df),par_obj.dim))
+    newData_df = select(newData_df,intersect(namesSym(newData_df),par_obj.dim))
     # creates empty report, that entries are written to within subprocess
     report = Array{Tuple,1}()
 
-    if !(:M in names(newData_df))
+    if !(:M in namesSym(newData_df))
         # in case modes are not being searched for just directly set data
-        par_obj.data = matchSetParameter(newData_df,par_obj,sets) |> (x -> select(x,orderDim(names(x))))
+        par_obj.data = matchSetParameter(newData_df,par_obj,sets) |> (x -> select(x,orderDim(namesSym(x))))
     else
         # looks up original table without applying default values
         matchData1_df = matchSetParameter(newData_df,par_obj,sets,newCol = :val, useDef = false)
@@ -501,7 +501,7 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{S
         mode_df = filter(r -> r.M != 0,matchData1_df)
 
         # groups mode related data for further analysis
-        resDim_arr = filter(x -> x != :M ,intersect(par_obj.dim,names(matchData1_df)))
+        resDim_arr = filter(x -> x != :M ,intersect(par_obj.dim,namesSym(matchData1_df)))
 
         if !isempty(mode_df)
 
@@ -537,7 +537,7 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{S
         end
 
         # returns tables with and without mode data to parameter object
-        par_obj.data = vcat(noMode_df,finalMode_df) |> (x -> select(x,orderDim(names(x))))
+        par_obj.data = vcat(noMode_df,finalMode_df) |> (x -> select(x,orderDim(namesSym(x))))
     end
     # sets new inherit rules and default value
     par_obj.herit = newherit_tup
@@ -583,7 +583,7 @@ function getLimPar(partLim::OthPart,par_sym::Symbol, tech_tr::Tree; tech::Int = 
 
 	if par_sym in keys(partLim.par)
 		parLim_obj = copy(partLim.par[par_sym])
-		if :Te in names(parLim_obj.data) # case for technology limits with values differentiated by tech
+		if :Te in namesSym(parLim_obj.data) # case for technology limits with values differentiated by tech
 			parLim_obj.data = filter(x -> x.Te in [[tech];getAncestors(tech,tech_tr,:int,0)], parLim_obj.data)
 			if isempty(parLim_obj.data)
 				parLim_obj = ParElement()
@@ -611,19 +611,19 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
     end
 
     # directly returns default values if no data was provided for the parameter
-    if isempty(par_obj.data) || length(names(par_obj.data)) == 1
+    if isempty(par_obj.data) || length(namesSym(par_obj.data)) == 1
         paraMatch_df = copy(srcSetIn_df)
         paraMatch_df[!,newCol] = fill(isempty(par_obj.data) ? par_obj.defVal : par_obj.data[1,:val],size(paraMatch_df,1))
         return paraMatch_df
     end
 
-    searchCol_arr = names(srcSetIn_df)
+    searchCol_arr = namesSym(srcSetIn_df)
     paraData_df = par_obj.data
 
     # removes sets the parameter is not specified for from search table and condenses search table accordingly
-    redunSrc_arr = setdiff(searchCol_arr,names(paraData_df))
+    redunSrc_arr = setdiff(searchCol_arr,namesSym(paraData_df))
     searchSet_df = isempty(redunSrc_arr) ? srcSetIn_df : unique(srcSetIn_df[!,Not(redunSrc_arr)])
-    srcCol_arr = names(searchSet_df)
+    srcCol_arr = namesSym(searchSet_df)
 
     # searches for matches in original data
     paraMatch_df = join(searchSet_df, paraData_df; on = srcCol_arr, kind = :inner)
@@ -701,7 +701,7 @@ function heritParameter_up(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{Int
     paraDataIn_df = flatten(paraDataIn_df,:child)
 
     # determines all columns for groupby statement
-    grpBy_arr = filter(x -> !(x in [:val,herit_par[1]]),names(paraDataIn_df))
+    grpBy_arr = filter(x -> !(x in [:val,herit_par[1]]),namesSym(paraDataIn_df))
 
     # uses closest child with value as new data
     newData_df = by(paraDataIn_df, grpBy_arr, [:val,herit_par[1]] => x -> maximum(getfield(x, herit_par[1])) |> (z -> NamedTuple{(herit_par[1],:val)}(tuple(z,x.val[findall(getfield(x,herit_par[1]) .== z)][1]))))
@@ -726,7 +726,7 @@ function heritParameter_rest(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{I
     # XXX initialize values for loop (removes and add val again to control its position)
 
     # dimensions not involved in inheritance propcess
-    noHeritSet_tup = tuple(setdiff(names(paraData_df),[:val,herit_par[1]])...)
+    noHeritSet_tup = tuple(setdiff(namesSym(paraData_df),[:val,herit_par[1]])...)
     colName_tup = tuple(herit_par[1],noHeritSet_tup...)
     newData_df = vcat(colName_tup...,:val) |> (y -> select(DataFrame(Dict(x => x != :val ? Int[] : Float64[] for x in y)),y))
 

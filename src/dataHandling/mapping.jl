@@ -19,7 +19,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     	resVal_dic = Dict(resLongShort_tup[x] => row[x] for x in resCol_tup)
 
 		# check, if carrier got an equality constraint or not
-		if :carrier_equality in names(row)
+		if :carrier_equality in namesSym(row)
 			if !(row[:carrier_equality] in ("no","yes"))
 				push!(anyM.report,(2,"carrier mapping","","column carrier_equality can only contain keywords 'yes' or 'no'"))
 				continue
@@ -143,7 +143,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
     # XXX writes carrier info
     # gets string array of carriers for input, output and stored, looks up respective ids afterwards and writes to mapping file
-    carStrArr_dic = Dict(y => y in names(row_df) ? split(replace(row_df[y]," " => ""),";") |> (z -> filter(x -> !isempty(x),z)) : String[] for y in carCol_tup)
+    carStrArr_dic = Dict(y => y in namesSym(row_df) ? split(replace(row_df[y]," " => ""),";") |> (z -> filter(x -> !isempty(x),z)) : String[] for y in carCol_tup)
 	carId_dic = Dict(z => tuple(map(x -> getDicEmpty(nameC_dic,x),carStrArr_dic[z])...) for z in keys(carStrArr_dic))
 
 	for x in filter(x -> Int[] in carId_dic[x], collect(keys(carId_dic)))
@@ -165,7 +165,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     carGrp_ntup = (use = carId_dic[:carrier_conversion_in], gen = carId_dic[:carrier_conversion_out], stExtIn = carId_dic[:carrier_stored_in], stExtOut = carId_dic[:carrier_stored_out],
                          stIntIn = tuple(intersect(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])...), stIntOut = tuple(intersect(carId_dic[:carrier_conversion_in],carId_dic[:carrier_stored_in])...))
 
-	if :carrier_stored_active in names(row_df)
+	if :carrier_stored_active in namesSym(row_df)
 		actStStr_arr = split(replace(row_df[:carrier_stored_active]," " => ""),";") |> (z -> filter(x -> !isempty(x),z))
 		actSt_tup = tuple(map(x -> getDicEmpty(nameC_dic,x),actStStr_arr)...)
 	else
@@ -232,7 +232,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 	rExp_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:rExp), vcat(collect.(values(carGrp_ntup))...))) : 0
 
 	# check if carrier based temporal resolution is overwritten by a technology specifc value
-	if cEx_boo && :timestep_expansion in names(row_df)
+	if cEx_boo && :timestep_expansion in namesSym(row_df)
 		tsExpSpc_int = tryparse(Int,row_df[:timestep_expansion])
 
 		if !isnothing(tsExpSpc_int)
@@ -246,7 +246,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 	end
 
 	# check if carrier based spatial resolution is overwritten by a technology specifc value
-	if cEx_boo && :region_expansion in names(row_df)
+	if cEx_boo && :region_expansion in namesSym(row_df)
 		rExpSpc_int = tryparse(Int,row_df[:region_expansion])
 
 		if !isnothing(rExpSpc_int)
@@ -266,7 +266,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 	# XXX checks if dispatch variables should be disaggregated by expansion regions
 	rExpOrg_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:rDis), vcat(collect.(values(carGrp_ntup))...))) : 0
 
-	if :region_disaggregate in names(row_df) && rExp_int > rExpOrg_int # relies on information in explicit column, if disaggregation is possible and column exists
+	if :region_disaggregate in namesSym(row_df) && rExp_int > rExpOrg_int # relies on information in explicit column, if disaggregation is possible and column exists
 		daggR_str = row_df[:region_disaggregate]
 		if daggR_str == "yes"
 			disAgg_boo = true

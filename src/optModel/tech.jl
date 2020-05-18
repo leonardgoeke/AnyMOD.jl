@@ -115,7 +115,7 @@ function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dic
 
 	# prepares expansion dimensions for storage capacity
 	if !isempty(stCar_arr)
-		stMap_df = by(allMap_df,names(allMap_df),C = :Te => x -> stCar_arr)
+		stMap_df = by(allMap_df,namesSym(allMap_df),C = :Te => x -> stCar_arr)
 
 		for st in (:StIn, :StOut, :StSize)
 			remove_arr = Array{DataFrame,1}()
@@ -207,7 +207,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 		var_df = createVar(varMap_tup.var,string(expVar),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
 		if !isempty(varMap_tup.resi)
 			if expVar == :capaExc # flips and repeats entries for directed exchange variabes before moving on
-				var_df = filter(r -> r.dir,var_df) |> (x -> vcat(filter(r -> !r.dir,var_df),vcat(x,rename(x,replace(names(x),:R_to => :R_from, :R_from => :R_to)))))
+				var_df = filter(r -> r.dir,var_df) |> (x -> vcat(filter(r -> !r.dir,var_df),vcat(x,rename(x,replace(namesSym(x),:R_to => :R_from, :R_from => :R_to)))))
 			end
 			join_arr = intCol(var_df,:dir)
 			var_df = by(joinMissing(var_df,varMap_tup.resi[!,vcat(:var,join_arr...)], join_arr, :outer, Dict(:var => AffExpr(),:var_1 => AffExpr()),true),intCol(var_df,:dir),var = [:var,:var_1] => x -> sum(x))
@@ -288,7 +288,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		modeDep_df[!,:M] .= isempty(modeDep_df) ? [0] : [collect(part.modes)]
 		modeDep_df = flatten(modeDep_df,:M)
 
-		allVar_df = joinMissing(allVar_df,modeDep_df,names(modeDep_dic[va]),:left,Dict(:M => 0))
+		allVar_df = joinMissing(allVar_df,modeDep_df,namesSym(modeDep_dic[va]),:left,Dict(:M => 0))
 
 		# filter entries where availability is zero
 		for avaPar in relAva_dic[va]
@@ -413,7 +413,7 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	end
 
 	# if modes are specified, gets rows of conversion dataframe where they are relevant and creates different tuples to define grouping dimensions
-	if :M in names(cns_df)
+	if :M in namesSym(cns_df)
 		srcResM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(1,values(srcRes_ntup)...))...)
 		srcResNoM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(0,values(srcRes_ntup)...))...)
 		m_arr = findall(0 .!= cns_df[!,:M])
@@ -425,7 +425,7 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	out_arr = intersect(keys(part.carrier),(:gen,:stIntIn))
 
 	for va in union(in_arr,out_arr)
-		if :M in names(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
+		if :M in namesSym(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
 			cns_df[!,va] .= AffExpr()
 			cns_df[m_arr,va] = aggUniVar(part.var[va], select(cns_df[m_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResM_ntup, anyM.sets)
 			cns_df[noM_arr,va] = aggUniVar(part.var[va], select(cns_df[noM_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResNoM_ntup, anyM.sets)
@@ -591,7 +591,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	end
 
 	# replaces expansion with dispatch regions
-	grpCapaVar_df = copy(capaVar_df) |> (y -> unique(by(y,names(y),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])]))
+	grpCapaVar_df = copy(capaVar_df) |> (y -> unique(by(y,namesSym(y),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])]))
 
 	if restr.lvlR < part.balLvl.exp[2] # aggregate capacity variables spatially, if necessary
 		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR)
@@ -599,7 +599,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	end
 
 	# expand capacity to dimension of dispatch
-	capaDim_df = by(grpCapaVar_df[!,Not(:var)],names(grpCapaVar_df[!,Not(:var)]),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
+	capaDim_df = by(grpCapaVar_df[!,Not(:var)],namesSym(grpCapaVar_df[!,Not(:var)]),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
 	select!(grpCapaVar_df,Not(:lvlTs))
 
 	# obtain all relevant dispatch variables
@@ -656,7 +656,7 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyM
 			srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_dis = x[1], R_dis = x[2]))
 		end
 
-		if :M in names(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
+		if :M in namesSym(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
 			# find cases where ratio constraint is mode dependant
 			srcResM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(1,values(srcRes_ntup)...))...)
 			srcResNoM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(0,values(srcRes_ntup)...))...)

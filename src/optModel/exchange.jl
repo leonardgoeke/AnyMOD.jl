@@ -24,10 +24,10 @@ function prepareExcExpansion!(partExc::OthPart,partLim::OthPart,prepExc_dic::Dic
 	end
 
 	# ensure expansion entries are not directed
-	exExp_df = unique(exExp_df) |> (x -> filter(y -> y.R_a < y.R_b,vcat(x,rename(x,replace(names(x),:R_a => :R_b, :R_b => :R_a))))) |> (z -> unique(z))
+	exExp_df = unique(exExp_df) |> (x -> filter(y -> y.R_a < y.R_b,vcat(x,rename(x,replace(namesSym(x),:R_a => :R_b, :R_b => :R_a))))) |> (z -> unique(z))
 
 	# add supordiante timesteps of expansion
-	allExExp_df = join(potExc_df,exExp_df, on = names(exExp_df), kind = :inner)
+	allExExp_df = join(potExc_df,exExp_df, on = namesSym(exExp_df), kind = :inner)
 	allExExp_df[!,:Ts_expSup] = map(x -> getDescendants(x,anyM.sets[:Ts],false,anyM.supTs.lvl) |> (y -> typeof(y) == Array{Int,1} ? y : [y] ), allExExp_df[!,:Ts_exp])
 
 	# filter cases where expansion is fixed to zero
@@ -48,7 +48,7 @@ end
 # XXX create exchange variables
 function createExcVar!(partExc::OthPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},anyM::anyModel)
 	# XXX extend capacity variables to dispatch variables
-	capa_df = partExc.var[:capaExc][!,Not([:var,:dir])] |> (x -> unique(vcat(x,rename(x,replace(names(x),:R_from => :R_to, :R_to => :R_from)))))
+	capa_df = partExc.var[:capaExc][!,Not([:var,:dir])] |> (x -> unique(vcat(x,rename(x,replace(namesSym(x),:R_from => :R_to, :R_to => :R_from)))))
 	# replace orginal carrier with leafs
 	capa_df = replCarLeafs(capa_df,anyM.sets[:C])
 
@@ -62,7 +62,7 @@ function createExcVar!(partExc::OthPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 	capa_df[!,:R_to] = map(x -> rExc_dic[x.R_to,x.lvlR],eachrow(capa_df[!,[:R_to,:lvlR]]))
 	capa_df = flatten(select(capa_df,Not(:lvlR)),:R_from); capa_df = unique(flatten(capa_df,:R_to))
 
-	disp_df = by(capa_df,names(capa_df),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
+	disp_df = by(capa_df,namesSym(capa_df),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
 
 	# filter entries where availability is zero
 	if !isempty(partExc.par[:avaExc].data) && 0.0 in partExc.par[:avaExc].data[!,:val]
@@ -95,7 +95,7 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 		#  entries, where a directed capacity is provided and a symmetric one already exists
 		bothExc_df = vcat(join(directExc_df, capaResi_df; on = excDim_arr, makeunique = true, kind = :inner), join(directExc_df, capaResi_df; on = Pair.(excDim_arr,excDimP_arr), makeunique = true, kind = :inner))
 		bothExc_df = by(bothExc_df,excDim_arr,var = [:var,:var_1] => x -> sum(x))
-		if !(:var in names(bothExc_df)) bothExc_df[!,:var] = AffExpr[] end
+		if !(:var in namesSym(bothExc_df)) bothExc_df[!,:var] = AffExpr[] end
 		 # entries, where only a directed capacity was provided
 		onlyDirExc_df = join(directExc_df, bothExc_df; on = excDim_arr, kind = :anti)
 
@@ -118,7 +118,7 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 		# adjust dataframe of capacities determining where variables will be created to reflect which of these correspond to directed cases now
 		allVar_df = prepExc_dic[:capaExc].var
 		if !isempty(prepExc_dic[:capaExc].var)
-			undirBoth_df = vcat(dirExc_df,rename(dirExc_df,replace(names(dirExc_df),:R_a => :R_b, :R_b => :R_a)))[!,Not(:dir)]
+			undirBoth_df = vcat(dirExc_df,rename(dirExc_df,replace(namesSym(dirExc_df),:R_a => :R_b, :R_b => :R_a)))[!,Not(:dir)]
 			dirVar_df = convertExcCol(join(convertExcCol(allVar_df[!,Not(:dir)]), vcat(undirBoth_df,swtExc_df)[!,Not(:var)],on = excDim_arr, kind = :inner))
 			dirVar_df[!,:dir] .= true
 			adjVar_df = vcat(dirVar_df,join(allVar_df,dirVar_df,on = [:C, :R_from, :R_to, :Ts_disSup], kind = :anti))
@@ -139,7 +139,7 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 end
 
 # XXX converts table where exchange regins are given as "R_a" and "R_b" to "R_to" and "R_from" and the other way around
-convertExcCol(in_df::DataFrame) = rename(in_df, names(in_df) |> (x  -> :R_a in x ? replace(x,:R_a => :R_from, :R_b => :R_to) : replace(x,:R_from => :R_a, :R_to => :R_b)))
+convertExcCol(in_df::DataFrame) = rename(in_df, namesSym(in_df) |> (x  -> :R_a in x ? replace(x,:R_a => :R_from, :R_b => :R_to) : replace(x,:R_from => :R_a, :R_to => :R_b)))
 
 # </editor-fold>
 
@@ -238,7 +238,7 @@ end
 # XXX obtain values for exchange losses
 function getExcLosses(exc_df::DataFrame,excPar_dic::Dict{Symbol,ParElement},sets_dic::Dict{Symbol,Tree})
 	lossPar_obj = copy(excPar_dic[:lossExc])
-	if :R_a in names(lossPar_obj.data) && :R_b in names(lossPar_obj.data)
+	if :R_a in namesSym(lossPar_obj.data) && :R_b in namesSym(lossPar_obj.data)
 		lossPar_obj.data = lossPar_obj.data |> (x -> vcat(x,rename(x,:R_a => :R_b, :R_b => :R_a)))
 	end
 	excLoss_df = matchSetParameter(exc_df,lossPar_obj,sets_dic,newCol = :loss)

@@ -24,7 +24,7 @@ mutable struct ParElement
         newCol_dic = Dict(:val => :val)
         sufNum_dic = Dict(:b => 2, :c => 3, :d => 4, :e => 5, :f => 6, :g => 7)
 
-        for colNam in setdiff(names(paraData_df),[:val])
+        for colNam in setdiff(namesSym(paraData_df),[:val])
             colNam_arr = split(String(colNam),"_")
             setNam = Symbol(colNam_arr[1])
 
@@ -341,7 +341,7 @@ mutable struct anyModel <: AbstractModel
 
 		# <editor-fold desc="create part objects and general mappings"
 		# assign actual tech to parents
-		relTech_df = setData_dic[:Te][!,Symbol.(filter(x -> occursin("technology",x) && !isnothing(tryparse(Int16,string(x[end]))), string.(names(setData_dic[:Te]))))]
+		relTech_df = setData_dic[:Te][!,Symbol.(filter(x -> occursin("technology",x) && !isnothing(tryparse(Int16,string(x[end]))), string.(namesSym(setData_dic[:Te]))))]
 		relTech_df = DataFrame(filter(x -> any(collect(x) .!= ""), eachrow(relTech_df)))
 		techIdx_arr = filter(z -> isempty(anyM.sets[:Te].nodes[z].down), map(x -> lookupTupleTree(tuple(collect(x)...),anyM.sets[:Te],1)[1], eachrow(relTech_df)))
 

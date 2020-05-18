@@ -56,8 +56,11 @@ plus(a::Int,b::Int) = a + b
 plus(a::Int,b::Nothing) = a
 plus(a::Nothing,b::Int) = b
 
+# XXX provides names of columns as array of symbols ('names' function itself was changed from strings to symbols)
+namesSym(df::DataFrame) = map(x -> Symbol(x),names(df))
+
 # XXX returns dataframe columns without value column
-removeVal(input_df::DataFrame) = filter(x -> !(x in (:val,:ratio)),names(input_df))
+removeVal(input_df::DataFrame) = filter(x -> !(x in (:val,:ratio)),namesSym(input_df))
 removeVal(col_arr::Array{Symbol,1}) = filter(x -> !(x in (:val,:ratio)),col_arr)
 
 # XXX return an empty integer array instead of an error, if a key is not in a dictionary
@@ -65,20 +68,20 @@ getDicEmpty(dic::Dict,key::Any) = key in keys(dic) ? dic[key] : Int[]
 
 # XXX get names of column of type integer
 intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, eachcol(in_df, true)),1)
-intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(names(in_df),[add_sym]))
+intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(namesSym(in_df),[add_sym]))
 
 # XXX puts relevant dimensions in consistent order and adds remaining entries at the end
 orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :C, :Te], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
 orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
 
 # XXX puts dataframes columns in consistent order
-orderDf(in_df::DataFrame) = select(in_df,orderDim(names(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
+orderDf(in_df::DataFrame) = select(in_df,orderDim(namesSym(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
 
 # XXX writes all tuples occuring in a tuple of pairs and tuples
 mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  x
 
 # XXX check if dataframe should be considered, if energy balance is created for carriers in array
-filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in names(var_df) ? filter(r -> r.C in c_arr,var_df) : var_df
+filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in namesSym(var_df) ? filter(r -> r.C in c_arr,var_df) : var_df
 
 # XXX creates a dictionary that assigns each dispatch timestep inputed to its superordinate dispatch timestep
 function assignSupTs(inputSteps_arr::Array{Int,1},time_Tree::Tree,superordinateLvl_int::Int)
@@ -145,7 +148,7 @@ end
 function removeEntries(remove_arr::Array{DataFrame,1},input_df::DataFrame)
     if !isempty(remove_arr)
         remove_df = length(remove_arr) == 1 ? remove_arr[1] : vcat(remove_arr...)
-        colRemove_arr = names(remove_df)
+        colRemove_arr = namesSym(remove_df)
 		out_df = join(input_df,remove_df; on = colRemove_arr, kind = :anti)
 		return out_df
     else
@@ -158,7 +161,7 @@ function mergeDicTable(df_dic::Dict{Symbol,DataFrame},outerJoin_boo::Bool=true)
 	if isempty(df_dic) return DataFrame() end
 	keys_arr = collect(keys(df_dic))
 	mergeTable_df = df_dic[keys_arr[1]]
-	joinCol_arr = filter(x -> !(x in keys_arr), names(mergeTable_df))
+	joinCol_arr = filter(x -> !(x in keys_arr), namesSym(mergeTable_df))
 
 	for restKey in keys_arr[2:end]
 		if outerJoin_boo
@@ -245,8 +248,8 @@ end
 function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, sets_dic::Dict{Symbol,Tree}; aggFilt::Tuple = ())
 
 	# XXX sanity checks regarding columns
-	if all(names(aggEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to be aggregated") end
-	if all(names(srcEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to aggregate") end
+	if all(namesSym(aggEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to be aggregated") end
+	if all(namesSym(srcEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to aggregate") end
 
 	select!(aggEtr_df,intCol(aggEtr_df,:var))
 	# XXX filter entries from aggEtr_df, that based on isolated analysis of columns will not be aggregated
@@ -321,7 +324,7 @@ function addSupTsToExp(expMap_df::DataFrame,para_obj::Dict{Symbol,ParElement},ty
 		lftmDel_df = matchSetParameter(lftm_df,para_obj[Symbol(:delExp,type_sym)],anyM.sets,newCol = :del)
 		lftmDel_df[!,:Ts_disSup] = map(x -> filter(y -> (tsYear_dic[y] >= tsYear_dic[x.Ts_expSup] + x.del) && (tsYear_dic[y] <= tsYear_dic[x.Ts_expSup] + x.life + x.del),collect(anyM.supTs.step)), eachrow(lftmDel_df))
 		select!(lftmDel_df,Not([:life,:del]))
-		grpCol_arr = intCol(expMap_df) |> (x -> :ratio in names(expMap_df) ? vcat(:ratio,x...) : x)
+		grpCol_arr = intCol(expMap_df) |> (x -> :ratio in namesSym(expMap_df) ? vcat(:ratio,x...) : x)
 		expMap_df = by(lftmDel_df,grpCol_arr, [:Ts_expSup,:Ts_disSup] => x -> (Ts_expSup = [convert(Array{Int,1},x.Ts_expSup)], Ts_disSup = [convert(Array{Array{Int,1},1},x.Ts_disSup)]))
 	else
 		expMap_df[!,:Ts_disSup] = Array{Array{Int,1},1}()
@@ -342,7 +345,7 @@ function expandExpToCapa(in_df::DataFrame)
 	end
 
 	if !isempty(allDf_arr)
-		capa_df = select(vcat(allDf_arr...),orderDim(names(allDf_arr[1])))[!,Not(:Ts_exp)]
+		capa_df = select(vcat(allDf_arr...),orderDim(namesSym(allDf_arr[1])))[!,Not(:Ts_exp)]
 	else
 		 capa_df = select(in_df,Not(:Ts_exp)); capa_df[!,:Ts_disSup] = Int[];
 	end
@@ -353,8 +356,8 @@ end
 # XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
 function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},preserveTsSupTs::Bool = false)
     # adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)
-	expR_df = unique(by(inData_df,names(inData_df),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])])
-	expTs_df = by(expR_df,names(expR_df),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
+	expR_df = unique(by(inData_df,namesSym(inData_df),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])])
+	expTs_df = by(expR_df,namesSym(expR_df),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
 
     # adds dispatch timesteps to table and returns
 	if !preserveTsSupTs select!(expTs_df,Not(:Ts_disSup)) end

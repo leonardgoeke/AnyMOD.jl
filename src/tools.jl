@@ -29,7 +29,7 @@ end
 # XXX prints dataframe to csv file
 function printObject(print_df::DataFrame,sets::Dict{Symbol,Tree},options::modOptions; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true)
 
-	colNam_arr = names(print_df)
+	colNam_arr = namesSym(print_df)
     cntCol_int = size(colNam_arr,1)
 
 	# filters values according to filter function,
@@ -54,7 +54,7 @@ function printObject(print_df::DataFrame,sets::Dict{Symbol,Tree},options::modOpt
 															:R => :region, :R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Te => :technology,
 																:cns => :constraint, :var => :variable)
 
-	rename!(print_df,map(x -> x in keys(colName_dic) ? colName_dic[x] : x, names(print_df)) )
+	rename!(print_df,map(x -> x in keys(colName_dic) ? colName_dic[x] : x, namesSym(print_df)) )
 	if :csv in rtnDf
     	CSV.write("$(options.outDir)/$(fileName)_$(options.outStamp).csv",  print_df)
 	end
@@ -75,12 +75,12 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	# XXX get demand values
 	dem_df = copy(anyM.parts.bal.par[:dem].data)
 	if !isempty(dem_df)
-		dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, :C in names(dem_df) ? dem_df[!,:C] : filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx)))
+		dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, :C in namesSym(dem_df) ? dem_df[!,:C] : filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx)))
 
 		# aggregates demand values
 
 		# artificially add dispatch dimensions, if none exist
-		if :Ts_dis in names(dem_df)
+		if :Ts_dis in namesSym(dem_df)
 			ts_dic = Dict(x => anyM.sets[:Ts].nodes[x].lvl == anyM.supTs.lvl ? x : getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(dem_df[!,:Ts_dis]))
 			dem_df[!,:Ts_disSup] = map(x -> ts_dic[x],dem_df[!,:Ts_dis])
 		else
@@ -90,7 +90,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 
 		dem_df[!,:val] = dem_df[!,:val]	.* getResize(dem_df,anyM.sets[:Ts],anyM.supTs) ./ anyM.options.redStep
 
-		allR_arr = :R_dis in names(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
+		allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
 		allLvlR_arr = unique(dem_df[!,:lvlR])
 		r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl <= x[2] ? getDescendants(x[1], anyM.sets[:R],false,x[2]) : getAncestors(x[1],anyM.sets[:R],:int,x[2])[end]) for x in Iterators.product(allR_arr,allLvlR_arr))
 		dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis,x.lvlR],eachrow(dem_df[!,[:R_dis,:lvlR]]))
@@ -147,7 +147,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 
 		# add empty values for non-existing columns
 		for dim in (:Te,:C)
-			if !(dim in names(disp_df))
+			if !(dim in namesSym(disp_df))
 				disp_df[:,dim] .= 0
 			end
 		end
@@ -251,12 +251,12 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{
 	for cst in filter(x -> occursin("cost",string(x)),keys(anyM.parts.obj.var))
 		cost_df = copy(anyM.parts.obj.var[cst])
 		# rename all dispatch and expansion regions simply to region
-		if !isempty(intersect([:R_dis,:R_exp],names(cost_df)))
-			rename!(cost_df,:R_dis in names(cost_df) ? :R_dis : :R_exp => :R)
+		if !isempty(intersect([:R_dis,:R_exp],namesSym(cost_df)))
+			rename!(cost_df,:R_dis in namesSym(cost_df) ? :R_dis : :R_exp => :R)
 		end
 		# add empty column for non-existing dimensions
 		for dim in (:Te,:C,:R)
-			if !(dim in names(cost_df))
+			if !(dim in namesSym(cost_df))
 				cost_df[:,dim] .= 0
 			end
 		end
@@ -499,7 +499,7 @@ end
 # XXX write dual values for constraint dataframe
 function reportDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x -> true, fileName::String = "", rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
-    if !(:cns in names(cns_df)) error("No constraint column found!") end
+    if !(:cns in namesSym(cns_df)) error("No constraint column found!") end
     cns_df = copy(filter(filterFunc,cns_df))
     cns_df[!,:dual] = dual.(cns_df[!,:cns])
 

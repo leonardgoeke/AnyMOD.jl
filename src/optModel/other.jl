@@ -6,7 +6,7 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 	for type in (:Buy, :Sell)
 		trdPrc_sym = Symbol(:trd,type,:Prc)
 		trd_sym = Symbol(:trd,type)
-		if trdPrc_sym in keys(partTrd.par) && :C in names(partTrd.par[trdPrc_sym].data)
+		if trdPrc_sym in keys(partTrd.par) && :C in namesSym(partTrd.par[trdPrc_sym].data)
 
 			# <editor-fold desc="create trade variables"
 			c_arr = unique(partTrd.par[trdPrc_sym].data[!,:C])
@@ -76,7 +76,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 
 	# if demand does not specific a carrier, it is assumed all carriers are relevant
 	if !isempty(anyM.parts.bal.par[:dem].data)
-		if :C in names(anyM.parts.bal.par[:dem].data)
+		if :C in namesSym(anyM.parts.bal.par[:dem].data)
 			append!(relC_arr,unique(anyM.parts.bal.par[:dem].data[!,:C]))
 		else
 			append!(relC_arr,c_arr)
@@ -246,7 +246,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 		# XXX loop over respective type of limits to obtain data
 		for lim in varToPar_dic[va]
 			par_obj = copy(partLim.par[Symbol(va,lim)])
-			if va in (:capaExc,:commCapaExc) && :R_a in names(par_obj.data) && :R_b in names(par_obj.data)
+			if va in (:capaExc,:commCapaExc) && :R_a in namesSym(par_obj.data) && :R_b in namesSym(par_obj.data)
 				par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_a => :R_b,:R_b => :R_a))
 			end
 			agg_tup = tuple(intCol(par_obj.data)...)
@@ -286,7 +286,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 		end
 
 		# XXX check for contradicting values
-		limitCol_arr = intersect(names(allLimit_df),(:Fix,:Up,:Low))
+		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))
 		entr_int = size(allLimit_df,1)
 		if :Low in limitCol_arr || :Up in limitCol_arr
 			# upper and lower limit contradicting each other
@@ -318,14 +318,14 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 
 		# XXX check for suspicious entries for capacity where limits are provided for the sum of capacity over several years
 		if occursin("capa",string(va))
-			if !(:Ts_disSup in names(allLimit_df))
+			if !(:Ts_disSup in namesSym(allLimit_df))
 				lock(anyM.lock)
 				push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
 																												(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
 				unlock(anyM.lock)
 			elseif 0 in unique(allLimit_df[!,:Ts_disSup])
 				relEntr_df = filter(x -> x.Ts_disSup == 0, allLimit_df)
-				if :Te in names(relEntr_df)
+				if :Te in namesSym(relEntr_df)
 					allTe_arr = unique(relEntr_df[!,:Te])
 					for t in allTe_arr
 						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for $(createFullString(t,anyM.sets[:Te])) without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
