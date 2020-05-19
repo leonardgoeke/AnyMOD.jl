@@ -68,7 +68,7 @@ removeVal(col_arr::Array{Symbol,1}) = filter(x -> !(x in (:val,:ratio)),col_arr)
 getDicEmpty(dic::Dict,key::Any) = key in keys(dic) ? dic[key] : Int[]
 
 # XXX get names of column of type integer
-intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, eachcol(in_df, true)),1)
+intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, collect(pairs(eachcol(df)))),1)
 intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(namesSym(in_df),[add_sym]))
 
 # XXX puts relevant dimensions in consistent order and adds remaining entries at the end
@@ -194,8 +194,7 @@ function joinMissing(leftData_df::DataFrame, rightData_df::DataFrame, key_arr::U
 		joinData_df = outerjoin(leftData_df,rightData_df; on = key_arr, makeunique = uni_boo)
 	end
 
-
-	miss_col = filter(x -> any(ismissing.(x[2])), eachcol(joinData_df,true))
+	miss_col = filter(x -> any(ismissing.(x[2])), collect(pairs(eachcol(df))))
     # check, if any column contains missing values
     if isempty(miss_col) return dropmissing(joinData_df) end
 
