@@ -92,10 +92,10 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 
 		allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
 		allLvlR_arr = unique(dem_df[!,:lvlR])
-		r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl <= x[2] ? getDescendants(x[1], anyM.sets[:R],false,x[2]) : getAncestors(x[1],anyM.sets[:R],:int,x[2])[end]) for x in Iterators.product(allR_arr,allLvlR_arr))
+		r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl < x[2] ? getDescendants(x[1], anyM.sets[:R],false,x[2]) : getAncestors(x[1],anyM.sets[:R],:int,x[2])[end]) for x in Iterators.product(allR_arr,allLvlR_arr))
 		dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis,x.lvlR],eachrow(dem_df[!,[:R_dis,:lvlR]]))
 
-		dem_df = combine(groupby(dem_df,[:Ts_disSup,:R_dis,:C]),:val => ( x -> sum(x.val) / 1000) => :value)
+		dem_df = combine(groupby(dem_df,[:Ts_disSup,:R_dis,:C]),:val => ( x -> sum(x) / 1000) => :value)
 		dem_df[!,:Te] .= 0
 		dem_df[!,:variable] .= :demand
 		if wrtSgn dem_df[!,:value] = dem_df[!,:value] .* -1 end
@@ -125,7 +125,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 
 			select!(capa_df,Not(:R_exp))
 			# aggregate values and add to tech data frame
-			capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_dis,:C,:Te]),:var => ( x -> value.(sum(x.var))) => :value)
+			capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_dis,:C,:Te]),:var => ( x -> value.(sum(x))) => :value)
 			capa_df[!,:variable] .= va
 			tech_df = vcat(tech_df,capa_df)
 		end
@@ -140,7 +140,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		allVar_df = getAllVariables(va,anyM)
 		if isempty(allVar_df) continue end
 
-		disp_df = combine(groupby(allVar_df,intersect(intCol(allVar_df),[:Ts_disSup,:R_dis,:C,:Te])),:var => (x -> value(sum(x.var))) => :value)
+		disp_df = combine(groupby(allVar_df,intersect(intCol(allVar_df),[:Ts_disSup,:R_dis,:C,:Te])),:var => (x -> value(sum(x))) => :value)
 		# scales values to twh (except for emissions of course)
 		if va != :emission disp_df[!,:value] = disp_df[!,:value]  ./ 1000 end
 		disp_df[!,:variable] .= va
@@ -164,7 +164,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	    # add losses to all exchange variables
 	    allExc_df = getExcLosses(convertExcCol(allExc_df),anyM.parts.exc.par,anyM.sets)
 	    # compute export and import of each region, losses are considered at import
-	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:R_a,:C]),:var => ( x -> value(sum(x.var))/1000) => :value),:R_a => :R_dis)
+	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:R_a,:C]),:var => ( x -> value(sum(x))/1000) => :value),:R_a => :R_dis)
 	    excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
 		if wrtSgn excFrom_df[!,:value] = excFrom_df[!,:value] .* -1 end
 
@@ -294,18 +294,18 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 	select!(exp_df,Not(:Ts_disSup))
 	rename!(exp_df,:Ts_expSup => :Ts_disSup)
 
-	exp_df = combine(groupby(exp_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x.var))) => :value)
+	exp_df = combine(groupby(exp_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
 	exp_df[!,:variable] .= :expExc
 
 	# XXX capacity variables
 	capa_df = copy(anyM.parts.exc.var[:capaExc])
 	capa_df = vcat(capa_df,rename(filter(x -> x.dir == 0, capa_df),:R_from => :R_to, :R_to => :R_from))
-	capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x.var))) => :value)
+	capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
 	capa_df[!,:variable] .= :capaExc
 
 	# XXX dispatch variables
 	disp_df = getAllVariables(:exc,anyM)
-	disp_df = combine(groupby(disp_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x.var)) ./ 1000) => :value)
+	disp_df = combine(groupby(disp_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x)) ./ 1000) => :value)
 	disp_df[!,:variable] .= :exc
 
 	# XXX get full load hours
@@ -383,7 +383,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 			checkTechReso!(tRes_tup,cBalRes_tup,add_df,anyM.sets)
 
 			# filter values based on filter function and minimum value reported
-			add_df = combine(groupby(add_df,[:Ts_disSup,:Ts_dis,:R_dis]), :var => (x -> sum(x.var)) => :var)
+			add_df = combine(groupby(add_df,[:Ts_disSup,:Ts_dis,:R_dis]), :var => (x -> sum(x)) => :var)
 			filter!(filterFunc,add_df)
             if isempty(add_df) continue end
 			add_df[!,:value] = value.(add_df[!,:var]) .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
@@ -400,7 +400,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
     if :exc in keys(anyM.parts.exc.var)
 		exc_df = filterCarrier(anyM.parts.exc.var[:exc],relC_arr)
 		if :out in signVar
-			excFrom_df = combine(groupby(filter(filterFunc,rename(copy(exc_df),:R_from => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis]), :var => (x -> value(sum(x.var)) * -1) => :value)
+			excFrom_df = combine(groupby(filter(filterFunc,rename(copy(exc_df),:R_from => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis]), :var => (x -> value(sum(x)) * -1) => :value)
 			excFrom_df[!,:variable] .= :export
 			filter!(x -> abs(x.value) > minVal, excFrom_df)
 			if !isempty(excFrom_df)
