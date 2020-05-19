@@ -150,7 +150,7 @@ function removeEntries(remove_arr::Array{DataFrame,1},input_df::DataFrame)
     if !isempty(remove_arr)
         remove_df = length(remove_arr) == 1 ? remove_arr[1] : vcat(remove_arr...)
         colRemove_arr = namesSym(remove_df)
-		out_df = join(input_df,remove_df; on = colRemove_arr, kind = :anti)
+		out_df = antijoin(input_df,remove_df; on = colRemove_arr, makeunique = false, validate = (false,false) )
 		return out_df
     else
         return input_df
@@ -240,7 +240,7 @@ function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Sy
 		aggEtr_df[!,dim] .= map(x -> dim_dic[x],aggEtr_df[!,dim])
 	end
 
-	aggEtrGrp_df = by(aggEtr_df,agg_arr, var = [:var] => x -> sum(x.var))
+	aggEtrGrp_df = combine(groupby(aggEtr_df,agg_arr), :var => (x -> sum(x)) => :var)
 	var_arr = joinMissing(srcEtr_df,aggEtrGrp_df,agg_arr,:left,Dict(:var => AffExpr()))[!,:var]
 	return var_arr
 end
@@ -271,7 +271,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 	end
 	srcEtrAct_df = srcEtr_df[collect(idxRel_set),:]
 	# group aggregation dataframe to relevant columns and removes unrequired columns
-	aggEtrGrp_df = by(aggEtr_df,collect(agg_tup), var = [:var] => x -> sum(x.var))
+	aggEtrGrp_df = combine(groupby(aggEtr_df,collect(agg_tup)), :var => (x -> sum(x)) => :var)
 
 	# XXX create dictionaries in each dimension that assign rows suited for aggregation for each value
 	chldRows = Dict{Symbol,Dict{Int,BitSet}}()
@@ -326,7 +326,7 @@ function addSupTsToExp(expMap_df::DataFrame,para_obj::Dict{Symbol,ParElement},ty
 		lftmDel_df[!,:Ts_disSup] = map(x -> filter(y -> (tsYear_dic[y] >= tsYear_dic[x.Ts_expSup] + x.del) && (tsYear_dic[y] <= tsYear_dic[x.Ts_expSup] + x.life + x.del),collect(anyM.supTs.step)), eachrow(lftmDel_df))
 		select!(lftmDel_df,Not([:life,:del]))
 		grpCol_arr = intCol(expMap_df) |> (x -> :ratio in namesSym(expMap_df) ? vcat(:ratio,x...) : x)
-		expMap_df = by(lftmDel_df,grpCol_arr, [:Ts_expSup,:Ts_disSup] => x -> (Ts_expSup = [convert(Array{Int,1},x.Ts_expSup)], Ts_disSup = [convert(Array{Array{Int,1},1},x.Ts_disSup)]))
+		expMap_df = combine(groupby(lftmDel_df,grpCol_arr), [:Ts_expSup,:Ts_disSup] .=> (x -> [x]) .=> [:Ts_expSup,:Ts_disSup])
 	else
 		expMap_df[!,:Ts_disSup] = Array{Array{Int,1},1}()
 	end
@@ -357,8 +357,8 @@ end
 # XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
 function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},preserveTsSupTs::Bool = false)
     # adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)
-	expR_df = unique(by(inData_df,namesSym(inData_df),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])])
-	expTs_df = by(expR_df,namesSym(expR_df),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
+	expR_df = unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],), groupby(inData_df,namesSym(inData_df)))[!,Not([:R_exp,:lvlR])])
+	expTs_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(expR_df,namesSym(expR_df)))[!,Not(:lvlTs)]
 
     # adds dispatch timesteps to table and returns
 	if !preserveTsSupTs select!(expTs_df,Not(:Ts_disSup)) end
@@ -458,7 +458,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 					filter!(x -> x.loss != 0.0,exc_df)
 					if !isempty(exc_df)
 		                exc_df[!,:var] = exc_df[!,:var] .* exc_df[!,:loss] .* 0.5
-						exc_df = rename(by(vcat(exc_df,rename(exc_df,:R_a => :R_b,:R_b => :R_a)),filter(x -> x != :R_b,intCol(exc_df)),var = [:var] => x -> sum(x.var)),:R_a => :R_dis)
+						exc_df = rename(combine(groupby(vcat(exc_df,rename(exc_df,:R_a => :R_b,:R_b => :R_a)),filter(x -> x != :R_b,intCol(exc_df))),:var => (x -> sum(x)) => :var),:R_a => :R_dis)
 						# dimensions not relevant for exchange are set to 0
 						exc_df[!,:Te] .= 0; exc_df[!,:Ts_expSup] .= 0; exc_df[!,:M] .= 0
 						allVar_df = vcat(allVar_df,exc_df)

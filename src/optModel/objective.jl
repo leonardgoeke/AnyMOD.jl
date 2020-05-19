@@ -67,7 +67,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		# add economic lifetime to table where it is defined
 		if Symbol(:lifeEco,va) in parObj_arr
 			ecoLife_df = matchSetParameter(allExp_df,partObj.par[Symbol(:lifeEco,va)],anyM.sets,newCol = :life)
-			noEcoLife_df = join(allExp_df,ecoLife_df, on = intCol(allExp_df), kind = :anti)
+			noEcoLife_df = antijoin(allExp_df,ecoLife_df, on = intCol(allExp_df), makeunique = false, validate = (false,false) )
 			noEcoLife_df[!,:life] .= nothing
 			allExp_df = vcat(ecoLife_df,noEcoLife_df)
 		else
@@ -98,7 +98,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			techRate_df = filter(x -> false,allExp_df); techRate_df[!,:rate] .= Float64[]
 		end
 		# obtains general discount rate
-		generRate_df = rename(join(allExp_df,techRate_df,on = intCol(techRate_df), kind = :anti),:Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup)
+		generRate_df = rename(antijoin(allExp_df,techRate_df,on = intCol(techRate_df), makeunique = false, validate = (false,false) ),:Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup)
 		if va != :Exc
 			generRate_df = matchSetParameter(generRate_df, partObj.par[:rateDisc],anyM.sets,newCol = :rate)
 		else
@@ -117,7 +117,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		allExp_df = matchSetParameter(convertExcCol(allExp_df),partObj.par[va != :Exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
 
 		# XXX groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
-		allExp_df = by(allExp_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C], expr = [:disFac,:exp,:costAnn] => x -> sum(x.disFac .* x.exp .* x.costAnn))
+		allExp_df = combine(x -> (expr = sum(x.disFac .* x.exp .* x.costAnn),) ,groupby(allExp_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C]))
 		transferCostEle!(allExp_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng)
 	end
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for expansion costs")
@@ -147,7 +147,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		if isempty(allCapa_df) continue end
 
 		# XXX groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
-		allCapa_df = by(allCapa_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C], expr = [:disFac,:capa,:costOpr] => x -> sum(x.disFac .* x.capa .* x.costOpr))
+		allCapa_df = combine(x -> (expr = sum(x.disFac .* x.capa .* x.costOpr),), groupby(allCapa_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C]))
 		transferCostEle!(allCapa_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng)
 	end
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for capacity costs")
@@ -174,7 +174,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			else
 				dirCost_df = convertExcCol(allDisp_df[[],:])
 			end
-			noDirCost_df = matchSetParameter(join(convertExcCol(allDisp_df),dirCost_df, on = intCol(dirCost_df), kind = :anti),anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
+			noDirCost_df = matchSetParameter(antijoin(convertExcCol(allDisp_df),dirCost_df, on = intCol(dirCost_df), makeunique = false, validate = (false,false) ),anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
 
 			allDisp_df = rename(convertExcCol(vcat(dirCost_df,noDirCost_df)),:var => :disp)
 		elseif va == :use && :emissionPrc in parObj_arr && :emissionFac in keys(anyM.parts.lim.par)
@@ -205,7 +205,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		allDisp_df = matchSetParameter(allDisp_df,partObj.par[va != :exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
 
 		# XXX groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
-		allDisp_df = by(allDisp_df,va != :exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C], expr = [:disFac,:disp,:costVar] => x -> sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0)
+		allDisp_df = combine(x -> (expr = sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0,) ,groupby(allDisp_df,va != :exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C]))
 		transferCostEle!(allDisp_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng)
 	end
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for variables costs")
@@ -218,7 +218,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allVar_df = rename(matchSetParameter(anyM.parts.bal.var[varType],anyM.parts.bal.par[cost_sym],anyM.sets,newCol = :cost),:var => varType)
 			allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
 			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
-			allVar_df = by(allVar_df, [:Ts_disSup,:R_exp,:C], expr = [:disFac,varType,:cost] => x -> sum(x.disFac .* getfield(x,varType) .* x.cost) ./ 1000.0)
+			allVar_df = combine(x -> (expr = sum(x.disFac .* x[!,varType] .* x.cost) ./ 1000.0,) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C]))
 			transferCostEle!(allVar_df, partObj,cost_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng, NaN)
 		end
 	end
@@ -230,7 +230,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allTrd_df = rename(matchSetParameter(anyM.parts.trd.var[va],anyM.parts.trd.par[Symbol(va,:Prc)],anyM.sets,newCol = :costTrd),:var => :trd)
 			allTrd_df = matchSetParameter(rename(allTrd_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
 			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
-			allTrd_df = by(allTrd_df, [:Ts_disSup,:R_exp,:C], expr = [:disFac,:trd,:costTrd] => x -> sum(x.disFac .* x.trd .* x.costTrd) ./ (va == :trdSell ? -1000.0 : 1000.0) )
+			allTrd_df = combine(x -> (expr = sum(x.disFac .* x.trd .* x.costTrd) ./ (va == :trdSell ? -1000.0 : 1000.0),), groupby(allTrd_df, [:Ts_disSup,:R_exp,:C]))
 			transferCostEle!(allTrd_df, partObj,Symbol(:cost,uppercase(string(va)[1]),string(va)[2:end]),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,(va == :trdSell ? NaN : 0.0))
 		end
 	end

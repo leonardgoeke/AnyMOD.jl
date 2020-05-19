@@ -115,7 +115,7 @@ function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dic
 
 	# prepares expansion dimensions for storage capacity
 	if !isempty(stCar_arr)
-		stMap_df = by(allMap_df,namesSym(allMap_df),C = :Te => x -> stCar_arr)
+		stMap_df = combine(groupby(allMap_df,namesSym(allMap_df)), :Te => (x -> stCar_arr) => :C)
 
 		for st in (:StIn, :StOut, :StSize)
 			remove_arr = Array{DataFrame,1}()
@@ -210,7 +210,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 				var_df = filter(r -> r.dir,var_df) |> (x -> vcat(filter(r -> !r.dir,var_df),vcat(x,rename(x,replace(namesSym(x),:R_to => :R_from, :R_from => :R_to)))))
 			end
 			join_arr = intCol(var_df,:dir)
-			var_df = by(joinMissing(var_df,varMap_tup.resi[!,vcat(:var,join_arr...)], join_arr, :outer, Dict(:var => AffExpr(),:var_1 => AffExpr()),true),intCol(var_df,:dir),var = [:var,:var_1] => x -> sum(x))
+			var_df = combine(x -> (var = x.var + x.var_1,), groupby(joinMissing(var_df,varMap_tup.resi[!,vcat(:var,join_arr...)], join_arr, :outer, Dict(:var => AffExpr(),:var_1 => AffExpr()),true),intCol(var_df,:dir)))
 		end
 
 		# expands table of expansion variables to superordinate timesteps and modifies expansion variable accordingly
@@ -247,7 +247,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 			# join ratios and corresponding
 			ratio_df = join(preRatio_df,part.var[ratioVar_sym]; on = join_arr, kind = :inner)
 			ratio_df[!,:var] = ratio_df[!,:var] .* ratio_df[!,:ratio]
-			var_df = ratio_df[!,Not(:ratio)] |> (x -> vcat(x,join(var_df,x, on = join_arr, kind = :anti)))
+			var_df = ratio_df[!,Not(:ratio)] |> (x -> vcat(x,antijoin(var_df,x, on = join_arr, makeunique = false, validate = (false,false) )))
 		end
 
 		if !isempty(var_df)	part.var[expVar] = orderDf(var_df) end
@@ -591,7 +591,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	end
 
 	# replaces expansion with dispatch regions
-	grpCapaVar_df = copy(capaVar_df) |> (y -> unique(by(y,namesSym(y),R_dis = [:R_exp,:lvlR] => x -> r_dic[(x[1][1],x[2][1])])[!,Not([:R_exp,:lvlR])]))
+	grpCapaVar_df = copy(capaVar_df) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
 
 	if restr.lvlR < part.balLvl.exp[2] # aggregate capacity variables spatially, if necessary
 		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR)
@@ -599,7 +599,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	end
 
 	# expand capacity to dimension of dispatch
-	capaDim_df = by(grpCapaVar_df[!,Not(:var)],namesSym(grpCapaVar_df[!,Not(:var)]),Ts_dis = [:Ts_disSup, :lvlTs] => x -> ts_dic[(x[1][1],x[2][1])])[!,Not(:lvlTs)]
+	capaDim_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(grpCapaVar_df[!,Not(:var)],namesSym(grpCapaVar_df[!,Not(:var)])))[!,Not(:lvlTs)]
 	select!(grpCapaVar_df,Not(:lvlTs))
 
 	# obtain all relevant dispatch variables
@@ -629,7 +629,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	capaDim_df = filter(x -> !(x.disp == AffExpr()),capaDim_df)
 
 	# join capacity and dispatch variables to create final constraint
-	grpCapaVar_df = by(grpCapaVar_df,replace(dim_arr,:Ts_dis => :Ts_disSup),capa = [:var] => x -> sum(x))
+	grpCapaVar_df = combine(groupby(grpCapaVar_df,replace(dim_arr,:Ts_dis => :Ts_disSup)), :var => (x -> sum(x)) => :capa)
 	cns_df = join(capaDim_df,grpCapaVar_df,on = intCol(grpCapaVar_df), kind = :inner)
 	return cns_df
 end

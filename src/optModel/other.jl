@@ -208,7 +208,7 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 		if isempty(allVar_df)
 			techVar_arr[idx]  = fill(AffExpr(),size(src_df,1))
 		else
-			grpVar_df = by(allVar_df, [:Ts_dis, :R_dis], var = [:var] => x -> sum(x.var))
+			grpVar_df = combine(groupby(allVar_df, [:Ts_dis, :R_dis]), :var => (x -> sum(x)) => :var)
 			techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis], :left, Dict(:var => AffExpr()))[!,:var]
 		end
 	end
@@ -252,7 +252,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 			agg_tup = tuple(intCol(par_obj.data)...)
 
 			# aggregate search variables according to dimensions in limit parameter
-			grpVar_df = by(convertExcCol(allVar_df),collect(agg_tup), var = [:var] => x -> sum(x.var))
+			grpVar_df = combine(groupby(convertExcCol(allVar_df),collect(agg_tup)), :var => (x -> sum(x)) => :var)
 
 			# try to aggregate variables to limits directly provided via inputs
 			limit_df = copy(par_obj.data)
@@ -383,7 +383,7 @@ function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns
 		expVar_sym = Symbol(replace(string(capaVar),"capa" => "exp"))
 		if !(expVar_sym in keys(part.var)) continue end
         expVar_df = flatten(part.var[expVar_sym],:Ts_disSup)
-        cns_df = rename(join(part.var[capaVar],by(expVar_df,join_arr, exp = :var => x -> sum(x)); on = join_arr, kind = :inner),:var => :capa)
+        cns_df = rename(join(part.var[capaVar],combine(groupby(expVar_df,join_arr), :var => (x -> sum(x)) => :exp); on = join_arr, kind = :inner),:var => :capa)
 
         # creates final constraint object
 		cns_df[!,:cnsExpr] = map(x -> x.capa - x.capa.constant - x.exp,eachrow(cns_df))

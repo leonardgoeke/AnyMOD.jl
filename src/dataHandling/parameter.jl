@@ -408,9 +408,8 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
                 unique(vcat(map(x -> filter(y -> x != y,getDescendants(x,anyM.sets[:C],true)),unique(capaLvl_df[!,:C]))...)) |> (z -> filter!(x -> !(x.C in z) || x.C in intC_arr,capaLvl_df))
                 car_arr = unique(capaLvl_df[!,:C])
 			end
-
 			resC_dic = Dict(x => anyM.cInfo[x] |> (y -> [getfield(y,:tsDis), part.disAgg ? part.balLvl.exp[2] : getfield(y,:rDis)]) for x in car_arr)
-            capaLvl_df = by(capaLvl_df,namesSym(capaLvl_df),:C => x -> resC_dic[x[1]] |> (y -> (lvlTs = y[1], lvlR = y[2])))
+            capaLvl_df = combine(x -> resC_dic[x.C[1]] |> (y -> (lvlTs = y[1], lvlR = y[2])), groupby(capaLvl_df, namesSym(capaLvl_df)))
 		elseif preType == :minUse || preType == :minGen
 			car_arr = (preType == :minUse ? :use : :gen) |> (y -> haskey(part.carrier,y) ? collect(getfield(part.carrier,y)) : Int[])
 			if isempty(car_arr) continue end
@@ -528,7 +527,7 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{S
 
         # gets all data, where no values where obtained successfully yet and look them up again applying the default value and not specifing the mode anymore
         # (hence now non mode-specific parameter values for technologies with modes are taken into account => mode-specific parameter values generally overwrite non-mode specific parameter values)
-        newSearch_df = unique(join(newData_df[!,resDim_arr],  vcat(finalMode_df, noMode_df)[!,Not(:val)], on = resDim_arr, kind = :anti ))
+        newSearch_df = unique(antijoin(newData_df[!,resDim_arr],  vcat(finalMode_df, noMode_df)[!,Not(:val)], makeunique = false, validate = (false,false) ))
 
         if !isempty(newSearch_df)
             newSearch_df[!,:M] .= 0
@@ -633,7 +632,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
 
     # checks if there are actually unmatched values before startin inheritance process
     if size(searchSet_df,1) != size(paraMatch_df,1)
-        noMatch_df = join(searchSet_df, paraData_df; on = srcCol_arr, kind = :anti)
+        noMatch_df = antijoin(searchSet_df, paraData_df; on = srcCol_arr, makeunique = false, validate = (false,false))
         if !isempty(noMatch_df)
 
             for herit in filter(x -> x[1] in srcCol_arr, collect(par_obj.herit))
@@ -654,7 +653,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
                 cntMatch_int = size(newMatch_df,1)
 
                 # add new rows to both table with matches and parameter data
-                paraData_df = vcat(paraData_df, useNew ? newData_df : join(newData_df,newMatch_df, on = srcCol_arr, kind = :anti))
+                paraData_df = vcat(paraData_df, useNew ? newData_df : antijoin(newData_df,newMatch_df, on = srcCol_arr, makeunique = false, validate = (false,false) ))
                 paraMatch_df = vcat(paraMatch_df,newMatch_df)
 
                 # removes newly matched values from search and leaves loop if everything is matched now
@@ -662,7 +661,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
                     allMatch_boo = true
                     break
                 else
-                    noMatch_df = join(noMatch_df, newMatch_df; on = srcCol_arr, kind = :anti)
+                    noMatch_df = antijoin(noMatch_df, newMatch_df; on = srcCol_arr, makeunique = false, validate = (false,false) )
                 end
             end
 
@@ -704,7 +703,7 @@ function heritParameter_up(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{Int
     grpBy_arr = filter(x -> !(x in [:val,herit_par[1]]),namesSym(paraDataIn_df))
 
     # uses closest child with value as new data
-    newData_df = by(paraDataIn_df, grpBy_arr, [:val,herit_par[1]] => x -> maximum(getfield(x, herit_par[1])) |> (z -> NamedTuple{(herit_par[1],:val)}(tuple(z,x.val[findall(getfield(x,herit_par[1]) .== z)][1]))))
+    newData_df = combine(x -> maximum(x[!,herit_par[1]]) |> (z -> NamedTuple{(herit_par[1],:val)}(tuple(z,x.val[findall(x[!,herit_par[1]] .== z)][1]))), groupby(paraDataIn_df, grpBy_arr))
 
     select!(newData_df, Not(herit_par[1]))
     rename!(newData_df,:child => herit_par[1])
@@ -750,11 +749,11 @@ function heritParameter_rest(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{I
 
         # groups table by parents and not used dimensions according to aggregation rule (sum, any, or unique)
         if heritAgg_sym == :sum
-            paraDataGrp_df = by(paraDataSrc_df, vcat(noHeritSet_tup...,:pare), valAgg = :val => x -> sum(x))
+            paraDataGrp_df = combine(groupby(paraDataSrc_df, vcat(noHeritSet_tup...,:pare)), :val => (x -> sum(x)) => :valAgg)
         elseif heritAgg_sym == :avg
-            paraDataGrp_df = by(paraDataSrc_df, vcat(noHeritSet_tup...,:pare), valAgg = :val => x -> Statistics.mean(x))
+            paraDataGrp_df = combine(groupby(paraDataSrc_df, vcat(noHeritSet_tup...,:pare)), :val => (x -> Statistics.mean(x)) => :valAgg)
         else
-            paraDataGrp_df = dropmissing(by(paraDataSrc_df, vcat(noHeritSet_tup...,:pare), valAgg = :val => x -> length(unique(x)) == 1 ? x[1] : missing))
+            paraDataGrp_df = dropmissing(combine(groupby(paraDataSrc_df, vcat(noHeritSet_tup...,:pare)), :val => (x -> length(unique(x)) == 1 ? x[1] : missing) => :valAgg))
         end
 
         existKey_arr = Tuple.(eachrow(newData_df[!,Not(:val)]))
