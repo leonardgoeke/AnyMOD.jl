@@ -482,7 +482,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 end
 
 # XXX pre-sets specific dispatch parameter
-function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{Symbol,Tree}, options::modOptions, cntM_int::Int = 0, newherit_tup::Tuple = ())
+function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{Symbol,Tree}, options::modOptions, cntM_int::Int = 0, newHerit_tup::Tuple = ())
     # gets dimension of search tables and parameter without mode
     newData_df = select(newData_df,intersect(namesSym(newData_df),par_obj.dim))
     # creates empty report, that entries are written to within subprocess
@@ -527,7 +527,7 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{S
 
         # gets all data, where no values where obtained successfully yet and look them up again applying the default value and not specifing the mode anymore
         # (hence now non mode-specific parameter values for technologies with modes are taken into account => mode-specific parameter values generally overwrite non-mode specific parameter values)
-        newSearch_df = unique(antijoin(newData_df[!,resDim_arr],  vcat(finalMode_df, noMode_df)[!,Not(:val)], makeunique = false, validate = (false,false) ))
+        newSearch_df = unique(antijoin(newData_df[!,resDim_arr],  vcat(finalMode_df, noMode_df)[!,Not(:val)], on = resDim_arr))
 
         if !isempty(newSearch_df)
             newSearch_df[!,:M] .= 0
@@ -539,7 +539,7 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{S
         par_obj.data = vcat(noMode_df,finalMode_df) |> (x -> select(x,orderDim(namesSym(x))))
     end
     # sets new inherit rules and default value
-    par_obj.herit = newherit_tup
+    par_obj.herit = newHerit_tup
 
     return par_obj, report
 end
@@ -632,7 +632,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
 
     # checks if there are actually unmatched values before startin inheritance process
     if size(searchSet_df,1) != size(paraMatch_df,1)
-        noMatch_df = antijoin(searchSet_df, paraData_df; on = srcCol_arr, makeunique = false, validate = (false,false))
+        noMatch_df = antijoin(searchSet_df, paraData_df; on = srcCol_arr)
         if !isempty(noMatch_df)
 
             for herit in filter(x -> x[1] in srcCol_arr, collect(par_obj.herit))
@@ -653,7 +653,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
                 cntMatch_int = size(newMatch_df,1)
 
                 # add new rows to both table with matches and parameter data
-                paraData_df = vcat(paraData_df, useNew ? newData_df : antijoin(newData_df,newMatch_df, on = srcCol_arr, makeunique = false, validate = (false,false) ))
+                paraData_df = vcat(paraData_df, useNew ? newData_df : antijoin(newData_df,newMatch_df, on = srcCol_arr))
                 paraMatch_df = vcat(paraMatch_df,newMatch_df)
 
                 # removes newly matched values from search and leaves loop if everything is matched now
@@ -661,7 +661,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
                     allMatch_boo = true
                     break
                 else
-                    noMatch_df = antijoin(noMatch_df, newMatch_df; on = srcCol_arr, makeunique = false, validate = (false,false) )
+                    noMatch_df = antijoin(noMatch_df, newMatch_df; on = srcCol_arr )
                 end
             end
 

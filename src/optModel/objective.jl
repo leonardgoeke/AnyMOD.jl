@@ -67,7 +67,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		# add economic lifetime to table where it is defined
 		if Symbol(:lifeEco,va) in parObj_arr
 			ecoLife_df = matchSetParameter(allExp_df,partObj.par[Symbol(:lifeEco,va)],anyM.sets,newCol = :life)
-			noEcoLife_df = antijoin(allExp_df,ecoLife_df, on = intCol(allExp_df), makeunique = false, validate = (false,false) )
+			noEcoLife_df = antijoin(allExp_df,ecoLife_df, on = intCol(allExp_df))
 			noEcoLife_df[!,:life] .= nothing
 			allExp_df = vcat(ecoLife_df,noEcoLife_df)
 		else
@@ -98,7 +98,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			techRate_df = filter(x -> false,allExp_df); techRate_df[!,:rate] .= Float64[]
 		end
 		# obtains general discount rate
-		generRate_df = rename(antijoin(allExp_df,techRate_df,on = intCol(techRate_df), makeunique = false, validate = (false,false) ),:Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup)
+		generRate_df = rename(antijoin(allExp_df,techRate_df,on = intCol(techRate_df)),:Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup)
 		if va != :Exc
 			generRate_df = matchSetParameter(generRate_df, partObj.par[:rateDisc],anyM.sets,newCol = :rate)
 		else
@@ -174,7 +174,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			else
 				dirCost_df = convertExcCol(allDisp_df[[],:])
 			end
-			noDirCost_df = matchSetParameter(antijoin(convertExcCol(allDisp_df),dirCost_df, on = intCol(dirCost_df), makeunique = false, validate = (false,false) ),anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
+			noDirCost_df = matchSetParameter(antijoin(convertExcCol(allDisp_df),dirCost_df, on = intCol(dirCost_df)),anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
 
 			allDisp_df = rename(convertExcCol(vcat(dirCost_df,noDirCost_df)),:var => :disp)
 		elseif va == :use && :emissionPrc in parObj_arr && :emissionFac in keys(anyM.parts.lim.par)

@@ -247,7 +247,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 			# join ratios and corresponding
 			ratio_df = join(preRatio_df,part.var[ratioVar_sym]; on = join_arr, kind = :inner)
 			ratio_df[!,:var] = ratio_df[!,:var] .* ratio_df[!,:ratio]
-			var_df = ratio_df[!,Not(:ratio)] |> (x -> vcat(x,antijoin(var_df,x, on = join_arr, makeunique = false, validate = (false,false) )))
+			var_df = ratio_df[!,Not(:ratio)] |> (x -> vcat(x,antijoin(var_df,x, on = join_arr)))
 		end
 
 		if !isempty(var_df)	part.var[expVar] = orderDf(var_df) end

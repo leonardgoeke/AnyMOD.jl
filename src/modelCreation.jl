@@ -36,7 +36,6 @@ function createOptModel!(anyM::anyModel)
 	tech_itr = collect(enumerate(techIdx_arr))
 
 	@threads for (idx,t) in tech_itr
-		println(t)
 		techCnsDic_arr[idx] = createTech!(t,anyM.parts.tech[t],prepVar_dic[t],copy(parDef_dic),ts_dic,r_dic,anyM)
 	end
 

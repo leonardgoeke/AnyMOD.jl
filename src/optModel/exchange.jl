@@ -10,7 +10,7 @@ function prepareExcExpansion!(partExc::OthPart,partLim::OthPart,prepExc_dic::Dic
 	tsLvl_dic = Dict(x => getfield.(getNodesLvl(anyM.sets[:Ts],x),:idx) for x in unique(potDim_df[!,:lvlTs]))
 	rLvl_dic = Dict(x => getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in unique(potDim_df[!,:lvlR]))
 
-	potExc_df = combine(x -> (Ts_exp = map(y -> tsLvl_dic[y],x.lvlTs), R_a = map(y -> rLvl_dic[y],x.lvlR), R_b = map(y -> rLvl_dic[y],x.lvlR)), groupby(potDim_df,:C))
+	potExc_df = flatten(flatten(flatten(combine(x -> (Ts_exp = map(y -> tsLvl_dic[y],x.lvlTs), R_a = map(y -> rLvl_dic[y],x.lvlR), R_b = map(y -> rLvl_dic[y],x.lvlR)), groupby(potDim_df,:C)),:Ts_exp),:R_a),:R_b)
 
 	# get dimensions where exchange should actually be defined
 	exExp_df = DataFrame(R_a = Int[], R_b = Int[], C = Int[])
@@ -97,10 +97,10 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 		bothExc_df = combine(x -> (var = x.var + x.var_1,), groupby(bothExc_df,excDim_arr))
 		if !(:var in namesSym(bothExc_df)) bothExc_df[!,:var] = AffExpr[] end
 		 # entries, where only a directed capacity was provided
-		onlyDirExc_df = antijoin(directExc_df, bothExc_df; on = excDim_arr, makeunique = false, validate = (false,false) )
+		onlyDirExc_df = antijoin(directExc_df, bothExc_df; on = excDim_arr )
 
 		# entries originally symmetric that now become directed, because a directed counterpart was introduced
-			flipSym_df = antijoin(join(capaResi_df, bothExc_df[!,Not(:var)]; on = excDim_arr, kind = :inner),bothExc_df[!,Not(:var)]; on = excDim_arr .=> excDimP_arr, makeunique = false, validate = (false,false) )
+			flipSym_df = antijoin(join(capaResi_df, bothExc_df[!,Not(:var)]; on = excDim_arr, kind = :inner),bothExc_df[!,Not(:var)]; on = excDim_arr .=> excDimP_arr)
 
 		swtExc_df = vcat(bothExc_df,flipSym_df)
 
@@ -109,7 +109,7 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 		dirExc_df[!,:dir] .= true
 
 		# entries entries originally symmetric that remain symmetric
-		unDirExc_df = antijoin(capaResi_df, dirExc_df; on = excDim_arr, makeunique = false, validate = (false,false) )
+		unDirExc_df = antijoin(capaResi_df, dirExc_df; on = excDim_arr )
 		unDirExc_df[!,:dir] .= false
 
 		# adjust dataframe of residual capacities according to directed values
@@ -121,7 +121,7 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 			undirBoth_df = vcat(dirExc_df,rename(dirExc_df,replace(namesSym(dirExc_df),:R_a => :R_b, :R_b => :R_a)))[!,Not(:dir)]
 			dirVar_df = convertExcCol(join(convertExcCol(allVar_df[!,Not(:dir)]), vcat(undirBoth_df,swtExc_df)[!,Not(:var)],on = excDim_arr, kind = :inner))
 			dirVar_df[!,:dir] .= true
-			adjVar_df = vcat(dirVar_df,antijoin(allVar_df,dirVar_df,on = [:C, :R_from, :R_to, :Ts_disSup], makeunique = false, validate = (false,false) ))
+			adjVar_df = vcat(dirVar_df,antijoin(allVar_df,dirVar_df,on = [:C, :R_from, :R_to, :Ts_disSup] ))
 		else
 			adjVar_df = allVar_df
 		end
