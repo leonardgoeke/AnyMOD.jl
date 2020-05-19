@@ -166,7 +166,7 @@ function mergeDicTable(df_dic::Dict{Symbol,DataFrame},outerJoin_boo::Bool=true)
 
 	for restKey in keys_arr[2:end]
 		if outerJoin_boo
-			mergeTable_df = join(mergeTable_df, df_dic[restKey]; on = joinCol_tup, kind = :outer)
+			mergeTable_df = outerjoin(mergeTable_df, df_dic[restKey]; on = joinCol_tup)
 		else
 			append!(mergeTable_df, df_dic[restKey])
 		end
@@ -188,7 +188,12 @@ end
 function joinMissing(leftData_df::DataFrame, rightData_df::DataFrame, key_arr::Union{Array{Symbol,1},Array{Pair{Symbol,Symbol},1}}, how_sym::Symbol, missVal_dic::Dict, uni_boo::Bool = false)
 
 	# perform join operation
-    joinData_df = join(leftData_df,rightData_df; on = key_arr, kind = how_sym, makeunique = uni_boo)
+	if how_sym == :left
+		joinData_df = leftjoin(leftData_df,rightData_df; on = key_arr, makeunique = uni_boo)
+	elseif how_sym == :outer
+		joinData_df = outerjoin(leftData_df,rightData_df; on = key_arr, makeunique = uni_boo)
+	end
+
 
 	miss_col = filter(x -> any(ismissing.(x[2])), eachcol(joinData_df,true))
     # check, if any column contains missing values
@@ -418,7 +423,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 
 			# get expressions for storage and exchange losses, if this is enabled
 			if anyM.options.emissionLoss
-				
+
 				# get all carriers being stored
 				allSt_arr = unique(vcat(vcat(map(x -> map(y -> collect(x.carrier[y]),intersect(keys(x.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))),values(anyM.parts.tech))...)...))
 				if !isempty(intersect(emC_arr,vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],allSt_arr)...)))
@@ -426,7 +431,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 					stVar_dic = Dict((string(st) |> (y -> Symbol(uppercase(y[1]),y[2:end]))) => getAllVariables(st,anyM, filterFunc = x -> x.C in emC_arr) for st in (:stIn,:stOut))
 					stLvl_df = getAllVariables(:stLvl,anyM, filterFunc = x -> x.C in emC_arr)
 
-					# loop over relevant storage technologies to obtain los vallues
+					# loop over relevant storage technologies to obtain loss vallues
 					tSt_arr = unique(stLvl_df[!,:Te])
 					for t in tSt_arr
 						part = anyM.parts.tech[t]
@@ -451,7 +456,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 				end
 
 				# for potential emissions from exchange looses only emissions factors that are not technology specific are relevant, the corresponding carriers are obtained here
-				if :Te in namesSym(anyM.parts.lim.par[:emissionFac].data
+				if :Te in namesSym(anyM.parts.lim.par[:emissionFac].data)
 					emCNonTech_arr = unique(vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],unique(filter(x -> x.Te == 0, anyM.parts.lim.par[:emissionFac].data)[!,:C]))...))
 				else
 					emCNonTech_arr = emC_arr

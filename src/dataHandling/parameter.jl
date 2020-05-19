@@ -565,7 +565,7 @@ function computeDisFac!(partObj::OthPart,anyM::anyModel)
 	discRExc_df[!,:R_to] .= [unique(discRExc_df[!,:R_from])]
 	discRExc_df = flatten(discRExc_df,:R_to)
 
-	discRExc_df = join(discRExc_df,discR_df, on = [:Ts_disSup,:R_to] .=> [:Ts_disSup,:R_exp], kind = :inner)
+	discRExc_df = innerjoin(discRExc_df,discR_df, on = [:Ts_disSup,:R_to] .=> [:Ts_disSup,:R_exp])
 	discRExc_df[!,:disFac] = (discRExc_df[!,:disFac] + discRExc_df[!,:disFacFrom]) * 0.5
 	select!(discRExc_df,Not(:disFacFrom))
 
@@ -625,7 +625,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
     srcCol_arr = namesSym(searchSet_df)
 
     # searches for matches in original data
-    paraMatch_df = join(searchSet_df, paraData_df; on = srcCol_arr, kind = :inner)
+    paraMatch_df = innerjoin(searchSet_df, paraData_df; on = srcCol_arr)
 
     # boolean that switches to true if all values were matched via inheritance
     allMatch_boo = false
@@ -646,7 +646,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
                 end
                 if isempty(newData_df) continue end
 
-                newMatch_df = join(noMatch_df, newData_df; on = srcCol_arr, kind = :inner)
+                newMatch_df = innerjoin(noMatch_df, newData_df; on = srcCol_arr)
 
                 # report on inheritance
                 cntNewData_int = size(newData_df,1)
@@ -677,7 +677,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
 
     # expands table again by rows
     if !isempty(redunSrc_arr)
-        paraMatch_df = join(paraMatch_df, srcSetIn_df; on = srcCol_arr, kind = :inner)
+        paraMatch_df = innerjoin(paraMatch_df, srcSetIn_df; on = srcCol_arr)
     end
 
     rename!(paraMatch_df,:val => newCol)

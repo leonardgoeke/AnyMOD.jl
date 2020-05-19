@@ -185,7 +185,7 @@ function findStorageRatio(t_int::Int,find_df::DataFrame,st_sym::Symbol,remove_ar
 		for limPar in intersect(keys(part.par),map(x -> Symbol(kind_sym,st_sym,x),kind_sym == :exp ? [:Up,:Low,:Fix] : [:Up,:Low,:Fix,:Resi]))
 			lim_obj = getLimPar(anyM.parts.lim,limPar,anyM.sets[:Te], tech = t_int)
 			if !(isdefined(lim_obj,:name)) continue end
-			both_df =  join(ratioTab_df,lim_obj.data, on = intersect(intCol(ratioTab_df),intCol(lim_obj.data)), kind = :inner)
+			both_df =  innerjoin(ratioTab_df,lim_obj.data, on = intersect(intCol(ratioTab_df),intCol(lim_obj.data)))
 			if !isempty(both_df)
 				push!(anyM.report,(1,:variable,:expansion,"for $(join(part.name, " < ")) $(strLim_dic[Symbol(split(string(limPar),string(st_sym))[end])]) for $(strRatio_dic[st_sym]) were ignored since an conversion/storage input ratio was provided"))
 			end
@@ -245,7 +245,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 			end
 
 			# join ratios and corresponding
-			ratio_df = join(preRatio_df,part.var[ratioVar_sym]; on = join_arr, kind = :inner)
+			ratio_df = innerjoin(preRatio_df,part.var[ratioVar_sym]; on = join_arr)
 			ratio_df[!,:var] = ratio_df[!,:var] .* ratio_df[!,:ratio]
 			var_df = ratio_df[!,Not(:ratio)] |> (x -> vcat(x,antijoin(var_df,x, on = join_arr)))
 		end
@@ -328,7 +328,7 @@ function createCommVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont}
 			select!(var_df, Not(:cnsExpr))
 			cns_df = rename(filter(r -> r.Ts_disSup != anyM.supTs.step[1],var_df),:var => :commNow)
 			cns_df[!,:Ts_disSupPrev] = map(x -> prevTs_dic[x] ,cns_df[!,:Ts_disSup])
-			cns_df = rename(join(cns_df,var_df; on = intCol(var_df,:dir) |> (x -> Pair.(replace(x,:Ts_disSup => :Ts_disSupPrev),x)), kind = :inner),:var => :commPrev)
+			cns_df = rename(innerjoin(cns_df,var_df; on = intCol(var_df,:dir) |> (x -> Pair.(replace(x,:Ts_disSup => :Ts_disSupPrev),x))),:var => :commPrev)
 
 			# add expansion variable to dataframe
 			if !(:type in fieldnames(typeof(part))) || part.type != :stock
@@ -343,7 +343,7 @@ function createCommVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont}
 
 			# add residual capacities of current and previous period
 			joinResi_arr = filter(x -> x != :Ts_disSupPrev, intCol(cns_df,:dir))
-			cns_df = rename(join(cns_df,part.var[capaVar],on = joinResi_arr, kind = :inner),:var => :resiNow)
+			cns_df = rename(innerjoin(cns_df,part.var[capaVar],on = joinResi_arr),:var => :resiNow)
 			cns_df[!,:resiNow] = getfield.(cns_df[!,:resiNow],:constant)
 			cns_df = rename(joinMissing(cns_df, part.var[capaVar], Pair.(replace(joinResi_arr,:Ts_disSup => :Ts_disSupPrev),joinResi_arr),:left, Dict(:resiNow => AffExpr(),:var => AffExpr())),:var => :resiPrev)
 			cns_df[!,:resiPrev] = getfield.(cns_df[!,:resiPrev],:constant)
@@ -489,7 +489,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 			effPar_sym = typ == :in ? :effStIn : :effStOut
 			# adds dispatch variables
 			typExpr_arr = map(allType_arr) do va
-				typVar_df = filter(x -> x.C == c,part.par[effPar_sym].data) |> (x -> join(part.var[va],x; on = intCol(x), kind = :inner))
+				typVar_df = filter(x -> x.C == c,part.par[effPar_sym].data) |> (x -> innerjoin(part.var[va],x; on = intCol(x)))
 				if typ == :in
 					typVar_df[!,:var] = typVar_df[!,:var] .* typVar_df[!,:val]
 				else
@@ -630,7 +630,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 
 	# join capacity and dispatch variables to create final constraint
 	grpCapaVar_df = combine(groupby(grpCapaVar_df,replace(dim_arr,:Ts_dis => :Ts_disSup)), :var => (x -> sum(x)) => :capa)
-	cns_df = join(capaDim_df,grpCapaVar_df,on = intCol(grpCapaVar_df), kind = :inner)
+	cns_df = innerjoin(capaDim_df,grpCapaVar_df,on = intCol(grpCapaVar_df))
 	return cns_df
 end
 

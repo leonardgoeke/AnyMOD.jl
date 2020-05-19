@@ -27,7 +27,7 @@ function prepareExcExpansion!(partExc::OthPart,partLim::OthPart,prepExc_dic::Dic
 	exExp_df = unique(exExp_df) |> (x -> filter(y -> y.R_a < y.R_b,vcat(x,rename(x,replace(namesSym(x),:R_a => :R_b, :R_b => :R_a))))) |> (z -> unique(z))
 
 	# add supordiante timesteps of expansion
-	allExExp_df = join(potExc_df,exExp_df, on = namesSym(exExp_df), kind = :inner)
+	allExExp_df = innerjoin(potExc_df,exExp_df, on = namesSym(exExp_df))
 	allExExp_df[!,:Ts_expSup] = map(x -> getDescendants(x,anyM.sets[:Ts],false,anyM.supTs.lvl) |> (y -> typeof(y) == Array{Int,1} ? y : [y] ), allExExp_df[!,:Ts_exp])
 
 	# filter cases where expansion is fixed to zero
@@ -93,14 +93,14 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 		excDimP_arr = replace(excDim_arr,:R_a => :R_b, :R_b => :R_a)
 
 		#  entries, where a directed capacity is provided and a symmetric one already exists
-		bothExc_df = vcat(join(directExc_df, capaResi_df; on = excDim_arr, makeunique = true, kind = :inner), join(directExc_df, capaResi_df; on = Pair.(excDim_arr,excDimP_arr), makeunique = true, kind = :inner))
+		bothExc_df = vcat(innerjoin(directExc_df, capaResi_df; on = excDim_arr, makeunique = true), innerjoin(directExc_df, capaResi_df; on = Pair.(excDim_arr,excDimP_arr), makeunique = true))
 		bothExc_df = combine(x -> (var = x.var + x.var_1,), groupby(bothExc_df,excDim_arr))
 		if !(:var in namesSym(bothExc_df)) bothExc_df[!,:var] = AffExpr[] end
 		 # entries, where only a directed capacity was provided
 		onlyDirExc_df = antijoin(directExc_df, bothExc_df; on = excDim_arr )
 
 		# entries originally symmetric that now become directed, because a directed counterpart was introduced
-			flipSym_df = antijoin(join(capaResi_df, bothExc_df[!,Not(:var)]; on = excDim_arr, kind = :inner),bothExc_df[!,Not(:var)]; on = excDim_arr .=> excDimP_arr)
+			flipSym_df = antijoin(innerjoin(capaResi_df, bothExc_df[!,Not(:var)]; on = excDim_arr),bothExc_df[!,Not(:var)]; on = excDim_arr .=> excDimP_arr)
 
 		swtExc_df = vcat(bothExc_df,flipSym_df)
 
@@ -119,7 +119,7 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 		allVar_df = prepExc_dic[:capaExc].var
 		if !isempty(prepExc_dic[:capaExc].var)
 			undirBoth_df = vcat(dirExc_df,rename(dirExc_df,replace(namesSym(dirExc_df),:R_a => :R_b, :R_b => :R_a)))[!,Not(:dir)]
-			dirVar_df = convertExcCol(join(convertExcCol(allVar_df[!,Not(:dir)]), vcat(undirBoth_df,swtExc_df)[!,Not(:var)],on = excDim_arr, kind = :inner))
+			dirVar_df = convertExcCol(innerjoin(convertExcCol(allVar_df[!,Not(:dir)]), vcat(undirBoth_df,swtExc_df)[!,Not(:var)],on = excDim_arr))
 			dirVar_df[!,:dir] .= true
 			adjVar_df = vcat(dirVar_df,antijoin(allVar_df,dirVar_df,on = [:C, :R_from, :R_to, :Ts_disSup] ))
 		else
@@ -151,7 +151,7 @@ function createCapaExcCns!(partExc::OthPart,anyM::anyModel)
 	if :expExc in keys(partExc.var)
 		expVar_df = flatten(partExc.var[:expExc],:Ts_disSup)[!,Not(:Ts_exp)]
 
-		cns_df = join(capaVar_df, combine(groupby(expVar_df,[:Ts_disSup, :R_from, :R_to, :C]), :var => (x -> sum(x)) => :expVar); on = [:Ts_disSup, :R_from, :R_to, :C], kind = :inner)
+		cns_df = innerjoin(capaVar_df, combine(groupby(expVar_df,[:Ts_disSup, :R_from, :R_to, :C]), :var => (x -> sum(x)) => :expVar); on = [:Ts_disSup, :R_from, :R_to, :C])
 
 		# prepare, scale and create constraints
 		cns_df[!,:cnsExpr] = map(x -> x.capaVar - x.capaVar.constant - x.expVar, eachrow(cns_df))

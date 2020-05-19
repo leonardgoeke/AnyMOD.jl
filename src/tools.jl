@@ -310,7 +310,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 
 	# XXX get full load hours
 	capaExt_df = replCarLeafs(copy(capa_df),anyM.sets[:C])
-	flh_df = join(rename(select(capaExt_df,Not(:variable)),:value => :capa),rename(select(disp_df,Not(:variable)),:value => :disp),on = [:Ts_disSup,:R_from,:R_to,:C], kind = :inner)
+	flh_df = innerjoin(rename(select(capaExt_df,Not(:variable)),:value => :capa),rename(select(disp_df,Not(:variable)),:value => :disp),on = [:Ts_disSup,:R_from,:R_to,:C])
 	flh_df[!,:value] = flh_df[!,:disp] ./ flh_df[!,:capa] .* 1000
 	flh_df[!,:variable] .= :flhExc
 

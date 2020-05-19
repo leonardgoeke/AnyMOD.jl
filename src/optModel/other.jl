@@ -383,7 +383,7 @@ function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns
 		expVar_sym = Symbol(replace(string(capaVar),"capa" => "exp"))
 		if !(expVar_sym in keys(part.var)) continue end
         expVar_df = flatten(part.var[expVar_sym],:Ts_disSup)
-        cns_df = rename(join(part.var[capaVar],combine(groupby(expVar_df,join_arr), :var => (x -> sum(x)) => :exp); on = join_arr, kind = :inner),:var => :capa)
+        cns_df = rename(innerjoin(part.var[capaVar],combine(groupby(expVar_df,join_arr), :var => (x -> sum(x)) => :exp); on = join_arr),:var => :capa)
 
         # creates final constraint object
 		cns_df[!,:cnsExpr] = map(x -> x.capa - x.capa.constant - x.exp,eachrow(cns_df))

@@ -194,7 +194,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 				rename!(allCost_df,:costEms => :costVar)
 			end
 
-			allDisp_df = join(allCost_df,allDisp_df, on = intCol(allDisp_df), kind = :inner)
+			allDisp_df = innerjoin(allCost_df,allDisp_df, on = intCol(allDisp_df))
 		else
 			allDisp_df = matchSetParameter(allDisp_df,anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
 		end
