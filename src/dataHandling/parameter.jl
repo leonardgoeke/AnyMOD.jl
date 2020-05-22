@@ -305,7 +305,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
         nonUnique_bool = nonunique(allParData_df)
         if any(nonUnique_bool)
             push!(anyM.report,(1,"parameter read-in","validity check","non-unique entries discovered for $(string(parIt))"))
-            deleterows!(allParData_df,nonUnique_bool)
+            delete!(allParData_df,nonUnique_bool)
         end
 
         # XXX checks for contradicting values
