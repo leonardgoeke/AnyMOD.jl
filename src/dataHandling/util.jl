@@ -415,10 +415,17 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			unlock(anyM.lock)
 			allVar_df = DataFrame()
 		else
-			# get all carriers that might be relevant to compute emissions from technologies
-			emC_arr = unique(vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],unique(anyM.parts.lim.par[:emissionFac].data[!,:C]))...))
+			# get all carriers and technologies that might be relevant to compute emissions
+			if :Te in namesSym(anyM.parts.lim.par[:emissionFac].data)
+				emC_arr = unique(vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],unique(filter(x -> x.Te == 0, anyM.parts.lim.par[:emissionFac].data)[!,:C]))...))
+				emTe_arr = unique(vcat(map(x -> [x,getDescendants(x,anyM.sets[:Te],true)...],unique(filter(x -> x.Te != 0, anyM.parts.lim.par[:emissionFac].data)[!,:Te]))...))
+			else
+				emC_arr = unique(vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],unique(anyM.parts.lim.par[:emissionFac].data[!,:C]))...))
+				emTe_arr = Array{Int64,1}()
+			end
+
 			# get use variables
-			allVar_df = getAllVariables(:use,anyM, filterFunc = x -> x.C in emC_arr)
+			allVar_df = getAllVariables(:use,anyM, filterFunc = x -> x.C in emC_arr || x.Te in emTe_arr)
 
 			# get expressions for storage and exchange losses, if this is enabled
 			if anyM.options.emissionLoss
@@ -427,7 +434,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 				allSt_arr = unique(vcat(vcat(map(x -> map(y -> collect(x.carrier[y]),intersect(keys(x.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))),values(anyM.parts.tech))...)...))
 				if !isempty(intersect(emC_arr,vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],allSt_arr)...)))
 					# get all storage variables where storage losses can lead to emissions
-					stVar_dic = Dict((string(st) |> (y -> Symbol(uppercase(y[1]),y[2:end]))) => getAllVariables(st,anyM, filterFunc = x -> x.C in emC_arr) for st in (:stIn,:stOut))
+					stVar_dic = Dict((string(st) |> (y -> Symbol(uppercase(y[1]),y[2:end]))) => getAllVariables(st,anyM, filterFunc = x -> x.C in emC_arr || x.Te in emTe_arr) for st in (:stIn,:stOut))
 					stLvl_df = getAllVariables(:stLvl,anyM, filterFunc = x -> x.C in emC_arr)
 
 					# loop over relevant storage technologies to obtain loss vallues
@@ -454,16 +461,9 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 					end
 				end
 
-				# for potential emissions from exchange looses only emissions factors that are not technology specific are relevant, the corresponding carriers are obtained here
-				if :Te in namesSym(anyM.parts.lim.par[:emissionFac].data)
-					emCNonTech_arr = unique(vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],unique(filter(x -> x.Te == 0, anyM.parts.lim.par[:emissionFac].data)[!,:C]))...))
-				else
-					emCNonTech_arr = emC_arr
-				end
-
 				# add expressions for exchange losses
                 if :exc in keys(anyM.parts.exc.var)
-					exc_df = getAllVariables(:exc,anyM, filterFunc = x -> x.C in emCNonTech_arr)
+					exc_df = getAllVariables(:exc,anyM, filterFunc = x -> x.C in emC_arr)
 					exc_df = getExcLosses(convertExcCol(exc_df),anyM.parts.exc.par,anyM.sets)
 					# exchange losses are equally split between import and export region
 					filter!(x -> x.loss != 0.0,exc_df)
@@ -479,7 +479,6 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 
 			allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)
 		end
-
 
 		if !isempty(allVar_df)
 			allVar_df[!,:var] = allVar_df[!,:val]  ./ 1e6 .* allVar_df[!,:var]
