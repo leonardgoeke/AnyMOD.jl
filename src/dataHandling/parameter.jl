@@ -28,10 +28,10 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:lifeStSize]  = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = 20, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :techSt)
     parDef_dic[:lifeExc]     = (dim = (:Ts_expSup, :R_a, :R_b, :C),  defVal = 50, herit = (:Ts_expSup => :up, :R_a => :avg_any, :R_b => :avg_any, :C => :up), part = :exc)
 
-    parDef_dic[:lifeEcoConv]   = (dim = (:Ts_expSup, :R_exp, :Te),     defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up), part = :obj)
-    parDef_dic[:lifeEcoStIn]   = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up), part = :obj)
-    parDef_dic[:lifeEcoStOut]  = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up), part = :obj)
-    parDef_dic[:lifeEcoStSize] = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up), part = :obj)
+    parDef_dic[:lifeEcoConv]   = (dim = (:Ts_expSup, :R_exp, :Te),     defVal = nothing, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
+    parDef_dic[:lifeEcoStIn]   = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
+    parDef_dic[:lifeEcoStOut]  = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
+    parDef_dic[:lifeEcoStSize] = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
     parDef_dic[:lifeEcoExc]    = (dim = (:Ts_expSup, :R_a, :R_b, :C),  defVal = nothing, herit = (:Ts_expSup => :up, :R_a => :avg_any, :R_b => :avg_any), part = :obj)
 
     parDef_dic[:costExpConv]   = (dim = (:Ts_expSup, :R_exp, :Te),     defVal = nothing, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
@@ -199,7 +199,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
 
     # specific storage parameters
     parDef_dic[:stDis]     =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :C => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any),           part = :techSt, techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
-    parDef_dic[:stInflow]  =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te),     defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :sum_any, :R_dis => :sum_any, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt, techPre = (preset = :carrierSt, mode = tuple()))
+    parDef_dic[:stInflow]  =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te),     defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :sum_any, :R_dis => :sum_any, :Te => :up), part = :techSt, techPre = (preset = :carrierSt, mode = tuple()))
 
     # variable costs
     parDef_dic[:costVarUse]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :obj, techPre = (preset = :carrierIn,  mode = (:in,)))
