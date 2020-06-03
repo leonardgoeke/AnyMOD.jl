@@ -304,10 +304,11 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 	capa_df[!,:variable] .= :capaExc
 
 	if anyM.options.decomm != :none
-		capa_df = copy(anyM.parts.exc.var[:commCapaExc])
-		capa_df = vcat(capa_df,rename(filter(x -> x.dir == 0, capa_df),:R_from => :R_to, :R_to => :R_from))
-		capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
-		capa_df[!,:variable] .= :commCapaExc
+		commCapa_df = copy(anyM.parts.exc.var[:commCapaExc])
+		commCapa_df = vcat(commCapa_df,rename(filter(x -> x.dir == 0, commCapa_df),:R_from => :R_to, :R_to => :R_from))
+		commCapa_df = combine(groupby(commCapa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
+		commCapa_df[!,:variable] .= :commCapaExc
+		capa_df = vcat(capa_df,commCapa_df)
 	end
 
 	# XXX dispatch variables
