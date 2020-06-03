@@ -390,7 +390,7 @@ end
 # XXX get a dataframe with all variable of the specified type
 function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, filterFunc::Function = x -> true)
 
-	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :expExc => :exc, :crt => :bal, :lss => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
+	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :commCapaExc => :exc, :expExc => :exc, :crt => :bal, :lss => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
 	techIdx_arr = collect(keys(anyM.parts.tech))
 
 	if !(va in keys(varToPart_dic)) # get all variables for technologies
