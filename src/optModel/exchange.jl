@@ -81,7 +81,9 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 	potExc_df = flatten(potExc_df[!,Not(:Ts_exp)],:Ts_disSup)
 
 	# obtain symmetric residual capacites
-	capaResi_df = filter(r -> r.R_a < r.R_b,checkResiCapa(:capaExc,potExc_df, partExc, anyM))
+	capaResi_df = filter(x -> x.R_a != x.R_b, checkResiCapa(:capaExc,potExc_df, partExc, anyM))
+	sortR_mat = sort(hcat([capaResi_df[!,x] for x in (:R_a,:R_b)]...);dims = 2)
+	for (index,col) in enumerate((:R_a,:R_b)) capaResi_df[!,col] = sortR_mat[:,index] end
 
 	# manipulate entries in case directed residual capacities are defined
 	if :capaExcResiDir in keys(partExc.par)
@@ -100,20 +102,23 @@ function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTupl
 		onlyDirExc_df = antijoin(directExc_df, bothExc_df; on = excDim_arr )
 
 		# entries originally symmetric that now become directed, because a directed counterpart was introduced
-			flipSym_df = antijoin(innerjoin(capaResi_df, bothExc_df[!,Not(:var)]; on = excDim_arr),bothExc_df[!,Not(:var)]; on = excDim_arr .=> excDimP_arr)
-
+		flipSym_df = antijoin(innerjoin(capaResi_df, bothExc_df[!,Not(:var)]; on = excDim_arr),bothExc_df[!,Not(:var)]; on = excDim_arr .=> excDimP_arr)
 		swtExc_df = vcat(bothExc_df,flipSym_df)
 
 		# solely directed entries
 		dirExc_df = vcat(onlyDirExc_df,swtExc_df)
 		dirExc_df[!,:dir] .= true
 
+		# entries who become directed because their counterpart became directed
+		becomDirExc_df = innerjoin(rename(dirExc_df[!,Not([:var,:dir])],:R_a => :R_b, :R_b => :R_a),vcat(capaResi_df,rename(capaResi_df,:R_a => :R_b, :R_b => :R_a)); on = excDim_arr)
+		becomDirExc_df[!,:dir] .= true
+
 		# entries entries originally symmetric that remain symmetric
-		unDirExc_df = antijoin(capaResi_df, dirExc_df; on = excDim_arr )
+		unDirExc_df = antijoin(capaResi_df, vcat(dirExc_df, rename(dirExc_df,:R_a => :R_b, :R_b => :R_a)); on = excDim_arr )
 		unDirExc_df[!,:dir] .= false
 
 		# adjust dataframe of residual capacities according to directed values
-		capaResi_df = vcat(dirExc_df,unDirExc_df)
+		capaResi_df = vcat(dirExc_df,vcat(unDirExc_df,becomDirExc_df))
 
 		# adjust dataframe of capacities determining where variables will be created to reflect which of these correspond to directed cases now
 		allVar_df = prepExc_dic[:capaExc].var
