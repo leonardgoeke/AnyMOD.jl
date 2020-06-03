@@ -804,9 +804,9 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
   revNodelLabel_arr = map(x -> revNames_dic[x],nodeLabel_arr)
 
   # create array of node colors
-  cColor_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[col_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(flowGrap_obj.nodeC))))
-  teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> useTeColor && z in keys(col_dic) ? col_dic[z] : (useTeColor && names_dic[z] in keys(col_dic) ? col_dic[col_dic[z]] : (0.85,0.85,0.85))),sortTe_arr)
-  othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[col_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(othNodeId_dic))))
+  cColor_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(flowGrap_obj.nodeC))))
+  teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> useTeColor && z in keys(col_dic) ? col_dic[z] : (useTeColor && names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sortTe_arr)
+  othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(othNodeId_dic))))
   nodeColor_arr = vcat(map(x -> replace.(string.("rgb",string.(map(z -> z .* 255.0,x)))," " => ""),[cColor_arr, teColor_arr, othColor_arr])...)
 
   dropData_arr = Array{Dict{Symbol,Any},1}()
