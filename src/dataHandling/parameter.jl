@@ -50,7 +50,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:costOprStIn]   = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Ts_disSup => :up, :Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
     parDef_dic[:costOprStOut]  = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Ts_disSup => :up, :Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
     parDef_dic[:costOprStSize] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Ts_disSup => :up, :Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
-    parDef_dic[:costOprExc]    = (dim = (:Ts_disSup, :R_a, :R_b, :C),  defVal = nothing, herit = (:Ts_disSup => :up, :R_a => :avg_any, :R_b => :avg_any, :C => :up), part = :obj)
+    parDef_dic[:costOprExc]    = (dim = (:Ts_disSup, :R_a, :R_b, :C),  defVal = nothing, herit = (:Ts_disSup => :up, :R_a => :avg_any, :R_b => :avg_any, :R_a => :up, :R_b => :up, :C => :up), part = :obj)
 
 
     # XXX parameters regarding limits on technology and exchange expansion and capacity
@@ -126,7 +126,6 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
         parDef_dic[:capaCommExcUp]   =   (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_full), part = :lim)
         parDef_dic[:capaCommExcLow]  =   (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_any),  part = :lim)
         parDef_dic[:capaCommExcFix]  =   (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_any),  part = :lim)
-        parDef_dic[:capaCommExcResi] =   (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_any),  part = :exc)
     end
 
     # XXX limits on quantites (including emissions and emission factors)
@@ -155,9 +154,9 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:excLow]  =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any),  part = :lim)
     parDef_dic[:excFix]  =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any),  part = :lim)
 
-    parDef_dic[:excUpDir]   =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full), part = :lim)
-    parDef_dic[:excLowDir]  =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any),  part = :lim)
-    parDef_dic[:excFixDir]  =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any),  part = :lim)
+    parDef_dic[:excDirUp]   =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full), part = :lim)
+    parDef_dic[:excDirLow]  =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any),  part = :lim)
+    parDef_dic[:excDirFix]  =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any),  part = :lim)
 
     parDef_dic[:crtUp]   =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
     parDef_dic[:crtLow]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
@@ -177,8 +176,8 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
 
     # emission limits and factors (are computed as net values of trade and exchange)
     parDef_dic[:emissionUp]    =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = upHerit_tup, part = :lim)
-    parDef_dic[:emissionFac]   =  (dim = (:Ts_expSup, :Ts_dis, :R_dis, :C, :Te, :M), defVal = nothing, herit = tuple(:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :M => :up), part = :lim)
-    parDef_dic[:emissionPrc]   =  (dim = (:Ts_expSup, :Ts_dis, :R_dis, :C, :Te, :M), defVal = nothing, herit = tuple(:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :M => :up), part = :obj)
+    parDef_dic[:emissionFac]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = tuple(:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :M => :up), part = :lim)
+    parDef_dic[:emissionPrc]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = tuple(:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :M => :up), part = :obj)
 
     # </editor-fold>
 
