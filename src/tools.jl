@@ -759,62 +759,62 @@ end
 
 # XXX plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
 function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor = true)
-  plt = pyimport("plotly")
-  flowGrap_obj = anyM.graInfo.graph
+    plt = pyimport("plotly")
+    flowGrap_obj = anyM.graInfo.graph
 
-  # <editor-fold desc="initialize data"
+    # <editor-fold desc="initialize data"
 
-  if !isempty(setdiff(dropDown,[:region,:timestep]))
+    if !isempty(setdiff(dropDown,[:region,:timestep]))
     error("dropDown only accepts array :region and :timestep as content")
-  end
+    end
 
-  # get mappings to create buttons of dropdown menue
-  drop_dic = Dict(:region => :R_dis, :timestep => :Ts_disSup)
-  dropDim_arr = collect(map(x -> drop_dic[x], dropDown))
+    # get mappings to create buttons of dropdown menue
+    drop_dic = Dict(:region => :R_dis, :timestep => :Ts_disSup)
+    dropDim_arr = collect(map(x -> drop_dic[x], dropDown))
 
-  # get summarised data and filter dispatch variables
-  data_df = reportResults(:summary,anyM,rtnOpt = (:rawDf,))
-  filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
+    # get summarised data and filter dispatch variables
+    data_df = reportResults(:summary,anyM,rtnOpt = (:rawDf,))
+    filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
 
-  # filter non relevant entries
-  filter!(x -> abs(x.value) > minVal, data_df)
-  filter!(filterFunc, data_df)
+    # filter non relevant entries
+    filter!(x -> abs(x.value) > minVal, data_df)
+    filter!(filterFunc, data_df)
 
-  # create dictionaries for nodes that are neither technology nor carrier
-  othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])))))
-  othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
+    # create dictionaries for nodes that are neither technology nor carrier
+    othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])))))
+    othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
 
-  # </editor-fold>
+    # </editor-fold>
 
-  # <editor-fold desc="prepare labels and colors"
+    # <editor-fold desc="prepare labels and colors"
 
-  # prepare name and color assignment
-  names_dic = anyM.graInfo.names
-  revNames_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
-  col_dic = anyM.graInfo.colors
+    # prepare name and color assignment
+    names_dic = anyM.graInfo.names
+    revNames_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
+    col_dic = anyM.graInfo.colors
 
-  sortTe_arr = getindex.(sort(collect(flowGrap_obj.nodeTe),by = x -> x[2]),1)
-  cColor_dic = Dict(x => anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[col_dic[z]] : (0.85,0.85,0.85))) for x in sort(collect(keys(flowGrap_obj.nodeC))))
+    sortTe_arr = getindex.(sort(collect(flowGrap_obj.nodeTe),by = x -> x[2]),1)
+    cColor_dic = Dict(x => anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[col_dic[z]] : (0.85,0.85,0.85))) for x in sort(collect(keys(flowGrap_obj.nodeC))))
 
-  # create array of node labels
-  cLabel_arr = map(x -> names_dic[anyM.sets[:C].nodes[x].val],sort(collect(keys(flowGrap_obj.nodeC))))
-  teLabel_arr = map(x -> names_dic[anyM.sets[:Te].nodes[x].val],sortTe_arr)
-  othLabel_arr = map(x -> names_dic[String(othNodeId_dic[x][2])],sort(collect(keys(othNodeId_dic))))
-  nodeLabel_arr = vcat(cLabel_arr, teLabel_arr, othLabel_arr)
-  revNodelLabel_arr = map(x -> revNames_dic[x],nodeLabel_arr)
+    # create array of node labels
+    cLabel_arr = map(x -> names_dic[anyM.sets[:C].nodes[x].val],sort(collect(keys(flowGrap_obj.nodeC))))
+    teLabel_arr = map(x -> names_dic[anyM.sets[:Te].nodes[x].val],sortTe_arr)
+    othLabel_arr = map(x -> names_dic[String(othNodeId_dic[x][2])],sort(collect(keys(othNodeId_dic))))
+    nodeLabel_arr = vcat(cLabel_arr, teLabel_arr, othLabel_arr)
+    revNodelLabel_arr = map(x -> revNames_dic[x],nodeLabel_arr)
 
-  # create array of node colors
-  cColor_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(flowGrap_obj.nodeC))))
-  teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> useTeColor && z in keys(col_dic) ? col_dic[z] : (useTeColor && names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sortTe_arr)
-  othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(othNodeId_dic))))
-  nodeColor_arr = vcat(map(x -> replace.(string.("rgb",string.(map(z -> z .* 255.0,x)))," " => ""),[cColor_arr, teColor_arr, othColor_arr])...)
+    # create array of node colors
+    cColor_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(flowGrap_obj.nodeC))))
+    teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> useTeColor && z in keys(col_dic) ? col_dic[z] : (useTeColor && names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sortTe_arr)
+    othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(othNodeId_dic))))
+    nodeColor_arr = vcat(map(x -> replace.(string.("rgb",string.(map(z -> z .* 255.0,x)))," " => ""),[cColor_arr, teColor_arr, othColor_arr])...)
 
-  dropData_arr = Array{Dict{Symbol,Any},1}()
+    dropData_arr = Array{Dict{Symbol,Any},1}()
 
-  # </editor-fold>
+    # </editor-fold>
 
-  # XXX loop over potential buttons in dropdown menue
-  for drop in eachrow(unique(data_df[!,dropDim_arr]))
+    # XXX loop over potential buttons in dropdown menue
+    for drop in eachrow(unique(data_df[!,dropDim_arr]))
     # <editor-fold desc="filter data and create flow array"
 
     dropData_df = copy(data_df)
@@ -838,21 +838,21 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
         a[2] = flowGrap_obj.nodeC[x.C]
       elseif x.variable in (:gen,:stOut)
 
-		  if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
-			  a[1] = flowGrap_obj.nodeTe[x.Te]
-		  else
-			  a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
-		  end
+    	  if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
+    		  a[1] = flowGrap_obj.nodeTe[x.Te]
+    	  else
+    		  a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+    	  end
 
-		  a[2] = flowGrap_obj.nodeC[x.C]
+    	  a[2] = flowGrap_obj.nodeC[x.C]
       else
         a[1] = flowGrap_obj.nodeC[x.C]
 
-		if x.Te in keys(flowGrap_obj.nodeTe)
-			a[2] = flowGrap_obj.nodeTe[x.Te]
-		else
-			a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
-		end
+    	if x.Te in keys(flowGrap_obj.nodeTe)
+    		a[2] = flowGrap_obj.nodeTe[x.Te]
+    	else
+    		a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+    	end
       end
 
       a[3] = abs(x.value)
@@ -887,7 +887,14 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
       if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
         relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
         if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
-        if isempty(relC_arr) error("remove string contained a carrier not found in graph, check for typos") else c_int = relC_arr[1] end
+
+        if isempty(relC_arr)
+            produceMessage(anyM.options,anyM.report, 1," - Remove string contained a carrier not found in graph, check for typos: "*rmv)
+            continue
+        else
+            c_int = relC_arr[1]
+        end
+
         filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)),flow_arr)
       elseif length(rmvStr_arr) > 2
         error("one remove string contained more then one semicolon, this is not supported")
@@ -913,7 +920,7 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
     # collect data for drop in a dictionary
 
     linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
-		(z -> replace(string("rgba",string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...)))," " => "")), flow_arr)
+    	(z -> replace(string("rgba",string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...)))," " => "")), flow_arr)
     link_dic = Dict(:source => getindex.(flow_arr,1) .- 1, :target => getindex.(flow_arr,2) .- 1, :value => getindex.(flow_arr,3), :color => linkColor_arr)
 
     fullData_arr = [Dict(:link => link_dic, :node => Dict(:label => nodeLabel_arr, :color => nodeColor_arr))]
@@ -923,18 +930,18 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
     push!(dropData_arr,Dict(:args => fullData_arr, :label => label_str, :method => "restyle"))
 
     # </editor-fold>
-  end
+    end
 
-  # <editor-fold desc="create various dictionaries to define format and create plot"
+    # <editor-fold desc="create various dictionaries to define format and create plot"
 
-  menues_dic =[Dict(:buttons => dropData_arr, :direction => "down", :pad => Dict(:l => 10, :t => 10), :font => Dict(:size => 16, :family => "Arial"), :showactive => true, :x => 0.01, :xanchor => "center", :y => 1.1, :yanchor => "middle")]
-  data_dic = Dict(:type => "sankey", :orientation => "h", :valueformat => ".0f", :textfont => Dict(:family => "Arial"), :node => Dict(:pad => 8, :thickness => 36, :line => Dict(:color => "white",:width => 0.01), :hoverinfo => "skip"))
-  layout_dic = Dict(:width => 125*plotSize[1], :height => 125*plotSize[2], :updatemenus => menues_dic, :font => Dict(:size => 32, :family => "Arial"))
+    menues_dic =[Dict(:buttons => dropData_arr, :direction => "down", :pad => Dict(:l => 10, :t => 10), :font => Dict(:size => 16, :family => "Arial"), :showactive => true, :x => 0.01, :xanchor => "center", :y => 1.1, :yanchor => "middle")]
+    data_dic = Dict(:type => "sankey", :orientation => "h", :valueformat => ".0f", :textfont => Dict(:family => "Arial"), :node => Dict(:pad => 8, :thickness => 36, :line => Dict(:color => "white",:width => 0.01), :hoverinfo => "skip"))
+    layout_dic = Dict(:width => 125*plotSize[1], :height => 125*plotSize[2], :updatemenus => menues_dic, :font => Dict(:size => 32, :family => "Arial"))
 
-  fig = Dict(:data => [data_dic], :layout => layout_dic)
-  plt.offline.plot(fig, filename="$(anyM.options.outDir)/energyFlowSankey_$(anyM.options.outStamp).html")
+    fig = Dict(:data => [data_dic], :layout => layout_dic)
+    plt.offline.plot(fig, filename="$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown),"_"))_$(anyM.options.outStamp).html")
 
-  # </editor-fold>
+    # </editor-fold>
 end
 
 # XXX define postions of nodes in energy flow graph
