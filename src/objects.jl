@@ -263,7 +263,6 @@ mutable struct graInfo
 	names::Dict{String,String}
 	colors::Dict{String,Tuple{Float64,Float64,Float64}}
 
-
 	function graInfo(anyM::AbstractModel)
 		# create default options for names and colors
 		graph_obj = flowGraph(anyM)
@@ -315,7 +314,6 @@ mutable struct anyModel <: AbstractModel
 		anyM.report = Array{Tuple,1}()
 
 		anyM.optModel = Model()
-
 		anyM.lock = SpinLock()
 
 		# XXX sets whole options object from specified directories TODO arbeite mit kwargs später

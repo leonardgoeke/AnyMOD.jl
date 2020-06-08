@@ -93,7 +93,12 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
 		allLvlR_arr = unique(dem_df[!,:lvlR])
 		r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl < x[2] ? getDescendants(x[1], anyM.sets[:R],false,x[2]) : getAncestors(x[1],anyM.sets[:R],:int,x[2])[end]) for x in Iterators.product(allR_arr,allLvlR_arr))
-		dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis,x.lvlR],eachrow(dem_df[!,[:R_dis,:lvlR]]))
+		if :R_dis in namesSym(dem_df)
+			dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis,x.lvlR],eachrow(dem_df[!,[:R_dis,:lvlR]]))
+		else
+			dem_df[!,:R_dis] .= 0
+		end
+
 
 		dem_df = combine(groupby(dem_df,[:Ts_disSup,:R_dis,:C]),:val => ( x -> sum(x) / 1000) => :value)
 		dem_df[!,:Te] .= 0
