@@ -252,7 +252,11 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 			agg_tup = tuple(intCol(par_obj.data)...)
 
 			# aggregate search variables according to dimensions in limit parameter
-			grpVar_df = combine(groupby(convertExcCol(allVar_df),collect(agg_tup)), :var => (x -> sum(x)) => :var)
+			if isempty(agg_tup)
+				grpVar_df = allVar_df
+			else
+				grpVar_df = combine(groupby(convertExcCol(allVar_df),collect(agg_tup)), :var => (x -> sum(x)) => :var)
+			end
 
 			# try to aggregate variables to limits directly provided via inputs
 			limit_df = copy(par_obj.data)
