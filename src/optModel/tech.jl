@@ -452,13 +452,13 @@ function createStBal(part::TechPart,anyM::anyModel)
 	cns_df = rename(part.var[:stLvl],:var => :stLvl)
 	cnsDim_arr = filter(x -> x != :Ts_disSup, intCol(cns_df))
 
-	# join variables for next storage level
+	# join variables for previous storage level
 	tsChildren_dic = Dict((x,y) => getDescendants(x,anyM.sets[:Ts],false,y) for x in anyM.supTs.step, y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x],:lvl), cns_df[!,:Ts_dis])))
-	lastFirstTs_dic = Dict(maximum(tsChildren_dic[z]) => minimum(tsChildren_dic[z]) for z in keys(tsChildren_dic))
-	lastTs_arr = collect(keys(lastFirstTs_dic))
+	firstLastTs_dic = Dict(minimum(tsChildren_dic[z]) => maximum(tsChildren_dic[z]) for z in keys(tsChildren_dic))
+	firstTs_arr = collect(keys(firstLastTs_dic))
 
-	cns_df[!,:Ts_disNext] = map(x -> x in lastTs_arr ? lastFirstTs_dic[x] : x + 1, cns_df[!,:Ts_dis])
-	cns_df = rename(joinMissing(cns_df,part.var[:stLvl], intCol(part.var[:stLvl]) |> (x -> Pair.(replace(x,:Ts_dis => :Ts_disNext),x)), :left, Dict(:var => AffExpr())),:var => :stLvlNext)
+	cns_df[!,:Ts_disPrev] = map(x -> x in firstTs_arr ? firstLastTs_dic[x] : x - 1, cns_df[!,:Ts_dis])
+	cns_df = rename(joinMissing(cns_df,part.var[:stLvl], intCol(part.var[:stLvl]) |> (x -> Pair.(replace(x,:Ts_dis => :Ts_disPrev),x)), :left, Dict(:var => AffExpr())),:var => :stLvlPrev)
 
 	# determines dimensions for aggregating dispatch variables
 	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), cnsDim_arr)
@@ -512,7 +512,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 		if :stDis in keys(part.par)
 			part.par[:stDis].defVal = 0.0
 			cnsC_df = matchSetParameter(cnsC_df,part.par[:stDis],anyM.sets)
-			cnsC_df[!,:stDis] =  1 ./ ((1 .- cnsC_df[!,:val]) .^ sca_arr)
+			cnsC_df[!,:stDis] =   (1 .- cnsC_df[!,:val]) .^ sca_arr
 			select!(cnsC_df,Not(:val))
 		else
 			cnsC_df[!,:stDis] .= 1.0
@@ -530,7 +530,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 		end
 
 		# XXX create final equation
-		cnsC_df[!,:cnsExpr] = map(x -> x.stLvl + x.stInflow + x.in - x.out - x.stLvlNext * x.stDis,eachrow(cnsC_df))
+		cnsC_df[!,:cnsExpr] = map(x -> x.stLvlPrev * x.stDis + x.stInflow + x.in - x.out - x.stLvl,eachrow(cnsC_df))
 		cCns_arr[idx] = cnsC_df
 	end
 
