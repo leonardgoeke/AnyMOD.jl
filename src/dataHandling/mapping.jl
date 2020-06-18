@@ -205,7 +205,11 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
     # XXX writes technology type
     # finds technology type and tries to convert to an integer
-    type_str = row_df[:technology_type]
+	if :technology_type in namesSym(row_df)
+    	type_str = row_df[:technology_type]
+	else
+		type_str = "mature"
+	end
     if !haskey(typeStringInt_dic,String(type_str))
         push!(anyM.report,(3,"technology mapping","type","unknown technology type $type_str used, allowed are: $(join(keys(typeStringInt_dic),", "))"))
         return
@@ -214,7 +218,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
 
     # XXX writes modes of technology
-    if length(anyM.sets[:M].nodes) > 1
+    if :mode in namesSym(row_df) && length(anyM.sets[:M].nodes) > 1
         part.modes = tuple(collect(lookupTupleTree(tuple(string(x),),anyM.sets[:M],1)[1] for x in filter(x -> x != "",split(replace(row_df[:mode]," " => ""),";")))...)
     else
         part.modes = tuple()
