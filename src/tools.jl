@@ -27,7 +27,10 @@ function printIIS(anyM::anyModel)
 end
 
 # XXX prints dataframe to csv file
-function printObject(print_df::DataFrame,sets::Dict{Symbol,Tree},options::modOptions; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true)
+function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true)
+
+	sets = anyM.sets
+	options = anyM.options
 
 	colNam_arr = namesSym(print_df)
     cntCol_int = size(colNam_arr,1)
@@ -232,7 +235,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allData_df,anyM.sets,anyM.options, fileName = "results_summary",rtnDf = rtnOpt)
+		csvData_df = printObject(allData_df,anyM, fileName = "results_summary",rtnDf = rtnOpt)
 	end
 
 	if :raw in rtnOpt
@@ -273,7 +276,7 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allData_df,anyM.sets,anyM.options, fileName = "results_costs", rtnDf = rtnOpt)
+		csvData_df = printObject(allData_df,anyM, fileName = "results_costs", rtnDf = rtnOpt)
 	end
 
 	if :raw in rtnOpt
@@ -332,7 +335,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allData_df,anyM.sets,anyM.options, fileName = "results_exchange", rtnDf = rtnOpt)
+		csvData_df = printObject(allData_df,anyM, fileName = "results_exchange", rtnDf = rtnOpt)
 	end
 
 	if :raw in rtnOpt
@@ -474,7 +477,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		end
 
 		if :csv in rtnOpt || :csvDf in rtnOpt
-			csvData_df = printObject(data_df,anyM.sets,anyM.options, fileName = string("timeSeries_",car_sym,), rtnDf = rtnOpt)
+			csvData_df = printObject(data_df,anyM, fileName = string("timeSeries_",car_sym,), rtnDf = rtnOpt)
 		end
 
 		if :raw in rtnOpt
@@ -490,7 +493,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 			end
 
 			if :csv in rtnOpt || :csvDf in rtnOpt
-				csvData_df = printObject(data_df,anyM.sets,anyM.options, fileName = string("timeSeries_",car_sym,"_",signItr), rtnDf = rtnOpt)
+				csvData_df = printObject(data_df,anyM, fileName = string("timeSeries_",car_sym,"_",signItr), rtnDf = rtnOpt)
 			end
 
 			if :raw in rtnOpt
@@ -516,7 +519,7 @@ function reportDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x -
     cns_df[!,:dual] = dual.(cns_df[!,:cns])
 
 	if :csv in rtnOpt || :csvDf in rtnOpt
-    	csvData_df = printObject(select(cns_df,Not(:cns)),anyM.sets,anyM.options;fileName = string("dual",fileName != "" ? "_" : "",fileName), rtnDf = rtnOpt)
+    	csvData_df = printObject(select(cns_df,Not(:cns)),anyM;fileName = string("dual",fileName != "" ? "_" : "",fileName), rtnDf = rtnOpt)
 	end
 
 	if :rawDf in rtnOpt
