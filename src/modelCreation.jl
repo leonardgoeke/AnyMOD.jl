@@ -1,5 +1,8 @@
 
 # XXX create optimization model after anyModel has been initialized
+"""
+Create constraints of the model's underlying optimization problem.
+"""
 function createOptModel!(anyM::anyModel)
 
 	# <editor-fold desc="create technology related variables and constraints"

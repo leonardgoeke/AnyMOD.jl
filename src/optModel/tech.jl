@@ -16,8 +16,8 @@ function createTech!(t::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple}
     # connect capacity and expansion variables
     if part.type != :stock createCapaCns!(part,prepTech_dic,cns_dic) end
 
-    # create and control commissioned capacity variables
-    if anyM.options.decomm != :none createCommVarCns!(part,cns_dic,anyM) end
+    # create and control operated capacity variables
+    if anyM.options.decomm != :none createOprVarCns!(part,cns_dic,anyM) end
     produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
 
     # create dispatch variables
@@ -307,28 +307,28 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 	end
 end
 
-# XXX create variables and constraints regarding commissioned variables
-function createCommVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
+# XXX create variables and constraints regarding operated variables
+function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 	for capaVar in filter(x -> occursin("capa",string(x)),keys(part.var))
-		commVar_sym = string(capaVar) |> (x -> Symbol(:comm,uppercase(x[1]),x[2:end]))
-		# XXX create commissioned variable
+		oprVar_sym = string(capaVar) |> (x -> Symbol(:opr,uppercase(x[1]),x[2:end]))
+		# XXX create operated variable
 		var_df = copy(part.var[capaVar])[!,Not(:var)]
-		var_df = createVar(var_df,string(commVar_sym),NaN,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.commCapa)
+		var_df = createVar(var_df,string(oprVar_sym),NaN,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.oprCapa)
 
-		part.var[commVar_sym] = orderDf(var_df)
+		part.var[oprVar_sym] = orderDf(var_df)
 
-		# XXX create constraint to connect commissioned and installed capacity
+		# XXX create constraint to connect operated and installed capacity
 		var_df[!,:cnsExpr] = map(x -> x[1] - x[2],zip(var_df[!,:var],part.var[capaVar][!,:var]))
-		cns_dic[commVar_sym] = cnsCont(select(var_df,Not(:var)),:smaller)
+		cns_dic[oprVar_sym] = cnsCont(select(var_df,Not(:var)),:smaller)
 
 		# XXX create constraint to prevent re-commissioning of capacity once decommissioned
 		if anyM.options.decomm == :decomm
 			# add previous period and its capacity variable to table
 			prevTs_dic = Dict(x => anyM.supTs.step[findall(x .== anyM.supTs.step)[1]]-1 for x in anyM.supTs.step[2:end])
 			select!(var_df, Not(:cnsExpr))
-			cns_df = rename(filter(r -> r.Ts_disSup != anyM.supTs.step[1],var_df),:var => :commNow)
+			cns_df = rename(filter(r -> r.Ts_disSup != anyM.supTs.step[1],var_df),:var => :oprNow)
 			cns_df[!,:Ts_disSupPrev] = map(x -> prevTs_dic[x] ,cns_df[!,:Ts_disSup])
-			cns_df = rename(innerjoin(cns_df,var_df; on = intCol(var_df,:dir) |> (x -> Pair.(replace(x,:Ts_disSup => :Ts_disSupPrev),x))),:var => :commPrev)
+			cns_df = rename(innerjoin(cns_df,var_df; on = intCol(var_df,:dir) |> (x -> Pair.(replace(x,:Ts_disSup => :Ts_disSupPrev),x))),:var => :oprPrev)
 
 			# add expansion variable to dataframe
 			if !(:type in fieldnames(typeof(part))) || part.type != :stock
@@ -349,9 +349,9 @@ function createCommVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont}
 			cns_df[!,:resiPrev] = getfield.(cns_df[!,:resiPrev],:constant)
 
 			# create actual constraint information
-			cns_df[!,:cnsExpr]  = map(x -> - x.commNow + x.commPrev + x.expNow + (x.resiNow - x.resiPrev |> (l -> l > 0.0 ? l : 0.0)),eachrow(cns_df))
-			select!(cns_df,Not([:Ts_disSupPrev,:commNow,:commPrev,:expNow,:resiNow,:resiPrev]))
-			cns_dic[string(commVar_sym) |> (x -> Symbol(:re,uppercase(x[1]),x[2:end]))] = cnsCont(orderDf(cns_df),:greater)
+			cns_df[!,:cnsExpr]  = map(x -> - x.oprNow + x.oprPrev + x.expNow + (x.resiNow - x.resiPrev |> (l -> l > 0.0 ? l : 0.0)),eachrow(cns_df))
+			select!(cns_df,Not([:Ts_disSupPrev,:oprNow,:oprPrev,:expNow,:resiNow,:resiPrev]))
+			cns_dic[string(oprVar_sym) |> (x -> Symbol(:re,uppercase(x[1]),x[2:end]))] = cnsCont(orderDf(cns_df),:greater)
 		end
 	end
 end
@@ -544,7 +544,7 @@ function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{I
 	cnstrType_dic = Dict(:out => (dis = (:gen, :stIntIn), capa = :Conv), :in => (dis = (:use,:stIntOut), capa = :Conv),
 							:stIn => (dis = (:stExtIn, :stIntIn), capa = :StIn), :stOut => (dis = (:stExtOut, :stIntOut), capa = :StOut), :stSize => (dis = (:stLvl,), capa = :StSize))
 
-	capa_sym = anyM.options.decomm != :none ? :commCapa : :capa
+	capa_sym = anyM.options.decomm != :none ? :oprCapa : :capa
 	capaRestr_gdf = groupby(part.capaRestr,:cnstrType)
 
 	# loop over groups of capacity restrictions (like out, stIn, ...)

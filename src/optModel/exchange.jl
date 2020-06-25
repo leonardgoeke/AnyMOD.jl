@@ -165,11 +165,11 @@ function createCapaExcCns!(partExc::OthPart,anyM::anyModel)
 		partExc.cns[:excCapa] = createCns(cnsCont(cns_df,:equal),anyM.optModel)
 	end
 
-	# create and control commissioned capacity variables
+	# create and control operated capacity variables
 	if anyM.options.decomm != :none && :capaExc in keys(partExc.var)
-		# constraints for commissioned capacities are saved into a dictionary of containers and then actually created
+		# constraints for operated capacities are saved into a dictionary of containers and then actually created
 		cns_dic = Dict{Symbol,cnsCont}()
-		createCommVarCns!(partExc,cns_dic,anyM)
+		createOprVarCns!(partExc,cns_dic,anyM)
 		for cnsSym in keys(cns_dic)
 			scaleCnsExpr!(cns_dic[cnsSym].data,anyM.options.coefRng,anyM.options.checkRng)
 			partExc.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
@@ -181,7 +181,7 @@ end
 function createRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc::OthPart,anyM::anyModel)
 
 	# group exchange capacities by carrier
-	grpCapa_df = groupby(rename(partExc.var[anyM.options.decomm != :none ? :commCapaExc : :capaExc],:var => :capa),:C)
+	grpCapa_df = groupby(rename(partExc.var[anyM.options.decomm != :none ? :oprCapaExc : :capaExc],:var => :capa),:C)
 
 	# pre-allocate array of dataframes for restrictions
 	restr_arr = Array{DataFrame}(undef,length(grpCapa_df))

@@ -2,6 +2,14 @@
 # <editor-fold desc="definition and handling of parameters"
 
 # XXX defines struct for handling parameter data
+"""
+Type including data and additional information on parameters. Fields relate to what is provided in [Parameter list](@ref) and include:
+* `name::Symbol`: name of the parameter
+* `dim::Tuple`: potential dimensions of parameter data
+* `defVal::Union{Nothing,Float64}`: default value
+* `herit::Tuple`: inheritance rules for parameter, see [Parameter overview](@ref) for details
+* `data::DataFrame`: specified parameter data
+"""
 mutable struct ParElement
 	name::Symbol
     dim::Tuple
@@ -102,6 +110,20 @@ end
 # XXX defines parts of the model
 abstract type AbstractModelPart end
 
+"""
+```julia
+	TechPart <: AbstractModelPart
+```
+Type used for technology parts. Parameters, variables, and constraints are assigned as dictionaries via the fields `par`, `var`, and  `cns`, respectively. Additional fields include:
+* `name::Tuple`: name of technology as a series of nodes from the technology tree
+* `carrier::NamedTuple`: energy carriers by index assigned to technology by groups (e.g. generation, use, ...)
+* `balLvl::NamedTuple`: temporal and spatial resolution for expansion and balance of the technology
+* `capaRestr::DataFrame`: specification of capacity restrictions required for technology
+* `actSt::Tuple`: actively stored carriers  altough they are not leafs by index
+* `type::Tuple`: type of technology (stock, mature, or evolving)
+* `disAgg::Bool`: if true, dispatch is modelled at expansion resolution instead of dispatch resolution
+* `modes::Tuple`: different operational modes of technology
+"""
 mutable struct TechPart <: AbstractModelPart
 	name::Tuple{Vararg{String,N} where N}
 	par::Dict{Symbol,ParElement}
@@ -118,6 +140,12 @@ mutable struct TechPart <: AbstractModelPart
 	TechPart() = new()
 end
 
+"""
+```julia
+	OthPart <: AbstractModelPart
+```
+Type used for 'exchange', 'trade', 'balance', 'limits', and 'objectives' model parts. Parameters, variables, and constraints are assigned as dictionaries via the fields `par`, `var`, and  `cns`, respectively.
+"""
 mutable struct OthPart <: AbstractModelPart
 	par::Dict{Symbol,ParElement}
 	var::Dict{Symbol,DataFrame}
@@ -177,7 +205,7 @@ struct modOptions
 	# managing numerical issues
 	emissionLoss::Bool
 	coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Vararg{Float64,2}}}}
-	scaFac::NamedTuple{(:capa,:commCapa,:dispConv,:dispSt,:dispExc, :dispTrd, :costDisp,:costCapa,:obj),Tuple{Vararg{Float64,9}}}
+	scaFac::NamedTuple{(:capa,:oprCapa,:dispConv,:dispSt,:dispExc, :dispTrd, :costDisp,:costCapa,:obj),Tuple{Vararg{Float64,9}}}
 	bound::NamedTuple{(:capa,:disp,:obj),Tuple{Vararg{Float64,3}}}
 	avaMin::Float64
 	checkRng::Float64
@@ -287,6 +315,41 @@ mutable struct graInfo
 end
 
 # XXX finally, the model object itself
+"""
+The core model object containing all related data and subordinate objects.
+#  Constructor and arguments
+```julia
+anyModel(inDir::Union{String,Array{String,1}},outDir::String; kwargs)
+```
+* `inDir::Union{String,Array{String,1}}`: directory of input files, also allows for provide multiple directories via an array
+* `outDir::String`: directory of output files are written to
+# Optional arguments, data handling
+* `objName::String`: name of the model object, will be added to the name of output files and printed during reporting, default is an empty string
+* `csvDelim::String`: specifies the delimiter used within the read-in csv files, default is a comma `,`
+# Optional arguments, model generation
+* `decomm::Symbol`: specifies if the model should perform endogenous decommissioning, options are:
+    - `:decomm`: capacities are decommissioned endogenously, once decommissioned capacities cannot be put into operation again (default)
+    - `:none`: no endogenous decommissioning, operated capacities equal installed capacities
+    - `:recomm`: capacities are decommissioned endogenously and can be put back into operation
+* `interCapa::Symbol`: capacity expansion can be modelled at a resolution less detailed than yearly, this options determines how capacities are distributed among the subsequent years in this case, options are:
+    - `:linear`: expansion is equally distributed among years resulting in a linear increase in capacity (default)
+    - `:none`: all expansion occurs in the first  year
+* `supTsLvl::Int`: specifies the depth in the tree of time-steps that provides years, default is `0`
+* `shortExp::Int`: intervall in years between years of capacity expansion, default is `10`
+* `redStep::Float64`: scales down energy quantities within the model, can be relevant when working with reduced time-series, default is `1.0`
+
+# Optional arguments, reporting (see [Reporting](@ref) for details)
+* `reportLvl::Int`: controls the frequency of writing updates to the console, default is `2`
+* `errCheckLvl::Int`: controls the frequency of checking for errors, default is `2`
+* `errWrtLvl::Int`: controls the frequency of writing an error report to a csv file, default is`1`
+# Optional arguments, numerical issues (see [Performance and stability](@ref) for details)
+* `coefRng::NamedTuple`: specifies the maximum range of coefficients in the matrix and right-hand side of the model's underlying optimization problem, default is `(mat = (1e-2,1e5), rhs = (1e-2,1e2))`
+* `checkRng::Float64`: if set, reports all equations whose range exceeds the specified value, default is `NaN`
+* `scaFac::NamedTuple`: scales different groups of variables within the model, default is `(capa = 1e1, oprCapa = 1e2, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0)`
+* `bound::NamedTuple`: sets external bounds for all capacities and dispatch variables (both in GW) and for the objective value (in Mil. €), default is `(capa = NaN, disp = NaN, obj = NaN)`
+* `avaMin::Float64`: availabilities smaller than this value are set to zero, since in the model availabilities are inversed this avoids high coefficients, default is `0.01`
+* `emissionLoss::Bool`: determines if losses from exchange and self-discharge of storage are subject to emissions, default is `true`
+"""
 mutable struct anyModel <: AbstractModel
 
 	options::modOptions
@@ -301,10 +364,9 @@ mutable struct anyModel <: AbstractModel
 	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Int,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
 
 	graInfo::graInfo
-
 	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decomm = :recomm, interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, emissionLoss = true,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)),
-																											scaFac = (capa = 1e1, commCapa = 1e2, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
+																											scaFac = (capa = 1e1, oprCapa = 1e2, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
 																																bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = NaN)
 		anyM = new()
 

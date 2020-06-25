@@ -1,5 +1,12 @@
 
 # XXX sets the objective function according to the arguments provided in obj_dic
+"""
+Set the objective of the model's underlying optimization problem.
+```julia
+setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyModel)
+```
+`obj_dic` is a key-word argument that specifies the respective objective. To enable multi-criteria optimization, it can also be a dictionary assigning a weight to each objective. So far, the only supported key-word is `costs`.
+"""
 function setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyModel,minimize::Bool=true)
 
     # XXX converts input into dictionary, if only a symbol was provided, if :none keyword was provided returns a dummy objective function
@@ -124,7 +131,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
 	# XXX add elements for operational costs of technologies
 	# if decommissioning is enabled, capacity costs depend on commissioned and not on installed capacities
-	capaTyp_sym =  anyM.options.decomm != :none ? :commCapa : :capa
+	capaTyp_sym =  anyM.options.decomm != :none ? :oprCapa : :capa
 	for va in (:Conv, :StIn, :StOut, :StSize, :Exc)
 
 		var_sym = Symbol(capaTyp_sym,va)
