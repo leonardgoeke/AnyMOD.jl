@@ -19,3 +19,4 @@ all,electricity,,West,WestNorth,East,EastNorth,capaExcUp,3,sets an upper limit f
 ,electricity,,,,,,costCrt,-2,"introduces negative costs (= revenues) for curtailing electricity, otherwise production surpluses might be ""destroyed"" via storage losses distorting results "
 ,electricity,,West,WestNorth,East,EastSouth,lossExcDir,0.02,
 ,electricity,,,,,,costExpExc,1000,
+,gas,,,,,,costOprExc,2,
