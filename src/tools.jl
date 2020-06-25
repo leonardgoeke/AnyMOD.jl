@@ -116,7 +116,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
 
 		# get installed capacity values
-		for va in intersect(keys(part.var),(:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :commCapaConv, :commCapaStIn, :commCapaStOut, :commCapaStSize))
+		for va in intersect(keys(part.var),(:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :oprCapaConv, :oprCapaStIn, :oprCapaStOut, :oprCapaStSize))
 			capa_df = copy(part.var[va])
 			if va in (:expConv, :expStIn, :expStOut, :expStSize)
 				capa_df = flatten(capa_df,:Ts_expSup)
@@ -124,7 +124,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 				rename!(capa_df,:Ts_expSup => :Ts_disSup)
 			end
 			# set carrier column to zero for conversion capacities and add a spatial dispatch column
-			if va in (:expConv,:capaConv,:commCapaConv)
+			if va in (:expConv,:capaConv,:oprCapaConv)
 				capa_df[!,:C] .= 0
 				capa_df[!,:R_dis] = map(x -> getAncestors(x,anyM.sets[:R],:int,part.balLvl.ref[2])[end],capa_df[!,:R_exp])
 			else
@@ -186,7 +186,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	if anyM.options.decomm == :none
 		flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
 	else
-		flh_dic = Dict(:commCapaConv => :flhConv, :commCapaStIn => :flhStIn, :commCapaStOut => :flhStOut)
+		flh_dic = Dict(:oprCapaConv => :flhConv, :oprCapaStIn => :flhStIn, :oprCapaStOut => :flhStOut)
 	end
 
 	for flhCapa in collect(keys(flh_dic))
@@ -194,11 +194,11 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		# get relevant dispatch variables for respective group
 		vlh_arr = map(eachrow(capaFlh_df)) do row
 			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te,allData_df)
-			if flhCapa in (:capaConv,:commCapaConv)
+			if flhCapa in (:capaConv,:oprCapaConv)
 				var_arr = unique(relRow_df[!,:variable]) |> (i -> (i,intersect(i,(:use,:stIntOut)))) |> (j -> isempty(j[2]) ? intersect(j[1],(:gen,:stIntIn)) : j[2])
-			elseif flhCapa in (:commCapaStIn,:capaStIn)
+			elseif flhCapa in (:oprCapaStIn,:capaStIn)
 				var_arr = [:stIntIn,:stExtIn]
-			elseif flhCapa in (:commCapaStOut,:capaStOut)
+			elseif flhCapa in (:oprCapaStOut,:capaStOut)
 				var_arr = [:stIntOut,:stExtOut]
 			end
 			return sum(abs.(filter(y -> y.variable in var_arr,relRow_df)[!,:value]))/row.value*1000
@@ -213,7 +213,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	if anyM.options.decomm == :none
 		cyc_dic = Dict(:capaStIn => :cycStIn, :capaStOut => :cycStOut)
 	else
-		cyc_dic = Dict(:commCapaStIn => :cycStIn, :commCapaStOut => :cycStOut)
+		cyc_dic = Dict(:oprCapaStIn => :cycStIn, :oprCapaStOut => :cycStOut)
 	end
 
 	for cycCapa in collect(keys(cyc_dic))
@@ -221,9 +221,9 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		# get relevant dispatch variables for respective group
 		cyc_arr = map(eachrow(capaCyc_df)) do row
 			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te,allData_df)
-			if cycCapa in (:commCapaStIn,:capaStIn)
+			if cycCapa in (:oprCapaStIn,:capaStIn)
 				var_arr = [:stIntIn,:stExtIn]
-			elseif cycCapa in (:commCapaStOut,:capaStOut)
+			elseif cycCapa in (:oprCapaStOut,:capaStOut)
 				var_arr = [:stIntOut,:stExtOut]
 			end
 			return sum(abs.(filter(y -> y.variable in var_arr,relRow_df)[!,:value]))/row.value*1000
@@ -271,6 +271,7 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{
 		# obtain values and write to dataframe
 		cost_df[:,:variable] .= string(cst)
 		cost_df[:,:value] = value.(cost_df[:,:var])
+        if :Ts_exp in namesSym(cost_df) cost_df = rename(cost_df,:Ts_exp => :Ts_disSup) end
 		allData_df = vcat(allData_df,cost_df[:,Not(:var)])
 	end
 
@@ -312,11 +313,11 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 	capa_df[!,:variable] .= :capaExc
 
 	if anyM.options.decomm != :none
-		commCapa_df = copy(anyM.parts.exc.var[:commCapaExc])
-		commCapa_df = vcat(commCapa_df,rename(filter(x -> x.dir == 0, commCapa_df),:R_from => :R_to, :R_to => :R_from))
-		commCapa_df = combine(groupby(commCapa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
-		commCapa_df[!,:variable] .= :commCapaExc
-		capa_df = vcat(capa_df,commCapa_df)
+		oprCapa_df = copy(anyM.parts.exc.var[:oprCapaExc])
+		oprCapa_df = vcat(oprCapa_df,rename(filter(x -> x.dir == 0, oprCapa_df),:R_from => :R_to, :R_to => :R_from))
+		oprCapa_df = combine(groupby(oprCapa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
+		oprCapa_df[!,:variable] .= :oprCapaExc
+		capa_df = vcat(capa_df,oprCapa_df)
 	end
 
 	# XXX dispatch variables
