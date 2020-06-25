@@ -160,7 +160,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for capacity costs")
 
 	# XXX add elements for variable costs of technologies
-	for va in (:use,:gen,:stIn,:stOut,:stSize,:exc)
+	for va in (:use,:gen,:stIn,:stOut,:exc)
 
 		costPar_sym = string(va) |> (x -> Symbol(:costVar,uppercase(x[1]),x[2:end]))
 
