@@ -326,7 +326,7 @@ end
 function addSupTsToExp(expMap_df::DataFrame,para_obj::Dict{Symbol,ParElement},type_sym::Symbol,tsYear_dic::Dict{Int,Int},anyM::anyModel)
 	if !isempty(expMap_df)
 		lftm_df = matchSetParameter(flatten(expMap_df,:Ts_expSup),para_obj[Symbol(:life,type_sym)],anyM.sets,newCol = :life)
-		lftmDel_df = matchSetParameter(lftm_df,para_obj[Symbol(:delExp,type_sym)],anyM.sets,newCol = :del)
+		lftmDel_df = matchSetParameter(lftm_df,para_obj[Symbol(:del,type_sym)],anyM.sets,newCol = :del)
 		lftmDel_df[!,:Ts_disSup] = map(x -> filter(y -> (tsYear_dic[y] >= tsYear_dic[x.Ts_expSup] + x.del) && (tsYear_dic[y] <= tsYear_dic[x.Ts_expSup] + x.life + x.del),collect(anyM.supTs.step)), eachrow(lftmDel_df))
 		select!(lftmDel_df,Not([:life,:del]))
 		grpCol_arr = intCol(expMap_df) |> (x -> :ratio in namesSym(expMap_df) ? vcat(:ratio,x...) : x)
