@@ -219,6 +219,7 @@ end
 # XXX create constarints that enforce any type of limit (Up/Low/Fix) on any type of variable
 function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyModel)
 
+	println(keys(partLim.par))
 	parLim_arr = string.(collect(keys(partLim.par)))
 	techLim_arr = filter(x ->  any(map(y -> occursin(y,x),["Up","Low","Fix"])) ,parLim_arr)
 	limVar_arr = map(x -> map(k -> Symbol(k[1]) => Symbol(k[2][1]), filter(z -> length(z[2]) == 2,map(y -> y => split(x,y),["Up","Low","Fix"])))[1], techLim_arr)
