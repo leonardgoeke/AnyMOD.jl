@@ -212,7 +212,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		allDisp_df = matchSetParameter(allDisp_df,partObj.par[va != :exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
 
 		# XXX groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
-		allDisp_df = combine(x -> (expr = sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0,) ,groupby(allDisp_df,va != :exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C]))
+		allDisp_df = combine(x -> (expr = sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0 ./ anyM.options.redStep,) ,groupby(allDisp_df,va != :exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C]))
 		transferCostEle!(allDisp_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng)
 	end
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for variables costs")
@@ -225,7 +225,8 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allVar_df = rename(matchSetParameter(anyM.parts.bal.var[varType],anyM.parts.bal.par[cost_sym],anyM.sets,newCol = :cost),:var => varType)
 			allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
 			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
-			allVar_df = combine(x -> (expr = sum(x.disFac .* x[!,varType] .* x.cost) ./ 1000.0,) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C]))
+			getResize(allVar_df,anyM.sets[:Ts],anyM.supTs)
+			allVar_df = combine(x -> (expr = sum(x.disFac .* x[!,varType] .* x.cost) ./ 1000.0 ./ anyM.options.redStep,) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C]))
 			transferCostEle!(allVar_df, partObj,cost_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng, NaN)
 		end
 	end
@@ -237,7 +238,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allTrd_df = rename(matchSetParameter(anyM.parts.trd.var[va],anyM.parts.trd.par[Symbol(va,:Prc)],anyM.sets,newCol = :costTrd),:var => :trd)
 			allTrd_df = matchSetParameter(rename(allTrd_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
 			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
-			allTrd_df = combine(x -> (expr = sum(x.disFac .* x.trd .* x.costTrd) ./ (va == :trdSell ? -1000.0 : 1000.0),), groupby(allTrd_df, [:Ts_disSup,:R_exp,:C]))
+			allTrd_df = combine(x -> (expr = sum(x.disFac .* x.trd .* x.costTrd) ./ (va == :trdSell ? -1000.0 : 1000.0) ./ anyM.options.redStep,), groupby(allTrd_df, [:Ts_disSup,:R_exp,:C]))
 			transferCostEle!(allTrd_df, partObj,Symbol(:cost,uppercase(string(va)[1]),string(va)[2:end]),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,(va == :trdSell ? NaN : 0.0))
 		end
 	end
