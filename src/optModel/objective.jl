@@ -47,7 +47,7 @@ createObjective!(objGrp::Symbol, partObj::OthPart,anyM::anyModel) = createObject
 # XXX create variables and equations for cost objective
 function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
-	parObj_arr = collect(keys(partObj.par))
+	parObj_arr = _collect(Symbol,keys(partObj.par),SizeUnknown())
 	techIdx_arr = collect(keys(anyM.parts.tech))
 	varToPart_dic = Dict(:exc => :exc, :ctr => :bal,:trdSell => :trd, :trdBuy => :trd)
 
