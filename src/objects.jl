@@ -75,7 +75,7 @@ end
 
 # </editor-fold>
 
-# <editor-fold desc="extensions of base functions"
+# <editor-fold desc="import and extensions of base functions"
 
 # XXX functions to copy parameter structs of parameter data
 import Base.copy
@@ -100,6 +100,10 @@ function copy(par_obj::ParElement,data_df::DataFrame)
 	if isdefined(par_obj,:techPre) out.techPre = par_obj.techPre end
 	return out
 end
+
+# XXX imported to use _collect(::Type{T}, itr, isz::SizeUnknown) to fix mysterious error
+import Base._collect
+import Base.SizeUnknown
 
 # </editor-fold>
 
@@ -347,7 +351,7 @@ anyModel(inDir::Union{String,Array{String,1}},outDir::String; kwargs)
 * `checkRng::Float64`: if set, reports all equations whose range exceeds the specified value, default is `NaN`
 * `scaFac::NamedTuple`: scales different groups of variables within the model, default is `(capa = 1e1, oprCapa = 1e2, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0)`
 * `bound::NamedTuple`: sets external bounds for all capacities and dispatch variables (both in GW) and for the objective value (in Mil. €), default is `(capa = NaN, disp = NaN, obj = NaN)`
-* `avaMin::Float64`: availabilities smaller than this value are set to zero, since in the model availabilities are inversed this avoids high coefficients, default is `0.01`
+* `avaMin::Float64`: availabilities smaller than this value are set to zero, since in the [Capacity restrictions](@ref) availabilities are inversed, this avoids high coefficients, default is `0.01`
 * `emissionLoss::Bool`: determines if losses from exchange and self-discharge of storage are subject to emissions, default is `true`
 """
 mutable struct anyModel <: AbstractModel
