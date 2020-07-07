@@ -160,7 +160,7 @@ end
 # XXX merges all tables within input dictionary
 function mergeDicTable(df_dic::Dict{Symbol,DataFrame},outerJoin_boo::Bool=true)
 	if isempty(df_dic) return DataFrame() end
-	keys_arr = collect(keys(df_dic))
+	keys_arr = collectKeys(keys(df_dic))
 	mergeTable_df = df_dic[keys_arr[1]]
 	joinCol_arr = filter(x -> !(x in keys_arr), namesSym(mergeTable_df))
 
@@ -307,7 +307,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 	if isempty(chldRows)
 		aggRow_arr = fill(BitSet(),size(srcEtrAct_df,1))
 	else
-		aggRow_arr = collect(keys(chldRows)) |> (y -> map(x -> intersect(map(y -> chldRows[y][x[y]],y)...) ,eachrow(srcEtrAct_df)))
+		aggRow_arr = collectKeys(keys(chldRows)) |> (y -> map(x -> intersect(map(y -> chldRows[y][x[y]],y)...) ,eachrow(srcEtrAct_df)))
 	end
 
 	# XXX aggregates values according to lookup

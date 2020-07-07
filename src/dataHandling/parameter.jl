@@ -239,8 +239,8 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
 
     # check if sets are illdefined with respect to inheritance
     heritRules_tup = (:sum_full, :sum_any, :avg_full, :avg_any, :uni_full, :uni_any, :up)
-    wrongSetHerit_arr = filter(x -> !all(map(y -> y[1] in parDef_dic[x].dim,parDef_dic[x].herit)),collect(keys(parDef_dic)))
-    wrongRulesHerit_arr = filter(x -> !all(map(y -> y[2] in heritRules_tup,parDef_dic[x].herit)),collect(keys(parDef_dic)))
+    wrongSetHerit_arr = filter(x -> !all(map(y -> y[1] in parDef_dic[x].dim,parDef_dic[x].herit)),collectKeys(keys(parDef_dic)))
+    wrongRulesHerit_arr = filter(x -> !all(map(y -> y[2] in heritRules_tup,parDef_dic[x].herit)),collectKeys(keys(parDef_dic)))
 
     if !isempty(wrongSetHerit_arr)
         push!(report,(3, "parameter definition", "", "inheritance rule for a set not defined as a possible dimension: $(join(wrongSetHerit_arr,", "))"))
@@ -257,9 +257,9 @@ end
 function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, techIdx_arr::Array{Int,1}, anyM::anyModel)
 
     # parameter defined within input data
-    allPar_arr = unique(vcat(collect.(keys.(values(paraTemp_dic)))...))
+    allPar_arr = unique(vcat(collectKeys.(keys.(values(paraTemp_dic)))...))
      # parameter actually used in the model (difference are the exchange related parameters, that can be provided both directed and symmetric, but within the model only directed values are being used)
-    parToFile_dic = Dict(x => collect(keys(paraTemp_dic[x])) for x in keys(paraTemp_dic))
+    parToFile_dic = Dict(x => collectKeys(keys(paraTemp_dic[x])) for x in keys(paraTemp_dic))
 
     # gets defintion of parameters and checks, if all input parameters are defined
     parDef_dic = defineParameter(anyM.options,anyM.report)
@@ -369,7 +369,7 @@ end
 function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},newHerit_dic::Dict{Symbol,Tuple{Pair{Symbol,Symbol},Pair{Symbol,Symbol}}},
                                                                                                 ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
-	relPar_arr = filter(x -> :techPre in keys(parDef_dic[x]) && (!(isempty(part.par[x].data)) || occursin("eff",string(x))), _collect(Symbol,keys(part.par),SizeUnknown()))
+	relPar_arr = filter(x -> :techPre in keys(parDef_dic[x]) && (!(isempty(part.par[x].data)) || occursin("eff",string(x))), collectKeys(keys(part.par)))
 	parPre_dic = Dict(x => parDef_dic[x].techPre.preset for x in relPar_arr)
 	preType_arr = union(values(parPre_dic))
 

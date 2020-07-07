@@ -31,7 +31,7 @@ function setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyMode
     # XXX sets overall objective variable with upper limits and according to weights provided in dictionary
 	objBd_flt = anyM.options.bound.obj |> (x -> isnan(x) ? NaN : x / anyM.options.scaFac.obj)
 	obj_var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, !isnan(objBd_flt), objBd_flt, false, NaN, false, NaN, false, false)),"obj") * anyM.options.scaFac.obj
-	obj_eqn = @constraint(anyM.optModel, obj_var == sum(map(x -> sum(filter(r -> r.group == x,partObj.var[:objVar])[!,:var])*obj_dic[x], collect(keys(obj_dic)))))
+	obj_eqn = @constraint(anyM.optModel, obj_var == sum(map(x -> sum(filter(r -> r.group == x,partObj.var[:objVar])[!,:var])*obj_dic[x], collectKeys(keys(obj_dic)))))
 
     if minimize
         @objective(anyM.optModel, Min, obj_var / anyM.options.scaFac.obj)
@@ -47,7 +47,7 @@ createObjective!(objGrp::Symbol, partObj::OthPart,anyM::anyModel) = createObject
 # XXX create variables and equations for cost objective
 function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
-	parObj_arr = _collect(Symbol,keys(partObj.par),SizeUnknown())
+	parObj_arr = collectKeys(keys(partObj.par))
 	techIdx_arr = collect(keys(anyM.parts.tech))
 	varToPart_dic = Dict(:exc => :exc, :ctr => :bal,:trdSell => :trd, :trdBuy => :trd)
 
@@ -245,7 +245,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for curtailment and trade costs")
 
 	# XXX creates overall costs variable considering scaling parameters
-	relBla = filter(x -> x != :objVar, collect(keys(partObj.var)))
+	relBla = filter(x -> x != :objVar, collectKeys(keys(partObj.var)))
 	objVar_arr = map(relBla) do varName
 		# sets lower limit of zero, except for curtailment and revenues from selling, because these can incure "negative" costs
 		lowBd_tup = !(varName in (:costCrt,:costTrdSell)) |> (x -> (x,x ? 0.0 : NaN))

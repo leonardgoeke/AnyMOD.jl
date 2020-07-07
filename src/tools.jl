@@ -66,7 +66,17 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
 end
 
 # <editor-fold desc="report results to csv files"
+"""
+    reportResults(reportType::Symbol,anyM::anyModel; rtnOpt::Tuple = (:csv,))
+blubbla
 
+* `reportType`: blabla `:summary`,`:costs`,`:exchange`
+* `rtnOpt`: blabla
+    - `:csv`: asdf
+    - `:raw`: asdf
+    - `:rawDf`: sdf
+    - `:csvDf`: asd
+"""
 reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{reportType}(),anyM::anyModel; kwargs...)
 
 # XXX summary of all capacity and dispatch results

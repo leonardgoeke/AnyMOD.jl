@@ -13,7 +13,7 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 
 	# loop over sets read-in data and create tree objects
 	for setFile in files_dic["set"]
-		setLong_sym = getindex(setFile[findfirst("set_",setFile)[1]+4:end-4] |> (y -> filter(x -> occursin(string(x),y),collect(keys(setLngShrt_dic)))),1)
+		setLong_sym = getindex(setFile[findfirst("set_",setFile)[1]+4:end-4] |> (y -> filter(x -> occursin(string(x),y),collectKeys(keys(setLngShrt_dic)))),1)
 		setShort_sym = get!(setLngShrt_dic,setLong_sym,setLong_sym)
 		if setShort_sym in keys(anyM.sets)
 			push!(anyM.report,(3,"set read-in",string(setLong_sym),"multiple input files provided for set"))
@@ -32,7 +32,7 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 	anyM.sets[:M] = createTree(modes_df,:mode,anyM.report)
 
 	# reports, if a required set was not defined or if non-unique carrier names were defined
-	for set in filter(x -> !(x in (:mode, :id)), collect(keys(setLngShrt_dic)))
+	for set in filter(x -> !(x in (:mode, :id)), collectKeys(keys(setLngShrt_dic)))
 		if !(setLngShrt_dic[set] in keys(anyM.sets))
 			push!(anyM.report,(3,"set read-in",string(set),"no file provided to define set"))
 		elseif set == :carrier || set == :technology
@@ -61,7 +61,10 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 	@threads for parFile in files_dic["par"]
 		parData_df = convertReadIn(CSV.read(parFile;delim = anyM.options.csvDelim[1]),parFile,set_arr,setLngShrt_dic,anyM.report,anyM.lock,anyM.sets)
 		if isempty(parData_df) || any(getindex.(anyM.report,1) .== 3) continue end
-		paraTemp_dic[parFile] = writeParameter(parData_df, anyM.sets, setLngShrt_dic, parFile, anyM.report, anyM.lock)
+		para_obj =  writeParameter(parData_df, anyM.sets, setLngShrt_dic, parFile, anyM.report, anyM.lock)
+		lock(anyM.lock)
+		paraTemp_dic[parFile] = para_obj
+		unlock(anyM.lock)
 		produceMessage(anyM.options,anyM.report, 3," - Read-in parameter file: ",parFile)
 	end
 	produceMessage(anyM.options,anyM.report, 2," - Read-in all parameter files")
@@ -453,11 +456,11 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 			end
 			undefinedSets_arr = map(y -> join(map(z -> string(y.entry[z]," (lvl ",y.lvl[z],")") ,1:length(y.lvl))," > "),filter(x -> x.colSet in undefinedDim_arr,relSets_arr))
 
+			lock(lock_)
 			for undef in undefinedSets_arr
-				lock(lock_)
 				push!(report,(2,"parameter read-in",fileName_str,"values provided for undefined set $(undef...)"))
-				unlock(lock_)
 			end
+			unlock(lock_)
 
 			continue
 		end

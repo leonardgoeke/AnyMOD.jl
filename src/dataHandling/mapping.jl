@@ -146,7 +146,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     carStrArr_dic = Dict(y => y in namesSym(row_df) ? split(replace(row_df[y]," " => ""),";") |> (z -> filter(x -> !isempty(x),z)) : String[] for y in carCol_tup)
 	carId_dic = Dict(z => tuple(map(x -> getDicEmpty(nameC_dic,x),carStrArr_dic[z])...) for z in keys(carStrArr_dic))
 
-	for x in filter(x -> Int[] in carId_dic[x], collect(keys(carId_dic)))
+	for x in filter(x -> Int[] in carId_dic[x], collectKeys(keys(carId_dic)))
 		push!(anyM.report,(3,"technology mapping","carrier","$(typeStr_dic[x]) carrier of technology $(createFullString(t,anyM.sets[:Te])) not entered correctly"))
 		carId_dic[x] = tuple(filter(y -> y != Int[],collect(carId_dic[x]))...)
 	end
@@ -190,7 +190,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 		end
 	end
 
-    part.carrier = filter(x -> getfield(carGrp_ntup,x) != tuple(),collect(keys(carGrp_ntup))) |> (y -> NamedTuple{Tuple(y)}(map(x -> getfield(carGrp_ntup,x), y)) )
+    part.carrier = filter(x -> getfield(carGrp_ntup,x) != tuple(),collectKeys(keys(carGrp_ntup))) |> (y -> NamedTuple{Tuple(y)}(map(x -> getfield(carGrp_ntup,x), y)) )
 
     # detects if any in or out carrier is a parent of another in or out carrier, removes carrier in these cases and reports on it
     for type in (:carrier_conversion_in, :carrier_conversion_out)

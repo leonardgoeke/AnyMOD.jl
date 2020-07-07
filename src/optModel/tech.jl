@@ -41,7 +41,7 @@ function createTech!(t::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple}
     produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for technology $(tech_str)")
 
     # create ratio constraints
-    if any(map(x -> occursin("ratioEner",string(x)), collect(keys(part.par))))
+    if any(map(x -> occursin("ratioEner",string(x)), collectKeys(keys(part.par))))
         createRatioCns!(part,cns_dic,anyM)
         produceMessage(anyM.options,anyM.report, 3," - Prepared constraints controlling energy ratios for technology $(tech_str)")
     end
@@ -66,7 +66,7 @@ function prepareTechs!(techIdx_arr::Array{Int,1},prepVar_dic::Dict{Int,Dict{Symb
 	    if part.type != :stock
 	        prepareExpansion!(prepTech_dic, tsYear_dic, part, t, anyM)
 
-			for expan in collect(keys(prepTech_dic))
+			for expan in collectKeys(keys(prepTech_dic))
 				prepareCapacity!(part,prepTech_dic,vcat(map(x -> x[!,removeVal(x)],prepTech_dic[expan])...),Symbol(replace(string(expan),"exp" => "capa")),anyM, tech = t)
 			end
 		end
@@ -201,7 +201,7 @@ end
 
 # XXX create expansion and capacity variables
 function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple},anyM::anyModel,ratioVar_dic::Dict{Symbol,Pair{String,String}} = Dict{Symbol,Pair{String,String}}())
-	for expVar in sort(collect(keys(prep_dic)))
+	for expVar in sort(collectKeys(keys(prep_dic)))
 		varMap_tup = prep_dic[expVar]
 		# create dataframe of capacity or expansion variables by creating the required capacity variables and join them with pure residual values
 		var_df = createVar(varMap_tup.var,string(expVar),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
@@ -259,7 +259,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,))
 
-	for va in collect(keys(part.carrier)) |> (x -> :capaStIn in keys(part.var) ? [:stLvl,x...]  : x) # loop over all relevant kind of variables
+	for va in collectKeys(keys(part.carrier)) |> (x -> :capaStIn in keys(part.var) ? [:stLvl,x...]  : x) # loop over all relevant kind of variables
 		conv_boo = va in (:gen,:use)
 		# obtains relevant capacity variable
 		if conv_boo

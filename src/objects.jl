@@ -101,9 +101,11 @@ function copy(par_obj::ParElement,data_df::DataFrame)
 	return out
 end
 
-# XXX imported to use _collect(::Type{T}, itr, isz::SizeUnknown) to fix mysterious error
+# XXX usual collect sometimes creates a mysterious error if used on dictionary keys, this command avoids this
 import Base._collect
 import Base.SizeUnknown
+
+collectKeys(itr) = _collect(Symbol, itr, SizeUnknown())
 
 # </editor-fold>
 
@@ -342,7 +344,7 @@ anyModel(inDir::Union{String,Array{String,1}},outDir::String; kwargs)
 * `shortExp::Int`: intervall in years between years of capacity expansion, default is `10`
 * `redStep::Float64`: scales down energy quantities within the model, can be relevant when working with reduced time-series, default is `1.0`
 
-# Optional arguments, reporting (see [Reporting](@ref) for details)
+# Optional arguments, reporting (see [Data files](@ref) for details)
 * `reportLvl::Int`: controls the frequency of writing updates to the console, default is `2`
 * `errCheckLvl::Int`: controls the frequency of checking for errors, default is `2`
 * `errWrtLvl::Int`: controls the frequency of writing an error report to a csv file, default is`1`
@@ -351,7 +353,7 @@ anyModel(inDir::Union{String,Array{String,1}},outDir::String; kwargs)
 * `checkRng::Float64`: if set, reports all equations whose range exceeds the specified value, default is `NaN`
 * `scaFac::NamedTuple`: scales different groups of variables within the model, default is `(capa = 1e1, oprCapa = 1e2, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0)`
 * `bound::NamedTuple`: sets external bounds for all capacities and dispatch variables (both in GW) and for the objective value (in Mil. €), default is `(capa = NaN, disp = NaN, obj = NaN)`
-* `avaMin::Float64`: availabilities smaller than this value are set to zero, since in the [Capacity restrictions](@ref) availabilities are inversed, this avoids high coefficients, default is `0.01`
+* `avaMin::Float64`: availabilities smaller than this value are set to zero, since in the [Conversion capacity restriction](@ref) and [Storage capacity restriction](@ref) availabilities are inversed, this avoids high coefficients, default is `0.01`
 * `emissionLoss::Bool`: determines if losses from exchange and self-discharge of storage are subject to emissions, default is `true`
 """
 mutable struct anyModel <: AbstractModel
