@@ -92,7 +92,7 @@ function readInputFolder(inputFolders::Array{String,1},files_dic::Dict{String,Ar
 end
 
 # XXX filters missing and adjusts data according to "all" statements
-function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{Symbol},setLngShrt_dic::Dict{Symbol,Symbol},report::Array{Tuple,1},lock_::SpinLock,sets::Dict{Symbol,Tree} = Dict{Symbol,Tree}())
+function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{Symbol},setLngShrt_dic::Dict{Symbol,Symbol},report::Array{Tuple,1},lock_::ReentrantLock,sets::Dict{Symbol,Tree} = Dict{Symbol,Tree}())
 
 	setNames_arr = filterSetColumns(readIn_df,set_arr)
     oprNames_arr = filterSetColumns(readIn_df,[:parameter,:variable,:value, :id])
@@ -367,7 +367,7 @@ end
 # <editor-fold desc= read-in of parameter data"
 
 # XXX reads-in parameter data for respective sheet
-function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLngShrt_dic::Dict{Symbol,Symbol}, fileName_str::String, report::Array{Tuple,1},lock_::SpinLock)
+function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLngShrt_dic::Dict{Symbol,Symbol}, fileName_str::String, report::Array{Tuple,1},lock_::ReentrantLock)
 
 	setShrtLng_dic = Dict(value => key for (key, value) in setLngShrt_dic)
     set_arr = vcat(collect(setShrtLng_dic[key] for key in keys(sets))...,:id)
@@ -423,7 +423,7 @@ function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLngSh
 end
 
 # XXX gets idx from set names and orders all data in dataframe for respective parameter
-function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_arr::Array{parEntry,1},parVal_arr::Array{Array{Symbol,1},1},para_dic::Dict{Symbol,DataFrame},setCol_dic::Dict{Symbol,Array},setLngShrt_dic::Dict{Symbol,Symbol},fileName_str::String,report::Array{Tuple,1},lock_::SpinLock)
+function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_arr::Array{parEntry,1},parVal_arr::Array{Array{Symbol,1},1},para_dic::Dict{Symbol,DataFrame},setCol_dic::Dict{Symbol,Array},setLngShrt_dic::Dict{Symbol,Symbol},fileName_str::String,report::Array{Tuple,1},lock_::ReentrantLock)
 	setShrtLng_dic = Dict(value => key for (key, value) in setLngShrt_dic)
 	for row in eachrow(parData_df)
 		setId_dic = Dict{Symbol,Union{Int,Array{Int,1}}}()

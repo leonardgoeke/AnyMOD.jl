@@ -361,7 +361,7 @@ mutable struct anyModel <: AbstractModel
 	options::modOptions
 	report::Array{Tuple,1}
 	optModel::Model
-	lock::SpinLock
+	lock::ReentrantLock
 
 	supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}}
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}}
@@ -382,7 +382,7 @@ mutable struct anyModel <: AbstractModel
 		anyM.report = Array{Tuple,1}()
 
 		anyM.optModel = Model()
-		anyM.lock = SpinLock()
+		anyM.lock = ReentrantLock()
 
 		# XXX sets whole options object from specified directories TODO arbeite mit kwargs später
 		outStamp_str = string(objName,"_",Dates.format(now(),"yyyymmddHHMM"))

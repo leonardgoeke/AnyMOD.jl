@@ -397,7 +397,7 @@ function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns
 end
 
 # XXX adds column with JuMP variable to dataframe
-function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64,Array{Float64,1}},optModel::Model,lock_::SpinLock,sets::Dict{Symbol,Tree}; scaFac::Float64 = 1.0, lowBd::Float64 = 0.0)
+function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64,Array{Float64,1}},optModel::Model,lock_::ReentrantLock,sets::Dict{Symbol,Tree}; scaFac::Float64 = 1.0, lowBd::Float64 = 0.0)
 	# adds an upper bound to all variables if provided within the options
 	#if isempty(setData_df) return DataFrame(var = AffExpr[]) end
 	arr_boo = typeof(upBd_fl) <: Array

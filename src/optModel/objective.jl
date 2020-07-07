@@ -263,7 +263,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 end
 
 # XXX transfers provided cost dataframe into dataframe of overall objective variables and equations (and scales them)
-function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symbol,optModel::Model,lock_::SpinLock,sets_dic::Dict{Symbol,Tree},
+function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symbol,optModel::Model,lock_::ReentrantLock,sets_dic::Dict{Symbol,Tree},
 												coefRng_tup::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}, scaCost_fl::Float64, checkRng_fl::Float64, lowBd::Float64 = 0.0)
 
 	# create variables for cost entry and builds corresponding expression for equations controlling them
