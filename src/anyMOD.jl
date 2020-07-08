@@ -4,6 +4,12 @@ module anyMOD
     ENV["PYTHON"]=""
     Pkg.build("PyCall")
 
+    try
+        using Gurobi
+    catch
+        println("Did not find a Gurobi installation. This means the printIIS function is not available.")
+    end
+
     using Base.Threads, CSV, Dates, LinearAlgebra, Gurobi
     using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays
     @reexport using DataFrames, JuMP
