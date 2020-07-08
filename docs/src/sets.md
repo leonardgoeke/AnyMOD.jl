@@ -1,11 +1,11 @@
 ```@raw html
 <style>
 table.tabelle2 td {
-  padding-left: 7px;
-  padding-right: 7px;
-  border-right: solid 1px;
-  border-color: #dbdbdb;
-  font-size: small;
+  padding-left: 7px !important;
+  padding-right: 7px !important;
+  border-right: solid 1px !important;
+  border-color: #dbdbdb !important;
+  font-size: small !important;
 }
 </style>
 ```
