@@ -13,13 +13,22 @@ table.tabelle2 td {
 Sets and Mappings
 =================
 
-# Regions
+## Regions
 
 
 erkläre read-in
 
 
 ```@raw html
+<style>
+table.tabelle2 td {
+  padding-left: 7px;
+  padding-right: 7px;
+  border-right: solid 1px;
+  border-color: #dbdbdb;
+  font-size: small;
+}
+</style>
 <table class="tabelle2">
 <tbody>
 <tr>
@@ -52,7 +61,7 @@ sdf
 ```
 
 
-# Time-steps
+## Time-steps
 
 
 link zu plotting funktionen
@@ -103,7 +112,7 @@ sdf
 ```
 
 
-# Carriers
+## Carriers
 
 
 carrier names müssen unique sein
@@ -184,7 +193,7 @@ sdf
 Optional mappings
 - carrier\_equality: optionen: ("no","yes"), default: "no"
 
-# Technologies
+## Technologies
 
 
 ```@raw html
