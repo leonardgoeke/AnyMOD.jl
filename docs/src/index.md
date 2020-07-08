@@ -7,10 +7,9 @@ A comprehensive description of the framework's graph based methodology can found
 * The level of temporal and spatial granularity can be varied by energy carrier. For instance, electricity can be modelled with hourly resolution, while supply and demand of gas is balanced daily. As a result, a substantial decrease of computational effort can be achieved. In addition, flexibility inherent to the system, for example in the gas network, can be accounted for.
 * The degree to which energy carriers are substitutable when converted, stored, transported, or consumed can be modelled. As an example, residential and district heat can both equally satisfy heat demand, but technologies to produce these carriers are different.
 
-The framework requires [Julia 1.3.1](https://julialang.org/downloads/oldreleases/) since all computationally intensive steps are parallelized using multi-threading and relies on [DataFrames](https://juliadata.github.io/DataFrames.jl/stable/) and [JuMP](https://github.com/JuliaOpt/JuMP.jl) as a back-end. The repository [anyMOD_example_model](https://github.com/leonardgoeke/anyMOD_example_model) demonstrates how the framework can utilize version-control to openly share and develop models.
+The framework requires [Julia 1.3.1](https://julialang.org/downloads/oldreleases/) since all computationally intensive steps are parallelized using multi-threading and relies on [DataFrames](https://juliadata.github.io/DataFrames.jl/stable/) and [JuMP](https://github.com/JuliaOpt/JuMP.jl) as a back-end. The repository [anyMOD\_example\_model](https://github.com/leonardgoeke/anyMOD_example_model) demonstrates how the framework can utilize version-control to openly share and develop models.
 
-Quick Start
-=================
+# Getting started
 
 The example project "demo" is used to introduce some of packages’ core functions and give an idea about the workflow. First of all, anyMOD is installed by switching into Julia package mode by typing `]` into the console and then run `add https://github.com/leonardgoeke/anyMOD.jl`. The current version of anyMOD was tested with Julia 1.3.1. After leaving the package mode again by pressing backspace and adding anyMOD to your project, the function `anyModel` constructs an anyMOD model object by reading in the csv files found within the directory specified by the first argument. The second argument specifies a directory all model outputs are written to. Furthermore, default model options can be overwritten via optional arguments. In this case, the model is assigned the name "demo", which will be added to name of each output file later.
 
@@ -43,7 +42,7 @@ createOptModel!(anyM)
 setObjective!(:costs,anyM)
 ```
 
-To actually solve the created optimization problem, the field of the model structure containing the corresponding JuMP object is passed to the functions of the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package used for this purpose. The JuMP package itself is part of anyMOD’s dependencies and therefore does not have to be added separately, but the solver does. In this case we used Gurobi, but CPLEX or a non-commercial server could have been used as well.
+To actually solve the created optimization problem, the field of the model structure containing the corresponding JuMP object is passed to the functions of the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package used for this purpose. The JuMP package itself is part of anyMOD’s dependencies and therefore does not have to be added separately, but the solver does. In this case we used Gurobi, but CPLEX or a non-commercial solver could have been used as well.
 
 ```
 using Gurobi
@@ -57,7 +56,6 @@ Once a model is solved, results can be obtained and analyzed by the following fu
 reportResults(:summary,anyM)
 reportTimeSeries(:electricity, anyM)
 plotEnergyFlow(:sankey,anyM)
-
 ```
 
 Depending on the keyword provided, `reportResults` writes aggregated results to a csv file. `:summary` gives an overview of installed capacities and yearly use and generation of energy carriers. Other keywords available are `:costs` and `:exchange`. `reportTimeSeries` will write the energy balance and the value of each term within the energy balance of the carrier provided as a keyword. Finally, `plotEnergyFlow` used with the keyword `:sankey` creates a sankey diagram that visualizes the quantitative energy flows in the solved model.
