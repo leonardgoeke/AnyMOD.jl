@@ -1,6 +1,8 @@
 ```@raw html
 <style>
-table.tabelle2 td {
+table.tabelle2
+  background-color:white !important;
+  td {
   padding-left: 7px !important;
   padding-right: 7px !important;
   border-right: solid 1px !important;
@@ -22,7 +24,7 @@ erkläre read-in
 <table class="tabelle2">
 <tbody>
 <tr>
-<td style="border-right:none"><strong>region_1</strong></td>
+<td style="border-right:none !important"><strong>region_1</strong></td>
 <td style="border-right:none"><strong>region_2</strong></td>
 </tr>
 <tr>
