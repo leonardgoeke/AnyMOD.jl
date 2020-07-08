@@ -10,8 +10,7 @@ table.tabelle2 td {
 </style>
 ```
 
-Sets and Mappings
-=================
+# Sets and Mappings
 
 ## Regions
 
@@ -20,15 +19,6 @@ erkläre read-in
 
 
 ```@raw html
-<style>
-table.tabelle2 td {
-  padding-left: 7px;
-  padding-right: 7px;
-  border-right: solid 1px;
-  border-color: #dbdbdb;
-  font-size: small;
-}
-</style>
 <table class="tabelle2">
 <tbody>
 <tr>
