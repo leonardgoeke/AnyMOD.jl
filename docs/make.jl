@@ -21,5 +21,5 @@ deploydocs(
     repo = "github.com/leonardgoeke/anyMOD.jl.git",
     devbranch = "dev",
     devurl = "dev",
-    versions = ["stable" => "v#.#", devurl => devurl]
+    versions = ["stable" => "v#.#", "dev" => "dev"]
 )
