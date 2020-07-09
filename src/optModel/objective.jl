@@ -225,7 +225,6 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allVar_df = rename(matchSetParameter(anyM.parts.bal.var[varType],anyM.parts.bal.par[cost_sym],anyM.sets,newCol = :cost),:var => varType)
 			allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
 			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
-			getResize(allVar_df,anyM.sets[:Ts],anyM.supTs)
 			allVar_df = combine(x -> (expr = sum(x.disFac .* x[!,varType] .* x.cost) ./ 1000.0 ./ anyM.options.redStep,) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C]))
 			transferCostEle!(allVar_df, partObj,cost_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng, NaN)
 		end
