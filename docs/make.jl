@@ -20,5 +20,5 @@ makedocs(sitename="anyMOD.jl",
 deploydocs(
     repo = "github.com/leonardgoeke/anyMOD.jl.git",
     devbranch = "dev",
-    versions = ["stable" => "v#.#", , devurl => devurl],
+    versions = ["stable" => "v#.#", , devurl => devurl]
 )
