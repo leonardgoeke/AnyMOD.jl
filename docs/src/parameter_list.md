@@ -1,29 +1,29 @@
 ```@raw html
 <style>
 table.tabelle td {
-  border-left: 1px solid !important;
-  border-color: #dbdbdb !important;
+  border-left: 1px solid;
+  border-color: #dbdbdb;
 }
 table.tabelle td:first-child {
-  border-right: 2.5px solid !important;
-  border-color: #dbdbdb !important;
-  border-left: none !important;
+  border-right: 2.5px solid;
+  border-color: #dbdbdb;
+  border-left: none;
 }
 ol.liste {
   list-style-position: inside;
-  margin-left: 0em !important;
-  margin-top: 0em !important;
-  white-space: nowrap !important;
-  display:inline-block !important;
-  text-align: left !important;
+  margin-left: 0em;
+  margin-top: 0em;
+  white-space: nowrap;
+  display:inline-block;
+  text-align: left;
 }
 ul.liste {
   list-style-position: inside;
-  margin-left: 0em !important;
-  margin-top: 0em !important;
-  white-space: nowrap !important;
-  display:inline-block !important;
-  text-align: left !important;
+  margin-left: 0em;
+  margin-top: 0em;
+  white-space: nowrap;
+  display:inline-block;
+  text-align: left;
 }
 </style>
 ```
