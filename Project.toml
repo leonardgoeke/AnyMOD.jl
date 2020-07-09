@@ -1,7 +1,7 @@
 name = "anyMOD"
 uuid = "16ed6a40-d4c3-11e9-1e10-59384530c1b4"
 authors = ["lgo <lgo@wip.tu-berlin.de>"]
-version = "0.8.29"
+version = "0.9.0"
 
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
