@@ -1,20 +1,20 @@
-anyMOD
+AnyMOD
 =================
 
-[anyMOD.jl](https://github.com/leonardgoeke/anyMOD.jl) is a [Julia](https://julialang.org/) framework to create large scale energy system models with multiple periods of capacity expansion. It was developed to address the challenges in modelling high-levels of intermittent generation and sectoral integration. Its documentation can be found [here](https://leonardgoeke.github.io/anyMOD.jl/dev/).
+[AnyMOD.jl](https://github.com/leonardgoeke/AnyMOD.jl) is a [Julia](https://julialang.org/) framework to create large scale energy system models with multiple periods of capacity expansion. It was developed to address the challenges in modelling high-levels of intermittent generation and sectoral integration. Its documentation can be found [here](https://leonardgoeke.github.io/AnyMOD.jl/dev/).
 
-A comprehensive description of the framework's graph based methodology can found in the working paper [Göke (2020), anyMOD - A graph-based framework for energy system modelling with high levels of renewables and sector integration  ](https://arxiv.org/abs/2004.10184). Its key characteristic is that all sets (time-steps, regions, energy carriers, and technologies) are organized within a hierarchical tree structure. This allows for two unique features:
+A comprehensive description of the framework's graph based methodology can found in the working paper [Göke (2020), AnyMOD - A graph-based framework for energy system modelling with high levels of renewables and sector integration  ](https://arxiv.org/abs/2004.10184). Its key characteristic is that all sets (time-steps, regions, energy carriers, and technologies) are organized within a hierarchical tree structure. This allows for two unique features:
 * The level of temporal and spatial granularity can be varied by energy carrier. For instance, electricity can be modelled with hourly resolution, while supply and demand of gas is balanced daily. As a result, a substantial decrease of computational effort can be achieved. In addition, flexibility inherent to the system, for example in the gas network, can be accounted for.
 * The degree to which energy carriers are substitutable when converted, stored, transported, or consumed can be modelled. As an example, residential and district heat can both equally satisfy heat demand, but technologies to produce these carriers are different.
 
-The framework requires [Julia 1.3.1](https://julialang.org/downloads/oldreleases/) since all computationally intensive steps are parallelized using multi-threading and relies on [DataFrames](https://juliadata.github.io/DataFrames.jl/stable/) and [JuMP](https://github.com/JuliaOpt/JuMP.jl) as a back-end. The repository [anyMOD\_example\_model](https://github.com/leonardgoeke/anyMOD_example_model) demonstrates how the framework can utilize version-control to openly share and develop models.
+The framework requires [Julia 1.3.1](https://julialang.org/downloads/oldreleases/) since all computationally intensive steps are parallelized using multi-threading and relies on [DataFrames](https://juliadata.github.io/DataFrames.jl/stable/) and [JuMP](https://github.com/JuliaOpt/JuMP.jl) as a back-end. The repository [AnyMOD\_example\_model](https://github.com/leonardgoeke/AnyMOD_example_model) demonstrates how the framework can utilize version-control to openly share and develop models.
 
 # Getting started
 
-The example project "demo" is used to introduce some of packages’ core functions and give an idea about the workflow. First of all, anyMOD is installed by switching into Julia package mode by typing `]` into the console and then run `add https://github.com/leonardgoeke/anyMOD.jl`. The current version of anyMOD was tested with Julia 1.3.1. After leaving the package mode again by pressing backspace and adding anyMOD to your project, the function `anyModel` constructs an anyMOD model object by reading in the csv files found within the directory specified by the first argument. The second argument specifies a directory all model outputs are written to. Furthermore, default model options can be overwritten via optional arguments. In this case, the model is assigned the name "demo", which will be added to name of each output file later.
+The example project "demo" is used to introduce some of packages’ core functions and give an idea about the workflow. First of all, AnyMOD is installed by switching into Julia package mode by typing `]` into the console and then run `add https://github.com/leonardgoeke/AnyMOD.jl`. The current version of AnyMOD was tested with Julia 1.3.1. After leaving the package mode again by pressing backspace and adding AnyMOD to your project, the function `anyModel` constructs an AnyMOD model object by reading in the csv files found within the directory specified by the first argument. The second argument specifies a directory all model outputs are written to. Furthermore, default model options can be overwritten via optional arguments. In this case, the model is assigned the name "demo", which will be added to name of each output file later.
 
 ```
-using anyMOD
+using AnyMOD
 anyM = anyModel("examples/demo","results", objName = "demo")
 ```
 
@@ -42,7 +42,7 @@ createOptModel!(anyM)
 setObjective!(:costs,anyM)
 ```
 
-To actually solve the created optimization problem, the field of the model structure containing the corresponding JuMP object is passed to the functions of the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package used for this purpose. The JuMP package itself is part of anyMOD’s dependencies and therefore does not have to be added separately, but the solver does. In this case we used Gurobi, but CPLEX or a non-commercial solver could have been used as well.
+To actually solve the created optimization problem, the field of the model structure containing the corresponding JuMP object is passed to the functions of the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package used for this purpose. The JuMP package itself is part of AnyMOD’s dependencies and therefore does not have to be added separately, but the solver does. In this case we used Gurobi, but CPLEX or a non-commercial solver could have been used as well.
 
 ```
 using Gurobi
