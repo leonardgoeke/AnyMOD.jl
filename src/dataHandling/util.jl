@@ -487,7 +487,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 	end
 
 	if !(va in (:capaConv,:capaStIn,:capaStOut,:capaStSize,:oprCapaConv,:oprCapaStIn,:oprCapaStOut,:oprCapaStSize,:expConv,:expStIn,:expStOut,:expStSize)) && !isempty(allVar_df) && reflectRed
-		allVar_df[!,:var] .= allVar_df[!,:var] .* 1/anyM.options.redStep
+		allVar_df[!,:var] .= allVar_df[!,:var] .* anyM.options.redStep
 	end
 
 	return filter(filterFunc,allVar_df)
