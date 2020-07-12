@@ -1,7 +1,7 @@
 using Documenter
-using anyMOD
+using AnyMOD
 
-makedocs(sitename="anyMOD.jl",
+makedocs(sitename="AnyMOD.jl",
     authors = "Leonard Goeke",
     pages = [
         "Introduction" => "index.md",
@@ -18,5 +18,5 @@ makedocs(sitename="anyMOD.jl",
     )
 
 deploydocs(
-    repo = "github.com/leonardgoeke/anyMOD.jl.git",
+    repo = "github.com/leonardgoeke/AnyMOD.jl.git",
 )

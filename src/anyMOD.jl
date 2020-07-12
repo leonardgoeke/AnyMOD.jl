@@ -1,4 +1,4 @@
-module anyMOD
+module AnyMOD
 
     using Pkg
     ENV["PYTHON"]=""

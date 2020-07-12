@@ -1,5 +1,5 @@
 ```@meta
-CurrentModule = anyMOD
+CurrentModule = AnyMOD
 ```
 
 # Top-level functions
