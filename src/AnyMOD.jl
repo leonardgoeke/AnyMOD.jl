@@ -1,8 +1,22 @@
 module AnyMOD
 
+    # XXX enforce use of Julia's own python distribution to avoid interference with local python installations
     using Pkg
+    # save current value of environment variable
+    if "PYTHON" in keys(ENV)
+        envPy = ENV["PYTHON"]
+    else
+        envPy = ""
+    end
+    # build python package with Julia distribution
     ENV["PYTHON"]=""
     Pkg.build("PyCall")
+    # re-sets environment to former status
+    if envPy == ""
+        delete!(ENV,"PYTHON")
+    else
+        ENV["PYTHON"] = envPy
+    end
 
     using Base.Threads, CSV, Dates, LinearAlgebra, Requires
     using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays
