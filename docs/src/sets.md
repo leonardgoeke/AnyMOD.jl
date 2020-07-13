@@ -1,11 +1,20 @@
 ```@raw html
 <style>
 table.tabelle2 td {
-  padding-left: 7px;
-  padding-right: 7px;
+  padding-left: 0.57em;
+  padding-right: 0.57em;
   border-right: solid 1px;
   border-color: #dbdbdb;
   font-size: small;
+}
+ul.liste {
+  list-style-position: outside;
+  padding-left: 1em;
+  margin-left: 0em;
+  margin-top: 0em;
+  white-space: nowrap;
+  display:inline-block;
+  text-align: left;
 }
 </style>
 ```
@@ -48,6 +57,17 @@ sdf
 
 ```@raw html
 <img src="../assets/region.png" width="80%"/>
+```
+
+### Application context
+
+```@raw html
+<ul class="liste3">
+<li>$R_{exp}$: expansion regions</li>
+<li>$R_{disp}$: dispatch regions</li>
+<li>$R_a, R_b$: exchange regions, undirected</li>
+<li>$R_{from}, R_{to}$: exchange regions, directed</li>
+</ul>
 ```
 
 
@@ -100,6 +120,17 @@ sdf
 ```@raw html
 <img src="../assets/timestep.png" width="80%"/>
 ```
+
+### Application context
+
+```@raw html
+<ul class="liste3">
+<li>$Ts_{exp}$: expansion time-steps</li>
+<li>$Ts_{dis}$: dispatch time-steps</li>
+<li>$Ts_{sup}$: superordinate dispatch time-steps (usually years)</li>
+</ul>
+```
+
 
 
 ## Carriers
@@ -175,13 +206,18 @@ sdf
 <img src="../assets/carrier2.png" width="80%"/>
 ```
 
+
+
 ### Mapping
 
 !!! Set a coarse temporal resolution for debugging
     Creating and especially solving a model is much faster if you decrease the temporal resolution of dispatch. Therefore, it is advisable to first test new models at less detailed temporal resolution. This will help you to spot and fix mistakes or unintended effects more efficiently.
 
-Optional mappings
-- carrier\_equality: optionen: ("no","yes"), default: "no"
+**Optional mappings**
+
+`carrier\_equality`: optionen: ("no","yes"), default: "no"
+
+
 
 ## Technologies
 
@@ -355,19 +391,85 @@ sdf
 ```
 
 ```@raw html
-<p style="text-align:center;"><img src="../assets/mixTech2.svg" width="100%"/>
+<p style="text-align:center;"><img src="../assets/mixTech2.svg" width="95%"/>
 ```
 
 ### Mapping
 grafik zu tech tech kram
 
-
-
-
-Optional mappings
-- modes
-- carrier\_stored\_active
-- technology\_type
-- region\_disaggregate
-- timestep_expansion
-- region_expansion
+**Optional mappings**
+```@raw html
+<table class="tabelle2">
+<tbody>
+<tr>
+<td><strong>column name</strong></td>
+<td><strong>explanation</strong></td>
+<td style="border-right:none"><strong>default</strong></td>
+</tr>
+<tr>
+<td><code>modes</code></td>
+<td>
+<ul class="liste">
+<li>different operational modes separated by a semicolon and a space</li>
+<li>e.g. <code>moreHeat; moreElec</code> for CHP plant in the example</li>
+</ul>
+</td>
+<td style="border-right:none">none</td>
+</tr>
+<tr>
+<td><code>technology_type</code></td>
+<td>
+<ul class="liste">
+<li>types controll expansion behaviour of technology, see <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a> for details</li>
+<li>available options are:
+<ul style="margin-top:0px">
+<li style="margin-top:0px"><code>stock</code>: no expansion</li>
+<li><code>mature</code>: expansion without differentiation by time-step of construction</li>
+<li><code>emerging</code>: expansion with differentiation by time-step of construction</li>
+</ul>
+</ul>
+</li>
+</ul>
+</td>
+<td style="border-right:none"><code>mature</code></td>
+</tr>
+<tr>
+<td><code>region_disaggregate</code></td>
+<td>
+<ul class="liste">
+<li>if expansion is spatially more detailed than dispatch, by default the resolution of dispatch <br> is increased to the expansion level</li>
+<li>using the keyword <code>no</code> prevents this behaviour and enforces the orginal dispatch resolution</li>
+</ul>
+</td>
+<td style="border-right:none"><code>yes</code></td>
+</tr>
+<tr>
+<td><code>timestep_expansion</code></td>
+<td>
+<ul class="liste">
+<li>sets the resolution of expansion time-steps</li>
+<li>cannot be more detailed than the superordinate dispatch level (usually years)</li>
+</ul>
+</td>
+<td style="border-right:none">most detailed resolution <br> of carriers</td>
+</tr>
+<tr>
+<td><code>region_expansion</code></td>
+<td><ul class="liste">
+<li>sets the resolution of expansion regions</li>
+<li>default corresponds to the smallest value feasible</li>
+</ul></td>
+<td style="border-right:none">most detailed resolution <br> of carriers</td>
+</tr>
+<tr>
+<td><code>carrier_stored_active</code></td>
+<td><ul class="liste">
+<li>by default, only leafs (nodes without any descendants) of  stored carriers are actively <br> stored (see <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a> for details)</li>
+<li>non-leaf carriers to be stored actively can be added here</li>
+<li>carriers are separated by a semicolon and a space just like modes</li>
+</ul></td>
+<td style="border-right:none">none</td>
+</tr>
+</tbody>
+</table>
+```

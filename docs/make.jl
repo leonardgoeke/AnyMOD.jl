@@ -5,18 +5,28 @@ makedocs(sitename="AnyMOD.jl",
     authors = "Leonard Goeke",
     pages = [
         "Introduction" => "index.md",
-        "Model Elements" => Any["Sets and Mappings" => "sets.md",
+        "Model Elements" => Any["Model object" => "model_object.md",
+                                "Sets and Mappings" => "sets.md",
                                 "Parts" => "parts.md",
                                 "Parameter" => Any["Parameter overview" => "parameter_overview.md","Parameter list" => "parameter_list.md"],
                                 "Variables" => "variables.md",
                                 "Constraints" => "constraints.md"],
-        "Tools" => Any["Reporting" => Any["Plots" => "plots.md","Data files" => "data.md"],
+        "Tools" => Any["Reporting" => Any["Error handling" => "error.md","Data files" => "data.md","Plots" => "plots.md",],
                         "Performance and stability" => "performance.md"],
-        "Annex" => Any["Functions and types" => "functions.md",
-                        "Common mistakes" => "common_mistakes.md"]
+        "Annex" => Any["Tips" => "tips.md",
+                        "API" => "api.md"]
         ],
     )
 
 deploydocs(
     repo = "github.com/leonardgoeke/AnyMOD.jl.git",
 )
+
+
+
+
+"PYTHON" in keys(ENV)
+
+using AnyMOD
+
+"PYTHON" in keys(ENV)

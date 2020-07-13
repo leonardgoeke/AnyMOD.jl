@@ -10,7 +10,8 @@ table.tabelle td:first-child {
   border-left: none;
 }
 ul.liste {
-  list-style-position: inside;
+  list-style-position: outside;
+  padding-left: 1em;
   margin-left: 0em;
   margin-top: 0em;
   white-space: nowrap;
@@ -542,7 +543,7 @@ erkläre delta residual
 <tr>
 <td><strong>name</strong></td>
 <td>oprCapaConv</td>
-<td style="padding-right:0.52em"><nobr>oprCapaSt{In/Out/Size}</nobr></td>
+<td style="padding-right:0.46em"><nobr>oprCapaSt{In/Out/Size}</nobr></td>
 <td>oprCapaExc</td>
 </tr>
 <tr>
@@ -573,7 +574,7 @@ erkläre delta residual
 </td>
 </tr>
 <tr>
-<td colspan="1"; style="text-align:center;border-right:none;padding-top:0px;padding-right:0.52em">
+<td colspan="1"; style="text-align:center;border-right:none;padding-top:0px;padding-right:0.46em">
 <ul class="liste"; start="4">
 <li>if uses or generates carriers</li>
 </ul>

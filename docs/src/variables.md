@@ -10,7 +10,8 @@ table.tabelle td:first-child {
   border-left: none;
 }
 ul.liste {
-  list-style-position: inside;
+  list-style-position: outside;
+  padding-left: 1em;
   margin-left: 0em;
   margin-top: 0em;
   white-space: nowrap;

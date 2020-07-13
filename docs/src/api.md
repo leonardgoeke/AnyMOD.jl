@@ -1,8 +1,9 @@
 ```@meta
 CurrentModule = AnyMOD
 ```
+# API
 
-# Top-level functions
+## Functions
 test
 ```@docs
 anyModel
@@ -11,7 +12,7 @@ setObjective!
 ```
 
 
-# Other objects
+## Types
 
 ```@docs
 TechPart
