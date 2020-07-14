@@ -1,8 +1,8 @@
 ```@raw html
 <style>
 table.tabelle2 td {
-  padding-left: 0.57em;
-  padding-right: 0.57em;
+  padding-left: 7px;
+  padding-right: 7px;
   border-right: solid 1px;
   border-color: #dbdbdb;
   font-size: small;
@@ -470,8 +470,8 @@ sdf
 
 list other types of inheritance:
 
-- *upwards*
-- *average*
-- *sum*
-- *average* *
-- *sum* *
+- upwards
+- average
+- sum
+- average*
+- sum*

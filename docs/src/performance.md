@@ -5,16 +5,15 @@ font-weight: normal;
 font-size: medium;
 }
 table.tabelle3 td {
-  padding-left: 0.57em;
-  padding-right: 0.57em;
+  padding-left: 7px;
+  padding-right: 7px;
   font-size: small;
   border-right: solid 1px;
   border-color: #dbdbdb;
   font-weight: normal;
 }
 ul.liste {
-  list-style-position: outside;
-  padding-left: 1em;
+  list-style-position: inside;
   margin-left: 0em;
   margin-top: 0em;
   white-space: nowrap;
@@ -28,9 +27,6 @@ Performance and stability
 =================
 
 mention numerical stability, no silver bullet, reference gurobi tips https://www.gurobi.com/documentation/9.0/refman/num_advanced_user_scaling.html
-
-
-auch losses storage and exchange und minimum value for availability, aber beides nur kurz im eingangsabsatz
 
 # Scaling
 
@@ -160,4 +156,11 @@ ggf. geht das nicht, dafür spezielle reporting option
 
 # Variable limits
 
-capacities and dispatch variables (both in GW) and for the objective value (in Mil. €
+
+
+
+# Miscellaneous
+
+printIIS
+losses storage and exchange
+minimum value for availability

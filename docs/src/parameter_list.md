@@ -10,8 +10,7 @@ table.tabelle td:first-child {
   border-left: none;
 }
 ol.liste {
-  list-style-position: outside;
-  padding-left: 1em;
+  list-style-position: inside;
   margin-left: 0em;
   margin-top: 0em;
   white-space: nowrap;
@@ -19,8 +18,7 @@ ol.liste {
   text-align: left;
 }
 ul.liste {
-  list-style-position: outside;
-  padding-left: 1em;
+  list-style-position: inside;
   margin-left: 0em;
   margin-top: 0em;
   white-space: nowrap;
@@ -70,26 +68,26 @@ bla
 <td rowspan="2"><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
 <ol class="liste">
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>upwards</em></li>
-<li>$R_{dis}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; upwards</li>
+<li>$R_{dis}$ &#8594; upwards</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="1"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">
 <ol class="liste"; start="4">
-<li>$Te$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>average</em></li>
+<li>$Te$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; average</li>
+<li>$R_{dis}$ &#8594; average</li>
 </ol>
 </td>
 <td colspan="1"; style="text-align:center;padding-top:0px">
 <ol class="liste"; start="4">
-<li>$C$ &#8594; <em>upwards</em></li>
-<li>$Te$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>average</em></li>
+<li>$C$ &#8594; upwards</li>
+<li>$Te$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; average</li>
+<li>$R_{dis}$ &#8594; average</li>
 </ol>
 </td>
 </tr>
@@ -146,26 +144,26 @@ erwähne emissions
 <td rowspan="2"><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
 <ol class="liste">
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>upwards</em></li>
-<li>$R_{dis}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; upwards</li>
+<li>$R_{dis}$ &#8594; upwards</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="1"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">
 <ol class="liste"; start="4">
-<li>$Te$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>average</em></li>
+<li>$Te$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; average</li>
+<li>$R_{dis}$ &#8594; average</li>
 </ol>
 </td>
 <td colspan="1"; style="text-align:center;padding-top:0px">
 <ol class="liste"; start="4">
-<li>$C$ &#8594; <em>upwards</em></li>
-<li>$Te$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>average</em></li>
+<li>$C$ &#8594; upwards</li>
+<li>$Te$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; average</li>
+<li>$R_{dis}$ &#8594; average</li>
 </ol>
 </td>
 </tr>
@@ -216,14 +214,14 @@ erwähne emissions
 <td><strong>inheritance rules</strong></td>
 <td>
 <ol class="liste">
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>upwards</em></li>
-<li>$C$ &#8594; <em>upwards</em></li>
-<li>$Te$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>average</em></li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; average</li>
+<li>$R_{dis}$ &#8594; upwards</li>
+<li>$C$ &#8594; upwards</li>
+<li>$Te$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; average</li>
+<li>$R_{dis}$ &#8594; average</li>
 </ol>
 </td></tr>
 <tr>
@@ -269,11 +267,11 @@ erwähne emissions
 <td><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center">
 <ol class="liste">
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>upwards</em></li>
-<li>$Te$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; average</li>
+<li>$R_{dis}$ &#8594; upwards</li>
+<li>$Te$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; upwards</li>
 </ol>
 </td></tr>
 <tr>
@@ -319,13 +317,13 @@ erwähne emissions
 <td><strong>inheritance rules</strong></td>
 <td>
 <ol class="liste">
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>upwards</em></li>
-<li>$C$ &#8594; <em>upwards</em></li>
-<li>$R_{dis}$ &#8594; <em>upwards</em></li>
-<li>$Te$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>average</em></li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; upwards</li>
+<li>$C$ &#8594; upwards</li>
+<li>$R_{dis}$ &#8594; upwards</li>
+<li>$Te$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; average</li>
+<li>$R_{dis}$ &#8594; average</li>
 </ol>
 </td></tr>
 <tr>
@@ -369,11 +367,11 @@ erwähne emissions
 <td><strong>inheritance rules</strong></td>
 <td>
 <ol class="liste">
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$C$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$ &#8594; <em>sum</em></li>
-<li>$R_{dis}$ &#8594; <em>sum</em></li>
-<li>$Te$ &#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$C$ &#8594; upwards</li>
+<li>$Ts_{dis}$ &#8594; sum</li>
+<li>$R_{dis}$ &#8594; sum</li>
+<li>$Te$ &#8594; upwards</li>
 </ol>
 </td></tr>
 <tr>
@@ -423,32 +421,32 @@ directed overwrites undirected
 <td rowspan="3"><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
 <ol class="liste">
-<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$	&#8594; upwards</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="1"; style="text-align:center;border-right:none;border-top:none;border-bottom:none;padding-top:0px;padding-bottom:0px">
 <ol class="liste"; start="2">
-<li>$R_{a}$ &#8594; <em>upwards</em></li>
-<li>$R_{b}$ &#8594; <em>upwards</em></li>
-<li>$R_{a}$ &#8594; <em>average</em></li>
-<li>$R_{b}$ &#8594; <em>average</em></li>
+<li>$R_{a}$ &#8594; upwards</li>
+<li>$R_{b}$ &#8594; upwards</li>
+<li>$R_{a}$ &#8594; average</li>
+<li>$R_{b}$ &#8594; average</li>
 </ol>
 </td>
 <td colspan="1"; style="text-align:center;border-bottom:none;padding-top:0px;padding-bottom:0px">
 <ol class="liste"; start="2">
-<li>$R_{from}$ &#8594; <em>upwards</em></li>
-<li>$R_{to}$ &#8594; <em>upwards</em></li>
-<li>$R_{from}$ &#8594; <em>average</em></li>
-<li>$R_{to}$ &#8594; <em>average</em></li>
+<li>$R_{from}$ &#8594; upwards</li>
+<li>$R_{to}$ &#8594; upwards</li>
+<li>$R_{from}$ &#8594; average</li>
+<li>$R_{to}$ &#8594; average</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0.1875em">
 <ol class="liste"; start="6">
-<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+<li>$Ts_{dis}$	&#8594; average</li>
 </ol>
 </td>
 </tr>
@@ -496,32 +494,32 @@ directed overwrites undirected
 <td rowspan="3"><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
 <ol class="liste">
-<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$	&#8594; upwards</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="1"; style="text-align:center;border-right:none;border-top:none;border-bottom:none;padding-top:0px;padding-bottom:0px">
 <ol class="liste"; start="2">
-<li>$R_{a}$ &#8594; <em>upwards</em></li>
-<li>$R_{b}$ &#8594; <em>upwards</em></li>
-<li>$R_{a}$ &#8594; <em>average</em></li>
-<li>$R_{b}$ &#8594; <em>average</em></li>
+<li>$R_{a}$ &#8594; upwards</li>
+<li>$R_{b}$ &#8594; upwards</li>
+<li>$R_{a}$ &#8594; average</li>
+<li>$R_{b}$ &#8594; average</li>
 </ol>
 </td>
 <td colspan="1"; style="text-align:center;border-bottom:none;padding-top:0px;padding-bottom:0px">
 <ol class="liste"; start="2">
-<li>$R_{from}$ &#8594; <em>upwards</em></li>
-<li>$R_{to}$ &#8594; <em>upwards</em></li>
-<li>$R_{from}$ &#8594; <em>average</em></li>
-<li>$R_{to}$ &#8594; <em>average</em></li>
+<li>$R_{from}$ &#8594; upwards</li>
+<li>$R_{to}$ &#8594; upwards</li>
+<li>$R_{from}$ &#8594; average</li>
+<li>$R_{to}$ &#8594; average</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0.1875em">
 <ol class="liste"; start="6">
-<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+<li>$Ts_{dis}$	&#8594; average</li>
 </ol>
 </td>
 </tr>
@@ -570,32 +568,32 @@ directed overwrites undirected
 <td rowspan="3"><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
 <ol class="liste">
-<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$	&#8594; upwards</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="1"; style="text-align:center;border-right:none;border-top:none;border-bottom:none;padding-top:0px;padding-bottom:0px">
 <ol class="liste"; start="2">
-<li>$R_{a}$ &#8594; <em>upwards</em></li>
-<li>$R_{b}$ &#8594; <em>upwards</em></li>
-<li>$R_{a}$ &#8594; <em>average</em></li>
-<li>$R_{b}$ &#8594; <em>average</em></li>
+<li>$R_{a}$ &#8594; upwards</li>
+<li>$R_{b}$ &#8594; upwards</li>
+<li>$R_{a}$ &#8594; average</li>
+<li>$R_{b}$ &#8594; average</li>
 </ol>
 </td>
 <td colspan="1"; style="text-align:center;border-bottom:none;padding-top:0px;padding-bottom:0px">
 <ol class="liste"; start="2">
-<li>$R_{from}$ &#8594; <em>upwards</em></li>
-<li>$R_{to}$ &#8594; <em>upwards</em></li>
-<li>$R_{from}$ &#8594; <em>average</em></li>
-<li>$R_{to}$ &#8594; <em>average</em></li>
+<li>$R_{from}$ &#8594; upwards</li>
+<li>$R_{to}$ &#8594; upwards</li>
+<li>$R_{from}$ &#8594; average</li>
+<li>$R_{to}$ &#8594; average</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0.1875em">
 <ol class="liste"; start="6">
-<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+<li>$Ts_{dis}$	&#8594; average</li>
 </ol>
 </td>
 </tr>
@@ -641,10 +639,10 @@ directed overwrites undirected
 <td><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center">
 <ol class="liste">
-<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
-<li>$R_{dis}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$	&#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>average</em></li>
+<li>$Ts_{dis}$	&#8594; upwards</li>
+<li>$R_{dis}$ &#8594; upwards</li>
+<li>$Ts_{dis}$	&#8594; average</li>
+<li>$R_{dis}$ &#8594; average</li>
 </ol>
 </td></tr>
 <tr>
@@ -690,10 +688,10 @@ directed overwrites undirected
 <td><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center">
 <ol class="liste">
-<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
-<li>$R_{dis}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$	&#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>average</em></li>
+<li>$Ts_{dis}$	&#8594; upwards</li>
+<li>$R_{dis}$ &#8594; upwards</li>
+<li>$Ts_{dis}$	&#8594; average</li>
+<li>$R_{dis}$ &#8594; average</li>
 </ol>
 </td></tr>
 <tr>
@@ -741,8 +739,8 @@ bla
 <td><strong>inheritance rules</strong></td>
 <td>
 <ol class="liste">
-<li>$Ts_{dis}$	&#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>sum</em></li>
+<li>$Ts_{dis}$	&#8594; average</li>
+<li>$R_{dis}$ &#8594; sum</li>
 </ol>
 </td></tr>
 <tr>
@@ -787,10 +785,10 @@ bla
 <td><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center">
 <ol class="liste">
-<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
-<li>$R_{dis}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$	&#8594; <em>average</em></li>
-<li>$R_{dis}$ &#8594; <em>average</em></li>
+<li>$Ts_{dis}$	&#8594; upwards</li>
+<li>$R_{dis}$ &#8594; upwards</li>
+<li>$Ts_{dis}$	&#8594; average</li>
+<li>$R_{dis}$ &#8594; average</li>
 </ol>
 </td></tr>
 <tr>
@@ -838,10 +836,10 @@ bla
 <td><strong>inheritance rules</strong></td>
 <td>
 <ol class="liste">
-<li>$Ts_{sup}$	&#8594; <em>upwards</em></li>
-<li>$R_{exp}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{sup}$ &#8594; <em>average</em></li>
-<li>$R_{exp}$	&#8594; <em>average</em></li>
+<li>$Ts_{sup}$	&#8594; upwards</li>
+<li>$R_{exp}$ &#8594; upwards</li>
+<li>$Ts_{sup}$ &#8594; average</li>
+<li>$R_{exp}$	&#8594; average</li>
 </ol>
 </td></tr>
 <tr>
@@ -892,18 +890,18 @@ bla
 <td colspan="2"; style="text-align:center" >
 <div style = "width: 50%; margin: 0 auto;">
 <ol class="liste">
-<li>$Te$	&#8594; <em>upwards</em></li>
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Te$	&#8594; upwards</li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$R_{exp}$ &#8594; upwards</li>
 </ol>
 </div>
 </td>
 <td>
 <ol class="liste">
- <li>$Ts_{exp}$	&#8594; <em>upwards</em></li>
- <li>$R_{a}$ &#8594; <em>average</em></li>
- <li>$R_{b}$ &#8594; <em>average</em></li>
- <li>$C$ &#8594; <em>upwards</em></li>
+ <li>$Ts_{exp}$	&#8594; upwards</li>
+ <li>$R_{a}$ &#8594; average</li>
+ <li>$R_{b}$ &#8594; average</li>
+ <li>$C$ &#8594; upwards</li>
 </ol>
 </td></tr>
 <tr>
@@ -956,18 +954,18 @@ bla
 <td colspan="2"; style="text-align:center" >
 <div style = "width: 50%; margin: 0 auto;">
 <ol class="liste">
-<li>$Te$	&#8594; <em>upwards</em></li>
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Te$	&#8594; upwards</li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$R_{exp}$ &#8594; upwards</li>
 </ol>
 </div>
 </td>
 <td>
 <ol class="liste">
- <li>$Ts_{exp}$	&#8594; <em>upwards</em></li>
- <li>$R_{a}$ &#8594; <em>average</em></li>
- <li>$R_{b}$ &#8594; <em>average</em></li>
- <li>$C$ &#8594; <em>upwards</em></li>
+ <li>$Ts_{exp}$	&#8594; upwards</li>
+ <li>$R_{a}$ &#8594; average</li>
+ <li>$R_{b}$ &#8594; average</li>
+ <li>$C$ &#8594; upwards</li>
 </ol>
 </td></tr>
 <tr>
@@ -1020,21 +1018,21 @@ maintainence costs
 <td colspan="2"; style="text-align:center" >
 <div style = "width: 50%; margin: 0 auto;">
 <ol class="liste">
-<li>$Ts_{sup}$	&#8594; <em>upwards</em></li>
-<li>$Te$	&#8594; <em>upwards</em></li>
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{sup}$	&#8594; upwards</li>
+<li>$Te$	&#8594; upwards</li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$R_{exp}$ &#8594; upwards</li>
 </ol>
 </div>
 </td>
 <td>
 <ol class="liste">
- <li>$Ts_{sup}$	&#8594; <em>upwards</em></li>
- <li>$R_{a}$ &#8594; <em>average</em></li>
- <li>$R_{b}$ &#8594; <em>average</em></li>
- <li>$R_{a}$ &#8594; <em>upwards</em></li>
- <li>$R_{b}$ &#8594; <em>upwards</em></li>
- <li>$C$ &#8594; <em>upwards</em></li>
+ <li>$Ts_{sup}$	&#8594; upwards</li>
+ <li>$R_{a}$ &#8594; average</li>
+ <li>$R_{b}$ &#8594; average</li>
+ <li>$R_{a}$ &#8594; upwards</li>
+ <li>$R_{b}$ &#8594; upwards</li>
+ <li>$C$ &#8594; upwards</li>
 </ol>
 </td></tr>
 <tr>
@@ -1086,18 +1084,18 @@ bla
 <td colspan="2"; style="text-align:center" >
 <div style = "width: 50%; margin: 0 auto;">
 <ol class="liste">
-<li>$Te$	&#8594; <em>upwards</em></li>
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Te$	&#8594; upwards</li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$R_{exp}$ &#8594; upwards</li>
 </ol>
 </div>
 </td>
 <td>
 <ol class="liste">
- <li>$Ts_{exp}$	&#8594; <em>upwards</em></li>
- <li>$R_{a}$ &#8594; <em>average</em></li>
- <li>$R_{b}$ &#8594; <em>average</em></li>
- <li>$C$ &#8594; <em>upwards</em></li>
+ <li>$Ts_{exp}$	&#8594; upwards</li>
+ <li>$R_{a}$ &#8594; average</li>
+ <li>$R_{b}$ &#8594; average</li>
+ <li>$C$ &#8594; upwards</li>
 </ol>
 </td></tr>
 <tr>
@@ -1149,18 +1147,18 @@ bla
 <td colspan="2"; style="text-align:center" >
 <div style = "width: 50%; margin: 0 auto;">
 <ol class="liste">
-<li>$Te$	&#8594; <em>upwards</em></li>
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Te$	&#8594; upwards</li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$R_{exp}$ &#8594; upwards</li>
 </ol>
 </div>
 </td>
 <td>
 <ol class="liste">
- <li>$Ts_{exp}$	&#8594; <em>upwards</em></li>
- <li>$R_{a}$ &#8594; <em>average</em></li>
- <li>$R_{b}$ &#8594; <em>average</em></li>
- <li>$C$ &#8594; <em>upwards</em></li>
+ <li>$Ts_{exp}$	&#8594; upwards</li>
+ <li>$R_{a}$ &#8594; average</li>
+ <li>$R_{b}$ &#8594; average</li>
+ <li>$C$ &#8594; upwards</li>
 </ol>
 </td></tr>
 <tr>
@@ -1212,18 +1210,18 @@ delay expansion, useful for nuclear, costs are disocunted toward timeperiod for 
 <td colspan="2"; style="text-align:center" >
 <div style = "width: 50%; margin: 0 auto;">
 <ol class="liste">
-<li>$Te$	&#8594; <em>upwards</em></li>
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Te$	&#8594; upwards</li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$R_{exp}$ &#8594; upwards</li>
 </ol>
 </div>
 </td>
 <td>
 <ol class="liste">
- <li>$Ts_{exp}$	&#8594; <em>upwards</em></li>
- <li>$R_{a}$ &#8594; <em>average</em></li>
- <li>$R_{b}$ &#8594; <em>average</em></li>
- <li>$C$ &#8594; <em>upwards</em></li>
+ <li>$Ts_{exp}$	&#8594; upwards</li>
+ <li>$R_{a}$ &#8594; average</li>
+ <li>$R_{b}$ &#8594; average</li>
+ <li>$C$ &#8594; upwards</li>
 </ol>
 </td></tr>
 <tr>
@@ -1278,9 +1276,9 @@ blabla
 <td><strong>inheritance rules</strong></td>
 <td colspan="3"; style="text-align:center">
 <ol class="liste">
-<li>$Te$ &#8594; <em>upwards</em></li>
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Te$ &#8594; upwards</li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$R_{exp}$ &#8594; upwards</li>
 </ol>
 </td></tr>
 <tr>
@@ -1328,24 +1326,24 @@ blabla
 <td rowspan="2"><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
 <ol class="liste">
-<li>$R_{exp}$ &#8594; <em>sum</em></li>
-<li>$Te$ &#8594; <em>sum</em></li>
-<li>$Ts_{sup}$ &#8594; <em>average</em></li>
+<li>$R_{exp}$ &#8594; sum</li>
+<li>$Te$ &#8594; sum</li>
+<li>$Ts_{sup}$ &#8594; average</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="1"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">
 <ol class="liste"; start="4">
-<li>$Ts_{exp}$ &#8594; <em>sum</em></li>
-<li>$Ts_{sup}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; sum</li>
+<li>$Ts_{sup}$ &#8594; upwards</li>
 </ol>
 </td>
 <td colspan="1"; style="text-align:center;padding-top:0px">
 <ol class="liste"; start="4">
-<li>$C$ &#8594; <em>sum</em></li>
-<li>$Ts_{exp}$ &#8594; <em>sum</em></li>
-<li>$Ts_{sup}$ &#8594; <em>upwards</em></li>
+<li>$C$ &#8594; sum</li>
+<li>$Ts_{exp}$ &#8594; sum</li>
+<li>$Ts_{sup}$ &#8594; upwards</li>
 </ol>
 </td>
 </tr>
@@ -1392,28 +1390,28 @@ directed adds to undirecrted
 <td rowspan="3"><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
 <ol class="liste">
-<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$	&#8594; upwards</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="1"; style="text-align:center;border-right:none;border-top:none;border-bottom:none;padding-top:0px;padding-bottom:0px">
 <ol class="liste"; start="2">
-<li>$R_{a}$ &#8594; <em>sum</em></li>
-<li>$R_{b}$ &#8594; <em>sum</em></li>
+<li>$R_{a}$ &#8594; sum</li>
+<li>$R_{b}$ &#8594; sum</li>
 </ol>
 </td>
 <td colspan="1"; style="text-align:center;border-bottom:none;padding-top:0px;padding-bottom:0px">
 <ol class="liste"; start="2">
-<li>$R_{from}$ &#8594; <em>sum</em></li>
-<li>$R_{to}$ &#8594; <em>sum</em></li>
+<li>$R_{from}$ &#8594; sum</li>
+<li>$R_{to}$ &#8594; sum</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0.1875em">
 <ol class="liste"; start="4">
-<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+<li>$Ts_{dis}$	&#8594; average</li>
 </ol>
 </td>
 </tr>
@@ -1464,17 +1462,17 @@ for upper limits sum only if inheritance of all descendants are defined
 <td rowspan="2"><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
 <ol class="liste">
-<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$R_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$Te$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{exp}$ &#8594; sum/sum*</li>
+<li>$R_{exp}$ &#8594; sum/sum*</li>
+<li>$Te$ &#8594; sum/sum*</li>
 </ol>
 </td>
 <td colspan="1"; rowspan="2">
 <ol class="liste">
-<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$R_{a}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$R_{b}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{exp}$ &#8594; sum/sum*</li>
+<li>$R_{a}$ &#8594; sum/sum*</li>
+<li>$R_{b}$ &#8594; sum/sum*</li>
+<li>$C$ &#8594; sum/sum*</li>
 </ol>
 </td>
 </tr>
@@ -1483,7 +1481,7 @@ for upper limits sum only if inheritance of all descendants are defined
 </td>
 <td colspan="1"; style="text-align:center;padding-top:0px">
 <ol class="liste"; start="4">
-<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$C$ &#8594; sum/sum*</li>
 </ol>
 </td>
 </tr>
@@ -1533,30 +1531,30 @@ warning: problem capalimits und jahre
 <td rowspan="2"><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0px">
 <ol class="liste">
-<li>$R_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$Te$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$Ts_{sup}$ &#8594; <em>average</em></li>
+<li>$R_{exp}$ &#8594; sum/sum*</li>
+<li>$Te$ &#8594; sum/sum*</li>
+<li>$Ts_{sup}$ &#8594; average</li>
 </ol>
 </td>
 <td colspan="1"; rowspan="2">
 <ol class="liste">
-<li>$Ts_{sup}$	&#8594; <em>average</em></li>
-<li>$R_{a}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$R_{b}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{sup}$	&#8594; average</li>
+<li>$R_{a}$ &#8594; sum/sum*</li>
+<li>$R_{b}$ &#8594; sum/sum*</li>
+<li>$C$ &#8594; sum/sum*</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="1"; style="text-align:center;border-right:none;padding-top:0px">
 <ol class="liste"; start="4">
-<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{exp}$ &#8594; sum/sum*</li>
 </ol>
 </td>
 <td colspan="1"; style="text-align:center;padding-top:0px">
 <ol class="liste"; start="4">
-<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$C$ &#8594; sum/sum*</li>
+<li>$Ts_{exp}$ &#8594; sum/sum*</li>
 </ol>
 </td>
 </tr>
@@ -1605,30 +1603,30 @@ for upper limits sum only if inheritance of all descendants are defined
 <td rowspan="2"><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0px">
 <ol class="liste">
-<li>$R_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$Te$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$Ts_{sup}$ &#8594; <em>average</em></li>
+<li>$R_{exp}$ &#8594; sum/sum*</li>
+<li>$Te$ &#8594; sum/sum*</li>
+<li>$Ts_{sup}$ &#8594; average</li>
 </ol>
 </td>
 <td colspan="1"; rowspan="2">
 <ol class="liste">
-<li>$Ts_{sup}$	&#8594; <em>average</em></li>
-<li>$R_{a}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$R_{b}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{sup}$	&#8594; average</li>
+<li>$R_{a}$ &#8594; sum/sum*</li>
+<li>$R_{b}$ &#8594; sum/sum*</li>
+<li>$C$ &#8594; sum/sum*</li>
 </ol>
 </td>
 </tr>
 <tr>
 <td colspan="1"; style="text-align:center;border-right:none">
 <ol class="liste"; start="4">
-<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{exp}$ &#8594; sum/sum*</li>
 </ol>
 </td>
 <td colspan="1"; style="text-align:center">
 <ol class="liste"; start="4">
-<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$C$ &#8594; sum/sum*</li>
+<li>$Ts_{exp}$ &#8594; sum/sum*</li>
 </ol>
 </td>
 </tr>
@@ -1678,12 +1676,12 @@ for upper limits sum only if inheritance of all descendants are defined
 <td><strong>inheritance rules</strong></td>
 <td colspan="4"; style="text-align:center">
 <ol class="liste">
-<li>$Ts_{dis}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$R_{dis}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$Te$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$M$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{dis}$ &#8594; sum/sum*</li>
+<li>$Ts_{exp}$ &#8594; sum/sum*</li>
+<li>$R_{dis}$ &#8594; sum/sum*</li>
+<li>$C$ &#8594; sum/sum*</li>
+<li>$Te$ &#8594; sum/sum*</li>
+<li>$M$ &#8594; sum/sum*</li>
 </ol>
 </td></tr>
 <tr>
@@ -1728,10 +1726,10 @@ for upper limits sum only if inheritance of all descendants are defined
 <td><strong>inheritance rules</strong></td>
 <td colspan="2"; style="text-align:center">
 <ol class="liste">
-<li>$Ts_{dis}$	&#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$R_{a}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$R_{b}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{dis}$	&#8594; sum/sum*</li>
+<li>$R_{a}$ &#8594; sum/sum*</li>
+<li>$R_{b}$ &#8594; sum/sum*</li>
+<li>$C$ &#8594; sum/sum*</li>
 </ol>
 </td></tr>
 <tr>
@@ -1778,9 +1776,9 @@ for upper limits sum only if inheritance of all descendants are defined
 <td><strong>inheritance rules</strong></td>
 <td colspan="4"; style="text-align:center">
 <ol class="liste">
-<li>$Ts_{dis}$	&#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$R_{dis}$ &#8594; <em>sum</em>/<em>sum*</em></li>
-<li>$C$	&#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{dis}$	&#8594; sum/sum*</li>
+<li>$R_{dis}$ &#8594; sum/sum*</li>
+<li>$C$	&#8594; sum/sum*</li>
 </ol>
 </td></tr>
 <tr>
@@ -1827,12 +1825,12 @@ bla
 <td><strong>inheritance rules</strong></td>
 <td>
 <ol class="liste">
-<li>$Ts_{dis}$	&#8594; <em>sum*</em></li>
-<li>$Ts_{exp}$ &#8594; <em>sum*</em></li>
-<li>$R_{dis}$	&#8594; <em>sum*</em></li>
-<li>$C$	&#8594; <em>sum*</em></li>
-<li>$Te$	&#8594; <em>sum*</em></li>
-<li>$M$	&#8594; <em>sum*</em></li>
+<li>$Ts_{dis}$	&#8594; sum*</li>
+<li>$Ts_{exp}$ &#8594; sum*</li>
+<li>$R_{dis}$	&#8594; sum*</li>
+<li>$C$	&#8594; sum*</li>
+<li>$Te$	&#8594; sum*</li>
+<li>$M$	&#8594; sum*</li>
 </ol>
 </td></tr>
 <tr>
@@ -1877,12 +1875,12 @@ bla
 <td><strong>inheritance rules</strong></td>
 <td>
 <ol class="liste">
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
-<li>$R_{dis}$	&#8594; <em>upwards</em></li>
-<li>$C$	&#8594; <em>upwards</em></li>
-<li>$Te$	&#8594; <em>upwards</em></li>
-<li>$M$	&#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$Ts_{dis}$	&#8594; upwards</li>
+<li>$R_{dis}$	&#8594; upwards</li>
+<li>$C$	&#8594; upwards</li>
+<li>$Te$	&#8594; upwards</li>
+<li>$M$	&#8594; upwards</li>
 </ol>
 </td></tr>
 <tr>
@@ -1928,12 +1926,12 @@ bla
 <td><strong>inheritance rules</strong></td>
 <td>
 <ol class="liste">
-<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
-<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
-<li>$R_{dis}$	&#8594; <em>upwards</em></li>
-<li>$C$	&#8594; <em>upwards</em></li>
-<li>$Te$	&#8594; <em>upwards</em></li>
-<li>$M$	&#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; upwards</li>
+<li>$Ts_{dis}$	&#8594; upwards</li>
+<li>$R_{dis}$	&#8594; upwards</li>
+<li>$C$	&#8594; upwards</li>
+<li>$Te$	&#8594; upwards</li>
+<li>$M$	&#8594; upwards</li>
 </ol>
 </td></tr>
 <tr>
