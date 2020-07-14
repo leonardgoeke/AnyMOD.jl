@@ -20,13 +20,5 @@ makedocs(sitename="AnyMOD.jl",
 
 deploydocs(
     repo = "github.com/leonardgoeke/AnyMOD.jl.git",
+    devbranch = "dev"
 )
-
-
-
-
-"PYTHON" in keys(ENV)
-
-using AnyMOD
-
-"PYTHON" in keys(ENV)
