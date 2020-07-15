@@ -469,8 +469,8 @@ sdf
 
 list other types of inheritance:
 
-- upwards
-- average
-- sum
-- average*
-- sum*
+- *upwards*
+- *average*
+- *sum*
+- *average* *
+- *sum* *
