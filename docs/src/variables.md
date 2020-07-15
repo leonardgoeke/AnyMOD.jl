@@ -19,8 +19,7 @@ ul.liste {
 }
 </style>
 ```
-Variables
-=================
+# Variables
 
 erklärung grundsätzliches format, dataframe mit werten und ids, erklären wie das ganze ausgegeben werden kann, hinweis, dass zelle nicht einfach eine JuMP variable sondern eine expression enthält
 

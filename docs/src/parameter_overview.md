@@ -1,8 +1,8 @@
 ```@raw html
 <style>
 table.tabelle2 td {
-  padding-left: 7px;
-  padding-right: 7px;
+  padding-left: 0.57em;
+  padding-right: 0.57em;
   border-right: solid 1px;
   border-color: #dbdbdb;
   font-size: small;
@@ -29,8 +29,7 @@ font-size: medium;
 }
 </style>
 ```
-Parameter overview
-=================
+# Parameter overview
 
 hier wird auch read-in allgemein behandelt zum teil  
 

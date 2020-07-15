@@ -5,8 +5,8 @@ font-weight: normal;
 font-size: medium;
 }
 table.tabelle3 td {
-  padding-left: 7px;
-  padding-right: 7px;
+  padding-left: 0.57em;
+  padding-right: 0.57em;
   font-size: small;
   border-right: solid 1px;
   border-color: #dbdbdb;
@@ -27,6 +27,8 @@ Performance and stability
 =================
 
 mention numerical stability, no silver bullet, reference gurobi tips https://www.gurobi.com/documentation/9.0/refman/num_advanced_user_scaling.html
+
+auch losses storage and exchange und minimum value for availability, aber beides nur kurz im eingangsabsatz
 
 # Scaling
 
@@ -155,12 +157,3 @@ ggf. geht das nicht, dafür spezielle reporting option
 
 
 # Variable limits
-
-
-
-
-# Miscellaneous
-
-printIIS
-losses storage and exchange
-minimum value for availability

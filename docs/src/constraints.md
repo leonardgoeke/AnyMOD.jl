@@ -19,8 +19,7 @@ ul.liste {
 }
 </style>
 ```
-Constraints
-=================
+# Constraints
 
 [Energy balance](@ref)
 
