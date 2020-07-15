@@ -56,6 +56,8 @@ moveNode!(anyM::anyModel,newPos_arr::Array{Tuple{String,Array{Float64,1}},1})
 
 ### Sankey diagramm
 
+![](assets/sankey.png)
+
 ```@raw html
 <a href="../assets/sankey_example.html">example</a>
 ```
