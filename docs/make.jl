@@ -14,7 +14,8 @@ makedocs(sitename="AnyMOD.jl",
         "Tools" => Any["Reporting" => Any["Error handling" => "error.md","Data files" => "data.md","Plots" => "plots.md",],
                         "Performance and stability" => "performance.md"],
         "Annex" => Any["Tips" => "tips.md",
-                        "API" => "api.md"]
+                        "API" => "api.md",
+                        "Related material" => "related.md"]
         ],
     )
 

@@ -6,18 +6,24 @@ A comprehensive description of the framework's graph based methodology can found
 * The level of temporal and spatial granularity can be varied by energy carrier. For instance, electricity can be modelled with hourly resolution, while supply and demand of gas is balanced daily. As a result, a substantial decrease of computational effort can be achieved. In addition, flexibility inherent to the system, for example in the gas network, can be accounted for.
 * The degree to which energy carriers are substitutable when converted, stored, transported, or consumed can be modelled. As an example, residential and district heat can both equally satisfy heat demand, but technologies to produce these carriers are different.
 
-The framework requires [Julia 1.3.1](https://julialang.org/downloads/oldreleases/) since all computationally intensive steps are parallelized using multi-threading and relies on [DataFrames](https://juliadata.github.io/DataFrames.jl/stable/) and [JuMP](https://github.com/JuliaOpt/JuMP.jl) as a back-end. The repository [AnyMOD\_example\_model](https://github.com/leonardgoeke/AnyMOD_example_model) demonstrates how the framework can utilize version-control to openly share and develop models.
+The framework uses [DataFrames](https://juliadata.github.io/DataFrames.jl/stable/) to store model elements and relies on [JuMP](https://github.com/JuliaOpt/JuMP.jl) as a back-end. In addition, Julia's multi-threading capabilities are heavily deployed to increase performance. Since models entirely consist of .csv files, they can be developed open and collaboratively using version control (see [Repositories](@ref) for examples).
+
+# Installation
+
+The current version of [AnyMOD](https://github.com/leonardgoeke/AnyMOD.jl) was developed for [Julia 1.3.1](https://julialang.org/downloads/oldreleases/). AnyMOD is installed by switching into Julia's package mode by typing `]` into the console and then run `add AnyMOD`.
 
 # Getting started
 
-The example project "demo" is used to introduce some of packages’ core functions and give an idea about the workflow. First of all, AnyMOD is installed by switching into Julia package mode by typing `]` into the console and then run `add https://github.com/leonardgoeke/AnyMOD.jl`. The current version of AnyMOD was tested with Julia 1.3.1. After leaving the package mode again by pressing backspace and adding AnyMOD to your project, the function `anyModel` constructs an AnyMOD model object by reading in the csv files found within the directory specified by the first argument. The second argument specifies a directory all model outputs are written to. Furthermore, default model options can be overwritten via optional arguments. In this case, the model is assigned the name "demo", which will be added to name of each output file later.
+To introduce the packages’ workflow and core functions, a small-scale example model is created, solved and analyzed. The files of this model can either be found in the installation directory of the package (user/.julia/packages/AnyMOD/.../examples) or manually loaded from the GitHub repository.
+
+Before we can start working with AnyMOD it need to be imported via the `using` command. Afterwards, the function `anyModel` constructs an AnyMOD model object by reading in the csv files found within the directory specified by the first argument. The second argument specifies a directory all model outputs are written to. Furthermore, default model options can be overwritten via optional arguments. In this case, the optional argument `objName` is used to name the model "demo". This name will appear during reporting and added to each output file.
 
 ```
 using AnyMOD
-anyM = anyModel("examples/demo","results", objName = "demo")
+anyM = anyModel("../demo","results", objName = "demo")
 ```
 
-During the construction process, all input files are read-in and checked for errors. Afterwards sets are mapped to each other and parameter data is assigned to the different model parts. During the whole process status updates are printed to the console and more important reports are written to a dedicated csv file. Since after construction, all qualitative model information, meaning all sets and their interrelations, is written, several graphs describing a models´ structure can be plotted.
+During the construction process, all input files are read-in and checked for errors. Afterwards sets are mapped to each other and parameter data is assigned to the different model parts. During the whole process status updates are printed to the console and comprehensive reports are written to a dedicated csv file. Since after construction, all qualitative model information, meaning all sets and their interrelations, is written, several graphs describing a models´ structure can be plotted.
 
 ```
 plotTree(:region,anyM)
@@ -30,7 +36,7 @@ All of these plots will be written to the specified results folder. The first th
 
 ![](assets/carrier.png)
 
-The fourth graph created by using `plotEnergyFlow` with keyword `:graph` gives a visual qualitative overview of all energy flows within a model. Nodes either correspond to technologies (grey dots) or energy carriers (colored squares). Edges between technology and energy carrier nodes indicate the carrier is either an input (entering edge) or an output (leaving edge) of the respective technology. Edges between carriers indicate the same relationships as displayed in the tree above.
+The fourth graph created by using `plotEnergyFlow` with keyword `:graph` gives a qualitative overview of all energy flows within a model. Nodes either correspond to technologies (grey dots) or energy carriers (colored squares). Edges between technology and energy carrier nodes indicate the carrier is either an input (entering edge) or an output (leaving edge) of the respective technology. Edges between carriers indicate the same relationships as displayed in the tree above.
 
 ![](assets/energyFlowGraph.png)
 

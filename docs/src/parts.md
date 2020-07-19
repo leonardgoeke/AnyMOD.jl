@@ -20,3 +20,5 @@ mention wann exchange von carrier c möglich ist
 ## Limit
 
 ## Objective
+
+hier auch was zu setObjective
