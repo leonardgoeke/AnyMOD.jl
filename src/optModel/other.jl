@@ -359,7 +359,11 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 			end
 		end
 
+		# if installed capacities differ depending on the direction, because residual values were defined and at the same time fixed limits on the installed capacity were provided
+		# an error will occur, because a value cannot be fixed but and the same time differ by direction, this is detected hier
+		if :Fix in limitCol_arr && va == :capaExc
 
+		end
 
 		# XXX check for suspicious entries for capacity where limits are provided for the sum of capacity over several years
 		if occursin("capa",string(va))
