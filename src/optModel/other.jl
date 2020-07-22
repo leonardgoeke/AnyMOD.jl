@@ -230,6 +230,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal)
 
 	@threads for va in allKeys_arr
+
 		varToPart_dic = Dict(:exc => :exc, :crt => :bal,:trdSell => :trd, :trdBuy => :trd)
 
 		# obtain all variables relevant for limits
@@ -285,9 +286,10 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 			end
 
 			# merge limit constraint to other limits for the same variables
+			limit_df = convertExcCol(rename(limit_df,:val => lim))
 			join_arr = [intersect(intCol(allLimit_df),intCol(limit_df))...,:var]
 			miss_arr = [intCol(allLimit_df),intCol(limit_df)] |> (y -> union(setdiff(y[1],y[2]), setdiff(y[2],y[1])))
-			allLimit_df = joinMissing(allLimit_df, convertExcCol(rename(limit_df,:val => lim)), join_arr, :outer, merge(Dict(z => 0 for z in miss_arr),Dict(:Up => nothing, :Low => nothing, :Fix => nothing)))
+			allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr),Dict(:Up => nothing, :Low => nothing, :Fix => nothing)))
 		end
 
 		# XXX check for contradicting values
