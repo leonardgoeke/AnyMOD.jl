@@ -297,47 +297,69 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))
 		entr_int = size(allLimit_df,1)
 		if :Low in limitCol_arr || :Up in limitCol_arr
+			# XXX Errors
+
 			# upper and lower limit contradicting each other
 			if :Low in limitCol_arr && :Up in limitCol_arr
-				filter!(x -> any(isnothing.([x.Low,x.Up])) ? true : x.Low < x.Up,allLimit_df)
-				if entr_int != size(allLimit_df,1)
+				for x in findall(replace(allLimit_df[!,:Low],nothing => 0.0) .>= replace(allLimit_df[!,:Up],nothing => Inf))
+					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
-					push!(anyM.report,(2,"limit",string(va),"contradicting or equal values for upper and lower limit detected, both values were ignored in these cases"))
+					push!(anyM.report,(3,"limit",string(va),"contradicting values for upper and lower limit detected for: " * dim_str))
 					unlock(anyM.lock)
 				end
 			end
+
+			# fix and upper limit contradicting each other
+			if :Fix in limitCol_arr && :Up in limitCol_arr
+				for x in findall(replace(allLimit_df[!,:Fix],nothing => 0.0) .>= replace(allLimit_df[!,:Up],nothing => Inf))
+					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
+					lock(anyM.lock)
+					push!(anyM.report,(3,"limit",string(va),"fixed limit exceeds upper limit for: " * dim_str))
+					unlock(anyM.lock)
+				end
+			end
+
+			# fix and lower limit contradicting each other
+			if :Fix in limitCol_arr && :Up in limitCol_arr
+				for x in findall(replace(allLimit_df[!,:Fix],nothing => Inf) .<= replace(allLimit_df[!,:Low],nothing => 0.0))
+					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
+					lock(anyM.lock)
+					push!(anyM.report,(3,"limit",string(va),"fixed limit is smaller than lower limit for: " * dim_str))
+					unlock(anyM.lock)
+				end
+			end
+
+			# residual values already violate limits
+			resiVal_arr = getfield.(allLimit_df[!,:var],:constant)
+			if :Up in limitCol_arr
+				for x in findall(resiVal_arr .>  replace(allLimit_df[!,:Up],nothing => Inf))
+					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
+					lock(anyM.lock)
+					push!(anyM.report,(3,"limit",string(va),"residual values already exceed the upper limit for: " * dim_str))
+					unlock(anyM.lock)
+				end
+			end
+
+			# XXX warning
 			# upper or lower limit of zero
 			if !isempty(limitCol_arr |> (y -> filter(x -> collect(x[y]) |> (z -> any(isnothing.(z)) ? false : any(z .== 0)),allLimit_df))) && va != :emission
 				lock(anyM.lock)
-				push!(anyM.report,(2,"limit",string(va),"upper or lower limit of zero detected, please consider to use fix instead"))
+				push!(anyM.report,(2,"limit",string(va),"upper or lower limit of zero detected, please consider to use fix or omit limit instead"))
 				unlock(anyM.lock)
 				entr_int = size(allLimit_df,1)
 			end
-			# residual values already violate limits
-			resiVal_arr = getfield.(allLimit_df[!,:var],:constant)
-			if :Up in limitCol_arr && any(resiVal_arr .>  allLimit_df[!,:Up])
-				for x in findall(resiVal_arr .>  allLimit_df[!,:Up])
-					dimStr_arr = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
+
+			# value is fixed, but still a upper a lower limit is provided
+			if :Fix in limitCol_arr
+				if !isempty(filter(x -> x != :Fix, limitCol_arr) |> (z -> filter(x -> all([!isnothing(x.Fix),any(.!isnothing.(collect(x[z])))]) ,eachrow(allLimit_df))))
 					lock(anyM.lock)
-					push!(anyM.report,(3,"limit",string(va),"residual values already exceed the upper limit for: " * dimStr_arr))
+					push!(anyM.report,(2,"limit",string(va),"upper and/or lower limit detected, although variable is already fixed"))
 					unlock(anyM.lock)
 				end
 			end
-
 		end
 
 
-
-
-
-		# value is fixed, but still a upper a lower limit is provided
-		if :Fix in limitCol_arr && (:Low in limitCol_arr || :Up in limitCol_arr)
-			if !isempty(filter(x -> x != :Fix, limitCol_arr) |> (z -> filter(x -> all([!isnothing(x.Fix),any(.!isnothing.(collect(x[z])))]) ,eachrow(allLimit_df))))
-				lock(anyM.lock)
-				push!(anyM.report,(2,"limit",string(va),"upper and/or lower limit detected, although variable is already fixed"))
-				unlock(anyM.lock)
-			end
-		end
 
 		# XXX check for suspicious entries for capacity where limits are provided for the sum of capacity over several years
 		if occursin("capa",string(va))
