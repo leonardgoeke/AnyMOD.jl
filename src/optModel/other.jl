@@ -293,6 +293,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 		end
 
 		# XXX check for contradicting values
+		colSet_dic = Dict(x => Symbol(split(string(x),"_")[1]) for x in intCol(allLimit_df))
 		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))
 		entr_int = size(allLimit_df,1)
 		if :Low in limitCol_arr || :Up in limitCol_arr
@@ -312,7 +313,22 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 				unlock(anyM.lock)
 				entr_int = size(allLimit_df,1)
 			end
+			# residual values already violate limits
+			resiVal_arr = getfield.(allLimit_df[!,:var],:constant)
+			if :Up in limitCol_arr && any(resiVal_arr .>  allLimit_df[!,:Up])
+				for x in findall(resiVal_arr .>  allLimit_df[!,:Up])
+					dimStr_arr = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
+					lock(anyM.lock)
+					push!(anyM.report,(3,"limit",string(va),"residual values already exceed the upper limit for: " * dimStr_arr))
+					unlock(anyM.lock)
+				end
+			end
+
 		end
+
+
+
+
 
 		# value is fixed, but still a upper a lower limit is provided
 		if :Fix in limitCol_arr && (:Low in limitCol_arr || :Up in limitCol_arr)
