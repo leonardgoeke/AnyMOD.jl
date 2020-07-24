@@ -39,7 +39,7 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 			# reports error if carrier names are non-unique
 			strSet_arr = getfield.(values(anyM.sets[setLngShrt_dic[set]].nodes),:val)
 			if length(strSet_arr) != length(unique(strSet_arr))
-				push!(anyM.report,(3,"set read-in",set,"non-unique $set names provided"))
+				push!(anyM.report,(3,"set read-in",set,"non-unique $set names detected"))
 			end
 		end
 	end
@@ -140,7 +140,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 	for supCol in findall(eltype.(eachcol(readIn_df)) .!= String)
 		if !occursin("value",string(readInCol_arr[supCol]))
 			lock(lock_)
-			push!(report,(3,"parameter read-in",fileName_str,"entries in $(readInCol_arr[supCol]) could be transferred to string (probably provided as floats), file was not read-in"))
+			push!(report,(3,"parameter read-in",fileName_str,"entries in $(readInCol_arr[supCol]) could not be converted to strings (probably provided as floats), file was not read-in"))
 			unlock(lock_)
 			return DataFrame()
 		end
