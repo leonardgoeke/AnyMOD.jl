@@ -109,8 +109,6 @@ collectKeys(itr) = _collect(Symbol, itr, SizeUnknown())
 
 # </editor-fold>
 
-# </editor-fold>
-
 # <editor-fold desc="struct for individual parts of the model"
 
 # XXX defines parts of the model
