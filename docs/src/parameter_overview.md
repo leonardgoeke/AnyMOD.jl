@@ -37,6 +37,7 @@ hier wird auch read-in allgemein behandelt zum teil
 
 analgous to sets, example input table: explain what gets ignored (here technology and comments)
 additonal parameter/value columns possible
+erwähne verschiedene konventionen analog zu "all"
 
 ```@raw html
 <table class="tabelle2">

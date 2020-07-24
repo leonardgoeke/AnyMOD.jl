@@ -77,3 +77,11 @@ praktisch
 anordnung
 - `dropDown`
 - `useTeColor`
+
+# Styling
+
+`graInfo`
+
+graph::flowGraph
+names::Dict{String,String}
+colors::Dict{String,Tuple{Float64,Float64,Float64}}

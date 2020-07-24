@@ -20,22 +20,26 @@ ul.liste {
 ```
 # Model object
 
+The `anyModel` object is the overarching structure that contains all data and objects of particular energy system model created with AnyMOD.
+
 ```julia
 anyModel(inDir::Union{String,Array{String,1}},outDir::String; kwargs)
 ```
+[comment]: <> (julia format possible here?)
+## In- and output files
 
-* `inDir::Union{String,Array{String,1}}`: directory of input files, also allows for provide multiple directories via an array
-* `outDir::String`: directory of output files are written to
+The constructor function above has two mandatory arguments that the directories for in- and output files.
 
-sets, parts
+`inDir::Union{String,Array{String,1}}` specifies the directory (or directories) of input files. This can either be a string or an array of strings, if input files are spread across different directories. All `.csv` files within the provided directories (and their sub-directories) starting with `set_` or `par_` will be read-in as an input file. Other files are ignored and can be used for documentation. Within the specific files, only columns named `parameter`, `variable`, `value`, and `id` or columns starting with `region`, `timestep`, `carrier`, `technology`, or `mode` are actually read-in. Other columns can be used freely for documentation.
 
-report
+!!! warning "Reserved keywords"
+    Within all input files reserved keywords and characters are `all`,`:`,`,`,`(` and `)`. For an explanation on how they are used, see [Time-steps](@ref).
 
-optModel, hier auch verweis auf erweiterbar
+`outDir::String`: defines the directory of output files. All reporting files including status reports, results, or graphs are written to this directory.
 
-lock, supTs, cInfo
+## Optional arguments
 
-### Optional arguments
+Additionally, the constructor accepts a list of optional arguments listed in the table below.
 
 ```@raw html
 <table class="tabelle2">
@@ -237,11 +241,11 @@ lock, supTs, cInfo
 </table>
 ```
 
-
-### Graph styling
-
-`graInfo`
-
-graph::flowGraph
-names::Dict{String,String}
-colors::Dict{String,Tuple{Float64,Float64,Float64}}
+## Relevant fields
+[comment]: <> (julia format possible here?)
+Fields of the model object relevant for users include:
+* `sets::Dict{Symbol,Tree}`: sets defined within the model and their tree structure each saved as an `Tree` objects (see X for details)
+* `parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Int,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}`: all parts of the model, these contain the specific parameters, variables, and constraints (see X for details)
+* `report::Array{Tuple,1}`: status reports of model execution (see X for details)
+* `graInfo::graInfo`: properties for creation of plots and graphics, can be used to adjust colors and labels (see X for details)
+* `optModel::Model`: the actual [JuMP](https://github.com/JuliaOpt/JuMP.jl) object of the models underlying optimization problem
