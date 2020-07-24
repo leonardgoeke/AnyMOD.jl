@@ -109,8 +109,6 @@ collectKeys(itr) = _collect(Symbol, itr, SizeUnknown())
 
 # </editor-fold>
 
-# </editor-fold>
-
 # <editor-fold desc="struct for individual parts of the model"
 
 # XXX defines parts of the model
@@ -322,6 +320,11 @@ end
 
 # XXX finally, the model object itself
 """
+* `options::modOptions`
+* `lock::ReentrantLock`
+* `supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}}`
+* `cInfo::Dict{Int,NamedTuple}`
+
 The core model object containing all related data and subordinate objects.
 #  Constructor and arguments
 ```julia
