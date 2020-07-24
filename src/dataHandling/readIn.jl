@@ -203,7 +203,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
         delete!(readIn_df,findall(rowsAll_arr))
     end
 
-	# XXX convert column names if sets are defined for multiple insances (e.g. two regions in case of trade related parameters)
+	# XXX convert column names if sets are defined for multiple instances (e.g. two regions in case of trade related parameters)
 	if split(fileName_str,"/")[end][1:3] == "par"
 		# creates a dictionary that assigns everything after the set name seperated with a "_" to the respective set
 		splitCol_arr = map(x -> split(String(x),"_"),setdiff(namesSym(readIn_df),oprNames_arr[1]))
