@@ -48,7 +48,7 @@ createObjective!(objGrp::Symbol, partObj::OthPart,anyM::anyModel) = createObject
 function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
 	parObj_arr = collectKeys(keys(partObj.par))
-	techIdx_arr = collect(keys(anyM.parts.tech))
+	techSym_arr = collect(keys(anyM.parts.tech))
 	varToPart_dic = Dict(:exc => :exc, :ctr => :bal,:trdSell => :trd, :trdBuy => :trd)
 
 	# computes discount factors from discount rate provided and saves them as new parameter elements
@@ -81,7 +81,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allExp_df[!,:life] .= nothing
 		end
 
-		techFilt_arr = filter(y -> var_sym in keys(anyM.parts.tech[y].var), techIdx_arr)
+		techFilt_arr = filter(y -> var_sym in keys(anyM.parts.tech[y].var), techSym_arr)
 
 		# use technical lifetime where no economic lifetime could be obtained
 		if va != :Exc

@@ -237,11 +237,11 @@ mutable struct flowGraph
 		t_tree = anyM.sets[:Te]
 
 		allTech_arr =  getfield.(collect(values(t_tree.nodes)),:idx)
-		tleaf_dic = Dict(x => unique(filter(y -> y in keys(anyM.parts.tech), [x,getDescendants(x,t_tree,true)...])) for x in allTech_arr)
+		tleaf_dic = Dict(x => unique(filter(y -> techSym(y,anyM.sets[:Te]) in keys(anyM.parts.tech), [x,getDescendants(x,t_tree,true)...])) for x in allTech_arr)
 		relTech_arr = Array{Int,1}()
 
 		for t in keys(tleaf_dic)
-		    subCar_arr = map(y -> anyM.parts.tech[y].carrier,tleaf_dic[t])
+		    subCar_arr = map(y -> anyM.parts.tech[techSym(y,anyM.sets[:Te])].carrier,tleaf_dic[t])
 		    if length(unique(subCar_arr)) == 1
 		        push!(relTech_arr,t)
 		    else
@@ -258,14 +258,14 @@ mutable struct flowGraph
 		for t in keys(nodeTe_dic)
 		    gotTech_boo = false; tItr = t
 		    while !gotTech_boo
-		        if tItr in keys(anyM.parts.tech)
+		        if techSym(tItr,anyM.sets[:Te]) in keys(anyM.parts.tech)
 		            gotTech_boo = true
 		        else
-		            tItr = intersect(getDescendants(t,anyM.sets[:Te],true),keys(anyM.parts.tech))[1]
+		            tItr = intersect(getDescendants(t,anyM.sets[:Te],true),map(x -> techInt(x,anyM.sets[:Te]),collectKeys(keys(anyM.parts.tech))))[1]
 		        end
 		    end
 
-		    car_ntup = anyM.parts.tech[tItr].carrier
+		    car_ntup = anyM.parts.tech[techSym(tItr,anyM.sets[:Te])].carrier
 
 		    for cIn in map(x -> getfield(car_ntup,x),intersect(keys(car_ntup),(:use,:stExtIn))) |> (y -> isempty(y) ? y : union(y...))
 		        push!(edgeTe_arr, nodeC_dic[cIn] => nodeTe_dic[t])
@@ -370,7 +370,7 @@ mutable struct anyModel <: AbstractModel
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}}
 
 	sets::Dict{Symbol,Tree}
-	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Int,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
+	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Symbol,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
 
 	graInfo::graInfo
 	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decomm = :recomm, interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, emissionLoss = true,
@@ -414,13 +414,13 @@ mutable struct anyModel <: AbstractModel
 		relTech_df = DataFrame(filter(x -> any(collect(x) .!= ""), eachrow(relTech_df)))
 		techIdx_arr = filter(z -> isempty(anyM.sets[:Te].nodes[z].down), map(x -> lookupTupleTree(tuple(collect(x)...),anyM.sets[:Te],1)[1], eachrow(relTech_df)))
 
-		anyM.parts = (tech = Dict(x => TechPart(getUniName(x,anyM.sets[:Te])) for x in techIdx_arr), trd = OthPart(), exc = OthPart(), bal = OthPart(), lim = OthPart(), obj = OthPart())
+		anyM.parts = (tech = Dict(techSym(x,anyM.sets[:Te]) => TechPart(getUniName(x,anyM.sets[:Te])) for x in techIdx_arr), trd = OthPart(), exc = OthPart(), bal = OthPart(), lim = OthPart(), obj = OthPart())
 
 		createCarrierMapping!(setData_dic,anyM)
 		createTimestepMapping!(anyM)
 
 		# XXX write general info about technologies
-		for t in techIdx_arr createTechInfo!(t, setData_dic, anyM) end
+		for t in techIdx_arr createTechInfo!(techSym(t,anyM.sets[:Te]), setData_dic, anyM) end
 		produceMessage(anyM.options,anyM.report, 2," - Created all mappings among sets")
 
 		# XXX assign parameters to model parts

@@ -276,8 +276,8 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
     techToPar_dic[:both] = Dict(x => union(techToPar_dic[:up][x],techToPar_dic[:down][x]) for x in techIdx_arr)
     techToPar_dic[:none] = Dict(x => [x] for x in techIdx_arr)
 
-    convTechIdx_arr = filter(r -> !isempty(intersect((:gen,:use),keys(anyM.parts.tech[r].carrier))),techIdx_arr)
-    stTechIdx_arr   = filter(r -> !isempty(intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(anyM.parts.tech[r].carrier))),techIdx_arr)
+    convTechIdx_arr = filter(r -> !isempty(intersect((:gen,:use),keys(anyM.parts.tech[techSym(r,anyM.sets[:Te])].carrier))),techIdx_arr)
+    stTechIdx_arr   = filter(r -> !isempty(intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(anyM.parts.tech[techSym(r,anyM.sets[:Te])].carrier))),techIdx_arr)
 
     # XXX loop over all actual parameters to assign them to parts of the model
     @threads for parIt in allPar_arr
@@ -343,7 +343,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
                 filtParData_df = :Te in namesSym(allParData_df) ? filter(row -> row.Te in techToPar_dic[herit_sym][relTech], allParData_df) : allParData_df
                 # removes potential zero columns from data being actually written to part
                 rmvZeroParData_df = filtParData_df[!,filter(x -> unique(filtParData_df[!,x]) != [0] || x == :val,namesSym(filtParData_df))]
-                anyM.parts.tech[relTech].par[parIt] = ParElement(rmvZeroParData_df,parDef_tup,parIt,anyM.report)
+                anyM.parts.tech[techSym(relTech,anyM.sets[:Te])].par[parIt] = ParElement(rmvZeroParData_df,parDef_tup,parIt,anyM.report)
             end
         end
     end
@@ -356,8 +356,8 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
                 getfield(anyM.parts,parPart_sym).par[parUndef] = ParElement(DataFrame(),parDef_dic[parUndef],parUndef,anyM.report)
             end
         else
-            for relTech in filter(x -> !haskey(anyM.parts.tech[x].par,parUndef),parPart_sym == :techSt ? stTechIdx_arr : convTechIdx_arr)
-                anyM.parts.tech[relTech].par[parUndef] = ParElement(DataFrame(),parDef_dic[parUndef],parUndef,anyM.report)
+            for relTech in filter(x -> !haskey(anyM.parts.tech[techSym(x,anyM.sets[:Te])].par,parUndef),parPart_sym == :techSt ? stTechIdx_arr : convTechIdx_arr)
+                anyM.parts.tech[techSym(relTech,anyM.sets[:Te])].par[parUndef] = ParElement(DataFrame(),parDef_dic[parUndef],parUndef,anyM.report)
             end
         end
     end
@@ -433,7 +433,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
         # loops over all parameters of specific pre-setting type
 		for parItr in keys(filter(x -> x[2] == preType,parPre_dic))
             parPef_ntup = parDef_dic[parItr]
-			newPar_obj, report = resetParameter(:M in namesSym(part.par[parItr].data) ? dispResoM_df : dispReso_df, part.par[parItr], anyM.sets, anyM.options, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
+			newPar_obj, report = resetParameter(:M in namesSym(part.par[parItr].data) ? dispResoM_df : dispReso_df, part.par[parItr], part.name[end], anyM.sets, anyM.options, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
 
             if :M in namesSym(newPar_obj.data)
                 mode_df = unique(filter(x -> x.M != 0, newPar_obj.data)[!,Not([:val,:M])])
@@ -481,7 +481,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 end
 
 # XXX pre-sets specific dispatch parameter
-function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{Symbol,Tree}, options::modOptions, cntM_int::Int = 0, newHerit_tup::Tuple = ())
+function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String, sets::Dict{Symbol,Tree}, options::modOptions, cntM_int::Int = 0, newHerit_tup::Tuple = ())
     # gets dimension of search tables and parameter without mode
     newData_df = select(newData_df,intersect(namesSym(newData_df),par_obj.dim))
     # creates empty report, that entries are written to within subprocess
@@ -508,13 +508,13 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, sets::Dict{S
             modeGrpDef_arr = filter(r -> cntM_int == size(r,1), collect(modeGrp_gdf))
 
             if length(modeGrp_gdf.ends) > length(modeGrpDef_arr)
-                push!(report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was not specified for all modes in some cases for $(createFullString(t,sets[:Te])), existing values were ignored"))
+                push!(report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was not specified for all modes in some cases for $tStr, existing values were ignored"))
             end
 
             # filters entries where mode values are not distinct, reports on it and uses these entries as non-mode specific data
             disMode_arr = filter(r -> length(unique(r[!,:val])) != 1, modeGrpDef_arr)
             if length(modeGrpDef_arr) > length(disMode_arr)
-                push!(report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was the same for all modes in some cases for $(createFullString(t,sets[:Te])), no differentiation between modes was applied in these cases"))
+                push!(report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was the same for all modes in some cases for $tStr, no differentiation between modes was applied in these cases"))
                 noMode_df = vcat(noMode_df, vcat(filter(r -> length(unique(r[!,:val])) == 1, modeGrpDef_arr)...) )
             end
 

@@ -1,12 +1,12 @@
 
 # XXX iteration over all technologies to create variables and constraints
-function createTech!(t::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
+function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
     cns_dic = Dict{Symbol,cnsCont}()
     newHerit_dic = Dict(:lowest => (:Ts_dis => :avg_any, :R_dis => :avg_any),:reference => (:Ts_dis => :up, :R_dis => :up)) # inheritance rules after presetting
     ratioVar_dic = Dict(:StIn => ("StIn" => "Conv"), :StOut => ("StOut" => "StIn"), :StSize => ("StSize" => "StIn")) # assignment of tech types for ratios stuff
 
-    tech_str = createFullString(t,anyM.sets[:Te])
+    tech_str = createFullString(tInt,anyM.sets[:Te])
     # presets all dispatch parameter and obtains mode-dependant variables
     modeDep_dic = presetDispatchParameter!(part,prepTech_dic,parDef_dic,newHerit_dic,ts_dic,r_dic,anyM)
 
@@ -57,39 +57,40 @@ end
 # <editor-fold desc= prepare to create expansion and capacity variables"
 
 # XXX sets dimensions for expansion and capacity variables
-function prepareTechs!(techIdx_arr::Array{Int,1},prepVar_dic::Dict{Int,Dict{Symbol,NamedTuple}},tsYear_dic::Dict{Int,Int},anyM::anyModel)
-	for t in techIdx_arr
+function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},tsYear_dic::Dict{Int,Int},anyM::anyModel)
+	for tSym in techSym_arr
 		prepTech_dic = Dict{Symbol,NamedTuple}()
-		part = anyM.parts.tech[t]
+		part = anyM.parts.tech[tSym]
+        tInt = techInt(tSym,anyM.sets[:Te])
 
 	    # dimension of expansion and corresponding capacity variables
 	    if part.type != :stock
-	        prepareExpansion!(prepTech_dic, tsYear_dic, part, t, anyM)
+	        prepareExpansion!(prepTech_dic, tsYear_dic, part, tInt, anyM)
 
 			for expan in collectKeys(keys(prepTech_dic))
-				prepareCapacity!(part,prepTech_dic,vcat(map(x -> x[!,removeVal(x)],prepTech_dic[expan])...),Symbol(replace(string(expan),"exp" => "capa")),anyM, tech = t)
+				prepareCapacity!(part,prepTech_dic,vcat(map(x -> x[!,removeVal(x)],prepTech_dic[expan])...),Symbol(replace(string(expan),"exp" => "capa")),anyM, tech = tInt)
 			end
 		end
 
 		# check for capacities variables that have to be created, because of residual capacities provided
-		addResidualCapa!(prepTech_dic, part, t, anyM)
+		addResidualCapa!(prepTech_dic, part, tInt, anyM)
 
 		# map required capacity constraints
-		createCapaRestrMap!(t, anyM)
+		createCapaRestrMap!(tSym, anyM)
 
 		# if any capacity variables or residuals were prepared, add these to overall dictionary
 	    if collect(values(prepTech_dic)) |> (z -> any(map(x -> any(.!isempty.(getfield.(z,x))), (:var,:resi))))
-			prepVar_dic[t] = prepTech_dic
+			prepVar_dic[tSym] = prepTech_dic
 			# write reporting, if not all 3 kind of storage capacities will be created
 			if map(x -> x in keys(prepTech_dic),(:capaStIn,:capaStOut,:capaStSize)) |> (y -> any(y) && !all(y))
-				push!(anyM.report,(3,"technology dimensions","storage","in case of $(createFullString(t,anyM.sets[:Te])) information for one storage capacity is missing (capaStIn, capaStOut or capaStSize)"))
+				push!(anyM.report,(3,"technology dimensions","storage","in case of $(string(tSym)) information for one storage capacity is missing (capaStIn, capaStOut or capaStSize)"))
 			end
 		end
 	end
 end
 
 # XXX dimensions for expansion variables
-function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},part::AbstractModelPart,t::Int,anyM::anyModel)
+function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},part::AbstractModelPart,tInt::Int,anyM::anyModel)
 
 	# extract tech info
 	carGrp_ntup = part.carrier
@@ -101,12 +102,12 @@ function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dic
 	if anyM.options.interCapa != :linear tsExp_arr = map(x -> [minimum(x)],tsExp_arr) end
 
 	expDim_arr = vcat(collect(Iterators.product(Iterators.zip(tsExp_arr,tsExpSup_arr),rExp_arr))...)
-	allMap_df =  getindex.(expDim_arr,1) |> (x -> DataFrame(Ts_exp = getindex.(x,1), Ts_expSup = getindex.(x,2), R_exp = getindex.(expDim_arr,2), Te = fill(t,length(expDim_arr))))
+	allMap_df =  getindex.(expDim_arr,1) |> (x -> DataFrame(Ts_exp = getindex.(x,1), Ts_expSup = getindex.(x,2), R_exp = getindex.(expDim_arr,2), Te = fill(tInt,length(expDim_arr))))
 
 	# prepares expansion dimensions for conversion capacity
 	if !isempty(intersect((:gen,:use),keys(carGrp_ntup)))
 		# filters cases where expansion is fixed to zero
-		convMap_df = removeEntries([filterZero(allMap_df,getLimPar(anyM.parts.lim,:expConvFix, anyM.sets[:Te], tech = t),anyM)],allMap_df)
+		convMap_df = removeEntries([filterZero(allMap_df,getLimPar(anyM.parts.lim,:expConvFix, anyM.sets[:Te], tech = tInt),anyM)],allMap_df)
 
 		if !isempty(convMap_df) prepTech_dic[:expConv] =  (var = addSupTsToExp(convMap_df,part.par,:Conv,tsYear_dic,anyM), ratio = DataFrame(), resi = DataFrame()) end
 	end
@@ -122,10 +123,10 @@ function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dic
 
 			# filters cases where expansion is fixed to zero
 			if Symbol(:exp,st,:Fix) in defPar_tup
-				push!(remove_arr,filterZero(stMap_df,getLimPar(anyM.parts.lim,Symbol(:exp,st,:Fix), anyM.sets[:Te], tech = t),anyM))
+				push!(remove_arr,filterZero(stMap_df,getLimPar(anyM.parts.lim,Symbol(:exp,st,:Fix), anyM.sets[:Te], tech = tInt),anyM))
 			end
 
-			remove_arr, ratioTab_df = findStorageRatio(t,stMap_df,st, remove_arr, part, :exp, anyM)
+			remove_arr, ratioTab_df = findStorageRatio(tInt,stMap_df,st, remove_arr, part, :exp, anyM)
 			specStMap_df = removeEntries(remove_arr,stMap_df)
 
 			if !(isempty(specStMap_df) && isempty(ratioTab_df))
@@ -357,7 +358,7 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 end
 
 # XXX capacity values for stock technologies
-function addResidualCapa!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,t::Int,anyM::anyModel)
+function addResidualCapa!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,tInt::Int,anyM::anyModel)
 
 	carGrp_ntup = part.carrier
 	stCar_arr = unique(vcat(collect.(map(x -> getproperty(carGrp_ntup,x),intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))))...))
@@ -366,7 +367,7 @@ function addResidualCapa!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,t
 	# checks conversion capacities for stock data
 	if !isempty(intersect((:gen,:use),keys(carGrp_ntup)))
 		permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step))...),i) for i in (1,2)]
-		potCapa_df = DataFrame(Ts_expSup = fill(0,length(permutDim_arr[1])), Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], Te = fill(t,length(permutDim_arr[1])))
+		potCapa_df = DataFrame(Ts_expSup = fill(0,length(permutDim_arr[1])), Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], Te = fill(tInt,length(permutDim_arr[1])))
 		# filters stock technologies with residual values provided and saves these in dictionary
 		capaResi_df = checkResiCapa(:capaConv,potCapa_df, part, anyM)
 
@@ -378,13 +379,13 @@ function addResidualCapa!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,t
 	# checks storage capacities for stock data
 	if !isempty(stCar_arr)
 		permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step,stCar_arr))...),i) for i in (1,2,3)]
-		potCapa_df = DataFrame(Ts_expSup = fill(0,length(permutDim_arr[1])), Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], C = permutDim_arr[3], Te = fill(t,length(permutDim_arr[1])))
+		potCapa_df = DataFrame(Ts_expSup = fill(0,length(permutDim_arr[1])), Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], C = permutDim_arr[3], Te = fill(tInt,length(permutDim_arr[1])))
 
 		# loops over different type of storage
 		for st in (:StIn, :StOut, :StSize)
 			capaResi_df = checkResiCapa(Symbol(:capa,st),potCapa_df, part, anyM)
 			capa_sym = Symbol(:capa,st)
-			remove_arr, ratioTab_df = findStorageRatio(t,potCapa_df,st, Array{DataFrame,1}(), part, :capa, anyM)
+			remove_arr, ratioTab_df = findStorageRatio(tInt,potCapa_df,st, Array{DataFrame,1}(), part, :capa, anyM)
 			if !isempty(capaResi_df) capaResi_df = removeEntries(remove_arr,capaResi_df) end
 
 			if !(isempty(capaResi_df) && isempty(ratioTab_df))

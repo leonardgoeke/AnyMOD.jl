@@ -45,7 +45,7 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 end
 
 # XXX create all energy balances (and curtailment variables if required)
-function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
+function createEnergyBal!(techSym_arr::Array{Symbol,1},anyM::anyModel)
 
 	partBal = anyM.parts.bal
 	c_arr = filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx))
@@ -89,7 +89,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	if :trdBuy in keys(anyM.parts.trd.var) append!(relC_arr,unique(anyM.parts.trd.var[:trdBuy][!,:C])) end
 
 	# add carriers beings generated or used
-	append!(relC_arr,union(union(map(x -> anyM.parts.tech[x].carrier |> (y -> map(z -> getfield(y,z),intersect(keys(y),(:gen,:use)))),techIdx_arr)...)...))
+	append!(relC_arr,union(union(map(x -> anyM.parts.tech[x].carrier |> (y -> map(z -> getfield(y,z),intersect(keys(y),(:gen,:use)))),techSym_arr)...)...))
 	relC_arr = unique(relC_arr)
 
 	# create object to write constraint data too
@@ -110,7 +110,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
 
 		# add tech variables
-		cns_df[!,:techVar] = getTechEnerBal(c,subC_arr,src_df,techIdx_arr,anyM.parts.tech,anyM.cInfo,anyM.sets)
+		cns_df[!,:techVar] = getTechEnerBal(c,subC_arr,src_df,anyM.parts.tech,anyM.cInfo,anyM.sets)
 
 		# add curtailment variables
 		for varType in (:crt,:lss)
@@ -169,7 +169,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 end
 
 # XXX aggregate all technology variables for energy balance
-function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,techIdx_arr::Array{Int,1},tech_dic::Dict{Int,TechPart},
+function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,tech_dic::Dict{Symbol,TechPart},
 																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}},sets_dic::Dict{Symbol,Tree})
 	techVar_arr = Array{Array{AffExpr,1}}(undef,length(subC_arr))
 
@@ -217,7 +217,7 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 end
 
 # XXX create constarints that enforce any type of limit (Up/Low/Fix) on any type of variable
-function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyModel)
+function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 	parLim_arr = String.(collectKeys(keys(partLim.par)))
 	techLim_arr = filter(x ->  any(map(y -> occursin(y,x),["Up","Low","Fix"])),parLim_arr)
@@ -376,8 +376,8 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 				relEntr_df = filter(x -> x.Ts_disSup == 0, allLimit_df)
 				if :Te in namesSym(relEntr_df)
 					allTe_arr = unique(relEntr_df[!,:Te])
-					for t in allTe_arr
-						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for $(createFullString(t,anyM.sets[:Te])) without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
+					for tInt in allTe_arr
+						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for $(string(techSym(tInt,anyM.sets[:Te]))) without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
 																						(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
 					end
 				else

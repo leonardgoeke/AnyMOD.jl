@@ -7,18 +7,18 @@ function createOptModel!(anyM::anyModel)
 
 	# <editor-fold desc="create technology related variables and constraints"
 
-	techIdx_arr = collect(keys(anyM.parts.tech))
+	techSym_arr = collect(keys(anyM.parts.tech))
     parDef_dic = defineParameter(anyM.options,anyM.report)
 
     # XXX get dimension of expansion and capacity variables and mapping of capacity constraints
     tsYear_dic = Dict(zip(anyM.supTs.step,collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
-    prepVar_dic = Dict{Int,Dict{Symbol,NamedTuple}}()
-    prepareTechs!(techIdx_arr,prepVar_dic,tsYear_dic,anyM)
+    prepVar_dic = Dict{Symbol,Dict{Symbol,NamedTuple}}()
+    prepareTechs!(techSym_arr,prepVar_dic,tsYear_dic,anyM)
     if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
 
     # remove technologies without any potential capacity variables
-    techIdx_arr = collect(keys(prepVar_dic))
-    foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),techIdx_arr))
+    techSym_arr = collect(keys(prepVar_dic))
+    foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),techSym_arr))
 
     # XXX create all technology related elements
 
@@ -35,16 +35,16 @@ function createOptModel!(anyM::anyModel)
     produceMessage(anyM.options,anyM.report, 3," - Determined dimension of expansion and capacity variables for technologies")
 
     # constraints for technologies are prepared in threaded loop and stored in an array of dictionaries
-	techCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(techIdx_arr))
-	tech_itr = collect(enumerate(techIdx_arr))
+	techCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(techSym_arr))
+	tech_itr = collect(enumerate(techSym_arr))
 
-	@threads for (idx,t) in tech_itr
-		techCnsDic_arr[idx] = createTech!(t,anyM.parts.tech[t],prepVar_dic[t],copy(parDef_dic),ts_dic,r_dic,anyM)
+	@threads for (idx,tSym) in tech_itr
+		techCnsDic_arr[idx] = createTech!(techInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepVar_dic[tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
 	end
 
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
     for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
-        anyM.parts.tech[techIdx_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
+        anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
     end
     produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all technologies")
 
@@ -81,8 +81,8 @@ function createOptModel!(anyM::anyModel)
 	# </editor-fold>
 
 	createTradeVarCns!(anyM.parts.trd,anyM)
-	createEnergyBal!(techIdx_arr,anyM)
-	createLimitCns!(techIdx_arr,anyM.parts.lim,anyM)
+	createEnergyBal!(techSym_arr,anyM)
+	createLimitCns!(anyM.parts.lim,anyM)
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")
 end
