@@ -537,7 +537,7 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
     PyCall.fixqtpath()
 
     # <editor-fold desc="initialize variables"
-    treeName_dic = Dict(:region => :R,:timestep => :Ts,:carrier => :C,:tech => :Te)
+    treeName_dic = Dict(:region => :R,:timestep => :Ts,:carrier => :C,:technology => :Te)
 
     # convert tree object into a data frame
     tree_obj = anyM.sets[treeName_dic[tree_sym]]
