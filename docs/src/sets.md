@@ -258,6 +258,8 @@ In addition to defining carriers, the `set_carrier.csv` file also maps them to r
 !!! tip "Less detailed resolution for debugging"
     Creating and especially solving a model is much faster if the temporal resolution of dispatch is decreased. Therefore, it is advisable to first test new models at a less detailed temporal resolution. In the example this would be achieved by replacing the ´4´ for electricity with ´2´ to switch to a daily resolution. This will help you to spot and fix mistakes or unintended effects more efficiently.
 
+AnyMOD checks the specified resolutions and will throw an error if any logical inconsistencies are detected. Resolutions provided in a specific row directly only apply to the last carrier in that row. However, carrier on higher levels without a specified resolution, like `gas` in the example,  automatically inherit a resolution from their descendants.
+
 **Optional mappings**
 
 For reasons elaborated in [Göke (2020)](https://arxiv.org/abs/2004.10184), be default energy balances in AnyMOD are not formulated as equality constraints meaning supply can exceed demand. To overwrite this behaviour, an optional column named `carrier_equality` using the keywords `yes` and `no` can be added to the file, where `yes` will enforce an equality constraint.
@@ -416,8 +418,7 @@ The hierarchical tree of technologies is defined analogously to regions and time
 </tbody>
 </table>
 ```
-The table above corresponds to the following tree:
-
+Within the model only nodes without any descendants are actual technologies. The remaining nodes have the sole purpose of organizing them. This facilitates the read-in of parameter data and formulation of certain constraints (e.g. the available rooftop area limiting the summed capacity of `photovoltaic` and `solarThermal`). The resulting hierarchical tree from the table above is displayed below. 
 ```@raw html
 <img src="../assets/tech.png" width="100%"/>
 ```
@@ -540,4 +541,4 @@ Other sets in AnyMOD are not organized in hierarchical trees and might even be e
 
 ### Modes
 
-All distinct operational modes defined for technologies.
+The set of modes includes operational modes defined for technologies.

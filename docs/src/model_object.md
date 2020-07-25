@@ -241,7 +241,7 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 </table>
 ```
 
-## Relevant fields
+## Fields
 [comment]: <> (julia format possible here?)
 Fields of the model object relevant for users include:
 * `sets::Dict{Symbol,Tree}`: sets defined within the model and their tree structure each saved as an `Tree` objects (see X for details)
