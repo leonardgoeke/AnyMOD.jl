@@ -19,10 +19,6 @@ function prepareExcExpansion!(partExc::OthPart,partLim::OthPart,prepExc_dic::Dic
 		append!(exExp_df,matchSetParameter(potExc_df,partExc.par[excPar],anyM.sets)[!,[:R_a,:R_b,:C]])
 	end
 
-	for excPar in intersect((:capaExcUp, :capaExcLow, :capaExcFix, :expExcUp, :expExcLow, :expExcFix),keys(partLim.par))
-		append!(exExp_df,matchSetParameter(potExc_df,partLim.par[excPar],anyM.sets)[!,[:R_a,:R_b,:C]])
-	end
-
 	# ensure expansion entries are not directed
 	exExp_df = unique(exExp_df) |> (x -> filter(y -> y.R_a < y.R_b,vcat(x,rename(x,replace(namesSym(x),:R_a => :R_b, :R_b => :R_a))))) |> (z -> unique(z))
 
