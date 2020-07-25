@@ -6,7 +6,7 @@ A comprehensive description of the framework's graph based methodology can found
 * The level of temporal and spatial granularity can be varied by energy carrier. For instance, electricity can be modelled with hourly resolution, while supply and demand of gas is balanced daily. As a result, a substantial decrease of computational effort can be achieved. In addition, flexibility inherent to the system, for example in the gas network, can be accounted for.
 * The degree to which energy carriers are substitutable when converted, stored, transported, or consumed can be modelled. As an example, residential and district heat can both equally satisfy heat demand, but technologies to produce these carriers are different.
 
-The framework uses [DataFrames](https://juliadata.github.io/DataFrames.jl/stable/) to store model elements and relies on [JuMP](https://github.com/JuliaOpt/JuMP.jl) as a back-end. In addition, Julia's multi-threading capabilities are heavily deployed to increase performance. Since models entirely consist of .csv files, they can be developed open and collaboratively using version control (see [Repositories](@ref) for examples).
+The framework uses [DataFrames](https://juliadata.github.io/DataFrames.jl/stable/) to store model elements and relies on [JuMP](https://github.com/JuliaOpt/JuMP.jl) as a back-end. In addition, Julia's multi-threading capabilities are heavily deployed to increase performance. Since models entirely consist of .csv files, they can be developed open and collaboratively using version control (see [Model repositories](@ref) for examples).
 
 # Installation
 
@@ -18,14 +18,14 @@ To introduce the packages’ workflow and core functions, a small-scale example 
 
 Before we can start working with AnyMOD it need to be imported via the `using` command. Afterwards, the function `anyModel` constructs an AnyMOD model object by reading in the csv files found within the directory specified by the first argument. The second argument specifies a directory all model outputs are written to. Furthermore, default model options can be overwritten via optional arguments. In this case, the optional argument `objName` is used to name the model "demo". This name will appear during reporting and added to each output file. The optional argument `shortExp` defines the span of year between different time-steps of capacity expansion.
 
-```
+```julia
 using AnyMOD
 anyM = anyModel("../demo","results", objName = "demo", shortExp = 10)
 ```
 
 During the construction process, all input files are read-in and checked for errors. Afterwards sets are mapped to each other and parameter data is assigned to the different model parts. During the whole process status updates are printed to the console and comprehensive reports are written to a dedicated csv file. Since after construction, all qualitative model information, meaning all sets and their interrelations, is written, several graphs describing a models´ structure can be plotted.
 
-```
+```julia
 plotTree(:region,anyM)
 plotTree(:carrier,anyM)
 plotTree(:tech,anyM, plotSize = (28.0,5.0))
@@ -42,14 +42,14 @@ The fourth graph created by using `plotEnergyFlow` with keyword `:graph` gives a
 
 To create the variables and constraints of the model's underlying optimization problem, the model object is passed to the `createOptModel!` function. Afterwards, the `setObjective!` function is used to set the objective function for optimizing. The function requires a keyword input to indicate what is optimized, but so far only `:costs` has been implemented. Again, updates and reports are written to the console and to a dedicated reporting file.
 
-```
+```julia
 createOptModel!(anyM)
 setObjective!(:costs,anyM)
 ```
 
 To actually solve the created optimization problem, the field of the model structure containing the corresponding JuMP object is passed to the functions of the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package used for this purpose. The JuMP package itself is part of AnyMOD’s dependencies and therefore does not have to be added separately, but the solver does. In this case we used Gurobi, but CPLEX or a non-commercial solver could have been used as well.
 
-```
+```julia
 using Gurobi
 set_optimizer(anyM.optModel,Gurobi.Optimizer)
 optimize!(anyM.optModel)
@@ -57,7 +57,7 @@ optimize!(anyM.optModel)
 
 Once a model is solved, results can be obtained and analyzed by the following functions:
 
-```
+```julia
 reportResults(:summary,anyM)
 reportTimeSeries(:electricity, anyM)
 plotEnergyFlow(:sankey,anyM)
