@@ -320,7 +320,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			end
 
 			# fix and lower limit contradicting each other
-			if :Fix in limitCol_arr && :Up in limitCol_arr
+			if :Fix in limitCol_arr && :Low in limitCol_arr
 				for x in findall(replace(allLimit_df[!,:Fix],nothing => Inf) .<= replace(allLimit_df[!,:Low],nothing => 0.0))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
@@ -360,9 +360,23 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		end
 
 		# if installed capacities differ depending on the direction, because residual values were defined and at the same time fixed limits on the installed capacity were provided
-		# an error will occur, because a value cannot be fixed but and the same time differ by direction, this is detected hier
+		# an error will occur, because a value cannot be fixed but and the same time differ by direction, this is detected here
 		if :Fix in limitCol_arr && va == :capaExc
-
+			# filters fixed exchange capacities and extracts residual values
+			fix_df = select(filter(x -> x.Fix != nothing, allLimit_df) ,intCol(allLimit_df,:var))
+			fix_df[!,:resi] .= getfield.(fix_df[!,:var],:constant)
+			# joins together capacities in both directions
+			joinA_df = rename(select(fix_df,Not([:var])),:resi => :resiA)
+			joinB_df = rename(joinA_df,:resiA => :resiB)
+			comp_df = innerjoin(joinA_df,joinB_df, on = intCol(joinA_df) .=> replace(intCol(joinB_df),:R_from => :R_to,:R_to => :R_from))
+			# finds cases that lead to contradiction and reports on them
+			contraExc_df = filter(x -> x.resiA != x.resiB && x.R_from > x.R_to,comp_df)
+			for x in eachrow(contraExc_df)
+				dim_str = join(map(y -> x[y] == 0 ?  "" : string(y,": ",join(getUniName(x[y], anyM.sets[colSet_dic[y]])," < ")),intCol(contraExc_df)),"; ")
+				lock(anyM.lock)
+				push!(anyM.report,(3,"limit",string(va),"for the exchange capacity '" * dim_str * "' residual capacites differ by direction but at the same time the installed capacity in both directions is fixed to the same value by capaExcFix, this is a contradiction and  would lead to an infeasible model"))
+				unlock(anyM.lock)
+			end
 		end
 
 		# XXX check for suspicious entries for capacity where limits are provided for the sum of capacity over several years
