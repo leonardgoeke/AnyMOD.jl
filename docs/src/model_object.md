@@ -33,7 +33,7 @@ The constructor function above has two mandatory arguments that the directories 
 `inDir::Union{String,Array{String,1}}` specifies the directory (or directories) of input files. This can either be a string or an array of strings, if input files are spread across different directories. All `.csv` files within the provided directories (and their sub-directories) starting with `set_` or `par_` will be read-in as an input file. Other files are ignored and can be used for documentation. Within the specific files, only columns named `parameter`, `variable`, `value`, and `id` or columns starting with `region`, `timestep`, `carrier`, `technology`, or `mode` are actually read-in. Other columns can be used freely for documentation.
 
 !!! warning "Reserved keywords"
-    Within all input files reserved keywords and characters are `all`,`:`,`,`,`(` and `)`. For an explanation on how they are used, see [Time-steps](@ref).
+    Within the input files `all` is a reserved keyword. For an explanation on how it is used, see [Time-steps](@ref).
 
 `outDir::String`: defines the directory of output files. All reporting files including status reports, results, or graphs are written to this directory.
 

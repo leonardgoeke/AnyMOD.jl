@@ -159,9 +159,9 @@ is equivalent to these two rows:
 </tbody>
 </table>
 ```
-Instead of `all` other abbreviations are available to assign multiple previously defined nodes within a single row:
-* `(node1,node2,node3)` assigns all listed nodes. Accordingly, in the example above `(2020,2030)` would have achieved the same result as using `all`.
-* `(node1:node2)` assigns not only `node1` and `node2`, but also all nodes in between according to alphabetical order.
+The keyword `all` can be extended to assign specific multiple previously defined nodes within a single row:
+* `all(node1,node2,node3)` assigns all listed nodes. Accordingly, in the example above `(2020,2030)` would have achieved the same result as using `all`.
+* `all(node1:node2)` assigns not only `node1` and `node2`, but also all nodes in between according to alphabetical order.
 
 In the example above, the use of `all` results in each year having descendant nodes that represents days (level 2), 4-hour steps (level 3) and hours (level 4). Since names of time-steps are not required to be unique, these different nodes for each year and can share the same names. A reduced version of the corresponds tree can be plotted and is shown below.
 
@@ -418,7 +418,7 @@ The hierarchical tree of technologies is defined analogously to regions and time
 </tbody>
 </table>
 ```
-Within the model only nodes without any descendants are actual technologies. The remaining nodes have the sole purpose of organizing them. This facilitates the read-in of parameter data and formulation of certain constraints (e.g. the available rooftop area limiting the summed capacity of `photovoltaic` and `solarThermal`). The resulting hierarchical tree from the table above is displayed below. 
+Within the model only nodes without any descendants are actual technologies. The remaining nodes have the sole purpose of organizing them. This facilitates the read-in of parameter data and formulation of certain constraints (e.g. the available rooftop area limiting the summed capacity of `photovoltaic` and `solarThermal`). The resulting hierarchical tree from the table above is displayed below.
 ```@raw html
 <img src="../assets/tech.png" width="100%"/>
 ```
@@ -454,6 +454,7 @@ Also the opposite case can be modelled: A carrier can be charged from outside, b
 ```@raw html
 <p style="text-align:center;"><img src="../assets/mixTech2.svg" width="100%"/>
 ```
+Although within the examples here storage was limited to a single carrier, a technology can store an arbitrary number of carriers.
 
 **Optional mappings**
 
