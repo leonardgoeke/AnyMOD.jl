@@ -123,9 +123,10 @@ function createTimestepMapping!(anyM::anyModel)
 end
 
 # XXX writes basic information for each technology
-function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
+function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 
-    part = anyM.parts.tech[t]
+    part = anyM.parts.tech[tSym]
+    t_int = techInt(tSym,anyM.sets[:Te])
     lvlTech_arr = Symbol.(:technology_,1:anyM.sets[:Te].height)
 
     # tuple of columns with input, output and stored carriers
@@ -139,7 +140,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     typeStringInt_dic = Dict("stock" => 0, "mature" => 1,"emerging" => 2)
 
     # gets datarow for respective technology
-	row_df = anyM.sets[:Te].nodes[t].val |> (z -> filter(x -> any(map(y -> z == x[y],lvlTech_arr)) ,setData_dic[:Te])[1,:])
+	row_df = anyM.sets[:Te].nodes[t_int].val |> (z -> filter(x -> any(map(y -> z == x[y],lvlTech_arr)) ,setData_dic[:Te])[1,:])
 
     # XXX writes carrier info
     # gets string array of carriers for input, output and stored, looks up respective ids afterwards and writes to mapping file
@@ -147,7 +148,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 	carId_dic = Dict(z => tuple(map(x -> getDicEmpty(nameC_dic,x),carStrArr_dic[z])...) for z in keys(carStrArr_dic))
 
 	for x in filter(x -> Int[] in carId_dic[x], collectKeys(keys(carId_dic)))
-		push!(anyM.report,(3,"technology mapping","carrier","$(typeStr_dic[x]) carrier of technology $(createFullString(t,anyM.sets[:Te])) not entered correctly"))
+		push!(anyM.report,(3,"technology mapping","carrier","$(typeStr_dic[x]) carrier of technology $(string(tSym)) not entered correctly"))
 		carId_dic[x] = tuple(filter(y -> y != Int[],collect(carId_dic[x]))...)
 	end
 
@@ -156,7 +157,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 		for c in carId_dic[type]
 			if anyM.supTs.lvl == anyM.cInfo[c].tsDis
 				carId_dic[type] = tuple(filter(x -> x != c,collect(carId_dic[type]))...)
-				push!(anyM.report,(2,"technology mapping","carrier","carrier $(createFullString(c,anyM.sets[:C])) of technology $(createFullString(t,anyM.sets[:Te])) cannot be stored, because carrier is balanced on supordiante dispatch level"))
+				push!(anyM.report,(2,"technology mapping","carrier","carrier $(createFullString(c,anyM.sets[:C])) of technology $(string(tSym)) cannot be stored, because carrier is balanced on supordiante dispatch level"))
 			end
 		end
 	end
@@ -174,19 +175,19 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 	part.actSt = actSt_tup
 
 	# report on suspicious looking carrier constellations
-    if isempty(union(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])) push!(anyM.report,(2,"technology mapping","carrier","technology $(createFullString(t,anyM.sets[:Te])) has no output")) end
+    if isempty(union(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])) push!(anyM.report,(2,"technology mapping","carrier","technology $(string(tSym)) has no output")) end
 
     if !isempty(setdiff(carId_dic[:carrier_stored_in],union(carGrp_ntup.stIntOut,carGrp_ntup.stExtOut))) && !isempty(carId_dic[:carrier_stored_in])
-        push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology $(createFullString(t,anyM.sets[:Te])) can be charged but not discharged"))
+        push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology $(string(tSym)) can be charged but not discharged"))
     end
 
     if !isempty(setdiff(carId_dic[:carrier_stored_out],union(carGrp_ntup.stIntIn,carGrp_ntup.stExtIn))) && !isempty(carId_dic[:carrier_stored_out])
-        push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology $(createFullString(t,anyM.sets[:Te])) can be discharged but not charged"))
+        push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology $(string(tSym)) can be discharged but not charged"))
     end
 
 	for c in part.actSt
 		if !(c in vcat(map(x -> vcat(getDescendants(x,anyM.sets[:C],true)...,x), union(carGrp_ntup.stExtIn,carGrp_ntup.stExtOut))...))
-			push!(anyM.report,(3,"technology mapping","carrier","$(createFullString(c,anyM.sets[:C])) for active storage of technology $(createFullString(t,anyM.sets[:Te])) is not stored or a descendant of a stored carrier"))
+			push!(anyM.report,(3,"technology mapping","carrier","$(createFullString(c,anyM.sets[:C])) for active storage of technology $(string(tSym)) is not stored or a descendant of a stored carrier"))
 		end
 	end
 
@@ -198,7 +199,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
         inherCar_tup = relCar_tup[findall(map(x -> !(isempty(filter(z -> z != x,intersect(getDescendants(x,anyM.sets[:C],true),relCar_tup)))),relCar_tup))]
         if !isempty(inherCar_tup)
             for inher in inherCar_tup
-                push!(anyM.report,(3,"technology mapping","carrier","for technology $(createFullString(t,anyM.sets[:Te])) the $(typeStr_dic[type]) carrier $(createFullString(inher,anyM.sets[:C])) is a parent of another $(typeStr_dic[type]) carrier, this is not supported"))
+                push!(anyM.report,(3,"technology mapping","carrier","for technology $(string(tSym)) the $(typeStr_dic[type]) carrier $(createFullString(inher,anyM.sets[:C])) is a parent of another $(typeStr_dic[type]) carrier, this is not supported"))
             end
         end
     end
@@ -228,7 +229,7 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
     # determines carrier based expansion resolutions
 	cEx_boo = true
     if isempty(vcat(collect.(values(carGrp_ntup))...))
-		push!(anyM.report,(2,"technology mapping","carrier","for technology $(createFullString(t,anyM.sets[:Te])) no carriers were provided"))
+		push!(anyM.report,(2,"technology mapping","carrier","for technology $(string(tSym)) no carriers were provided"))
 		cEx_boo = false
 	end
 
@@ -241,9 +242,9 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
 		if !isnothing(tsExpSpc_int)
 			if tsExpSpc_int > anyM.supTs.lvl
-				push!(anyM.report,(2,"technology mapping","expansion level","specific temporal expansion level provided for $(createFullString(t,anyM.sets[:Te])) is below superordinate dispatch level and therefore could not be used"))
+				push!(anyM.report,(2,"technology mapping","expansion level","specific temporal expansion level provided for $(string(tSym)) is below superordinate dispatch level and therefore could not be used"))
 			else
-				push!(anyM.report,(1,"technology mapping","expansion level","specific temporal expansion level provided for $(createFullString(t,anyM.sets[:Te])) was used instead of a carrier based value"))
+				push!(anyM.report,(1,"technology mapping","expansion level","specific temporal expansion level provided for $(string(tSym)) was used instead of a carrier based value"))
 				tsExp_int = tsExpSpc_int
 			end
 		end
@@ -255,11 +256,11 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
 		if !isnothing(rExpSpc_int)
 			if rExpSpc_int < rExp_int
-				push!(anyM.report,(2,"technology mapping","expansion level","specific spatial expansion level provided for $(createFullString(t,anyM.sets[:Te])) is less detailed than default value obtained from carriers and therefore could not be used"))
+				push!(anyM.report,(2,"technology mapping","expansion level","specific spatial expansion level provided for $(string(tSym)) is less detailed than default value obtained from carriers and therefore could not be used"))
 			elseif rExpSpc_int == rExp_int
-				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for $(createFullString(t,anyM.sets[:Te])) is equal to default value obtained from carriers"))
+				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for $(string(tSym)) is equal to default value obtained from carriers"))
 			else
-				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for $(createFullString(t,anyM.sets[:Te])) was used instead of a carrier based value"))
+				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for $(string(tSym)) was used instead of a carrier based value"))
 				rExp_int = rExpSpc_int
 			end
 		end
@@ -298,13 +299,13 @@ function createTechInfo!(t::Int, setData_dic::Dict,anyM::anyModel)
 
     part.balLvl = (exp = expLvl_tup, ref = refLvl_tup)
 
-	produceMessage(anyM.options,anyM.report, 3," - Created mapping for technology $(createFullString(t,anyM.sets[:Te]))")
+	produceMessage(anyM.options,anyM.report, 3," - Created mapping for technology $(string(tSym))")
 end
 
 # XXX maps capacity constraints to technology
-function createCapaRestrMap!(t::Int,anyM::anyModel)
+function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
 
-    part = anyM.parts.tech[t]
+    part = anyM.parts.tech[tSym]
 
     capaDispRestr_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
     # extract tech info

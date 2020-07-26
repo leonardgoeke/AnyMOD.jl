@@ -45,7 +45,7 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 end
 
 # XXX create all energy balances (and curtailment variables if required)
-function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
+function createEnergyBal!(techSym_arr::Array{Symbol,1},anyM::anyModel)
 
 	partBal = anyM.parts.bal
 	c_arr = filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx))
@@ -89,7 +89,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 	if :trdBuy in keys(anyM.parts.trd.var) append!(relC_arr,unique(anyM.parts.trd.var[:trdBuy][!,:C])) end
 
 	# add carriers beings generated or used
-	append!(relC_arr,union(union(map(x -> anyM.parts.tech[x].carrier |> (y -> map(z -> getfield(y,z),intersect(keys(y),(:gen,:use)))),techIdx_arr)...)...))
+	append!(relC_arr,union(union(map(x -> anyM.parts.tech[x].carrier |> (y -> map(z -> getfield(y,z),intersect(keys(y),(:gen,:use)))),techSym_arr)...)...))
 	relC_arr = unique(relC_arr)
 
 	# create object to write constraint data too
@@ -110,7 +110,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
 
 		# add tech variables
-		cns_df[!,:techVar] = getTechEnerBal(c,subC_arr,src_df,techIdx_arr,anyM.parts.tech,anyM.cInfo,anyM.sets)
+		cns_df[!,:techVar] = getTechEnerBal(c,subC_arr,src_df,anyM.parts.tech,anyM.cInfo,anyM.sets)
 
 		# add curtailment variables
 		for varType in (:crt,:lss)
@@ -169,7 +169,7 @@ function createEnergyBal!(techIdx_arr::Array{Int,1},anyM::anyModel)
 end
 
 # XXX aggregate all technology variables for energy balance
-function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,techIdx_arr::Array{Int,1},tech_dic::Dict{Int,TechPart},
+function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,tech_dic::Dict{Symbol,TechPart},
 																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}},sets_dic::Dict{Symbol,Tree})
 	techVar_arr = Array{Array{AffExpr,1}}(undef,length(subC_arr))
 
@@ -217,7 +217,7 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 end
 
 # XXX create constarints that enforce any type of limit (Up/Low/Fix) on any type of variable
-function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyModel)
+function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 	parLim_arr = String.(collectKeys(keys(partLim.par)))
 	techLim_arr = filter(x ->  any(map(y -> occursin(y,x),["Up","Low","Fix"])),parLim_arr)
@@ -320,7 +320,7 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 			end
 
 			# fix and lower limit contradicting each other
-			if :Fix in limitCol_arr && :Up in limitCol_arr
+			if :Fix in limitCol_arr && :Low in limitCol_arr
 				for x in findall(replace(allLimit_df[!,:Fix],nothing => Inf) .<= replace(allLimit_df[!,:Low],nothing => 0.0))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
@@ -360,9 +360,23 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 		end
 
 		# if installed capacities differ depending on the direction, because residual values were defined and at the same time fixed limits on the installed capacity were provided
-		# an error will occur, because a value cannot be fixed but and the same time differ by direction, this is detected hier
+		# an error will occur, because a value cannot be fixed but and the same time differ by direction, this is detected here
 		if :Fix in limitCol_arr && va == :capaExc
-
+			# filters fixed exchange capacities and extracts residual values
+			fix_df = select(filter(x -> x.Fix != nothing, allLimit_df) ,intCol(allLimit_df,:var))
+			fix_df[!,:resi] .= getfield.(fix_df[!,:var],:constant)
+			# joins together capacities in both directions
+			joinA_df = rename(select(fix_df,Not([:var])),:resi => :resiA)
+			joinB_df = rename(joinA_df,:resiA => :resiB)
+			comp_df = innerjoin(joinA_df,joinB_df, on = intCol(joinA_df) .=> replace(intCol(joinB_df),:R_from => :R_to,:R_to => :R_from))
+			# finds cases that lead to contradiction and reports on them
+			contraExc_df = filter(x -> x.resiA != x.resiB && x.R_from > x.R_to,comp_df)
+			for x in eachrow(contraExc_df)
+				dim_str = join(map(y -> x[y] == 0 ?  "" : string(y,": ",join(getUniName(x[y], anyM.sets[colSet_dic[y]])," < ")),intCol(contraExc_df)),"; ")
+				lock(anyM.lock)
+				push!(anyM.report,(3,"limit",string(va),"for the exchange capacity '" * dim_str * "' residual capacites differ by direction but at the same time the installed capacity in both directions is fixed to the same value by capaExcFix, this is a contradiction and  would lead to an infeasible model"))
+				unlock(anyM.lock)
+			end
 		end
 
 		# XXX check for suspicious entries for capacity where limits are provided for the sum of capacity over several years
@@ -376,8 +390,8 @@ function createLimitCns!(techIdx_arr::Array{Int,1},partLim::OthPart,anyM::anyMod
 				relEntr_df = filter(x -> x.Ts_disSup == 0, allLimit_df)
 				if :Te in namesSym(relEntr_df)
 					allTe_arr = unique(relEntr_df[!,:Te])
-					for t in allTe_arr
-						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for $(createFullString(t,anyM.sets[:Te])) without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
+					for tInt in allTe_arr
+						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for $(string(techSym(tInt,anyM.sets[:Te]))) without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
 																						(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
 					end
 				else

@@ -47,7 +47,7 @@ reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{
 # XXX summary of all capacity and dispatch results
 function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
-    techIdx_arr = collect(keys(anyM.parts.tech))
+    techSym_arr = collect(keys(anyM.parts.tech))
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
 
 	# XXX get demand values
@@ -86,7 +86,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	end
 
 	# XXX get expansion and capacity variables
-	for t in techIdx_arr
+	for t in techSym_arr
 		part = anyM.parts.tech[t]
 		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
 
@@ -379,7 +379,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 			filter!(filterFunc,add_df)
             if isempty(add_df) continue end
 			add_df[!,:value] = value.(add_df[!,:var]) .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
-			add_df[!,:variable] .= string(x[2],"; ", createFullString(x[1],anyM.sets[:Te]))
+			add_df[!,:variable] .= string(x[2],"; ", x[1])
 			filter!(x -> abs(x.value) > minVal, add_df)
 
 			# add to dictionary of dataframe for in or out
@@ -537,7 +537,7 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
     PyCall.fixqtpath()
 
     # <editor-fold desc="initialize variables"
-    treeName_dic = Dict(:region => :R,:timestep => :Ts,:carrier => :C,:tech => :Te)
+    treeName_dic = Dict(:region => :R,:timestep => :Ts,:carrier => :C,:technology => :Te)
 
     # convert tree object into a data frame
     tree_obj = anyM.sets[treeName_dic[tree_sym]]
@@ -642,7 +642,7 @@ end
 plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
 
 # XXX plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
-function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor = false)
+function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false)
 
     # XXX import python function
     netw = pyimport("networkx")

@@ -85,7 +85,7 @@ mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  
 filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in namesSym(var_df) ? filter(r -> r.C in c_arr,var_df) : var_df
 
 # XXX creates a dictionary that assigns each dispatch timestep inputed to its superordinate dispatch timestep
-function assignSupTs(inputSteps_arr::Array{Int,1},time_Tree::Tree,superordinateLvl_int::Int)
+function assignSupTs(inputSteps_arr::Array{Int,1},time_tree::Tree,superordinateLvl_int::Int)
 
 	assSup_dic = Dict{Int,Int}()
 
@@ -96,13 +96,13 @@ function assignSupTs(inputSteps_arr::Array{Int,1},time_Tree::Tree,superordinateL
 	end
 
 	# assigns entries on or above subordinate dispatch level to itselfs
-	aboveSupTs_arr = filter(z -> time_Tree.nodes[z].lvl <= superordinateLvl_int, inputSteps_arr)
+	aboveSupTs_arr = filter(z -> time_tree.nodes[z].lvl <= superordinateLvl_int, inputSteps_arr)
 	for x in aboveSupTs_arr assSup_dic[x] = x end
 	inputSteps_arr = setdiff(inputSteps_arr,aboveSupTs_arr)
 
 	# assigns remaining entries
 	for x in inputSteps_arr
-		assSup_dic[x] = getAncestors(x,time_Tree,:int,superordinateLvl_int)[1]
+		assSup_dic[x] = getAncestors(x,time_tree,:int,superordinateLvl_int)[1]
 	end
 
 	return assSup_dic
@@ -126,6 +126,10 @@ function createPotDisp(c_arr::Array{Int,1},anyM::anyModel)
 
 	return var_df
 end
+
+# XXX gets technology name as symbol from id and the other way around
+techSym(tInt::Int,tech_tree::Tree) = Symbol(getUniName(tInt,tech_tree)[end])
+techInt(tSym::Symbol,tech_tree::Tree) = filter(x -> x.val == string(tSym),collect(values(tech_tree.nodes)))[1].idx
 
 # </editor-fold>
 
@@ -391,11 +395,11 @@ end
 function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, filterFunc::Function = x -> true)
 
 	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :oprCapaExc => :exc, :expExc => :exc, :crt => :bal, :lss => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
-	techIdx_arr = collect(keys(anyM.parts.tech))
+	techSym_arr = collect(keys(anyM.parts.tech))
 
 	if !(va in keys(varToPart_dic)) # get all variables for technologies
 		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut))
-		techType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(anyM.parts.tech[y].var), techIdx_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
+		techType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(anyM.parts.tech[y].var), techSym_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
 		if !isempty(techType_arr)
 			allVar_df = vcat(map(x -> anyM.parts.tech[x[2]].var[x[1]], vcat(map(x -> collect(zip(fill(x[1],length(x[2])),x[2])),techType_arr)...))...)
 		else
@@ -439,12 +443,12 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 
 					# loop over relevant storage technologies to obtain loss vallues
 					tSt_arr = unique(stLvl_df[!,:Te])
-					for t in tSt_arr
-						part = anyM.parts.tech[t]
+					for tInt in tSt_arr
+						part = anyM.parts.tech[techSym(tInt,anyM.sets[:Te])]
 						# add expression quantifying storage losses for storage in- and and output
 						for st in keys(stVar_dic)
 							stVar_df = stVar_dic[st]
-							stVar_df = matchSetParameter(filter(x -> x.Te == t,stVar_df),part.par[Symbol(:eff,st)],anyM.sets)
+							stVar_df = matchSetParameter(filter(x -> x.Te == tInt,stVar_df),part.par[Symbol(:eff,st)],anyM.sets)
 							stVar_df[!,:var] = stVar_df[!,:var] .* (1 .- stVar_df[!,:val])
 							select!(stVar_df,Not(:val))
 							allVar_df = vcat(allVar_df,stVar_df)
@@ -453,7 +457,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 						# add expression quantifying storage losses for storage discharge
 						if :stDis in keys(part.par)
 							sca_arr = getResize(stLvl_df,anyM.sets[:Ts],anyM.supTs)
-							stLvl_df = matchSetParameter(filter(x -> x.Te == t,stLvl_df),part.par[:stDis],anyM.sets)
+							stLvl_df = matchSetParameter(filter(x -> x.Te == tInt,stLvl_df),part.par[:stDis],anyM.sets)
 							stLvl_df[!,:var] = stLvl_df[!,:var] .* (1 .- (1 .- stLvl_df[!,:val]) .^ sca_arr)
 							select!(stLvl_df,Not(:val))
 							allVar_df = vcat(allVar_df,stLvl_df)
@@ -504,18 +508,18 @@ function replCarLeafs(var_df::DataFrame,c_tree::Tree;cCol::Symbol=:C,noLeaf::Arr
 end
 
 # XXX returns array of technologies and respective dispatch variables relevant for input carrier
-function getRelTech(c::Int,tech_dic::Dict{Int,TechPart},c_tree::Tree)
+function getRelTech(c::Int,tech_dic::Dict{Symbol,TechPart},c_tree::Tree)
 
-	techIdx_arr = collect(keys(tech_dic))
-	relTech_arr = Array{Tuple{Int,Symbol},1}()
-	for x in techIdx_arr
-		addConvTech_arr = intersect((:use,:gen),filter(y -> c in tech_dic[x].carrier[y], collect(keys(tech_dic[x].carrier))))
+	techSym_arr = collect(keys(tech_dic))
+	relTech_arr = Array{Tuple{Symbol,Symbol},1}()
+	for tSym in techSym_arr
+		addConvTech_arr = intersect((:use,:gen),filter(y -> c in tech_dic[tSym].carrier[y], collect(keys(tech_dic[tSym].carrier))))
 		if isempty(c_tree.nodes[c].down) # actual dispatch variables for storage only exists for carriers that are leaves
-			addStTech_arr = intersect((:stExtIn,:stExtOut),filter(y -> c in union(map(z -> union([z],getDescendants(z,c_tree,true)),tech_dic[x].carrier[y])...), collect(keys(tech_dic[x].carrier))))
+			addStTech_arr = intersect((:stExtIn,:stExtOut),filter(y -> c in union(map(z -> union([z],getDescendants(z,c_tree,true)),tech_dic[tSym].carrier[y])...), collect(keys(tech_dic[tSym].carrier))))
 		else
 			addStTech_arr = Array{Tuple{Int,Symbol},1}()
 		end
-		union(addConvTech_arr,addStTech_arr) |> (y -> append!(relTech_arr,collect(zip(fill(x,length(y)),y))))
+		union(addConvTech_arr,addStTech_arr) |> (y -> append!(relTech_arr,collect(zip(fill(tSym,length(y)),y))))
 	end
 
 	return relTech_arr

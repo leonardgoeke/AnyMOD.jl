@@ -15,9 +15,9 @@ add link to API for printIIS function
 ## Workflow
 - folders
 - remember jump model can be expanded
+- parameter data can be manipulated after read-in
 
 
 ## Common mistakes
 (or at least mistakes that i believe to be common, because i tend to make them)
-- kjlksdf
-- lkklsdf
+- input capacity
