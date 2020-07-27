@@ -430,7 +430,7 @@ mutable struct anyModel <: AbstractModel
 		# XXX create object for data visualization
 		anyM.graInfo = graInfo(anyM)
 
-		produceMessage(anyM.options,anyM.report, 1," - Prepared creation of optimzation model")
+		produceMessage(anyM.options,anyM.report, 1," - Prepared creation of optimization model")
 		# </editor-fold>
 
 		return anyM
