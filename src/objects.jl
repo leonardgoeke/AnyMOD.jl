@@ -299,7 +299,7 @@ mutable struct graInfo
 		# create default options for names and colors
 		graph_obj = flowGraph(anyM)
 
-		# specificy some default names and colors used in visualisations
+		# specify some default names and colors used in visualisations
 		namesDef_arr = ["coalPlant" => "coal plant", "gasPlant" => "gas plant", "districtHeat" => "district heat", "naturalGas" => "natural gas", "synthGas" => "synthetic gas", "fossilGas" => "fossil gas",
 									"demand" => "final demand", "export" => "export", "import" => "import", "crt" => "curtailment", "lss" => "loss of load", "trdSell" => "trade sell", "trdBuy" => "trade buy"]
 
