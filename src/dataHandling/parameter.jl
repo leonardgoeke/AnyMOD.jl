@@ -52,7 +52,9 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:costOprStSize] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:Ts_disSup => :up, :Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
     parDef_dic[:costOprExc]    = (dim = (:Ts_disSup, :R_a, :R_b, :C),  defVal = nothing, herit = (:Ts_disSup => :up, :R_a => :avg_any, :R_b => :avg_any, :R_a => :up, :R_b => :up, :C => :up), part = :obj)
 
+    # </editor-fold>
 
+    # <editor-fold desc="XXX limit parameters"
     # XXX parameters regarding limits on technology and exchange expansion and capacity
 
     # expansion limits on conversion, storage and exchange
@@ -130,54 +132,54 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
 
     # XXX limits on quantites (including emissions and emission factors)
 
-    upHerit_tup = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_dis => :sum_full, :C => :sum_full, :Te => :sum_full, :M => :sum_full)
-    ofHerit_tup = (:Ts_dis => :sum_any,  :Ts_expSup => :sum_any,  :R_dis => :sum_any,  :C => :sum_any,  :Te => :sum_any,  :M => :sum_any)
+    upHerit_tup = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_dis => :sum_full, :C => :sum_full, :Te => :sum_full, :M => :sum_full, :scr => :up)
+    ofHerit_tup = (:Ts_dis => :sum_any,  :Ts_expSup => :sum_any,  :R_dis => :sum_any,  :C => :sum_any,  :Te => :sum_any,  :M => :sum_any,  :scr => :up)
 
     # actual energy limits on use, generation and storage
-    parDef_dic[:useUp]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = upHerit_tup, part = :lim)
-    parDef_dic[:useLow]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = ofHerit_tup, part = :lim)
-    parDef_dic[:useFix]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:useUp]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = upHerit_tup, part = :lim)
+    parDef_dic[:useLow]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:useFix]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = ofHerit_tup, part = :lim)
 
-    parDef_dic[:genUp]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = upHerit_tup, part = :lim)
-    parDef_dic[:genLow]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = ofHerit_tup, part = :lim)
-    parDef_dic[:genFix]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:genUp]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = upHerit_tup, part = :lim)
+    parDef_dic[:genLow]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:genFix]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = ofHerit_tup, part = :lim)
 
-    parDef_dic[:stOutUp]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = upHerit_tup, part = :lim)
-    parDef_dic[:stOutLow]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = ofHerit_tup, part = :lim)
-    parDef_dic[:stOutFix]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:stOutUp]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = upHerit_tup, part = :lim)
+    parDef_dic[:stOutLow]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:stOutFix]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = ofHerit_tup, part = :lim)
 
-    parDef_dic[:stInUp]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = upHerit_tup, part = :lim)
-    parDef_dic[:stInLow]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = ofHerit_tup, part = :lim)
-    parDef_dic[:stInFix]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:stInUp]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = upHerit_tup, part = :lim)
+    parDef_dic[:stInLow]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:stInFix]  =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = ofHerit_tup, part = :lim)
 
-    parDef_dic[:excUp]   =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full), part = :lim)
-    parDef_dic[:excLow]  =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any),  part = :lim)
-    parDef_dic[:excFix]  =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any),  part = :lim)
+    parDef_dic[:excUp]   =  (dim = (:Ts_dis, :R_from, :R_to, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:excLow]  =  (dim = (:Ts_dis, :R_from, :R_to, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any, :scr => :up),  part = :lim)
+    parDef_dic[:excFix]  =  (dim = (:Ts_dis, :R_from, :R_to, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any, :scr => :up),  part = :lim)
 
-    parDef_dic[:excDirUp]   =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full), part = :lim)
-    parDef_dic[:excDirLow]  =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any),  part = :lim)
-    parDef_dic[:excDirFix]  =  (dim = (:Ts_dis, :R_from, :R_to, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any),  part = :lim)
+    parDef_dic[:excDirUp]   =  (dim = (:Ts_dis, :R_from, :R_to, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:excDirLow]  =  (dim = (:Ts_dis, :R_from, :R_to, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any, :scr => :up),  part = :lim)
+    parDef_dic[:excDirFix]  =  (dim = (:Ts_dis, :R_from, :R_to, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any, :scr => :up),  part = :lim)
 
-    parDef_dic[:crtUp]   =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
-    parDef_dic[:crtLow]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
-    parDef_dic[:crtFix]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
+    parDef_dic[:crtUp]   =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:crtLow]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:crtFix]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
 
-    parDef_dic[:lssUp]   =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
-    parDef_dic[:lssLow]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
-    parDef_dic[:lssFix]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
+    parDef_dic[:lssUp]   =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:lssLow]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:lssFix]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
 
-    parDef_dic[:trdBuyUp]   =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
-    parDef_dic[:trdBuyLow]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any),  part = :lim)
-    parDef_dic[:trdBuyFix]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any),  part = :lim)
+    parDef_dic[:trdBuyUp]   =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:trdBuyLow]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any,  :scr => :up),  part = :lim)
+    parDef_dic[:trdBuyFix]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any,  :scr => :up),  part = :lim)
 
-    parDef_dic[:trdSellUp]   =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full), part = :lim)
-    parDef_dic[:trdSellLow]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any),  part = :lim)
-    parDef_dic[:trdSellFix]  =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any),  part = :lim)
+    parDef_dic[:trdSellUp]   =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:trdSellLow]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any, :scr => :up),  part = :lim)
+    parDef_dic[:trdSellFix]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any, :scr => :up),  part = :lim)
 
     # emission limits and factors (are computed as net values of trade and exchange)
-    parDef_dic[:emissionUp]    =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = upHerit_tup, part = :lim)
-    parDef_dic[:emissionFac]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = tuple(:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :M => :up), part = :lim)
-    parDef_dic[:emissionPrc]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = tuple(:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :M => :up), part = :obj)
+    parDef_dic[:emissionUp]    =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = upHerit_tup, part = :lim)
+    parDef_dic[:emissionFac]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = tuple(:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :M => :up, :scr => :up), part = :lim)
+    parDef_dic[:emissionPrc]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = tuple(:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :M => :up, :scr => :up), part = :obj)
 
     # </editor-fold>
 
@@ -186,54 +188,54 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     # XXX technology dispatch properties
 
     # availability parameters
-    parDef_dic[:avaConv]      =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :M),     defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up,            :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :lowest,    mode = (:in, :out)))
-    parDef_dic[:avaStIn]      =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
-    parDef_dic[:avaStOut]     =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
-    parDef_dic[:avaStSize]    =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
+    parDef_dic[:avaConv]      =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :M, :scr),     defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up,            :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :techConv, techPre = (preset = :lowest,    mode = (:in, :out)))
+    parDef_dic[:avaStIn]      =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
+    parDef_dic[:avaStOut]     =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
+    parDef_dic[:avaStSize]    =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
 
     # efficiency parameters
-    parDef_dic[:effConv]      =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :M),     defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any),            part = :techConv, techPre = (preset = :reference, mode = (:in, :out)))
-    parDef_dic[:effStIn]      =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :C => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
-    parDef_dic[:effStOut]     =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :C => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
+    parDef_dic[:effConv]      =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :M, :scr),     defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up),            part = :techConv, techPre = (preset = :reference, mode = (:in, :out)))
+    parDef_dic[:effStIn]      =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :C => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
+    parDef_dic[:effStOut]     =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :C => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
 
     # specific storage parameters
-    parDef_dic[:stDis]     =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :C => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any),           part = :techSt, techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
-    parDef_dic[:stInflow]  =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te),     defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :sum_any, :R_dis => :sum_any, :Te => :up), part = :techSt, techPre = (preset = :carrierSt, mode = tuple()))
+    parDef_dic[:stDis]     =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :C => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :techSt, techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
+    parDef_dic[:stInflow]  =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr),     defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :sum_any, :R_dis => :sum_any, :Te => :up, :scr => :up),                                part = :techSt, techPre = (preset = :carrierSt, mode = tuple()))
 
     # variable costs
-    parDef_dic[:costVarUse]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :obj, techPre = (preset = :carrierIn,  mode = (:in,)))
-    parDef_dic[:costVarGen]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :obj, techPre = (preset = :carrierOut, mode = (:out,)))
-    parDef_dic[:costVarStIn]  =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :obj, techPre = (preset = :carrierSt,  mode = (:stIn,:stOut,:stLvl)))
-    parDef_dic[:costVarStOut] =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :obj, techPre = (preset = :carrierSt,  mode = (:stIn,:stOut,:stLvl)))
+    parDef_dic[:costVarUse]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :obj, techPre = (preset = :carrierIn,  mode = (:in,)))
+    parDef_dic[:costVarGen]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :obj, techPre = (preset = :carrierOut, mode = (:out,)))
+    parDef_dic[:costVarStIn]  =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :obj, techPre = (preset = :carrierSt,  mode = (:stIn,:stOut,:stLvl)))
+    parDef_dic[:costVarStOut] =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :obj, techPre = (preset = :carrierSt,  mode = (:stIn,:stOut,:stLvl)))
 
     # energy related ratios (x% of energy from/to technology has to be carrier y)
-    parDef_dic[:ratioEnerUseUp]    =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up), part = :techConv, techPre = (preset = :minUse, mode = (:in,)))
-    parDef_dic[:ratioEnerUseLow]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up), part = :techConv, techPre = (preset = :minUse, mode = (:in,)))
-    parDef_dic[:ratioEnerUseFix]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up), part = :techConv, techPre = (preset = :minUse, mode = (:in,)))
+    parDef_dic[:ratioEnerUseUp]    =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minUse, mode = (:in,)))
+    parDef_dic[:ratioEnerUseLow]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minUse, mode = (:in,)))
+    parDef_dic[:ratioEnerUseFix]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minUse, mode = (:in,)))
 
-    parDef_dic[:ratioEnerGenUp]    =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up), part = :techConv, techPre = (preset = :minGen, mode = (:out,)))
-    parDef_dic[:ratioEnerGenLow]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up), part = :techConv, techPre = (preset = :minGen, mode = (:out,)))
-    parDef_dic[:ratioEnerGenFix]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up), part = :techConv, techPre = (preset = :minGen, mode = (:out,)))
+    parDef_dic[:ratioEnerGenUp]    =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minGen, mode = (:out,)))
+    parDef_dic[:ratioEnerGenLow]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minGen, mode = (:out,)))
+    parDef_dic[:ratioEnerGenFix]   =   (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minGen, mode = (:out,)))
 
     # XXX further dispatch properties
-    parDef_dic[:dem]     =  (dim = (:Ts_dis, :R_dis, :C), defVal = 0.0, herit = (:Ts_dis => :avg_any, :R_dis  => :sum_any), part = :bal)
-    parDef_dic[:costCrt] =  (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
-    parDef_dic[:costLss] = (dim = (:Ts_dis, :R_dis, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
+    parDef_dic[:dem]     = (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = 0.0,     herit = (:Ts_dis => :avg_any, :R_dis  => :sum_any, :scr => :up),                               part = :bal)
+    parDef_dic[:costCrt] = (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :bal)
+    parDef_dic[:costLss] = (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :bal)
 
     # trade (=sell or buy to an external market) parameters
-    parDef_dic[:trdBuyPrc]   =   (dim = (:Ts_dis, :R_dis, :C, :id), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any), part = :trd)
-    parDef_dic[:trdSellPrc]  =   (dim = (:Ts_dis, :R_dis, :C, :id), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any), part = :trd)
-    parDef_dic[:trdBuyCap]   =   (dim = (:Ts_dis, :R_dis, :C, :id), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any), part = :trd)
-    parDef_dic[:trdSellCap]  =   (dim = (:Ts_dis, :R_dis, :C, :id), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any), part = :trd)
+    parDef_dic[:trdBuyPrc]   =   (dim = (:Ts_dis, :R_dis, :C, :id, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any, :scr => :up), part = :trd)
+    parDef_dic[:trdSellPrc]  =   (dim = (:Ts_dis, :R_dis, :C, :id, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any, :scr => :up), part = :trd)
+    parDef_dic[:trdBuyCap]   =   (dim = (:Ts_dis, :R_dis, :C, :id, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any, :scr => :up), part = :trd)
+    parDef_dic[:trdSellCap]  =   (dim = (:Ts_dis, :R_dis, :C, :id, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any, :scr => :up), part = :trd)
 
     # exchange (=exchange between explicit regions) parameters
-    parDef_dic[:avaExc]     =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = 1.0,     herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :exc)
-    parDef_dic[:lossExc]    =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = 0.0,     herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :exc)
-    parDef_dic[:costVarExc] =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :obj)
+    parDef_dic[:avaExc]     =   (dim = (:Ts_dis, :R_a, :R_b, :C, :scr), defVal = 1.0,     herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up, :scr => :up), part = :exc)
+    parDef_dic[:lossExc]    =   (dim = (:Ts_dis, :R_a, :R_b, :C, :scr), defVal = 0.0,     herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up, :scr => :up), part = :exc)
+    parDef_dic[:costVarExc] =   (dim = (:Ts_dis, :R_a, :R_b, :C, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up, :scr => :up), part = :obj)
 
-    parDef_dic[:avaExcDir]     =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :exc)
-    parDef_dic[:lossExcDir]    =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :exc)
-    parDef_dic[:costVarExcDir] =   (dim = (:Ts_dis, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :obj)
+    parDef_dic[:avaExcDir]     =   (dim = (:Ts_dis, :R_a, :R_b, :C, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up, :scr => :up), part = :exc)
+    parDef_dic[:lossExcDir]    =   (dim = (:Ts_dis, :R_a, :R_b, :C, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up, :scr => :up), part = :exc)
+    parDef_dic[:costVarExcDir] =   (dim = (:Ts_dis, :R_a, :R_b, :C, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up, :scr => :up), part = :obj)
 
     # </editor-fold>
 
