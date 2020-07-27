@@ -30,7 +30,7 @@ anyModel(inDir::Union{String,Array{String,1}},outDir::String; kwargs)
 
 The constructor function above has two mandatory arguments that the directories for in- and output files.
 
-`inDir::Union{String,Array{String,1}}` specifies the directory (or directories) of input files. This can either be a string or an array of strings, if input files are spread across different directories. All `.csv` files within the provided directories (and their sub-directories) starting with `set_` or `par_` will be read-in as an input file. Other files are ignored and can be used for documentation. Within the specific files, only columns named `parameter`, `variable`, `value`, and `id` or columns starting with `region`, `timestep`, `carrier`, `technology`, or `mode` are actually read-in. Other columns can be used freely for documentation.
+`inDir::Union{String,Array{String,1}}` specifies the directory (or directories) of input files. This can either be a string or an array of strings, if input files are spread across different directories. All `.csv` files within the provided directories (and their sub-directories) starting with `set_` or `par_` will be read-in as an input file. Other files are ignored and can be used for documentation. Within the specific files, only columns whose name contains one of the following keywords are acutally read-in: `parameter`, `variable`, `value`, `id`, `region`, `timestep`, `carrier`, `technology`, and `mode`. Other columns can be used freely for documentation.
 
 !!! warning "Reserved keywords"
     Within the input files `all` is a reserved keyword. For an explanation on how it is used, see [Time-steps](@ref).
@@ -198,7 +198,8 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 <td><code>checkRng</code></td>
 <td>
 <ul class="liste">
-<li>if set, reports all equations whose range exceeds the specified value</li>
+<li>if set, reports all constraints whose range exceeds the specified value</li>
+<li>type is <code>Float64</code></li>
 </ul>
 </td>
 <td><code>NaN</code></td>
@@ -210,6 +211,7 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 <td colspan = "2">
 <ul class="liste">
 <li>scales different groups of variables within the model</li>
+<li>format for argument is <code>(capa = 1e1, oprCapa = 1e2, dispConv = 1e3, ...)</code> </li>
 <li>see <a href="../performance/#Scaling">Column scaling</a> for details and defaults</li>
 </ul>
 </tr>
@@ -219,6 +221,7 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 <td colspan = "2">
 <ul class="liste">
 <li>specifies the maximum range of coefficients in the matrix and right-hand side of the model's underlying <br> optimization problem</li>
+<li>format for argument is <code>(mat = (1e-2,1e5), rhs = (1e-2,1e2))</code> </li>
 <li>see <a href="../performance/#Scaling">Row scaling</a> for details and defaults</li>
 </ul>
 </td>
