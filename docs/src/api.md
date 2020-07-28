@@ -3,6 +3,12 @@ CurrentModule = AnyMOD
 ```
 # API
 
+```@index
+Pages   = ["api.md"]
+Modules = [AnyMOD]
+```
+
+
 ## Functions
 test
 ```@docs
@@ -18,4 +24,6 @@ setObjective!
 TechPart
 OthPart
 ParElement
+Node
+Tree
 ```

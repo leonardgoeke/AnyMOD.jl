@@ -20,17 +20,19 @@ ul.liste {
 ```
 
 # Sets and Mappings
+```@raw html
+<p class="norm">
+In AnyMOD sets like regions, time-steps, carriers, and technologies are organized as <a href="../api/#AnyMOD.Node"><code>Nodes</code></a> within hierarchical <a href="../api/#AnyMOD.Tree"><code>Trees</code></a>. They are defined by a mandatory input files named <code>set_region.csv</code>, <code>set_timestep.csv</code>, <code>set_carrier.csv</code>, and <code>set_technology.csv</code>, respectively. Relations between different sets (e.g. between carriers and technologies) are represented by mapping nodes within these trees to each other. This graph-based modelling approach is explained in detail in <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a>.</p>
+```
 
-In AnyMOD all k regions, time-steps, carriers, and technologies are organized as hierarchical trees and each of these trees is defined by a mandatory input file named `set_region.csv`, `set_timestep.csv`, `set_carrier.csv`, and `set_technology.csv`, respectively. Relations between different sets (e.g. between carriers and technologies) are represented by mapping nodes within these trees to each other. A detailed description and discussion of this graph-based modelling approach is provided in [Göke (2020)](https://arxiv.org/abs/2004.10184).
-
-Next, these key sets and how their tree structure and mappings are obtained from input files are introduced based on the [example problem](https://github.com/leonardgoeke/AnyMOD.jl/tree/master/examples/demo). Also, additional sets not organized as hierarchical trees are briefly listed as well.
+Next, these key sets and how their tree structure and mappings are obtained from input files are introduced based on the [demo problem](https://github.com/leonardgoeke/AnyMOD.jl/tree/master/examples/demo). Also, additional sets not organized as hierarchical trees are briefly listed as well.
 
 
 ## Regions
 
-The `set_region.csv` file defines all modelling regions. The file consists out of consecutive columns named `region_1`,  `region_2` etc. with each column relating to a level in the resulting tree. A region on a specific level is simply defined by writing its name into the respective column. To connect regions from different levels they both need to be written into the same column. Names of regions are not required to be unique, not even on the same level.
+The `set_region.csv` file defines all modelling regions. The file consists out of consecutive columns named `region_1`,  `region_2` etc. with each column relating to a level in the resulting tree. A region on a specific level is defined by writing its name into the respective column. To connect regions from different levels, they both need to be written into the same column. Names of regions are not required to be unique, not even on the same level.
 
-The set file for regions from the example problem is provided below.
+The set file for regions from the demo problem is provided below.
 ```@raw html
 <table class="tabelle2">
 <tbody>
@@ -57,7 +59,7 @@ The set file for regions from the example problem is provided below.
 </tbody>
 </table>
 ```
-Consequently, this file defines six regions on two different levels. `East` and `West` are on level 1 and their descendants `EastNorth` and `EastSouth` as well as `WestNorth` and `WestSouth` are on level 2. Since names of regions are not required to be unique, alternatively each of the four descendant regions could have been just named `North` or `South` as well. By using the `plotTree` function the corresponding hierarchical tree can be visualized and exported to the output directory:
+Consequently, this file defines six regions on two different levels. `East` and `West` are on level 1 and their descendants `EastNorth` and `EastSouth` as well as `WestNorth` and `WestSouth` are on level 2. Since names of regions are not required to be unique, alternatively each of the four descendant regions could have also been named `North` or `South`. By using the `plotTree` function the corresponding hierarchical tree can be visualized and exported to the output directory:
 
 ```@raw html
 <img src="../assets/region.png" width="80%"/>
@@ -65,7 +67,7 @@ Consequently, this file defines six regions on two different levels. `East` and 
 
 ### Application context
 
-Within the model elements (parameters, variables, and constraints) regions are used in different contexts and consequently the specification of a region can refer to different things. These include:
+Throughout the model regions are used in different contexts and depending on the context different symbols are used:
 - ``R_{exp}``:  Region of capacity expansion, used in all investment related model elements
 - ``R_{disp}``: Region of dispatch, used in all dispatch related model elements
 - ``R_a``, ``R_b``: Regions of exchange, element is not differentiated by direction of exchange (e.g. exchange capacities from ``R_a`` to ``R_b`` also apply from ``R_b`` to ``R_a``)
@@ -75,7 +77,7 @@ Within the model elements (parameters, variables, and constraints) regions are u
 
 The `set_timestep.csv` file defines all modelling time-steps, for both capacity expansion (usually years) and dispatch (for example hours). The file is structured analogously to the file for regions. Just as regions, names of time-steps are not required to be unique.
 
-The first lines of the corresponding file in the example problem are provided below.
+The first lines of the corresponding file in the demo problem are provided below.
 ```@raw html
 <table class="tabelle2">
 <tbody>
@@ -159,11 +161,11 @@ is equivalent to these two rows:
 </tbody>
 </table>
 ```
-The keyword `all` can be extended to assign specific multiple previously defined nodes within a single row:
-* `all(node1,node2,node3)` assigns all listed nodes. Accordingly, in the example above `(2020,2030)` would have achieved the same result as using `all`.
+The keyword `all` can be extended to assign specific nodes:
+* `all(node1,node2,node3)` assigns all listed nodes. Accordingly, in the example above `all(2020,2030)` would have achieved the same result as using `all`.
 * `all(node1:node2)` assigns not only `node1` and `node2`, but also all nodes in between according to alphabetical order.
 
-In the example above, the use of `all` results in each year having descendant nodes that represents days (level 2), 4-hour steps (level 3) and hours (level 4). Since names of time-steps are not required to be unique, these different nodes for each year and can share the same names. A reduced version of the corresponds tree can be plotted and is shown below.
+In the example above, the use of `all` results in each year having descendant nodes that represent days (level 2), 4-hour steps (level 3) and hours (level 4). Since names of time-steps are not required to be unique, these different nodes for each year can share the same names. A reduced version of the corresponding tree is plotted below:
 
 ```@raw html
 <img src="../assets/timestep.png" width="80%"/>
@@ -171,7 +173,7 @@ In the example above, the use of `all` results in each year having descendant no
 
 ### Application context
 
-Within the model time-steps are used in the following different contexts:
+The following symbols are used to refer to time-steps depending on the context:
 
 - ``Ts_{exp}``: Time-steps of capacity expansion
 - ``Ts_{dis}``: Time-steps of dispatch
@@ -179,7 +181,7 @@ Within the model time-steps are used in the following different contexts:
 
 ## Carriers
 
-The hierarchical tree of energy carriers is defined analogously to regions and time-steps. The respective `.csv` table from the example problem is given below. Unlike regions and timestep, carrier names are required to be unique.
+The hierarchical tree of energy carriers is defined analogously to regions and time-steps. The respective `.csv` table from the demo problem is given below. Unlike regions and timestep, carrier names are required to be unique. Carriers are always represented by the symbol ``C``.
 
 ```@raw html
 <table class="tabelle2">
@@ -258,15 +260,15 @@ In addition to defining carriers, the `set_carrier.csv` file also maps them to r
 !!! tip "Less detailed resolution for debugging"
     Creating and especially solving a model is much faster if the temporal resolution of dispatch is decreased. Therefore, it is advisable to first test new models at a less detailed temporal resolution. In the example this would be achieved by replacing the ´4´ for electricity with ´2´ to switch to a daily resolution. This will help you to spot and fix mistakes or unintended effects more efficiently.
 
-AnyMOD checks the specified resolutions and will throw an error if any logical inconsistencies are detected. Resolutions provided in a specific row directly only apply to the last carrier in that row. However, carrier on higher levels without a specified resolution, like `gas` in the example,  automatically inherit a resolution from their descendants.
+AnyMOD checks the specified resolutions and will throw an error, if any logical inconsistencies are detected. Resolutions provided in a specific row only apply to the last carrier in that row. However, carrier on higher levels without a specified resolution, like `gas` in the example,  automatically inherit a resolution from their descendants.
 
 **Optional mappings**
 
-For reasons elaborated in [Göke (2020)](https://arxiv.org/abs/2004.10184), be default energy balances in AnyMOD are not formulated as equality constraints meaning supply can exceed demand. To overwrite this behaviour, an optional column named `carrier_equality` using the keywords `yes` and `no` can be added to the file, where `yes` will enforce an equality constraint.
+For reasons elaborated in [Göke (2020)](https://arxiv.org/abs/2004.10184), be default energy balances in AnyMOD are not formulated as equality constraints meaning supply can exceed demand. To overwrite this behaviour, an optional column named `carrier_equality` using the keywords `yes` and `no` can be added to the file, where `yes` will enforce an equality constraint. Carriers are represented by the symbol ``Te``.
 
 ## Technologies
 
-The hierarchical tree of technologies is defined analogously to regions and time-steps. The respective `.csv` table from the example problem is given below. Unlike regions and timesteps, technology names are required to be unique.
+The hierarchical tree of technologies is defined analogously to regions and time-steps. The respective `.csv` table from the demo problem is given below. Unlike regions and timesteps, technology names are required to be unique.
 
 ```@raw html
 <table class="tabelle2">
@@ -418,7 +420,7 @@ The hierarchical tree of technologies is defined analogously to regions and time
 </tbody>
 </table>
 ```
-Within the model only nodes without any descendants are actual technologies. The remaining nodes have the sole purpose of organizing them. This facilitates the read-in of parameter data and formulation of certain constraints (e.g. the available rooftop area limiting the summed capacity of `photovoltaic` and `solarThermal`). The resulting hierarchical tree from the table above is displayed below.
+Within a model only nodes without any descendants are actual technologies. The remaining nodes have the sole purpose of organizing them. This facilitates the read-in of parameter data and formulation of certain constraints (e.g. the available rooftop area limiting the summed capacity of `photovoltaic` and `solarThermal`). The resulting hierarchical tree from the table above is displayed below.
 ```@raw html
 <img src="../assets/tech.png" width="100%"/>
 ```
@@ -429,36 +431,33 @@ Within the model only nodes without any descendants are actual technologies. The
 
 The `.csv` table above does not only define the hierarchical tree of technologies, but also maps carriers to these technologies. This assignment differentiates between in- and output carriers and between conversion and storage.
 
-In AnyMOD conversion generally refers to one or multiple carrier being used or generated as displayed in the diagram below. In the diagram expressions in italic refer to model variables documented in detail here and expression in boxes to parameters listed here.
 ```@raw html
+<p class="norm">
+In AnyMOD conversion generally refers to one or multiple carrier being used or generated as displayed in the diagram below. In the diagram expressions in italic refer to <a href="../variables">model variables</a> and expressions in boxes to <a href="../parameter_list">parameters</a>.
+</p>
 <p style="text-align:center;"><img src="../assets/convTech.svg" width="80%"/>
 ```
-The technology `ccgtCHP` from the example is a pure conversion technology converting `gas` to `electricity` and `districtHeat`, because `conversion_input` and `conversion_output` are assigned accordingly. It is not necessary for a conversion technology to have both, an in- and and output carrier. For instance, in the example renewables like `wind` are only modelled to have an output.
+The technology `ccgtCHP` from the example is a pure conversion technology converting `gas` to `electricity` and `districtHeat`, because `conversion_input` and `conversion_output` are assigned accordingly. It is not necessary for a conversion technology to have both, an in- and and output carrier. For instance, in the example renewables like `wind` only have an output.
 
-
-Storage is analogously described by the diagram below. In the example, `hydro` is a pure storage technology, because `electricity` is assigned to both `storage_input` and `storage_output`.
+Storage is analogously described by the diagram below. In the example, `hydro` is a pure storage technology, because `electricity` is assigned to both `storage_input` and `storage_output`. Storage is not limited to a single carrier and a technology can store an arbitrary number of different carriers.
 ```@raw html
 <p style="text-align:center;"><img src="../assets/stTech.svg" width="100%"/>
 ```
 
-Assigning carriers as a storage output (or input) means they can be discharged to (or charged from) the general energy balance.
-
-It is also conceivable to define a technologies that can only discharge but not charge a carrier from the energy balance. However, this only makes sense, if the carrier can be generated internally to charge the storage in the first place. The interplay of conversion and storage in such a case is illustrated in the following diagram:
+Assigning carriers as a storage output (or input) means they can be discharged to (or charged from) the general energy balance. Technologies that can only discharge but not charge a carrier from the energy balance are conceivable as well. However, this only makes sense, if the carrier can be generated internally to charge the storage in the first place. The interplay of conversion and storage in such a case is illustrated by the following diagram:
 ```@raw html
 <p style="text-align:center;"><img src="../assets/mixTech1.svg" width="100%"/>
 ```
-Such a technology is created by simply assigning the same carrier to `conversion_output` and `storage_output`, but not to `storage_output`. In the example, this is the case for the technology `photovoltaic`. It is intended to represent a residental photovoltaic panel combined with a home battery that cannot be charged via the gird, but only via the photovoltaic panel.
+Such a technology is created by assigning the same carrier to `conversion_output` and `storage_output`, but not to `storage_output`. In the example, this is the case for the technology `photovoltaic`. It is intended to represent a residental photovoltaic panel combined with a home battery that cannot be charged from the gird, but from the panel.
 
-
-Also the opposite case can be modelled: A carrier can be charged from outside, but only discharged within the carriers. However, this only makes sense if the carrier is being used within the technology's conversion process. The corresponding diagram is given below and could represent a gas power plant with an onside gas storage.
+Also the opposite case can be modelled: A carrier charged from outside, but only discharged within the technology. This only makes sense if the carrier is being used within the technology's conversion process. The corresponding diagram is given below and could represent a gas power plant with an onside gas storage.
 ```@raw html
 <p style="text-align:center;"><img src="../assets/mixTech2.svg" width="100%"/>
 ```
-Although within the examples here storage was limited to a single carrier, a technology can store an arbitrary number of carriers.
 
 **Optional mappings**
 
-The following table lists all optional columns that can be specified witin in `set_technology.csv` file to overwrite a default behaviour.
+The following table lists all optional columns that can be specified within in `set_technology.csv` file to overwrite a default behaviour.
 
 ```@raw html
 <table class="tabelle2">
@@ -542,4 +541,4 @@ Other sets in AnyMOD are not organized in hierarchical trees and might even be e
 
 ### Modes
 
-The set of modes includes operational modes defined for technologies.
+The set of modes includes operational modes defined for technologies. Modes are represented by the symbol ``M``.

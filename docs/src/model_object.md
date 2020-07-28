@@ -16,26 +16,40 @@ ul.liste {
   display:inline-block;
   text-align: left;
 }
+pre.inline {
+   display: inline;
+}
 </style>
 ```
 # Model object
-
-The `anyModel` object is the overarching structure that contains all data and objects of particular energy system model created with AnyMOD.
+```@raw html
+<p class="norm">
+The <a href="../api/#AnyMOD.anyModel"><code>anyModel</code></a> object is the overarching structure that contains all data and objects of particular energy system model created with AnyMOD.
+</p>
+```
 
 ```julia
 anyModel(inDir::Union{String,Array{String,1}},outDir::String; kwargs)
 ```
-[comment]: <> (julia format possible here?)
+
 ## In- and output files
-
-The constructor function above has two mandatory arguments that the directories for in- and output files.
-
-`inDir::Union{String,Array{String,1}}` specifies the directory (or directories) of input files. This can either be a string or an array of strings, if input files are spread across different directories. All `.csv` files within the provided directories (and their sub-directories) starting with `set_` or `par_` will be read-in as an input file. Other files are ignored and can be used for documentation. Within the specific files, only columns whose name contains one of the following keywords are acutally read-in: `parameter`, `variable`, `value`, `id`, `region`, `timestep`, `carrier`, `technology`, and `mode`. Other columns can be used freely for documentation.
+```@raw html
+<p class="norm">
+The constructor function above has two mandatory arguments that the directories for in- and output files. <code class="language-julia">inDir::Union{String,Array{String,1}}</code> specifies the directory (or directories) of input files. This can either be a string or an array of strings, if input files are spread across different directories.
+</p>
+<p class="norm">
+All <code>.csv</code> files within the provided directories (and their sub-directories) starting with <code>set_</code> or <code>par_</code> will be read-in as an input file. Other files are ignored and can be used for documentation. Within the specific files, only columns whose name contains one of the following keywords are actually read-in: <code>parameter</code>, <code>variable</code>, <code>value</code>, <code>id</code>, <code>region</code>, <code>timestep</code>, <code>carrier</code>, <code>technology</code>, and <code>mode</code>. Other columns can be used freely for documentation.
+</p>
+```
 
 !!! warning "Reserved keywords"
     Within the input files `all` is a reserved keyword. For an explanation on how it is used, see [Time-steps](@ref).
 
-`outDir::String`: defines the directory of output files. All reporting files including status reports, results, or graphs are written to this directory.
+```@raw html
+<p class="norm">
+<code class="language-julia">outDir::String</code>: defines the directory of output files. All reporting files including status reports, results, or graphs are written to this directory.
+</p>
+```
 
 ## Optional arguments
 
@@ -78,7 +92,7 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 <td><code>shortExp</code></td>
 <td>
 <ul class="liste">
-<li>intervall in years between steps of capacity expansion</li>
+<li>interval in years between steps of capacity expansion</li>
 </ul>
 </td>
 <td><code>10</code></td>
@@ -106,7 +120,7 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 <td><code>decomm</code></td>
 <td>
 <ul class="liste">
-<li>controlls if the model performs endogenous decommissioning, see <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a> for details</li>
+<li>controls if the model performs endogenous decommissioning, see <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a> for details</li>
 <li>available options are:
 <ul style="margin-top:0px">
 <li style="margin-top:0px"><code>decomm</code>: capacities are decommissioned endogenously, once decommissioned <br> capacities cannot be put into operation again </li>
@@ -245,10 +259,14 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 ```
 
 ## Fields
-[comment]: <> (julia format possible here?)
-Fields of the model object relevant for users include:
-* `sets::Dict{Symbol,Tree}`: sets defined within the model and their tree structure each saved as an `Tree` objects (see X for details)
-* `parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Int,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}`: all parts of the model, these contain the specific parameters, variables, and constraints (see X for details)
-* `report::Array{Tuple,1}`: status reports of model execution (see X for details)
-* `graInfo::graInfo`: properties for creation of plots and graphics, can be used to adjust colors and labels (see X for details)
-* `optModel::Model`: the actual [JuMP](https://github.com/JuliaOpt/JuMP.jl) object of the models underlying optimization problem
+
+```@raw html
+Relevant fields of the model object include:
+<ul>
+<li><code class="language-julia">sets::Dict{Symbol,Tree}</code>: sets defined within the model and their tree structure each saved as an `Tree` objects (see <a href="../sets_and_mappings">Sets and mappings</a> for details)</li>
+<li><code class="language-julia">parts::NamedTuple</code>: all parts of the model, these contain the specific parameters, variables, and constraints (see <a href="../parts">Parts</a> for details)</li>
+<li><code class="language-julia">report::Array{Tuple,1}</code>: status reports of model execution (see <a href="../error/#Error-handling">Error handling</a> for details)</li>
+<li><code class="language-julia">graInfo::graInfo</code>: properties for creation of plots and graphics, can be used to adjust colors and labels (see <a href="../plots/#Styling">Styling</a> for details)</li>
+<li><code class="language-julia">optModel::Model</code>: the actual <a href="https://github.com/JuliaOpt/JuMP.jl">JuMP</a> object of the models underlying optimization problem</li>
+</ul>
+```

@@ -10,20 +10,20 @@ The framework uses [DataFrames](https://juliadata.github.io/DataFrames.jl/stable
 
 # Installation
 
-The current version of [AnyMOD](https://github.com/leonardgoeke/AnyMOD.jl) was developed for [Julia 1.3.1](https://julialang.org/downloads/oldreleases/). AnyMOD is installed by switching into Julia's package mode by typing `]` into the console and then run `add AnyMOD`.
+The current version of [AnyMOD](https://github.com/leonardgoeke/AnyMOD.jl) was developed for [Julia 1.3.1](https://julialang.org/downloads/oldreleases/). AnyMOD is installed by switching into Julia's package mode by typing `]` into the console and then execute `add AnyMOD`.
 
 # Getting started
 
-To introduce the packages’ workflow and core functions, a small-scale example model is created, solved and analyzed. The files of this model can either be found in the installation directory of the package (user/.julia/packages/AnyMOD/.../examples) or manually loaded from the GitHub repository.
+To introduce the packages’ workflow and core functions, a small-scale example model is created, solved and analyzed. The files of this model can either be found in the installation directory of the package (`user/.julia/packages/AnyMOD/.../examples`) or manually loaded from the [GitHub repository](https://github.com/leonardgoeke/AnyMOD.jl/tree/master/examples/demo).
 
-Before we can start working with AnyMOD it need to be imported via the `using` command. Afterwards, the function `anyModel` constructs an AnyMOD model object by reading in the csv files found within the directory specified by the first argument. The second argument specifies a directory all model outputs are written to. Furthermore, default model options can be overwritten via optional arguments. In this case, the optional argument `objName` is used to name the model "demo". This name will appear during reporting and added to each output file. The optional argument `shortExp` defines the span of year between different time-steps of capacity expansion.
+Before we can start working with AnyMOD, it needs to be imported via the `using` command. Afterwards, the function `anyModel` constructs an AnyMOD model object by reading in the `.csv` files found within the directory specified by the first argument. The second argument specifies a directory all model outputs are written to. Furthermore, default model options can be overwritten via optional arguments. In this case, the optional argument `objName` is used to name the model "demo". This name will appear during reporting and added to each output file. The optional argument `shortExp` defines the span of year between different time-steps of capacity expansion.
 
 ```julia
 using AnyMOD
 anyM = anyModel("../demo","results", objName = "demo", shortExp = 10)
 ```
 
-During the construction process, all input files are read-in and checked for errors. Afterwards sets are mapped to each other and parameter data is assigned to the different model parts. During the whole process status updates are printed to the console and comprehensive reports are written to a dedicated csv file. Since after construction, all qualitative model information, meaning all sets and their interrelations, is written, several graphs describing a models´ structure can be plotted.
+During the construction process, all input files are read-in and checked for errors. Afterwards sets are mapped to each other and parameter data is assigned to the different model parts. During the whole process status updates are printed to the console and comprehensive reports are written to a dedicated `.csv` file. Since after construction, all qualitative model information, meaning all sets and their interrelations, is written, several graphs describing a models´ structure can be plotted.
 
 ```julia
 plotTree(:region,anyM)
