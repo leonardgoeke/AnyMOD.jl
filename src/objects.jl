@@ -168,6 +168,9 @@ end
 # <editor-fold desc="structs for nodes that then make up the trees to save set data"
 
 # XXX define nodes for set tree and tree itself
+"""
+bla
+"""
 mutable struct Node
 	idx::Int
 	val::String
@@ -176,6 +179,9 @@ mutable struct Node
 	down::Array{Int,1}
 end
 
+"""
+blub
+"""
 mutable struct Tree
 	nodes::Dict{Int,Node}
 	srcTup::Dict{Tuple,Array{Int,1}}
