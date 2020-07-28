@@ -2,7 +2,7 @@
 # <editor-fold desc= create other elements of model"
 
 # XXX create variables and capacity constraints for trade variables
-function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
+function createTradeVarCns!(partTrd::OthPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 	for type in (:Buy, :Sell)
 		trdPrc_sym = Symbol(:trd,type,:Prc)
 		trd_sym = Symbol(:trd,type)
@@ -12,7 +12,7 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 			c_arr = unique(partTrd.par[trdPrc_sym].data[!,:C])
 
 			# create dataframe with all potential entries for trade/sell variable
-			var_df = createPotDisp(c_arr,anyM)
+			var_df = createPotDisp(c_arr,ts_dic,anyM)
 
 			# match all potential variables with defined prices
 			var_df = matchSetParameter(var_df,partTrd.par[trdPrc_sym],anyM.sets)[!,Not(:val)]
@@ -45,11 +45,11 @@ function createTradeVarCns!(partTrd::OthPart,anyM::anyModel)
 end
 
 # XXX create all energy balances (and curtailment variables if required)
-function createEnergyBal!(techSym_arr::Array{Symbol,1},anyM::anyModel)
+function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
 	partBal = anyM.parts.bal
 	c_arr = filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx))
-	allDim_df = createPotDisp(c_arr,anyM)
+	allDim_df = createPotDisp(c_arr,ts_dic,anyM)
 	bal_tup = (:C,:Ts_dis)
 	agg_arr = [:Ts_dis, :R_dis, :C]
 

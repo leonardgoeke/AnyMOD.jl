@@ -113,7 +113,8 @@ function createTimestepMapping!(anyM::anyModel)
 
     supTs_tup = tuple(sort(getfield.(filter(x -> x.lvl == supTsLvl_int,collect(values(anyM.sets[:Ts].nodes))),:idx))...)
     scaSupTs_dic = Dict((x[1],x[2]) => (1/anyM.options.redStep)*8760/length(getDescendants(x[1],anyM.sets[:Ts],false,x[2])) for x in Iterators.product(supTs_tup,filter(x -> x >= supTsLvl_int,1:anyM.sets[:Ts].height)))
-    anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic)
+
+	anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic)
 
     if length(anyM.supTs.step) > 50
 		push!(anyM.report,(2,"timestep mapping","","problem specification resulted in more than 50 superordinate dispatch timesteps, this looks faulty"))

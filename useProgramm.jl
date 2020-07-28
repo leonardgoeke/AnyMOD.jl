@@ -21,16 +21,7 @@ include("src/dataHandling/readIn.jl")
 include("src/dataHandling/tree.jl")
 include("src/dataHandling/util.jl")
 
-anyM = anyModel("examples/demo","results", objName = "demo")
-
-anyM.parts.tech[2].var[:gen]
-
-# TODO prüfe model creation für ein jahr nur durch manipulation des objekts nach konstruktor
-
-part = anyM.parts.tech[t]
-prepTech_dic = prepVar_dic[t]
-parDef_dic = copy(parDef_dic)
-
+anyM = anyModel("examples/demo_stoch","results", objName = "demo")
 
 
 createOptModel!(anyM)

@@ -402,7 +402,9 @@ mutable struct anyModel <: AbstractModel
 
 		# XXX read-in sets and parameters
 		setData_dic = readSets!(files_dic,anyM)
-		paraTemp_dic = readParameters!(files_dic,setData_dic,anyM)
+		if !any(map(x -> x[1] == 3, anyM.report))
+			paraTemp_dic = readParameters!(files_dic,setData_dic,anyM)
+		end
 
 		produceMessage(anyM.options,anyM.report, 1," - Read-in all set and parameter files")
 

@@ -72,8 +72,8 @@ intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, collect(pa
 intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(namesSym(in_df),[add_sym]))
 
 # XXX puts relevant dimensions in consistent order and adds remaining entries at the end
-orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :C, :Te], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
-orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :C, :Te, :M], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te, :M], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
 
 # XXX puts dataframes columns in consistent order
 orderDf(in_df::DataFrame) = select(in_df,orderDim(namesSym(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
@@ -109,13 +109,19 @@ function assignSupTs(inputSteps_arr::Array{Int,1},time_tree::Tree,superordinateL
 end
 
 # XXX create dataframe with all potential dimensions for carrier provided
-function createPotDisp(c_arr::Array{Int,1},anyM::anyModel)
+function createPotDisp(c_arr::Array{Int,1},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
 	lvl_arr = map(x -> anyM.cInfo[x], c_arr) |> (y -> map(z -> getfield.(y,z),[:tsDis, :rDis]))
 	allLvl_df = DataFrame(C = c_arr, lvlTs = lvl_arr[1], lvlR = lvl_arr[2])
-	tsDis_dic, rDis_dic = [Dict(x => getfield.(getNodesLvl(anyM.sets[z[2]],x),:idx) for x in unique(lvl_arr[z[1]])) for z in enumerate([:Ts,:R])]
+	rDis_dic = Dict(x => getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in unique(lvl_arr[1]))
 
-	allLvl_df[!,:Ts_dis] = map(x -> tsDis_dic[x],allLvl_df[!,:lvlTs])
+	allLvl_df[!,:Ts_disSup] .= fill(collect(anyM.supTs.step),size(allLvl_df,1))
+	allLvl_df = flatten(allLvl_df,:Ts_disSup)
+	bla_dic = Dict(1 => [1,2], 2 => [1,2])
+	allLvl_df[!,:scr]  = map(x -> bla_dic[x],allLvl_df[!,:Ts_disSup])
+	allLvl_df = flatten(allLvl_df,:scr)
+
+	allLvl_df[!,:Ts_dis] = map(x -> ts_dic[x.Ts_disSup,x.lvlTs],eachrow(allLvl_df))
 	allLvl_df[!,:R_dis] = map(x -> rDis_dic[x],allLvl_df[!,:lvlR])
 
 	var_df = flatten(flatten(select(allLvl_df,Not([:lvlTs,:lvlR])),:Ts_dis),:R_dis)
@@ -364,7 +370,11 @@ end
 
 # XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
 function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},preserveTsSupTs::Bool = false)
-    # adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)
+	bla_dic = Dict(1 => [1,2], 2 => [1,2])
+	inData_df[!,:scr] = map(x -> bla_dic[x], inData_df[!,:Ts_disSup])
+	inData_df = flatten(inData_df,:scr)
+
+	# adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)
 	expR_df = unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],), groupby(inData_df,namesSym(inData_df)))[!,Not([:R_exp,:lvlR])])
 	expTs_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(expR_df,namesSym(expR_df)))[!,Not(:lvlTs)]
 

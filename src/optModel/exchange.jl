@@ -53,10 +53,13 @@ function createExcVar!(partExc::OthPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 	capa_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],capa_df[!,:C])
 	rExc_dic = Dict(x => anyM.sets[:R].nodes[x[1]].lvl != x[2] ? getDescendants(x[1],anyM.sets[:R],false,x[2]) : [x[1]]
 																							for x in union([map(x -> (x[y],x.lvlR), eachrow(unique(capa_df[!,[y,:lvlR]]))) for y in (:R_from,:R_to)]...))
-
 	capa_df[!,:R_from] = map(x -> rExc_dic[x.R_from,x.lvlR],eachrow(capa_df[!,[:R_from,:lvlR]]))
 	capa_df[!,:R_to] = map(x -> rExc_dic[x.R_to,x.lvlR],eachrow(capa_df[!,[:R_to,:lvlR]]))
 	capa_df = flatten(select(capa_df,Not(:lvlR)),:R_from); capa_df = unique(flatten(capa_df,:R_to))
+
+	bla_dic = Dict(1 => [1,2], 2 => [1,2])
+	capa_df[!,:scr] = map(x -> bla_dic[x],capa_df[!,:Ts_disSup])
+	capa_df = flatten(capa_df,:scr)
 
 	disp_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],),groupby(capa_df,namesSym(capa_df)))[!,Not(:lvlTs)]
 

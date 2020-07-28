@@ -222,6 +222,8 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:costCrt] = (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :bal)
     parDef_dic[:costLss] = (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up), part = :bal)
 
+    parDef_dic[:scrProp] = (dim = (:Ts_sup, :scr), defVal = nothing, herit = (:scr => :up, :Ts_sup => :up, :Ts_sup => :avg_any), part = :obj)
+
     # trade (=sell or buy to an external market) parameters
     parDef_dic[:trdBuyPrc]   =   (dim = (:Ts_dis, :R_dis, :C, :id, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any, :scr => :up), part = :trd)
     parDef_dic[:trdSellPrc]  =   (dim = (:Ts_dis, :R_dis, :C, :id, :scr), defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :R_dis => :avg_any, :Ts_dis => :avg_any, :scr => :up), part = :trd)
@@ -260,6 +262,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
 
     # parameter defined within input data
     allPar_arr = unique(vcat(collectKeys.(keys.(values(paraTemp_dic)))...))
+
      # parameter actually used in the model (difference are the exchange related parameters, that can be provided both directed and symmetric, but within the model only directed values are being used)
     parToFile_dic = Dict(x => collectKeys(keys(paraTemp_dic[x])) for x in keys(paraTemp_dic))
 
@@ -376,7 +379,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 	preType_arr = union(values(parPre_dic))
 
     typeVar_dic = Dict(:out => [:gen, :stIntIn], :in => [:use,:stIntOut], :stIn => [:stExtIn, :stOut], :stOut => [:stExtOut, :stIntOut], :stLvl => [:stLvl])
-    modeDep_dic = Dict(x => DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[]) for x in union(values(typeVar_dic)...))
+    modeDep_dic = Dict(x => DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], scr = Int[]) for x in union(values(typeVar_dic)...))
 
 	for preType in preType_arr
 		# get all relevant carriers
@@ -421,6 +424,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
             reso_tup = map(x -> anyM.cInfo[x],car_arr) |> (y -> [minimum(getfield.(y,:tsDis)), part.disAgg ? part.balLvl.exp[2] : minimum(getfield.(y,:rDis))])
             capaLvl_df[!,:lvlTs] .= reso_tup[1]; capaLvl_df[!,:lvlR] .= reso_tup[2];
 		end
+
 
         # expand based on code above to full table for pre-setting of dispatch paramters
 		dispReso_df = expandExpToDisp(capaLvl_df,ts_dic,r_dic)

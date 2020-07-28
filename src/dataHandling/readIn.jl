@@ -6,7 +6,7 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 
 	# creates relevant sets, manually adds :mode and assigns short names
 	set_arr = append!(map(x ->  Symbol(x[findfirst("set_",x)[1]+4:end-4]),files_dic["set"]), [:mode, :id])
-	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id)
+	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id, :scenario => :scr)
 
 	setData_dic = Dict{Symbol,DataFrame}()
 	anyM.sets = Dict{Symbol,Tree}()
@@ -15,11 +15,29 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 	for setFile in files_dic["set"]
 		setLong_sym = getindex(setFile[findfirst("set_",setFile)[1]+4:end-4] |> (y -> filter(x -> occursin(string(x),y),collectKeys(keys(setLngShrt_dic)))),1)
 		setShort_sym = get!(setLngShrt_dic,setLong_sym,setLong_sym)
+
 		if setShort_sym in keys(anyM.sets)
 			push!(anyM.report,(3,"set read-in",string(setLong_sym),"multiple input files provided for set"))
 		end
 		setData_dic[setShort_sym] = convertReadIn(CSV.read(setFile;delim = anyM.options.csvDelim[1]),setFile,set_arr,setLngShrt_dic,anyM.report,anyM.lock)
+
+		if setShort_sym == :scr
+			# exception for scenario file, checks column naming and manipulates tree
+			if namesSym(setData_dic[setShort_sym]) != [:scenario]
+				push!(anyM.report,(3,"set read-in",string(setLong_sym),"only one column named 'scenario' allowed in set file defining scenarios"))
+			else
+				setData_dic[setShort_sym] = rename(setData_dic[setShort_sym],:scenario => :scenario_1)
+			end
+		else
+			# reporting on wrong column naming
+			colNames_arr = map(x -> x[end], split.(names(setData_dic[setShort_sym]),"_"))
+			if filter(x -> !isnothing(x),tryparse.(Int,colNames_arr)) |> (y -> y != collect(1:maximum(y)))
+				push!(anyM.report,(3,"set read-in",string(setLong_sym),"wrong column naming detected, columns to define set have to be named: " * join(map(x -> string(setLong_sym,"_",x),1:2),", ") * "..."))
+				continue
+			end
+		end
 		anyM.sets[setShort_sym] = createTree(setData_dic[setShort_sym],setLong_sym,anyM.report)
+
 	    produceMessage(anyM.options,anyM.report, 3," - Read-in set file: ",setFile)
 	end
 
@@ -31,9 +49,10 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 	end
 	anyM.sets[:M] = createTree(modes_df,:mode,anyM.report)
 
+
 	# reports, if a required set was not defined or if non-unique carrier names were defined
-	for set in filter(x -> !(x in (:mode, :id)), collectKeys(keys(setLngShrt_dic)))
-		if !(setLngShrt_dic[set] in keys(anyM.sets))
+	for set in filter(x -> !(x in (:mode, :id, :scenario)), collectKeys(keys(setLngShrt_dic)))
+		if !(setLngShrt_dic[set] in keys(setData_dic))
 			push!(anyM.report,(3,"set read-in",string(set),"no file provided to define set"))
 		elseif set == :carrier || set == :technology
 			# reports error if carrier names are non-unique
@@ -55,7 +74,7 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 
 	# creates relevant sets, manually adds :mode and assigns short names
 	set_arr = append!(map(x ->  Symbol(x[findfirst("set_",x)[1]+4:end-4]),files_dic["set"]), [:mode, :id])
-	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id)
+	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id, :scenario => :scr)
 
 	# read-in parameter files and convert their content
 	@threads for parFile in files_dic["par"]
@@ -93,6 +112,11 @@ end
 
 # XXX filters missing and adjusts data according to "all" statements
 function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{Symbol},setLngShrt_dic::Dict{Symbol,Symbol},report::Array{Tuple,1},lock_::ReentrantLock,sets::Dict{Symbol,Tree} = Dict{Symbol,Tree}())
+
+	# reports if scenario column exists but no scenarios were defined
+	if :scenario in namesSym(readIn_df) && !(:scenario in set_arr)
+		push!(anyM.report,(3,"parameter read-in","definition","scenario column provided in '$(fileName_str)', but scenarios were not defined in a set file"))
+	end
 
 	setNames_arr = filterSetColumns(readIn_df,set_arr)
     oprNames_arr = filterSetColumns(readIn_df,[:parameter,:variable,:value, :id])

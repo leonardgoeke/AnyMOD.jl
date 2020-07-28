@@ -586,6 +586,10 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	capaVar_df[!,:lvlTs] .= restr.lvlTs
 	capaVar_df[!,:lvlR] .= restr.lvlR
 
+	bla_dic = Dict(2 => [1,2], 1 => [1,2])
+	capaVar_df[!,:scr] = map(x -> bla_dic[x], capaVar_df[!,:Ts_disSup])
+	capaVar_df = flatten(capaVar_df,:scr)
+
 	# resize capacity variables (expect for stSize since these are already provided in energy units)
 	if type_sym != :stSize
 		capaVar_df[!,:var]  = capaVar_df[!,:var] .* map(x -> supTs_ntup.sca[(x.Ts_disSup,x.lvlTs)],	eachrow(capaVar_df[!,[:Ts_disSup,:lvlTs]]))
