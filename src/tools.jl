@@ -545,7 +545,7 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
     tree_df = DataFrame(idx = data_arr[1], val = data_arr[2], lvl =  data_arr[3], down = data_arr[4], subIdx = data_arr[5], up =map(x -> tree_obj.up[x],data_arr[1]))
 
     # sets options
-    col_dic = Dict(:region => (0.251,0.388,0.847),:timestep => (0.133, 0.545, 0.133),:carrier => (0.584, 0.345, 0.698),:tech => (0.796,0.235,0.2))
+    col_dic = Dict(:region => (0.133, 0.545, 0.133),:timestep => (0.251,0.388,0.847),:carrier => (0.584, 0.345, 0.698),:tech => (0.796,0.235,0.2))
     # </editor-fold>
 
     # <editor-fold desc="computes positon of nodes"
