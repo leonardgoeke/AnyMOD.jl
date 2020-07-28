@@ -1,0 +1,25 @@
+timestep_1,carrier_1,carrier_2,region_1,region_2,region_1,region_2,parameter,value,comment
+,coal,,,,,,trdBuyPrc,8,allows to buy coal from an external market
+,gas,naturalGas,,,,,trdBuyPrc,30,
+,hydrogen,,,,,,trdBuyPrc,400,
+all,electricity,,West,WestNorth,West,WestSouth,capaExcUp,14,allows to buy naturalGas from an external market
+all,electricity,,East,EastNorth,East,EastSouth,capaExcUp,20,allows to buy hydrogen from an external market
+all,electricity,,West,WestNorth,East,EastNorth,capaExcUp,3,sets an upper limit for electricity exchange
+all,electricity,,West,WestNorth,West,WestSouth,capaExcResi,0,sets an upper limit for electricity exchange
+all,electricity,,East,EastNorth,East,EastSouth,capaExcResi,0,sets an upper limit for electricity exchange
+all,electricity,,West,WestNorth,East,EastNorth,capaExcResi,0,defining a residucal capacity enables the building of exchange capacities for this regions in general (even if the residual value is zero)
+,gas,,West,WestNorth,West,WestSouth,capaExcResi,8,defining a residucal capacity enables the building of exchange capacities for this regions in general (even if the residual value is zero)
+,gas,,East,EastNorth,East,EastSouth,capaExcResi,6,defining a residucal capacity enables the building of exchange capacities for this regions in general (even if the residual value is zero)
+,gas,,West,WestNorth,East,EastSouth,capaExcResi,8,sets capacities for gas exchange between regions existing without any investment
+,gas,,West,WestNorth,West,WestSouth,expExcFix,0,sets capacities for gas exchange between regions existing without any investment
+,gas,,East,EastNorth,East,EastSouth,expExcFix,0,sets capacities for gas exchange between regions existing without any investment
+,gas,,West,WestNorth,East,EastSouth,expExcFix,0,prevents the additional expension of gas exchange capacities
+,electricity,,West,WestNorth,West,WestSouth,lossExc,0.02,prevents the additional expension of gas exchange capacities
+,electricity,,East,EastNorth,East,EastSouth,lossExc,0.02,prevents the additional expension of gas exchange capacities
+,electricity,,West,WestNorth,East,EastSouth,lossExc,0.04,define losses when exchanging electricty between WestNorth and WestSouth
+,gas,,,,,,lossExc,0.01,define losses when exchanging electricty between EastNorth and EastSouth
+,electricity,,West,WestSouth,East,EastSouth,capaExcResiDir,2,define losses when exchanging electricty between WestNorth and EastSouth
+,electricity,,,,,,costCrt,-2,defines losses when exchanging gas
+,electricity,,West,WestNorth,East,EastSouth,lossExcDir,0.02,adds pre-existing directed exchange capacity from West to East
+,electricity,,,,,,costExpExc,1000,"introduces negative costs (= revenues) for curtailing electricity, otherwise production surpluses might be ""destroyed"" via storage losses distorting results "
+,gas,,,,,,costOprExc,2,
