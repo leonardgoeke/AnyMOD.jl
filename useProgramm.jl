@@ -21,15 +21,21 @@ include("src/dataHandling/readIn.jl")
 include("src/dataHandling/tree.jl")
 include("src/dataHandling/util.jl")
 
-anyM = anyModel("examples/demo_stoch","results", objName = "demo")
+using AnyMOD
+
+anyM_ref = anyModel("examples/demo","results", objName = "demo")
 
 
-createOptModel!(anyM)
-setObjective!(:costs,anyM)
+createOptModel!(anyM_ref )
+setObjective!(:costs,anyM_ref )
 
 using Gurobi
-set_optimizer(anyM.optModel,Gurobi.Optimizer)
-set_optimizer_attribute(anyM.optModel, "Method", 2)
-set_optimizer_attribute(anyM.optModel, "Crossover", 0)
-set_optimizer_attribute(anyM.optModel, "BarOrder", 0)
-optimize!(anyM.optModel)
+set_optimizer(anyM_ref.optModel,Gurobi.Optimizer)
+set_optimizer_attribute(anyM_ref.optModel, "Method", 2)
+set_optimizer_attribute(anyM_ref.optModel, "Crossover", 0)
+set_optimizer_attribute(anyM_ref.optModel, "BarOrder", 0)
+optimize!(anyM_ref.optModel)
+
+
+reportResults(:costs,anyM_ref)
+reportResults(:summary,anyM_ref)

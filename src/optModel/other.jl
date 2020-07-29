@@ -51,7 +51,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	c_arr = filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx))
 	allDim_df = createPotDisp(c_arr,ts_dic,anyM)
 	bal_tup = (:C,:Ts_dis)
-	agg_arr = [:Ts_dis, :R_dis, :C]
+	agg_arr = [:Ts_dis, :R_dis, :C, :scr]
 
 	# <editor-fold desc="create potential curtailment and loss loss load variables
 
@@ -140,8 +140,8 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 
 			balTo_tup, balFrom_tup = [tuple(replace(collect(bal_tup),:R_dis => x)...) for x in [:R_to, :R_from]]
 
-			excFrom_arr = aggUniVar(convertExcCol(excVarFrom_df),rename(src_df,:R_dis => :R_to),[:Ts_dis,:R_to,:C],(Ts_dis = cRes_tup[1], R_to = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
-			excTo_arr  = aggUniVar(excVarTo_df,rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
+			excFrom_arr = aggUniVar(convertExcCol(excVarFrom_df),rename(src_df,:R_dis => :R_to),[:Ts_dis,:R_to,:C,:scr],(Ts_dis = cRes_tup[1], R_to = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
+			excTo_arr  = aggUniVar(excVarTo_df,rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C,:scr],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
 
 			cns_df[!,:excVar] =  excFrom_arr .- excTo_arr
 		else
@@ -189,12 +189,12 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 		end
 
 		# prepare loop over tech for c by creating empty dataframe and get temporal and spatial resolution for carrier being balanced
-		allVar_df = DataFrame(Ts_dis = Int[], R_dis = Int[], var = AffExpr[])
+		allVar_df = DataFrame(Ts_dis = Int[], R_dis = Int[], scr = Int[], var = AffExpr[])
 		cRes_tup = cInfo_dic[c] |> (x -> (x.tsDis, x.rDis))
 
 		for x in relTech_arr
 			# gets resolution and adjusts add_df in case of an agggregated technology
-			add_df = select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:var])
+			add_df = select(filter(r -> r.C == c,tech_dic[x[1]].var[x[2]]),[:Ts_dis,:R_dis,:scr,:var])
 			if isempty(add_df) continue end
 			tRes_tup = tech_dic[x[1]].disAgg ? (cRes_tup[1], tech_dic[x[1]].balLvl.exp[2]) : cRes_tup
 			checkTechReso!(tRes_tup,cBalRes_tup,add_df,sets_dic)
@@ -208,8 +208,8 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 		if isempty(allVar_df)
 			techVar_arr[idx]  = fill(AffExpr(),size(src_df,1))
 		else
-			grpVar_df = combine(groupby(allVar_df, [:Ts_dis, :R_dis]), :var => (x -> sum(x)) => :var)
-			techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis], :left, Dict(:var => AffExpr()))[!,:var]
+			grpVar_df = combine(groupby(allVar_df, [:Ts_dis, :R_dis, :scr]), :var => (x -> sum(x)) => :var)
+			techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis, :scr], :left, Dict(:var => AffExpr()))[!,:var]
 		end
 	end
 
@@ -248,6 +248,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		# XXX loop over respective type of limits to obtain data
 		for lim in varToPar_dic[va]
 			par_obj = copy(partLim.par[Symbol(va,lim)])
+
 			if va in (:capaExc,:oprCapaExc) && :R_a in namesSym(par_obj.data) && :R_b in namesSym(par_obj.data)
 				par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_a => :R_b,:R_b => :R_a))
 			end

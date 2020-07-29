@@ -42,7 +42,7 @@ anyM.optModel = Model()
 
 anyM.lock = ReentrantLock()
 
-objName = ""; csvDelim = ","; decomm = :none; interCapa = :linear; supTsLvl = 0; shortExp = 10; reportLvl = 2; errCheckLvl = 1; errWrtLvl = 1
+objName = ""; csvDelim = ","; decomm = :recomm; interCapa = :linear; supTsLvl = 0; shortExp = 10; reportLvl = 2; errCheckLvl = 1; errWrtLvl = 1
 coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)); bound = (capa = NaN, disp = NaN, obj = NaN)
 scaFac = (capa = 1e1, oprCapa = 1e2, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0); avaMin = 0.01; checkRng = NaN
 emissionLoss = true; redStep = 1.0
@@ -176,18 +176,25 @@ end
 
 createTradeVarCns!(anyM.parts.trd,ts_dic,anyM)
 createEnergyBal!(techSym_arr,ts_dic,anyM)
-
-# TODO hier weitermachen, bisher gelten limits in summer über alle szenarien
 createLimitCns!(anyM.parts.lim,anyM)
 
-anyM.parts.lim.cns
+setObjective!(:costs,anyM)
+
+using Gurobi
+set_optimizer(anyM.optModel,Gurobi.Optimizer)
+set_optimizer_attribute(anyM.optModel, "Method", 2)
+set_optimizer_attribute(anyM.optModel, "Crossover", 0)
+set_optimizer_attribute(anyM.optModel, "BarOrder", 0)
+set_optimizer_attribute(anyM.optModel, "BarConvTol", 1e-6)
+
+optimize!(anyM.optModel)
+
+reportResults(:summary,anyM)
+reportResults(:costs,anyM)
 
 # XXX dump
+printObject(anyM.parts.lim.cns[:emissionUp],anyM)
 
-
-tInt = techInt(tSym,anyM.sets[:Te])
-part = anyM.parts.tech[tSym]
-prepTech_dic = prepVar_dic[tSym]
 
 
 # write scenario information
@@ -200,3 +207,7 @@ if :scr in collectKeys(keys(anyM.sets))
 else
 
 end
+
+printObject(anyM.parts.tech[:openspace].cns[:outRestr],anyM)
+
+anyM.parts.tech[:openspace].par[:avaConv].data[24,:]

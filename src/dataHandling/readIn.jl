@@ -183,11 +183,10 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
         if  !isempty(sets) # take reference from readin sets
             specSet_arr = split(String(col),"_")
             relSet_obj = sets[setLngShrt_dic[Symbol(specSet_arr[1])]]
-            colValUni_arr = unique(map(x -> x.val,getNodesLvl(relSet_obj, parse(Int,specSet_arr[2]))))
+            colValUni_arr = (length(specSet_arr) == 1 ? "1" : specSet_arr[2]) |> (y -> unique(map(x -> x.val,getNodesLvl(relSet_obj, parse(Int,y)))))
         else # take reference from other column values, relevant when sets are currently read in
             colValUni_arr = sort(unique(filter(x -> !isempty(x),colVal_arr[(!).(rowsAll_arr)])))
         end
-
         # loop over rows with all
         for row in eachrow(readIn_df[rowsAll_arr,:])
             # append new rows to dataframe
