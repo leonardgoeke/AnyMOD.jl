@@ -938,7 +938,7 @@ Variable costs excess generation or unmet demand is subjected to. Costs can also
 Here, all parameters relevant to the expansion of conversion, storage, and exchange capacity are listed.
 </p>
 <p class="norm">
-At this point it is important to stress that, as displayed in the <a href="#Dispatch-of-technologies">technology diagrams</a>, <strong>AnyMOD always indicates capacity before effiency losses!</strong> For instance capacity of a gas power plant does not denote its maxium electricity output, but the maximum gas input. This approach is pursued, because <a href="../parameter_list/#Efficiency-1">efficiency</a> is not a constant and differs by time-step, region and mode. As a result, maximum output varies within the dispatch too and is not suited to universally describe installed capacities.
+At this point it is important to stress that, as displayed in the <a href="#Dispatch-of-technologies">technology diagrams</a>, <strong>AnyMOD always indicates capacities before effiency losses!</strong> For instance capacity of a gas power plant does not denote its maxium electricity output, but the maximum gas input. This approach is pursued, because <a href="../parameter_list/#Efficiency-1">efficiency</a> is not a constant and differs by time-step, region and mode. As a result, maximum output varies within the dispatch too and is not suited to universally describe installed capacities.
 </p>
 ```
 
@@ -2125,8 +2125,6 @@ Limits on operated capacity. In the inheritance rules <em>sum*</em> only applies
 </tbody>
 </table>
 ```
-
-
 
 # Emissions
 
