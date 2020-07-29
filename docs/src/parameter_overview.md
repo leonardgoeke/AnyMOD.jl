@@ -4,6 +4,15 @@ table.tabelle2 td {
   padding-left: 0.57em;
   padding-right: 0.57em;
   border-right: solid 1px;
+  border-bottom: none;
+  border-color: #dbdbdb;
+  font-size: small;
+  font-weight: normal;
+}
+table.tabelle3 td {
+  padding-left: 0.57em;
+  padding-right: 0.57em;
+  border-right: solid 1px;
   border-color: #dbdbdb;
   font-size: small;
   font-weight: normal;
@@ -58,11 +67,11 @@ As an example, the table below shows the definition of the <a href="../parameter
 <table class="tabelle2">
 <tbody>
 <tr>
-<td style="border-right:none"><strong>timestep_1</strong></td>
-<td style="border-right:none"><strong>region_1</strong></td>
-<td><strong>region_2</strong></td>
-<td style="border-right:none"><strong>parameter</strong></td>
-<td style="border-right:none"><strong>value</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>region_1</strong></td>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>region_2</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
 </tr>
 <tr>
 <td style="border-right:none"></td>
@@ -128,7 +137,7 @@ When data is required but not defined for a specific combination of nodes, the a
 The actual algorithm is outlined for the example of the <a href="../parameter_list/#Discount-rate-1">discount rate</a> parameter from the demo problem. The instances of the parameter required with in the model are given below, the provided input data was shown above.
 </p>
 
-<table class="tabelle2">
+<table class="tabelle3">
 <tbody>
 <tr>
 <td style="border-right:none"><strong>timestep_superordinate_dispatch</strong></td>
@@ -191,7 +200,7 @@ Three steps are taken to populate the table with the required data:
 <li class="nest2"; style="font-size:large;font-weight:bold">&nbsp;&nbsp;&nbspDirect matches</font-size><br>
 <p class="norm">
 First, values are assigned where instances of the required data exactly match the provided input data. For example, data for <code>2020</code> and <code>WestSouth</code> is specifically provided and can be used directly.
-<table class="tabelle2">
+<table class="tabelle3">
 <tbody>
 <tr>
 <td style="border-right:none"><strong>timestep_superordinate_dispatch</strong></td>
@@ -269,7 +278,7 @@ Next, the algorithm consecutively applies the inheritance rules of the respectiv
 <li class="nest"; style="font-size:medium;font-weight:bold">&nbsp;&nbsp;&nbsp;$Ts_{sup}$	&#8594; <em>upwards</em><br>
 <p class="norm">
 For discount rates, the first rule is to try to obtain additional values by moving upwards in the hierarchical trees of time-steps. In the first row of input data, a value was provided irrespective of time-step, but only for the region <code>West</code>. This value is now assigned to the missing entries of that region.
-<table class="tabelle2">
+<table class="tabelle3">
 <tbody>
 <tr>
 <td style="border-right:none"><strong>timestep_superordinate_dispatch</strong></td>
@@ -343,7 +352,7 @@ For discount rates, the first rule is to try to obtain additional values by movi
 <li class="nest"; style="font-size:medium;font-weight:bold">&nbsp;&nbsp;&nbsp;$R_{exp}$ &#8594; <em>upwards</em><br>
 <p class="norm">
 Next, the concept is analogously applied to regions. By moving up the tree the value provided for <code>East</code> is now assigned for the descendant regions <code>EastNorth</code> and <code>EastSouth</code> as well.
-<table class="tabelle2">
+<table class="tabelle3">
 <tbody>
 <tr>
 <td style="border-right:none"><strong>timestep_superordinate_dispatch</strong></td>
@@ -423,7 +432,7 @@ The <em>average</em> mode tries to inherit values from descendant carriers. In t
 <li class="nest2"; style="font-size:large;font-weight:bold">&nbsp;&nbsp;&nbspUse default value<br>
 <p class="norm"; style = "text-indent:0em">
 Finally, for all cases where no data was assigned, the default value is used instead. In case a parameter does not have a default, cases are dropped.
-<table class="tabelle2">
+<table class="tabelle3">
 <tbody>
 <tr>
 <td style="border-right:none"><strong>timestep_superordinate_dispatch</strong></td>

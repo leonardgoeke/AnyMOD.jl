@@ -207,7 +207,7 @@ explain what determines potential interconnection
 <td><strong>instances</strong></td>
 <td><ul class="liste">
 <li>dispatch resolution of carrier</li>
-<li>regions can exchange carrier</li>
+<li><a href="../parameter_list/#Residual-capacities-1">residual capacity</a> between regions defined</li>
 </ul></td>
 </tr>
 <tr>
