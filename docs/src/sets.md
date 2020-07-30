@@ -425,7 +425,7 @@ Within a model only nodes without any descendants are actual technologies. The r
 <img src="../assets/tech.png" width="100%"/>
 ```
 
-### Mapping
+### Mappings
 
 **Converted and stored carriers**
 
@@ -460,6 +460,11 @@ Also the opposite case can be modelled: A carrier charged from outside, but only
 The following table lists all optional columns that can be specified within in `set_technology.csv` file to overwrite a default behaviour.
 
 ```@raw html
+
+<p class="norm">
+An important option to point out is <code>technology_type</code>. Three different technology types exist: <code>stock</code>, <code>mature</code> and <code>emerging</code>. Stock technologies cannot be expended and are limited to <a href="../parameter_list/#Residual-capacities-1">pre-existing capacities</a>. Emerging technologies differ from mature technologies in the sense that their capacities are differentiated by time-step of construction $Ts_{exp}$. This allows to account for technological improvement over time, but increases the required numbers of variables and constraints.
+</p>
+
 <table class="tabelle2">
 <tbody>
 <tr>
@@ -481,7 +486,7 @@ The following table lists all optional columns that can be specified within in `
 <td><code>technology_type</code></td>
 <td>
 <ul class="liste">
-<li>types controll expansion behaviour of technology, see <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a> for details</li>
+<li>types control expansion behaviour of technology, see <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a> for details</li>
 <li>available options are:
 <ul style="margin-top:0px">
 <li style="margin-top:0px"><code>stock</code>: no expansion</li>

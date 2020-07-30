@@ -8,7 +8,7 @@ Type including data and additional information on parameters. Fields relate to w
 * `dim::Tuple`: potential dimensions of parameter data
 * `defVal::Union{Nothing,Float64}`: default value
 * `herit::Tuple`: inheritance rules for parameter, see [Parameter overview](@ref) for details
-* `data::DataFrame`: specified parameter data
+* `data::DataFrame`: specified parameter data, see <a href="../data/#printObject"><code>printObject</code></a> on how to export in a readable format
 """
 mutable struct ParElement
 	name::Symbol

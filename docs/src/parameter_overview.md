@@ -52,7 +52,13 @@ Parameter data is provided in <code>.csv</code> csv files starting with <code>pa
 # Read-in
 ```@raw html
 <p class="norm">
-In contrast to sets, the naming of parameter files and what data is provided in which file is entirely up to the user. For instance, data for the same parameter can be spread across different files and within one file multiple parameters can be defined. Parameter data is provided in a pivot format where the column `parameter` determines the respective parameter and the column `value` its respective value. Additional columns specify the nodes within the hierarchical trees of sets a value applies to. Therefore, names of these columns are comprised of the set's name and, if the set is organized in a tree with multiple levels, the number of the respective level.
+In contrast to sets, the naming of parameter files and what data is provided in which file is entirely up to the user. For instance, data for the same parameter can be spread across different files and within one file multiple parameters can be defined.
+</p>
+```
+### Pivot format
+```@raw html
+<p class="norm">
+Parameter data is provided in a pivot format where the column <code>parameter</code> determines the respective parameter and the column <code>value</code> its respective value. Additional columns specify the nodes within the hierarchical trees of sets a value applies to. Therefore, names of these columns are comprised of the set's name and, if the set is organized in a tree with multiple levels, the number of the respective level.
 </p>
 
 <p class="norm">
@@ -98,6 +104,68 @@ As an example, the table below shows the definition of the <a href="../parameter
 </table>
 ```
 In case, a set is included in the dimensions of a parameter, but no node of that set is assigned for a respective value, the very top node of the tree is assigned instead.
+
+### Multiple dependencies on same set
+
+```@raw html
+<p class="norm">
+Parameter can depend on multiple instances of the same set. In case of an <code>emerging</code> technology (see section on optional mappings for <a href="../sets/#Technologies">technologies</a>)
+<a href="..#Efficiency">efficiency</a> for instance can depend on two different kinds of time-steps: $Ts_{dis}$, the time-step a technology is being used, and $Ts_{exp}$, the time-step a technology was built. Following the order of sets in the definition, the first time-step specified in the input data will always relate to $Ts_{dis}$ and the second to expansion $Ts_{exp}$.
+</p>
+
+<p class="norm">
+Accordingly, in table below the first column relates to $Ts_{dis}$ and the second to $Ts_{exp}$. Consequently, the specified efficiency applies to the first hour of every year for all <code>heatpumps</code> constructed <code>2020</code>.
+</p>
+<table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_4</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_1</strong></td>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>technology_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">h0001</td>
+<td style="border-right:none">2020</td>
+<td>heatpump</td>
+<td style="border-right:none">effConf</td>
+<td style="border-right:none;text-align:center">5.0</td>
+</tr>
+</tbody>
+</table>
+<p class="norm">
+This concept equally applies if one of the sets is defined by more then one column. In the table below, the first and the second column are attributed to specify $Ts_{dis}$. Since the third column goes back up to the first level, AnyMOD realizes it refers to a different dimension and attributes it to $Ts_{exp}$. As a result, both efficiencies apply to <code>heatpumps</code> constructed <code>2020</code>, but one row relates to the first hour of <code>2020</code> and the other to the first hour of <code>2030</code>. So, this example also shows how the aging process of technologies can be modelled.
+</p>
+<table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_4</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_1</strong></td>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>technology_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">2020</td>
+<td style="border-right:none">h0001</td>
+<td style="border-right:none">2020</td>
+<td>heatpump</td>
+<td style="border-right:none">effConf</td>
+<td style="border-right:none;text-align:center">5.0</td>
+</tr>
+<tr>
+<td style="border-right:none">2030</td>
+<td style="border-right:none">h0001</td>
+<td style="border-right:none">2020</td>
+<td>heatpump</td>
+<td style="border-right:none">effConf</td>
+<td style="border-right:none;text-align:center">4.5</td>
+</tr>
+</tbody>
+</table>
+```
 
 # Inheritance
 ```@raw html
