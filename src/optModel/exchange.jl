@@ -57,8 +57,7 @@ function createExcVar!(partExc::OthPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 	capa_df[!,:R_to] = map(x -> rExc_dic[x.R_to,x.lvlR],eachrow(capa_df[!,[:R_to,:lvlR]]))
 	capa_df = flatten(select(capa_df,Not(:lvlR)),:R_from); capa_df = unique(flatten(capa_df,:R_to))
 
-	bla_dic = Dict(1 => [1,2], 2 => [1,2])
-	capa_df[!,:scr] = map(x -> bla_dic[x],capa_df[!,:Ts_disSup])
+	capa_df[!,:scr] = map(x -> anyM.supTs.scr[x],capa_df[!,:Ts_disSup])
 	capa_df = flatten(capa_df,:scr)
 
 	disp_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],),groupby(capa_df,namesSym(capa_df)))[!,Not(:lvlTs)]
@@ -188,7 +187,9 @@ function createRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc
 
 	# create restrictions
 	@threads for x in itrRestr
-		restr_arr[x[1]] = prepareRestrExc(copy(x[2]),ts_dic,partExc,anyM)
+		cns_df = copy(x[2])
+		cns_df[!,:scr] = map(x -> anyM.supTs.scr[x], cns_df[!,:Ts_disSup])
+		restr_arr[x[1]] = prepareRestrExc(flatten(cns_df,:scr),ts_dic,partExc,anyM)
 	end
 
 	anyM.parts.exc.cns[:excRestr] = createCns(cnsCont(vcat(restr_arr...),:smaller),anyM.optModel)
@@ -212,9 +213,9 @@ function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array
 	relDisp_df = filter(x -> x.C in leafes_arr, partExc.var[:exc])
 
 	# first aggregate symmetric and directed entries in one direction, then directed entries in the other direction
-	cns_df[!,:disp] = aggUniVar(relDisp_df,cns_df,[:Ts_dis,:R_from,:R_to],cRes_tup,anyM.sets)
+	cns_df[!,:disp] = aggUniVar(relDisp_df,cns_df,[:Ts_dis,:R_from,:R_to,:scr],cRes_tup,anyM.sets)
 	dir_arr = findall(.!cns_df[!,:dir])
-	cns_df[dir_arr,:disp] = cns_df[dir_arr,:disp] .+ aggUniVar(rename(relDisp_df,:R_from => :R_to, :R_to => :R_from),cns_df[dir_arr,:],[:Ts_dis,:R_from,:R_to],cRes_tup,anyM.sets)
+	cns_df[dir_arr,:disp] = cns_df[dir_arr,:disp] .+ aggUniVar(rename(relDisp_df,:R_from => :R_to, :R_to => :R_from),cns_df[dir_arr,:],[:Ts_dis,:R_from,:R_to,:scr],cRes_tup,anyM.sets)
 
 	# add availablities to dataframe
 	cns_df = matchSetParameter(convertExcCol(cns_df),partExc.par[:avaExc],anyM.sets, newCol = :avaSym)
@@ -225,8 +226,6 @@ function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array
 	else
 		cns_df[!,:avaDir] .= nothing
 	end
-
-
 
 	# prepare, scale and create constraints
 	cns_df[!,:cnsExpr] = map(x -> x.disp  - x.capa * (isnothing(x.avaDir) ? x.avaSym : x.avaDir), eachrow(cns_df))

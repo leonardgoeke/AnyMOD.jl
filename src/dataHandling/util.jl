@@ -117,8 +117,8 @@ function createPotDisp(c_arr::Array{Int,1},ts_dic::Dict{Tuple{Int64,Int64},Array
 
 	allLvl_df[!,:Ts_disSup] .= fill(collect(anyM.supTs.step),size(allLvl_df,1))
 	allLvl_df = flatten(allLvl_df,:Ts_disSup)
-	bla_dic = Dict(1 => [1,2], 2 => [1,2])
-	allLvl_df[!,:scr]  = map(x -> bla_dic[x],allLvl_df[!,:Ts_disSup])
+
+	allLvl_df[!,:scr]  = map(x -> anyM.supTs.scr[x],allLvl_df[!,:Ts_disSup])
 	allLvl_df = flatten(allLvl_df,:scr)
 
 	allLvl_df[!,:Ts_dis] = map(x -> ts_dic[x.Ts_disSup,x.lvlTs],eachrow(allLvl_df))
@@ -217,7 +217,7 @@ function joinMissing(leftData_df::DataFrame, rightData_df::DataFrame, key_arr::U
 end
 
 # XXX get array of scaling factors for add_df
-function getResize(add_df::DataFrame,time_obj::Tree,supDis::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}})
+function getResize(add_df::DataFrame,time_obj::Tree,supDis::NamedTuple)
     tsDisLvl_dic = Dict(x => x == 0 ? 1 : getfield(time_obj.nodes[x],:lvl) for x in unique(add_df[!,:Ts_dis]))
 	lvl_arr = map(x -> tsDisLvl_dic[x],add_df[!,:Ts_dis])
 	aboveSupResize_fl = maximum(values(supDis.sca)) * length(supDis.step) # scaling value used for variables above the superordinate dispatch level
@@ -226,7 +226,7 @@ function getResize(add_df::DataFrame,time_obj::Tree,supDis::NamedTuple{(:lvl,:st
 end
 
 # XXX gets the upper bound used for dispatch variables
-function getUpBound(in_df::DataFrame,dispBound_fl::Float64,supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}},treeTs::Tree)
+function getUpBound(in_df::DataFrame,dispBound_fl::Float64,supTs::NamedTuple,treeTs::Tree)
 	if !isnan(dispBound_fl)
 		upBound_arr = dispBound_fl * getResize(in_df,treeTs,supTs)
 	else
@@ -370,8 +370,8 @@ end
 
 # XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
 function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},preserveTsSupTs::Bool = false)
-	bla_dic = Dict(1 => [1,2], 2 => [1,2])
-	inData_df[!,:scr] = map(x -> bla_dic[x], inData_df[!,:Ts_disSup])
+
+	inData_df[!,:scr] = map(x -> anyM.supTs.scr[x], inData_df[!,:Ts_disSup])
 	inData_df = flatten(inData_df,:scr)
 
 	# adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)

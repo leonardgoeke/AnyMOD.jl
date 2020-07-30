@@ -81,8 +81,8 @@ function createOptModel!(anyM::anyModel)
 
 	# </editor-fold>
 
-	createTradeVarCns!(anyM.parts.trd,anyM)
-	createEnergyBal!(techSym_arr,anyM)
+	createTradeVarCns!(anyM.parts.trd,ts_dic,anyM)
+	createEnergyBal!(techSym_arr,ts_dic,anyM)
 	createLimitCns!(anyM.parts.lim,anyM)
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")

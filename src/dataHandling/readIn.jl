@@ -49,6 +49,10 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 	end
 	anyM.sets[:M] = createTree(modes_df,:mode,anyM.report)
 
+	# creates nodes for scenarios to allow for aggregation later, if none were defined before
+	if !(:scr in collectKeys(keys(setData_dic)))
+		anyM.sets[:scr] = createTree(DataFrame(scenario_1 = String[]),:scenario,anyM.report)
+	end
 
 	# reports, if a required set was not defined or if non-unique carrier names were defined
 	for set in filter(x -> !(x in (:mode, :id, :scenario)), collectKeys(keys(setLngShrt_dic)))
@@ -115,7 +119,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 
 	# reports if scenario column exists but no scenarios were defined
 	if :scenario in namesSym(readIn_df) && !(:scenario in set_arr)
-		push!(anyM.report,(3,"parameter read-in","definition","scenario column provided in '$(fileName_str)', but scenarios were not defined in a set file"))
+		push!(report,(3,"parameter read-in","definition","scenario column provided in '$(fileName_str)', but scenarios were not defined in a set file"))
 	end
 
 	setNames_arr = filterSetColumns(readIn_df,set_arr)

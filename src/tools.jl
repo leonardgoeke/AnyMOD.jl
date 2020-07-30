@@ -48,7 +48,7 @@ reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{
 function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
     techSym_arr = collect(keys(anyM.parts.tech))
-	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
+	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
 	# XXX get demand values
 	dem_df = copy(anyM.parts.bal.par[:dem].data)
@@ -66,6 +66,12 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 			dem_df = flatten(dem_df,:Ts_disSup)
 		end
 
+		# artificially add scenario dimensions, if none exist
+		if !(:scr in namesSym(dem_df))
+			dem_df[!,:scr] = map(x -> anyM.supTs.scr[x], dem_df[!,:Ts_disSup])
+			dem_df = flatten(dem_df,:scr)
+		end
+
 		dem_df[!,:val] = dem_df[!,:val]	.* getResize(dem_df,anyM.sets[:Ts],anyM.supTs) ./ anyM.options.redStep
 
 		allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
@@ -77,8 +83,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 			dem_df[!,:R_dis] .= 0
 		end
 
-
-		dem_df = combine(groupby(dem_df,[:Ts_disSup,:R_dis,:C]),:val => ( x -> sum(x) / 1000) => :value)
+		dem_df = combine(groupby(dem_df,[:Ts_disSup,:R_dis,:C,:scr]),:val => ( x -> sum(x) / 1000) => :value)
 		dem_df[!,:Te] .= 0
 		dem_df[!,:variable] .= :demand
 		if wrtSgn dem_df[!,:value] = dem_df[!,:value] .* -1 end
@@ -88,7 +93,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	# XXX get expansion and capacity variables
 	for t in techSym_arr
 		part = anyM.parts.tech[t]
-		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
+		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
 		# get installed capacity values
 		for va in intersect(keys(part.var),(:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :oprCapaConv, :oprCapaStIn, :oprCapaStOut, :oprCapaStSize))
@@ -110,6 +115,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 			# aggregate values and add to tech data frame
 			capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_dis,:C,:Te]),:var => ( x -> value.(sum(x))) => :value)
 			capa_df[!,:variable] .= va
+			capa_df[!,:scr] .= 0
 			tech_df = vcat(tech_df,capa_df)
 		end
 
@@ -123,7 +129,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		allVar_df = getAllVariables(va,anyM)
 		if isempty(allVar_df) continue end
 
-		disp_df = combine(groupby(allVar_df,intersect(intCol(allVar_df),[:Ts_disSup,:R_dis,:C,:Te])),:var => (x -> value(sum(x))) => :value)
+		disp_df = combine(groupby(allVar_df,intersect(intCol(allVar_df),[:Ts_disSup,:R_dis,:C,:Te,:scr])),:var => (x -> value(sum(x))) => :value)
 		# scales values to twh (except for emissions of course)
 		if va != :emission disp_df[!,:value] = disp_df[!,:value]  ./ 1000 end
 		disp_df[!,:variable] .= va
@@ -147,11 +153,11 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	    # add losses to all exchange variables
 	    allExc_df = getExcLosses(convertExcCol(allExc_df),anyM.parts.exc.par,anyM.sets)
 	    # compute export and import of each region, losses are considered at import
-	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:R_a,:C]),:var => ( x -> value(sum(x))/1000) => :value),:R_a => :R_dis)
+	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:R_a,:C,:scr]),:var => ( x -> value(sum(x))/1000) => :value),:R_a => :R_dis)
 	    excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
 		if wrtSgn excFrom_df[!,:value] = excFrom_df[!,:value] .* -1 end
 
-	    excTo_df = rename(combine(x -> (value = value(dot(x.var,(1 .- x.loss)))/1000,),groupby(allExc_df,[:Ts_disSup,:R_b,:C])),:R_b => :R_dis)
+	    excTo_df = rename(combine(x -> (value = value(dot(x.var,(1 .- x.loss)))/1000,),groupby(allExc_df,[:Ts_disSup,:R_b,:C,:scr])),:R_b => :R_dis)
 	    excTo_df[!,:variable] .= :import; excTo_df[!,:Te] .= 0
 
 	    allData_df = vcat(allData_df,vcat(excFrom_df,excTo_df))
@@ -166,9 +172,11 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 
 	for flhCapa in collect(keys(flh_dic))
 		capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
+		capaFlh_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaFlh_df[!,:Ts_disSup])
+		capaFlh_df = flatten(capaFlh_df,:scr)
 		# get relevant dispatch variables for respective group
 		vlh_arr = map(eachrow(capaFlh_df)) do row
-			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te,allData_df)
+			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te && y.scr == row.scr, allData_df)
 			if flhCapa in (:capaConv,:oprCapaConv)
 				var_arr = unique(relRow_df[!,:variable]) |> (i -> (i,intersect(i,(:use,:stIntOut)))) |> (j -> isempty(j[2]) ? intersect(j[1],(:gen,:stIntIn)) : j[2])
 			elseif flhCapa in (:oprCapaStIn,:capaStIn)
@@ -193,9 +201,11 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 
 	for cycCapa in collect(keys(cyc_dic))
 		capaCyc_df = filter(x -> x.variable == :capaStSize, allData_df)
+		capaCyc_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaCyc_df[!,:Ts_disSup])
+		capaCyc_df = flatten(capaCyc_df,:scr)
 		# get relevant dispatch variables for respective group
 		cyc_arr = map(eachrow(capaCyc_df)) do row
-			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te,allData_df)
+			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te && y.scr == row.scr,allData_df)
 			if cycCapa in (:oprCapaStIn,:capaStIn)
 				var_arr = [:stIntIn,:stExtIn]
 			elseif cycCapa in (:oprCapaStOut,:capaStOut)
@@ -206,6 +216,10 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		capaCyc_df[!,:value] = cyc_arr
 		capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
 		allData_df = vcat(allData_df,capaCyc_df)
+	end
+
+	if length(unique(allData_df[!,:scr])) == 1
+		select!(allData_df,Not(:scr))
 	end
 
 	# return dataframes and write csv files based on specified inputs

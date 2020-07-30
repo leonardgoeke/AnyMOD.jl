@@ -194,20 +194,3 @@ reportResults(:costs,anyM)
 
 # XXX dump
 printObject(anyM.parts.lim.cns[:emissionUp],anyM)
-
-
-
-# write scenario information
-if :scr in collectKeys(keys(anyM.sets))
-	bla_df = flatten(flatten(DataFrame(Ts_sup  = [collect(supTs_tup)], scr = [filter(x -> x != 0, map(x -> x.idx, values(anyM.sets[:scr].nodes)))]),:Ts_sup),:scr)
-
-	matchSetParameter(bla_df ,anyM.parts.obj.par[:scrProp],anyM.sets)
-
-
-else
-
-end
-
-printObject(anyM.parts.tech[:openspace].cns[:outRestr],anyM)
-
-anyM.parts.tech[:openspace].par[:avaConv].data[24,:]

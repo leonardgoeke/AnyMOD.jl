@@ -21,21 +21,28 @@ include("src/dataHandling/readIn.jl")
 include("src/dataHandling/tree.jl")
 include("src/dataHandling/util.jl")
 
-using AnyMOD
+#using AnyMOD
 
-anyM_ref = anyModel("examples/demo","results", objName = "demo")
+#anyM = anyModel("examples/demo_stoch","results", objName = "stoch")
+anyM = anyModel("examples/demo","results", objName = "det")
 
 
-createOptModel!(anyM_ref )
-setObjective!(:costs,anyM_ref )
+createOptModel!(anyM)
+setObjective!(:costs,anyM)
 
 using Gurobi
-set_optimizer(anyM_ref.optModel,Gurobi.Optimizer)
-set_optimizer_attribute(anyM_ref.optModel, "Method", 2)
-set_optimizer_attribute(anyM_ref.optModel, "Crossover", 0)
-set_optimizer_attribute(anyM_ref.optModel, "BarOrder", 0)
-optimize!(anyM_ref.optModel)
+set_optimizer(anyM.optModel,Gurobi.Optimizer)
+set_optimizer_attribute(anyM.optModel, "Method", 2)
+set_optimizer_attribute(anyM.optModel, "Crossover", 1)
+set_optimizer_attribute(anyM.optModel, "BarOrder", 0)
+optimize!(anyM.optModel)
 
 
-reportResults(:costs,anyM_ref)
-reportResults(:summary,anyM_ref)
+reportResults(:costs,anyM)
+reportResults(:summary,anyM)
+
+printObject(anyM.parts.tech[:ccgtCHP].var[:use], anyM, fileName = "exc3")
+
+anyM.sets[:C]
+
+printObject(anyM.parts.tech[:ccgtCHP].var[:oprCapaConv],anyM)

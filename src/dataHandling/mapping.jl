@@ -114,7 +114,7 @@ function createTimestepMapping!(anyM::anyModel)
     supTs_tup = tuple(sort(getfield.(filter(x -> x.lvl == supTsLvl_int,collect(values(anyM.sets[:Ts].nodes))),:idx))...)
     scaSupTs_dic = Dict((x[1],x[2]) => (1/anyM.options.redStep)*8760/length(getDescendants(x[1],anyM.sets[:Ts],false,x[2])) for x in Iterators.product(supTs_tup,filter(x -> x >= supTsLvl_int,1:anyM.sets[:Ts].height)))
 
-	anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic)
+	anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic, scr = Dict{Int,Array{Int,1}}(), scrProp = Dict{Tuple{Int,Int},Float64}())
 
     if length(anyM.supTs.step) > 50
 		push!(anyM.report,(2,"timestep mapping","","problem specification resulted in more than 50 superordinate dispatch timesteps, this looks faulty"))
@@ -380,4 +380,53 @@ function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
     end
 
     part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : categorical(rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR))
+end
+
+# XXX create scenario
+function createScenarioMapping!(anyM::anyModel)
+
+	allScr_arr = filter(x -> x != 0,getfield.(collect(values(anyM.sets[:scr].nodes)),:idx))
+
+	# checks if actually any scenarios are defined
+	if !(isempty(allScr_arr))
+		prop_df = flatten(flatten(DataFrame(Ts_disSup  = [collect(anyM.supTs.step)], scr = [allScr_arr]),:Ts_disSup),:scr)
+
+		# assigns probabilities defined as parameters
+		if :scrProp in collectKeys(keys(anyM.parts.obj.par))
+			propPar_df = matchSetParameter(prop_df,anyM.parts.obj.par[:scrProp],anyM.sets)
+		else
+			propPar_df = filter(x -> false,prop_df)
+			propPar_df[!,:val] = Float64[]
+		end
+
+		# compute default values in other cases
+		propDef_df = antijoin(prop_df,propPar_df,on = [:scr,:Ts_disSup])
+		propDef_df[!,:val] .= 1/length(anyM.supTs.step)
+
+		# merges collected data
+		prop_df = vcat(propPar_df,propDef_df)
+
+		# controls sum of probabilities
+		control_df = combine(groupby(prop_df, [:Ts_disSup]), :val => (x -> sum(x)) => :val)
+		sca_dic = Dict(control_df[!,:Ts_disSup] .=> control_df[!,:val])
+
+		for x in eachrow(filter(x -> x.val != 1.0,control_df))
+			push!(anyM.report,(2,"scenario","probability","for superordinate dispatch timestep $(createFullString(x.Ts_disSup,anyM.sets[:Ts])) scenario probabilities do not sum up to 1.0, values were adjusted accordingly"))
+		end
+
+		prop_df[!,:val] .= map(x -> x.val/sca_dic[x.Ts_disSup] ,eachrow(prop_df))
+
+
+		# creates final assignments
+		filter!(x -> x.val != 0.0,prop_df)
+
+		tsToScr_dic = Dict(y => filter(x -> x.Ts_disSup == y,prop_df)[!,:scr] for y in collect(anyM.supTs.step))
+		tsScrToProp_dic = Dict((x.Ts_disSup,x.scr) => x.val for x in eachrow(prop_df))
+	else
+		tsToScr_dic = Dict(y => [0,] for y in collect(anyM.supTs.step))
+		tsScrToProp_dic = Dict((y,0) => 1.0 for y in collect(anyM.supTs.step))
+	end
+
+	# assigns mappings to final object
+	anyM.supTs = (lvl = anyM.supTs.lvl, step = anyM.supTs.step, sca = anyM.supTs.sca, scr = tsToScr_dic, scrProp = tsScrToProp_dic)
 end

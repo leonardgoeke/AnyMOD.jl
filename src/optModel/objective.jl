@@ -208,8 +208,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		if isempty(allDisp_df) continue end
 
 		# add scenario probability
-		blub_dic = Dict((1,1) => 0.5,(1,2) => 0.5,(2,1) => 0.5,(2,2) => 0.5)
-		allDisp_df[!,:disp] = allDisp_df[!,:disp] .* map(x -> blub_dic[(x.Ts_disSup,x.scr)],eachrow(allDisp_df))
+		allDisp_df[!,:disp] = allDisp_df[!,:disp] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allDisp_df))
 
 		# renames dispatch regions to enable join with discount factors
 		if va != :exc rename!(allDisp_df,:R_dis => :R_exp) end
@@ -229,8 +228,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allVar_df = rename(matchSetParameter(anyM.parts.bal.var[varType],anyM.parts.bal.par[cost_sym],anyM.sets,newCol = :cost),:var => varType)
 			allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
 			# add scenario probability
-			blub_dic = Dict((1,1) => 0.5,(1,2) => 0.5,(2,1) => 0.5,(2,2) => 0.5)
-			allVar_df[!,varType] = allVar_df[!,varType] .* map(x -> blub_dic[(x.Ts_disSup,x.scr)],eachrow(allVar_df))
+			allVar_df[!,varType] = allVar_df[!,varType] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allVar_df))
 			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
 			allVar_df = combine(x -> (expr = sum(x.disFac .* x[!,varType] .* x.cost) ./ 1000.0 .* anyM.options.redStep,) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C]))
 			transferCostEle!(allVar_df, partObj,cost_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng, NaN)
@@ -244,8 +242,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allTrd_df = rename(matchSetParameter(anyM.parts.trd.var[va],anyM.parts.trd.par[Symbol(va,:Prc)],anyM.sets,newCol = :costTrd),:var => :trd)
 			allTrd_df = matchSetParameter(rename(allTrd_df,:R_dis => :R_exp),partObj.par[:disFac],anyM.sets,newCol = :disFac)
 			# add scenario probability
-			blub_dic = Dict((1,1) => 0.5,(1,2) => 0.5,(2,1) => 0.5,(2,2) => 0.5)
-			allTrd_df[!,:trd] = allTrd_df[!,:trd] .* map(x -> blub_dic[(x.Ts_disSup,x.scr)],eachrow(allTrd_df))
+			allTrd_df[!,:trd] = allTrd_df[!,:trd] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allTrd_df))
 			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
 			allTrd_df = combine(x -> (expr = sum(x.disFac .* x.trd .* x.costTrd) ./ (va == :trdSell ? -1000.0 : 1000.0) .* anyM.options.redStep,), groupby(allTrd_df, [:Ts_disSup,:R_exp,:C]))
 			transferCostEle!(allTrd_df, partObj,Symbol(:cost,uppercase(string(va)[1]),string(va)[2:end]),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,(va == :trdSell ? NaN : 0.0))

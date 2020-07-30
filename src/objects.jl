@@ -222,8 +222,8 @@ end
 
 # XXX flow graph object that defines relations between technologies and carriers (and among carriers)
 mutable struct flowGraph
-	nodeC::Dict{Int64,Int64}
-	nodeTe::Dict{Int64,Int64}
+	nodeC::Dict{Int,Int}
+	nodeTe::Dict{Int,Int}
 	edgeC::Array{Pair{Int,Int},1}
 	edgeTe::Array{Pair{Int,Int},1}
 	nodePos::Dict{Int,Array{Float64,1}}
@@ -366,7 +366,7 @@ mutable struct anyModel <: AbstractModel
 	optModel::Model
 	lock::ReentrantLock
 
-	supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}}
+	supTs::NamedTuple{(:lvl,:step,:sca,:scr,:scrProp),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64},Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}}
 
 	sets::Dict{Symbol,Tree}
@@ -431,6 +431,9 @@ mutable struct anyModel <: AbstractModel
 
 		# XXX create object for data visualization
 		anyM.graInfo = graInfo(anyM)
+
+		# XXX add scenario mappings
+		 createScenarioMapping!(anyM)
 
 		produceMessage(anyM.options,anyM.report, 1," - Prepared creation of optimzation model")
 		# </editor-fold>
