@@ -23,8 +23,8 @@ include("src/dataHandling/util.jl")
 
 #using AnyMOD
 
-#anyM = anyModel("examples/demo_stoch","results", objName = "stoch")
-anyM = anyModel("examples/demo","results", objName = "det")
+anyM = anyModel("examples/demo_stoch","results", objName = "stoch")
+#anyM = anyModel("examples/demo","results", objName = "det")
 
 
 createOptModel!(anyM)
@@ -39,10 +39,7 @@ optimize!(anyM.optModel)
 
 
 reportResults(:costs,anyM)
-reportResults(:summary,anyM)
+reportResults(:exchange,anyM)
+reportTimeSeries(:electricity,anyM)
 
-printObject(anyM.parts.tech[:ccgtCHP].var[:use], anyM, fileName = "exc3")
-
-anyM.sets[:C]
-
-printObject(anyM.parts.tech[:ccgtCHP].var[:oprCapaConv],anyM)
+plotEnergyFlow(:sankey,anyM)

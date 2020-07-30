@@ -218,6 +218,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		allData_df = vcat(allData_df,capaCyc_df)
 	end
 
+	# removes scenario column if only one scenario is defined
 	if length(unique(allData_df[!,:scr])) == 1
 		select!(allData_df,Not(:scr))
 	end
@@ -242,7 +243,7 @@ end
 # XXX results for costs
 function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 	# prepare empty dataframe
-	allData_df = DataFrame(Ts_disSup = Int[], R = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
+	allData_df = DataFrame(Ts_disSup = Int[], R = Int[], Te = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
 	# loops over all objective variables with keyword "cost" in it
 	for cst in filter(x -> occursin("cost",string(x)),keys(anyM.parts.obj.var))
@@ -252,7 +253,7 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{
 			rename!(cost_df,:R_dis in namesSym(cost_df) ? :R_dis : :R_exp => :R)
 		end
 		# add empty column for non-existing dimensions
-		for dim in (:Te,:C,:R)
+		for dim in (:Te,:C,:R,:scr)
 			if !(dim in namesSym(cost_df))
 				cost_df[:,dim] .= 0
 			end
@@ -262,6 +263,11 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{
 		cost_df[:,:value] = value.(cost_df[:,:var])
         if :Ts_exp in namesSym(cost_df) cost_df = rename(cost_df,:Ts_exp => :Ts_disSup) end
 		allData_df = vcat(allData_df,cost_df[:,Not(:var)])
+	end
+
+	# removes scenario column if only one scenario is defined
+	if length(unique(allData_df[!,:scr])) == 1
+		select!(allData_df,Not(:scr))
 	end
 
 	# return dataframes and write csv files based on specified inputs
@@ -283,7 +289,7 @@ end
 
 # XXX results for exchange
 function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
-	allData_df = DataFrame(Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], variable = Symbol[], value = Float64[])
+	allData_df = DataFrame(Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc.var) error("No exchange data found") end
 
     # XXX expansion variables
@@ -311,17 +317,28 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 
 	# XXX dispatch variables
 	disp_df = getAllVariables(:exc,anyM)
-	disp_df = combine(groupby(disp_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x)) ./ 1000) => :value)
+	disp_df = combine(groupby(disp_df,[:Ts_disSup,:R_from,:R_to,:C,:scr]), :var => (x -> value.(sum(x)) ./ 1000) => :value)
 	disp_df[!,:variable] .= :exc
 
 	# XXX get full load hours
 	capaExt_df = replCarLeafs(copy(capa_df),anyM.sets[:C])
-	flh_df = innerjoin(rename(select(capaExt_df,Not(:variable)),:value => :capa),rename(select(disp_df,Not(:variable)),:value => :disp),on = [:Ts_disSup,:R_from,:R_to,:C])
+	capaExt_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaExt_df[!,:Ts_disSup])
+	capaExt_df = flatten(capaExt_df,:scr)
+
+	flh_df = innerjoin(rename(select(capaExt_df,Not(:variable)),:value => :capa),rename(select(disp_df,Not(:variable)),:value => :disp),on = [:Ts_disSup,:R_from,:R_to,:C,:scr])
 	flh_df[!,:value] = flh_df[!,:disp] ./ flh_df[!,:capa] .* 1000
 	flh_df[!,:variable] .= :flhExc
 
 	# XXX merge and print all data
-	allData_df = vcat(exp_df,capa_df,disp_df,select(flh_df,Not([:capa,:disp])))
+	capa_df = vcat(exp_df,capa_df)
+	capa_df[!,:scr] .= 0
+	allData_df = vcat(capa_df,disp_df,select(flh_df,Not([:capa,:disp])))
+	select!(allData_df,orderDim(namesSym(allData_df)))
+
+	# removes scenario column if only one scenario is defined
+	if length(unique(allData_df[!,:scr])) == 1
+		select!(allData_df,Not(:scr))
+	end
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
@@ -354,11 +371,13 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	# XXX initialize dictionary to save data
 	allData_dic = Dict{Symbol,DataFrame}()
 	for signItr in signVar
-		allData_dic[signItr] = DataFrame(Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], variable = String[], value = Float64[])
+		allData_dic[signItr] = DataFrame(Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], scr = Int[], variable = String[], value = Float64[])
 	end
 
 	# XXX initialize relevant dimensions and carriers
-	relDim_df = filter(filterFunc,createPotDisp([c_int],anyM))
+	allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
+	ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
+	relDim_df = filter(filterFunc,createPotDisp([c_int],ts_dic,anyM))
 	relC_arr = unique([c_int,getDescendants(c_int,anyM.sets[:C])...])
 	cRes_tup = anyM.cInfo[c_int] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c_int].lvl))
 
@@ -384,12 +403,12 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		for x in relTech_arr
 
 			# gets resolution and adjusts add_df in case of an agggregated technology
-			add_df = select(filter(r -> r.C == c,anyM.parts.tech[x[1]].var[x[2]]),[:Ts_disSup,:Ts_dis,:R_dis,:var])
+			add_df = select(filter(r -> r.C == c,anyM.parts.tech[x[1]].var[x[2]]),[:Ts_disSup,:Ts_dis,:R_dis,:scr,:var])
 			tRes_tup = anyM.parts.tech[x[1]].disAgg ? (cRes_tup[1], anyM.parts.tech[x[1]].balLvl.exp[2]) : (cRes_tup[1], cRes_tup[2])
 			checkTechReso!(tRes_tup,cBalRes_tup,add_df,anyM.sets)
 
 			# filter values based on filter function and minimum value reported
-			add_df = combine(groupby(add_df,[:Ts_disSup,:Ts_dis,:R_dis]), :var => (x -> sum(x)) => :var)
+			add_df = combine(groupby(add_df,[:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> sum(x)) => :var)
 			filter!(filterFunc,add_df)
             if isempty(add_df) continue end
 			add_df[!,:value] = value.(add_df[!,:var]) .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
@@ -406,7 +425,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
     if :exc in keys(anyM.parts.exc.var)
 		exc_df = filterCarrier(anyM.parts.exc.var[:exc],relC_arr)
 		if :out in signVar
-			excFrom_df = combine(groupby(filter(filterFunc,rename(copy(exc_df),:R_from => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis]), :var => (x -> value(sum(x)) * -1) => :value)
+			excFrom_df = combine(groupby(filter(filterFunc,rename(copy(exc_df),:R_from => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> value(sum(x)) * -1) => :value)
 			excFrom_df[!,:variable] .= :export
 			filter!(x -> abs(x.value) > minVal, excFrom_df)
 			if !isempty(excFrom_df)
@@ -416,7 +435,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 
 		if :in in signVar
 			addLoss_df = rename(getExcLosses(convertExcCol(exc_df),anyM.parts.exc.par,anyM.sets),:R_b => :R_dis)
-			excTo_df = combine(x -> (value = value(dot(x.var,(1 .- x.loss))),),groupby(filter(filterFunc,addLoss_df), [:Ts_disSup,:Ts_dis,:R_dis]))
+			excTo_df = combine(x -> (value = value(dot(x.var,(1 .- x.loss))),),groupby(filter(filterFunc,addLoss_df), [:Ts_disSup,:Ts_dis,:R_dis,:scr]))
 			excTo_df[!,:variable] .= :import
 			filter!(x -> abs(x.value) > minVal, excTo_df)
 			if !isempty(excTo_df)
@@ -426,7 +445,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	end
 
 	# XXX add trade
-	agg_arr = [:Ts_dis, :R_dis, :C]
+	agg_arr = [:Ts_dis, :R_dis, :C, :scr]
 	if !isempty(anyM.parts.trd.var)
 		for trd in intersect(keys(anyM.parts.trd.var),(:trdBuy,:trdSell))
 			trdVar_df = copy(relDim_df)
@@ -466,6 +485,12 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 			data_df = unstack(data_df,:variable,:value)
 		end
 
+		# removes scenario column if only one scenario is defined
+		if length(unique(data_df[!,:scr])) == 1
+			select!(data_df,Not(:scr))
+		end
+
+
 		if :csv in rtnOpt || :csvDf in rtnOpt
 			csvData_df = printObject(data_df,anyM, fileName = string("timeSeries_",car_sym,), rtnDf = rtnOpt)
 		end
@@ -481,6 +506,12 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 				data_df[!,:variable] = CategoricalArray(data_df[!,:variable])
 				data_df = unstack(data_df,:variable,:value)
 			end
+
+			# removes scenario column if only one scenario is defined
+			if length(unique(data_df[!,:scr])) == 1
+				select!(data_df,Not(:scr))
+			end
+
 
 			if :csv in rtnOpt || :csvDf in rtnOpt
 				csvData_df = printObject(data_df,anyM, fileName = string("timeSeries_",car_sym,"_",signItr), rtnDf = rtnOpt)
@@ -756,18 +787,18 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 end
 
 # XXX plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor = true)
+function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor = true)
     plt = pyimport("plotly")
     flowGrap_obj = anyM.graInfo.graph
 
     # <editor-fold desc="initialize data"
 
-    if !isempty(setdiff(dropDown,[:region,:timestep]))
+    if !isempty(setdiff(dropDown,[:region,:timestep,:scenario]))
     error("dropDown only accepts array :region and :timestep as content")
     end
 
     # get mappings to create buttons of dropdown menue
-    drop_dic = Dict(:region => :R_dis, :timestep => :Ts_disSup)
+    drop_dic = Dict(:region => :R_dis, :timestep => :Ts_disSup, :scenario => :scr)
     dropDim_arr = collect(map(x -> drop_dic[x], dropDown))
 
     # get summarised data and filter dispatch variables
@@ -812,122 +843,123 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
     # </editor-fold>
 
     # XXX loop over potential buttons in dropdown menue
-    for drop in eachrow(unique(data_df[!,dropDim_arr]))
-    # <editor-fold desc="filter data and create flow array"
+    for drop in eachrow(unique(data_df[!,intersect(namesSym(data_df),dropDim_arr)]))
 
-    dropData_df = copy(data_df)
-    if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,anyM.sets[:R],true)...] end
-    for d in dropDown
-      filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
-    end
+	    # <editor-fold desc="filter data and create flow array"
 
-    flow_arr = Array{Tuple,1}()
+	    dropData_df = copy(data_df)
+	    if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,anyM.sets[:R],true)...] end
+	    for d in dropDown
+	      filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
+	    end
 
-    # write flows reported in data summary
-    for x in eachrow(dropData_df)
-      a = Array{Any,1}(undef,3)
+	    flow_arr = Array{Tuple,1}()
 
-      # technology related entries
-      if x.variable in (:demand,:export,:trdSell,:crt)
-        a[1] = flowGrap_obj.nodeC[x.C]
-        a[2] = othNode_dic[(x.C,x.variable)]
-      elseif x.variable in (:import,:trdBuy,:lss)
-        a[1] = othNode_dic[(x.C,x.variable)]
-        a[2] = flowGrap_obj.nodeC[x.C]
-      elseif x.variable in (:gen,:stOut)
+	    # write flows reported in data summary
+	    for x in eachrow(dropData_df)
+	      a = Array{Any,1}(undef,3)
 
-    	  if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
-    		  a[1] = flowGrap_obj.nodeTe[x.Te]
-    	  else
-    		  a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
-    	  end
+	      # technology related entries
+	      if x.variable in (:demand,:export,:trdSell,:crt)
+	        a[1] = flowGrap_obj.nodeC[x.C]
+	        a[2] = othNode_dic[(x.C,x.variable)]
+	      elseif x.variable in (:import,:trdBuy,:lss)
+	        a[1] = othNode_dic[(x.C,x.variable)]
+	        a[2] = flowGrap_obj.nodeC[x.C]
+	      elseif x.variable in (:gen,:stOut)
 
-    	  a[2] = flowGrap_obj.nodeC[x.C]
-      else
-        a[1] = flowGrap_obj.nodeC[x.C]
+	    	  if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
+	    		  a[1] = flowGrap_obj.nodeTe[x.Te]
+	    	  else
+	    		  a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+	    	  end
 
-    	if x.Te in keys(flowGrap_obj.nodeTe)
-    		a[2] = flowGrap_obj.nodeTe[x.Te]
-    	else
-    		a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
-    	end
-      end
+	    	  a[2] = flowGrap_obj.nodeC[x.C]
+	      else
+	        a[1] = flowGrap_obj.nodeC[x.C]
 
-      a[3] = abs(x.value)
+	    	if x.Te in keys(flowGrap_obj.nodeTe)
+	    		a[2] = flowGrap_obj.nodeTe[x.Te]
+	    	else
+	    		a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+	    	end
+	      end
 
-      push!(flow_arr,tuple(a...))
-    end
+	      a[3] = abs(x.value)
 
-    # create flows connecting different carriers
-    idToC_dic = Dict(map(x -> x[2] => x[1], collect(flowGrap_obj.nodeC)))
-    for x in filter(x -> anyM.sets[:C].up[x] != 0,intersect(union(getindex.(flow_arr,1),getindex.(flow_arr,2)),values(flowGrap_obj.nodeC)))
-      a = Array{Any,1}(undef,3)
-      a[1] = flowGrap_obj.nodeC[x]
-      a[2] = flowGrap_obj.nodeC[anyM.sets[:C].up[x]]
-      a[3] = (getindex.(filter(y -> y[2] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z))) - (getindex.(filter(y -> y[1] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z)))
-      push!(flow_arr,tuple(a...))
-    end
+	      push!(flow_arr,tuple(a...))
+	    end
 
-    # merges flows for different regions that connect the same nodes
-    flow_arr = map(unique(map(x -> x[1:2],flow_arr))) do fl
-      allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
-      return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
-    end
+	    # create flows connecting different carriers
+	    idToC_dic = Dict(map(x -> x[2] => x[1], collect(flowGrap_obj.nodeC)))
+	    for x in filter(x -> anyM.sets[:C].up[x] != 0,intersect(union(getindex.(flow_arr,1),getindex.(flow_arr,2)),values(flowGrap_obj.nodeC)))
+	      a = Array{Any,1}(undef,3)
+	      a[1] = flowGrap_obj.nodeC[x]
+	      a[2] = flowGrap_obj.nodeC[anyM.sets[:C].up[x]]
+	      a[3] = (getindex.(filter(y -> y[2] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z))) - (getindex.(filter(y -> y[1] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z)))
+	      push!(flow_arr,tuple(a...))
+	    end
 
-    # removes nodes accoring function input provided
-    for rmv in rmvNode
-      # splits remove expression by semicolon and searches for first part
-      rmvStr_arr = split(rmv,"; ")
-      relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
-      if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
-      if isempty(relNodes_arr) continue end
+	    # merges flows for different regions that connect the same nodes
+	    flow_arr = map(unique(map(x -> x[1:2],flow_arr))) do fl
+	      allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
+	      return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
+	    end
 
-      if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
-        relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
-        if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
+	    # removes nodes accoring function input provided
+	    for rmv in rmvNode
+	      # splits remove expression by semicolon and searches for first part
+	      rmvStr_arr = split(rmv,"; ")
+	      relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
+	      if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
+	      if isempty(relNodes_arr) continue end
 
-        if isempty(relC_arr)
-            produceMessage(anyM.options,anyM.report, 1," - Remove string contained a carrier not found in graph, check for typos: "*rmv)
-            continue
-        else
-            c_int = relC_arr[1]
-        end
+	      if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
+	        relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
+	        if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
 
-        filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)),flow_arr)
-      elseif length(rmvStr_arr) > 2
-        error("one remove string contained more then one semicolon, this is not supported")
-      else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
-        out_tup = filter(x -> x[1] == relNodes_arr[1],flow_arr)
-        in_tup = filter(x -> x[2] == relNodes_arr[1],flow_arr)
+	        if isempty(relC_arr)
+	            produceMessage(anyM.options,anyM.report, 1," - Remove string contained a carrier not found in graph, check for typos: "*rmv)
+	            continue
+	        else
+	            c_int = relC_arr[1]
+	        end
 
-        if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
-          filter!(x -> !(x in (out_tup[1],in_tup[1])),flow_arr)
-          push!(flow_arr,(in_tup[1][1],out_tup[1][2],in_tup[1][3]))
-        elseif length(out_tup) == 0 # only ingoing flows
-          filter!(x -> !(x in in_tup),flow_arr)
-        elseif length(in_tup) == 0 # only outgoing flows
-          filter!(x -> !(x in out_tup),flow_arr)
-        end
-      end
-    end
+	        filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)),flow_arr)
+	      elseif length(rmvStr_arr) > 2
+	        error("one remove string contained more then one semicolon, this is not supported")
+	      else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
+	        out_tup = filter(x -> x[1] == relNodes_arr[1],flow_arr)
+	        in_tup = filter(x -> x[2] == relNodes_arr[1],flow_arr)
 
-    # </editor-fold>
+	        if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
+	          filter!(x -> !(x in (out_tup[1],in_tup[1])),flow_arr)
+	          push!(flow_arr,(in_tup[1][1],out_tup[1][2],in_tup[1][3]))
+	        elseif length(out_tup) == 0 # only ingoing flows
+	          filter!(x -> !(x in in_tup),flow_arr)
+	        elseif length(in_tup) == 0 # only outgoing flows
+	          filter!(x -> !(x in out_tup),flow_arr)
+	        end
+	      end
+	    end
 
-    # <editor-fold desc="create dictionaries for later plotting"
+	    # </editor-fold>
 
-    # collect data for drop in a dictionary
+	    # <editor-fold desc="create dictionaries for later plotting"
 
-    linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
-    	(z -> replace(string("rgba",string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...)))," " => "")), flow_arr)
-    link_dic = Dict(:source => getindex.(flow_arr,1) .- 1, :target => getindex.(flow_arr,2) .- 1, :value => getindex.(flow_arr,3), :color => linkColor_arr)
+	    # collect data for drop in a dictionary
 
-    fullData_arr = [Dict(:link => link_dic, :node => Dict(:label => nodeLabel_arr, :color => nodeColor_arr))]
+	    linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
+	    	(z -> replace(string("rgba",string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...)))," " => "")), flow_arr)
+	    link_dic = Dict(:source => getindex.(flow_arr,1) .- 1, :target => getindex.(flow_arr,2) .- 1, :value => getindex.(flow_arr,3), :color => linkColor_arr)
 
-    # pushes dictionary to overall array
-    label_str = string("<b>",join(map(y -> anyM.sets[Symbol(split(String(y),"_")[1])].nodes[drop[y]].val,dropDim_arr),", "),"</b>")
-    push!(dropData_arr,Dict(:args => fullData_arr, :label => label_str, :method => "restyle"))
+	    fullData_arr = [Dict(:link => link_dic, :node => Dict(:label => nodeLabel_arr, :color => nodeColor_arr))]
 
-    # </editor-fold>
+	    # pushes dictionary to overall array
+	    label_str = string("<b>",join(map(y -> anyM.sets[Symbol(split(String(y),"_")[1])].nodes[drop[y]].val,intersect(namesSym(data_df),dropDim_arr)),", "),"</b>")
+	    push!(dropData_arr,Dict(:args => fullData_arr, :label => label_str, :method => "restyle"))
+
+	    # </editor-fold>
     end
 
     # <editor-fold desc="create various dictionaries to define format and create plot"

@@ -72,8 +72,8 @@ intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, collect(pa
 intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(namesSym(in_df),[add_sym]))
 
 # XXX puts relevant dimensions in consistent order and adds remaining entries at the end
-orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :C, :Te, :M], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
-orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te, :M], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :C, :Te, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
 
 # XXX puts dataframes columns in consistent order
 orderDf(in_df::DataFrame) = select(in_df,orderDim(namesSym(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
@@ -113,7 +113,7 @@ function createPotDisp(c_arr::Array{Int,1},ts_dic::Dict{Tuple{Int64,Int64},Array
 
 	lvl_arr = map(x -> anyM.cInfo[x], c_arr) |> (y -> map(z -> getfield.(y,z),[:tsDis, :rDis]))
 	allLvl_df = DataFrame(C = c_arr, lvlTs = lvl_arr[1], lvlR = lvl_arr[2])
-	rDis_dic = Dict(x => getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in unique(lvl_arr[1]))
+	rDis_dic = Dict(x => getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in unique(lvl_arr[2]))
 
 	allLvl_df[!,:Ts_disSup] .= fill(collect(anyM.supTs.step),size(allLvl_df,1))
 	allLvl_df = flatten(allLvl_df,:Ts_disSup)
