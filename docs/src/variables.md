@@ -22,14 +22,16 @@ ul.liste {
 # Variables
 
 In the following, all variables used in AnyMOD are listed. Information includes the name used throughout the model, the variables' unit, and its dimensions according to the symbols introduced in [Sets and Mappings](@ref). Also, it is specified what determines the instances a variable is actually created for, in which constraints a variable appears, and the model part it is assigned to.
-
 ```@raw html
 <p class="norm">
 To increase performance, AnyMOD stores variables within DataFrames instead of using JuMPs native containers. Each variable dimension is represented by a column and integers in these columns relate to nodes within the hierarchical trees of sets (see <a href="../data/#printObject"><code>printObject</code></a> on how to export these in a readable format). An additional <code>var</code> column stores the corresponding variables. These variables are not JuMP variable objects, but JuMP expressions, that already include <a href="../performance/#Scaling">scaling factors</a>.
 </p>
+<p class="norm">
+All variables are defined positive. New variables beyond those listed here can freely be added to a model by using standard JuMP commands.
+</p>
 ```
 
-All variables are defined positive.
+
 
 # Dispatch of technologies
 

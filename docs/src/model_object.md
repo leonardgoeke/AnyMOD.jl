@@ -120,7 +120,7 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 <td><code>decomm</code></td>
 <td>
 <ul class="liste">
-<li>controls if the model performs endogenous decommissioning, see <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a> for details</li>
+<li>controls if the model performs endogenous decommissioning, see <a href="#Decommissioning-of-operated-capacitiy">decommissioning <br> constraints</a> for implementation</li>
 <li>available options are:
 <ul style="margin-top:0px">
 <li style="margin-top:0px"><code>decomm</code>: capacities are decommissioned endogenously, once decommissioned <br> capacities cannot be put into operation again </li>

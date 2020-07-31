@@ -964,7 +964,7 @@ At this point it is important to stress that, as displayed in the <a href="#Disp
 
 ### Discount rate
 
-Overall rate to discount all expenditures to the present. See [Cost equations](@ref) for details on use.
+Overall rate to discount all costs to the present. See [Cost equations](@ref) for details on use.
 
 ```@raw html
 <table class="tabelle">
