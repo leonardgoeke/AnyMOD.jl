@@ -58,6 +58,7 @@ end
 
 # XXX sets dimensions for expansion and capacity variables
 function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},tsYear_dic::Dict{Int,Int},anyM::anyModel)
+
 	for tSym in techSym_arr
 		prepTech_dic = Dict{Symbol,NamedTuple}()
 		part = anyM.parts.tech[tSym]
@@ -84,6 +85,13 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dic
 			# write reporting, if not all 3 kind of storage capacities will be created
 			if map(x -> x in keys(prepTech_dic),(:capaStIn,:capaStOut,:capaStSize)) |> (y -> any(y) && !all(y))
 				push!(anyM.report,(3,"technology dimensions","storage","in case of $(string(tSym)) information for one storage capacity is missing (capaStIn, capaStOut or capaStSize)"))
+			end
+		end
+
+		# add entry of operated capacity
+		if anyM.options.decomm != :none
+			for capTy in intersect(keys(prepTech_dic),(:capaConv,:capaStIn,:capaStOut,:capaStSize,:capaExc))
+				prepTech_dic[Symbol(:opr,uppercase(string(capTy)[1]),string(capTy)[2:end])] = (var = prepTech_dic[capTy].var, ratio = DataFrame(),resi = DataFrame())
 			end
 		end
 	end
@@ -264,12 +272,12 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		conv_boo = va in (:gen,:use)
 		# obtains relevant capacity variable
 		if conv_boo
-			basis_df = copy(part.var[:capaConv])[!,Not(:var)]
+			basis_df = anyM.options.decomm != :none ? :oprCapaConv : :capaConv |> (z -> copy(part.var[z])[!,Not(:var)])
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
 		else
             lock(anyM.lock)
-			basis_df = orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
+			basis_df = anyM.options.decomm != :none ? :oprCapaStIn : :capaStIn |> (z ->  orderDf(copy(part.var[z])[!,Not(:var)]))
 			unlock(anyM.lock)
 			# filter carriers that are can be actively stored, although they got descendants
 			intC_arr = union(collect(part.actSt),map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...)))
@@ -308,15 +316,10 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 	end
 end
 
-# XXX create variables and constraints regarding operated variables
+# XXX create constraints regarding operated variables
 function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 	for capaVar in filter(x -> occursin("capa",string(x)),keys(part.var))
 		oprVar_sym = string(capaVar) |> (x -> Symbol(:opr,uppercase(x[1]),x[2:end]))
-		# XXX create operated variable
-		var_df = copy(part.var[capaVar])[!,Not(:var)]
-		var_df = createVar(var_df,string(oprVar_sym),NaN,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.oprCapa)
-
-		part.var[oprVar_sym] = orderDf(var_df)
 
 		# XXX create constraint to connect operated and installed capacity
 		var_df[!,:cnsExpr] = map(x -> x[1] - x[2],zip(var_df[!,:var],part.var[capaVar][!,:var]))

@@ -367,6 +367,7 @@ mutable struct anyModel <: AbstractModel
 	lock::ReentrantLock
 
 	supTs::NamedTuple{(:lvl,:step,:sca,:scr,:scrProp),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64},Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
+	subPro::Tuple{Int,Int}
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}}
 
 	sets::Dict{Symbol,Tree}
