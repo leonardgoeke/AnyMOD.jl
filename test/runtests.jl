@@ -30,5 +30,5 @@ using AnyMOD, Cbc, CSV, Test
     CSV.write("examples/demo/set_carrier.csv",carrier_df)
 
     @test length(anyM.report) == 2
-    @test round(objective_value(anyM.optModel),digits = 1) == 127160.9
+    @test round(objective_value(anyM.optModel),digits = 1) == 141395.1
 end
