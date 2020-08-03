@@ -16,7 +16,7 @@ using AnyMOD, Cbc, CSV, Test
     createOptModel!(anyM)
     setObjective!(:costs,anyM)
 
-    set_optimizer(anyM.optModel,Gurobi.Optimizer)
+    set_optimizer(anyM.optModel,Cbc.Optimizer)
     optimize!(anyM.optModel)
 
     reportResults(:summary,anyM)
