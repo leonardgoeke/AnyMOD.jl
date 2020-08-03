@@ -2,6 +2,7 @@
 using AnyMOD, Cbc, CSV, Test
 
 @testset "run_demo" begin
+    cd("..")
     # manipulate set_carrier.csv to test on smaller resolution, because otherwise Cbs times out during test
     carrier_df = CSV.read("examples/demo/set_carrier.csv")
     preserveReso_arr = carrier_df[!,:timestep_dispatch]
