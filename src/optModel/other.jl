@@ -383,21 +383,21 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		if occursin("capa",string(va))
 			if !(:Ts_disSup in namesSym(allLimit_df))
 				lock(anyM.lock)
-				push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
-																												(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
+				push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all years was limited instead of enforcing the same limit for each year
+																												(see https://leonardgoeke.github.io/AnyMOD.jl/stable/parameter_list/#Limits-on-quantities-dispatched)"))
 				unlock(anyM.lock)
 			elseif 0 in unique(allLimit_df[!,:Ts_disSup])
 				relEntr_df = filter(x -> x.Ts_disSup == 0, allLimit_df)
 				if :Te in namesSym(relEntr_df)
 					allTe_arr = unique(relEntr_df[!,:Te])
 					for tInt in allTe_arr
-						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for $(string(techSym(tInt,anyM.sets[:Te]))) without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
-																						(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
+						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for $(string(techSym(tInt,anyM.sets[:Te]))) without specificing the superordinate dispatch timestep, this means the sum of capacity over all years was limited instead of enforcing the same limit for each year
+																														(see https://leonardgoeke.github.io/AnyMOD.jl/stable/parameter_list/#Limits-on-quantities-dispatched)"))
 					end
 				else
 					lock(anyM.lock)
-					push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
-																												(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
+					push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all years was limited instead of enforcing the same limit for each year
+																													(see https://leonardgoeke.github.io/AnyMOD.jl/stable/parameter_list/#Limits-on-quantities-dispatched)"))
 					unlock(anyM.lock)
 				end
 			end
