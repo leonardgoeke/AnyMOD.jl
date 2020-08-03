@@ -24,8 +24,8 @@ pre.inline {
 # Plots
 
 
-[https://github.com/JuliaPy/PyCall.jl](PyCall)
-[https://github.com/plotly/plotly.py](plotly)
+[PyCall](https://github.com/JuliaPy/PyCall.jl)
+[plotly](https://github.com/plotly/plotly.py)
 
 # Node trees
 
