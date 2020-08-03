@@ -157,7 +157,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 		for c in carId_dic[type]
 			if anyM.supTs.lvl == anyM.cInfo[c].tsDis
 				carId_dic[type] = tuple(filter(x -> x != c,collect(carId_dic[type]))...)
-				push!(anyM.report,(2,"technology mapping","carrier","carrier $(createFullString(c,anyM.sets[:C])) of technology $(string(tSym)) cannot be stored, because carrier is balanced on supordiante dispatch level"))
+				push!(anyM.report,(2,"technology mapping","carrier","carrier $(createFullString(c,anyM.sets[:C])) of technology $(string(tSym)) cannot be stored, because carrier is balanced on superordinate dispatch level"))
 			end
 		end
 	end
