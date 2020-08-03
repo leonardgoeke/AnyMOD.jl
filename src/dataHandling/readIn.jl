@@ -168,7 +168,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 	for supCol in findall(eltype.(eachcol(readIn_df)) .!= String)
 		if !occursin("value",string(readInCol_arr[supCol]))
 			lock(lock_)
-			push!(report,(3,"parameter read-in",fileName_str,"entries in $(readInCol_arr[supCol]) could not be converted to strings (probably provided as floats), file was not read-in"))
+			push!(report,(3,"parameter read-in",fileName_str,"entries in '$(readInCol_arr[supCol])' could not be converted to strings (probably provided as floats), file was not read-in"))
 			unlock(lock_)
 			return DataFrame()
 		end
@@ -204,7 +204,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 				# reports if values within all expression could not be matched to sets
 				if length(rplVal_arr) != length(allVal_arr)
 					lock(lock_)
-					push!(report,(2,"parameter read-in",fileName_str,"at least one value within all expression $(allInfo_str) could not be matched to an existing set"))
+					push!(report,(2,"parameter read-in",fileName_str,"at least one value within all expression '$(allInfo_str)' could not be matched to an existing set"))
 					unlock(lock_)
 				end
             elseif occursin(",",allInfo_str)
@@ -214,7 +214,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 				# reports if values within all expression could not be matched to sets
 				if length(rplVal_arr) != length(allVal_arr)
 					lock(lock_)
-					push!(report,(2,"parameter read-in",fileName_str,"at least one value within all expression $(allInfo_str) could not be matched to an existing set"))
+					push!(report,(2,"parameter read-in",fileName_str,"at least one value within all expression '$(allInfo_str)' could not be matched to an existing set"))
 					unlock(lock_)
 				end
             else
@@ -347,7 +347,7 @@ function createTreeLevel!(readIn_df::DataFrame, tree_obj::Tree, setLoad_str::Str
 	if !isempty(noUp_arr)
 		noUpVal_arr = setdiff(union(map(x -> collect(x[!,i]),collect(lowerNodes_gdf[noUp_arr]))...),union(map(x -> collect(x[!,i]),collect(lowerNodes_gdf[up_arr]))...))
 		for i in noUpVal_arr
-			push!(report,(3,"set read-in",setLoad_str,"node named $(i) could not be assigned to an upper node"))
+			push!(report,(3,"set read-in",setLoad_str,"node named '$(i)' could not be assigned to an upper node"))
 		end
 	end
 
@@ -485,7 +485,7 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 
 			lock(lock_)
 			for undef in undefinedSets_arr
-				push!(report,(2,"parameter read-in",fileName_str,"values provided for undefined set $(undef...)"))
+				push!(report,(2,"parameter read-in",fileName_str,"values provided for undefined set '$(undef...)'"))
 			end
 			unlock(lock_)
 

@@ -1,8 +1,25 @@
 
 # <editor-fold desc= prepare and create exchange related variables"
 
+# XXX prepare dictionary that specifies dimensions for expansion and capacity variables
+function prepareExc!(prepExc_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
+	partExc = anyM.parts.exc
+	partLim = anyM.parts.lim
+
+	# obtain dimensions of expansion variables for exchange
+	potExc_df = prepareExcExpansion!(partExc,partLim,prepExc_dic,tsYear_dic,anyM)
+
+	# obtain capacity dimensions solely based on expansion variables
+	prepareCapacity!(partExc,prepExc_dic,prepExc_dic[:expExc].var,:capaExc,anyM)
+	addResidualCapaExc!(partExc,prepExc_dic,potExc_df,anyM)
+
+	if part.decomm != :none && :capaExc in keys(prepExc_dic)
+		prepExc_dic[:insCapaExc] =  (var = prepExc_dic[:capaExc].var, resi = DataFrame())
+	end
+end
+
 # XXX prepare expansion and capacity variables for exchange
-function prepareExcExpansion!(partExc::OthPart,partLim::OthPart,prepExc_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},anyM::anyModel)
+function prepareExcExpansion!(partExc::ExcPart,partLim::OthPart,prepExc_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},anyM::anyModel)
 
 	# XXX determine dimensions of expansion variables (expansion for exchange capacities is NOT directed!)
 	# get all possible dimensions of exchange
@@ -36,13 +53,13 @@ function prepareExcExpansion!(partExc::OthPart,partLim::OthPart,prepExc_dic::Dic
 
 	# save result to dictionary for variable creation
 	exp_df = addSupTsToExp(allExExp_df,partExc.par,:Exc,tsYear_dic,anyM)
-	prepExc_dic[:expExc] = (var = convertExcCol(exp_df),ratio = DataFrame(), resi = DataFrame())
+	prepExc_dic[:expExc] = (var = convertExcCol(exp_df), resi = DataFrame())
 
 	return potExc_df
 end
 
 # XXX create exchange variables
-function createExcVar!(partExc::OthPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},anyM::anyModel)
+function createExcVar!(partExc::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},anyM::anyModel)
 	# XXX extend capacity variables to dispatch variables
 	capa_df = partExc.var[:capaExc][!,Not([:var,:dir])] |> (x -> unique(vcat(x,rename(x,replace(namesSym(x),:R_from => :R_to, :R_to => :R_from)))))
 	# replace orginal carrier with leafs
@@ -72,7 +89,7 @@ function createExcVar!(partExc::OthPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 end
 
 # XXX add residual capacties for exchange (both symmetric and directed)
-function addResidualCapaExc!(partExc::OthPart,prepExc_dic::Dict{Symbol,NamedTuple},potExc_df::DataFrame,anyM::anyModel)
+function addResidualCapaExc!(partExc::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},potExc_df::DataFrame,anyM::anyModel)
 
 	expSup_dic = Dict(x => getDescendants(x,anyM.sets[:Ts],true,anyM.supTs.lvl) for x in unique(potExc_df[!,:Ts_exp]))
 	potExc_df[!,:Ts_disSup] = map(x -> expSup_dic[x],potExc_df[!,:Ts_exp])
@@ -149,8 +166,14 @@ convertExcCol(in_df::DataFrame) = rename(in_df, namesSym(in_df) |> (x  -> :R_a i
 # <editor-fold desc= create exchange related constraints"
 
 # XXX connect capacity and expansion constraints for exchange
-function createCapaExcCns!(partExc::OthPart,anyM::anyModel)
-	capaVar_df = rename(partExc.var[:capaExc],:var => :capaVar)
+function createCapaExcCns!(partExc::ExcPart,anyM::anyModel)
+
+	if partExc.decomm == :none
+		capaVar_df = rename(partExc.var[:capaExc],:var => :capaVar)
+	else
+		capaVar_df = rename(partExc.var[:insCapaExc],:var => :capaVar)
+	end
+
 	if :expExc in keys(partExc.var)
 		expVar_df = flatten(partExc.var[:expExc],:Ts_disSup)[!,Not(:Ts_exp)]
 
@@ -176,10 +199,10 @@ function createCapaExcCns!(partExc::OthPart,anyM::anyModel)
 end
 
 # XXX create capacity restriction for exchange
-function createRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc::OthPart,anyM::anyModel)
+function createRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc::ExcPart,anyM::anyModel)
 
 	# group exchange capacities by carrier
-	grpCapa_df = groupby(rename(partExc.var[anyM.options.decomm != :none ? :oprCapaExc : :capaExc],:var => :capa),:C)
+	grpCapa_df = groupby(rename(partExc.var[:capaExc],:var => :capa),:C)
 
 	# pre-allocate array of dataframes for restrictions
 	restr_arr = Array{DataFrame}(undef,length(grpCapa_df))
@@ -196,7 +219,7 @@ function createRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc
 end
 
 # XXX prepare capacity restriction for specific carrier
-function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc::OthPart,anyM::anyModel)
+function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc::ExcPart,anyM::anyModel)
 
 	c_int = cns_df[1,:C]
 	leafes_arr = filter(y -> isempty(anyM.sets[:C].nodes[y].down), [c_int,getDescendants(c_int,anyM.sets[:C],true)...])

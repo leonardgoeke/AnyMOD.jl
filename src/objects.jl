@@ -140,8 +140,17 @@ mutable struct TechPart <: AbstractModelPart
 	type::Symbol
 	disAgg::Bool
 	modes::Tuple{Vararg{Int,N} where N}
+	decomm::Symbol
 	TechPart(name::Tuple{Vararg{String,N} where N}) = new(name,Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())
 	TechPart() = new()
+end
+
+mutable struct ExcPart <: AbstractModelPart
+	par::Dict{Symbol,ParElement}
+	var::Dict{Symbol,DataFrame}
+	cns::Dict{Symbol,DataFrame}
+	decomm::Symbol
+	ExcPart() = new(Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())
 end
 
 """
@@ -201,7 +210,7 @@ struct modOptions
 	csvDelim::String
 	outStamp::String
 	# model generation
-	decomm::Symbol
+	decommExc::Symbol
 	interCapa::Symbol
 	supTsLvl::Int
 	shortExp::Int
@@ -367,14 +376,14 @@ mutable struct anyModel <: AbstractModel
 	lock::ReentrantLock
 
 	supTs::NamedTuple{(:lvl,:step,:sca,:scr,:scrProp),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64},Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
-	subPro::Tuple{Int,Int}
+	subPro::Union{Tuple{},Tuple{Int,Int}}
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}}
 
 	sets::Dict{Symbol,Tree}
-	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Symbol,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
+	parts::NamedTuple{(:tech,:exc,:trd,:bal,:lim,:obj),Tuple{Dict{Symbol,TechPart},ExcPart,OthPart,OthPart,OthPart,OthPart}}
 
 	graInfo::graInfo
-	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decomm = :recomm, interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, emissionLoss = true,
+	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decommExc = :none, interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, emissionLoss = true,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)),
 																											scaFac = (capa = 1e1, oprCapa = 1e2, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
 																																bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = NaN)
@@ -390,7 +399,7 @@ mutable struct anyModel <: AbstractModel
 
 		# XXX sets whole options object from specified directories TODO arbeite mit kwargs später
 		outStamp_str = string(objName,"_",Dates.format(now(),"yyyymmddHHMM"))
-		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, decomm = decomm, interCapa = interCapa,
+		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, decommExc = decommExc, interCapa = interCapa,
 																					supTsLvl = supTsLvl, shortExp = shortExp, redStep = redStep, emissionLoss = emissionLoss, coefRng = coefRng, scaFac = scaFac, bound = bound,
 																						avaMin = avaMin, checkRng = checkRng, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
 
@@ -417,7 +426,8 @@ mutable struct anyModel <: AbstractModel
 		relTech_df = DataFrame(filter(x -> any(collect(x) .!= ""), eachrow(relTech_df)))
 		techIdx_arr = filter(z -> isempty(anyM.sets[:Te].nodes[z].down), map(x -> lookupTupleTree(tuple(collect(x)...),anyM.sets[:Te],1)[1], eachrow(relTech_df)))
 
-		anyM.parts = (tech = Dict(techSym(x,anyM.sets[:Te]) => TechPart(getUniName(x,anyM.sets[:Te])) for x in techIdx_arr), trd = OthPart(), exc = OthPart(), bal = OthPart(), lim = OthPart(), obj = OthPart())
+		anyM.parts = (tech = Dict(techSym(x,anyM.sets[:Te]) => TechPart(getUniName(x,anyM.sets[:Te])) for x in techIdx_arr), exc = ExcPart(), trd = OthPart(), bal = OthPart(), lim = OthPart(), obj = OthPart())
+		anyM.parts.exc.decomm = anyM.options.decommExc
 
 		createCarrierMapping!(setData_dic,anyM)
 		createTimestepMapping!(anyM)

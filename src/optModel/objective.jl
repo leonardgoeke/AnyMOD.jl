@@ -245,7 +245,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allTrd_df[!,:trd] = allTrd_df[!,:trd] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allTrd_df))
 			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
 			allTrd_df = combine(x -> (expr = sum(x.disFac .* x.trd .* x.costTrd) ./ (va == :trdSell ? -1000.0 : 1000.0) .* anyM.options.redStep,), groupby(allTrd_df, [:Ts_disSup,:R_exp,:C,:scr]))
-			transferCostEle!(allTrd_df, partObj,Symbol(:cost,uppercase(string(va)[1]),string(va)[2:end]),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,(va == :trdSell ? NaN : 0.0))
+			transferCostEle!(allTrd_df, partObj,Symbol(:cost,makeUp(va)),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,(va == :trdSell ? NaN : 0.0))
 		end
 	end
 	produceMessage(anyM.options,anyM.report, 3," - Created expression for curtailment and trade costs")

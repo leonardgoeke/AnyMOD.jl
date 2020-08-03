@@ -363,7 +363,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	# XXX converts carrier named provided to index
 	node_arr = filter(x -> x.val == string(car_sym),collect(values(anyM.sets[:C].nodes)))
 	if length(node_arr) != 1
-		error("no carrier named $car_sym defined")
+		error("no carrier named '$car_sym' defined")
 		return
 	end
 	c_int = node_arr[1].idx

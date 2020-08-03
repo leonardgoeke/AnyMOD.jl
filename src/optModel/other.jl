@@ -392,7 +392,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 				if :Te in namesSym(relEntr_df)
 					allTe_arr = unique(relEntr_df[!,:Te])
 					for tInt in allTe_arr
-						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for $(string(techSym(tInt,anyM.sets[:Te]))) without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
+						push!(anyM.report,(2,"limit","capacity","capacity limits were provided for '$(string(techSym(tInt,anyM.sets[:Te])))' without specificing the superordinate dispatch timestep, this means the sum of capacity over all superordinate timesteps was limited
 																						(e.g. a limit on the sum of PV capacity across all years instead of the same limit for each of these years)"))
 					end
 				else
@@ -444,7 +444,7 @@ function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns
         join_arr = part.type != :mature ? index_arr : filter(x -> x != :Ts_expSup,collect(index_arr))
 
         # joins corresponding capacity and expansion variables together
-		expVar_sym = Symbol(replace(string(capaVar),"capa" => "exp"))
+		expVar_sym = Symbol(replace(string(capaVar),(part.decomm == :none ? "capa" : "insCapa") => "exp"))
 		if !(expVar_sym in keys(part.var)) continue end
         expVar_df = flatten(part.var[expVar_sym],:Ts_disSup)
         cns_df = rename(innerjoin(part.var[capaVar],combine(groupby(expVar_df,join_arr), :var => (x -> sum(x)) => :exp); on = join_arr),:var => :capa)

@@ -24,6 +24,8 @@ include("src/dataHandling/util.jl")
 #using AnyMOD
 
 anyM = anyModel("examples/demo_stoch","results", objName = "stoch")
+
+anyM.subPro = tuple(1,1)
 #anyM = anyModel("examples/demo","results", objName = "det")
 
 
@@ -43,3 +45,12 @@ reportResults(:exchange,anyM)
 reportTimeSeries(:electricity,anyM)
 
 plotEnergyFlow(:sankey,anyM)
+
+
+
+tSym = :wind
+
+tInt = techInt(tSym,anyM.sets[:Te])
+part = anyM.parts.tech[tSym]
+prepTech_dic = prepVar_dic[tSym]
+parDef_dic = copy(parDef_dic)

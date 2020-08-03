@@ -84,6 +84,10 @@ mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  
 # XXX check if dataframe should be considered, if energy balance is created for carriers in array
 filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in namesSym(var_df) ? filter(r -> r.C in c_arr,var_df) : var_df
 
+# XXX makes first letter of string or symbol capital
+makeUp(in::String) = String(uppercase(string(in)[1]),string(in)[2:end])
+makeUp(in::Symbol) = Symbol(uppercase(string(in)[1]),string(in)[2:end])
+
 # XXX creates a dictionary that assigns each dispatch timestep inputed to its superordinate dispatch timestep
 function assignSupTs(inputSteps_arr::Array{Int,1},time_tree::Tree,superordinateLvl_int::Int)
 
@@ -186,11 +190,11 @@ function mergeDicTable(df_dic::Dict{Symbol,DataFrame},outerJoin_boo::Bool=true)
 end
 
 # XXX merge provided dataframe into prep_dic
-function mergePrepDic!(key_sym::Symbol,prep_dic::Dict{Symbol,NamedTuple},capaResi_df::DataFrame,capaRatio_df::DataFrame = DataFrame())
+function mergePrepDic!(key_sym::Symbol,prep_dic::Dict{Symbol,NamedTuple},capaResi_df::DataFrame)
 	if key_sym in keys(prep_dic)
-		prep_dic[key_sym]= (var = prep_dic[key_sym].var, ratio = capaRatio_df, resi = capaResi_df)
+		prep_dic[key_sym]= (var = prep_dic[key_sym].var, resi = capaResi_df)
 	else
-		prep_dic[key_sym] = (var = intCol(capaResi_df) |> (x -> DataFrame(Pair.(x,fill(Int[],length(x))))), ratio = capaRatio_df, resi = capaResi_df)
+		prep_dic[key_sym] = (var = intCol(capaResi_df) |> (x -> DataFrame(Pair.(x,fill(Int[],length(x))))),resi = capaResi_df)
 	end
 end
 
@@ -404,7 +408,7 @@ end
 # XXX get a dataframe with all variable of the specified type
 function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, filterFunc::Function = x -> true)
 
-	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :oprCapaExc => :exc, :expExc => :exc, :crt => :bal, :lss => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
+	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :insCapaExc => :exc, :expExc => :exc, :crt => :bal, :lss => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
 	techSym_arr = collect(keys(anyM.parts.tech))
 
 	if !(va in keys(varToPart_dic)) # get all variables for technologies
@@ -500,7 +504,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 		end
 	end
 
-	if !(va in (:capaConv,:capaStIn,:capaStOut,:capaStSize,:oprCapaConv,:oprCapaStIn,:oprCapaStOut,:oprCapaStSize,:expConv,:expStIn,:expStOut,:expStSize)) && !isempty(allVar_df) && reflectRed
+	if !(va in (:capaConv,:capaStIn,:capaStOut,:capaStSize,:insCapaConv,:insCapaStIn,:insCapaStOut,:insCapaStSize,:expConv,:expStIn,:expStOut,:expStSize)) && !isempty(allVar_df) && reflectRed
 		allVar_df[!,:var] .= allVar_df[!,:var] .* anyM.options.redStep
 	end
 

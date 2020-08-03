@@ -12,10 +12,6 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
 
     # XXX technology and exchange expansion
 
-    parDef_dic[:stInToConv]   = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:stOutToStIn]  = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:sizeToStIn]   = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-
     parDef_dic[:delConv]   = (dim = (:Ts_expSup, :R_exp, :Te),     defVal = 0, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :techConv)
     parDef_dic[:delStIn]   = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = 0, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :techSt)
     parDef_dic[:delStOut]  = (dim = (:Ts_expSup, :R_exp, :C, :Te), defVal = 0, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :techSt)
@@ -56,6 +52,19 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
 
     # <editor-fold desc="XXX limit parameters"
     # XXX parameters regarding limits on technology and exchange expansion and capacity
+
+    # limits on ratios between different capacities of technologies
+    parDef_dic[:stInToConvUp]  = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :lim)
+    parDef_dic[:stInToConvLow] = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :lim)
+    parDef_dic[:stInToConvFix] = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :lim)
+
+    parDef_dic[:stOutToStInUp]  = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :lim)
+    parDef_dic[:stOutToStInLow] = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :lim)
+    parDef_dic[:stOutToStInFix] = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :lim)
+
+    parDef_dic[:sizeToStInUp]  = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :lim)
+    parDef_dic[:sizeToStInLow] = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :lim)
+    parDef_dic[:sizeToStInFix] = (dim = (:Ts_exp, :R_exp, :C, :Te), defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :lim)
 
     # expansion limits on conversion, storage and exchange
     parDef_dic[:expConvUp]  = (dim = (:Ts_exp, :R_exp, :Te), defVal = nothing, herit = (:Ts_exp => :sum_full, :R_exp => :sum_full, :Te => :sum_full), part = :lim)
@@ -108,27 +117,26 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:capaExcResiDir] = (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :Ts_disSup => :up), part = :exc)
 
     # commssioned capacity limits on conversion, storage and exchange
-    if options.decomm != :none
-        parDef_dic[:oprCapaConvUp]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any,  :Ts_expSup => :sum_full), part = :lim)
-        parDef_dic[:oprCapaConvLow]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :Ts_expSup => :sum_any),  part = :lim)
-        parDef_dic[:oprCapaConvFix]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :Ts_expSup => :sum_any),  part = :lim)
+    parDef_dic[:insCapaConvUp]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any,  :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:insCapaConvLow]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :Ts_expSup => :sum_any),  part = :lim)
+    parDef_dic[:insCapaConvFix]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :Ts_expSup => :sum_any),  part = :lim)
 
-        parDef_dic[:oprCapaStInUp]     =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :C => :sum_full, :Ts_expSup => :sum_full), part = :lim)
-        parDef_dic[:oprCapaStInLow]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
-        parDef_dic[:oprCapaStInFix]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
+    parDef_dic[:insCapaStInUp]     =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :C => :sum_full, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:insCapaStInLow]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
+    parDef_dic[:insCapaStInFix]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
 
-        parDef_dic[:oprCapaStOutUp]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :C => :sum_full, :Ts_expSup => :sum_full), part = :lim)
-        parDef_dic[:oprCapaStOutLow]   =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
-        parDef_dic[:oprCapaStOutFix]   =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
+    parDef_dic[:insCapaStOutUp]    =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :C => :sum_full, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:insCapaStOutLow]   =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
+    parDef_dic[:insCapaStOutFix]   =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
 
-        parDef_dic[:oprCapaStSizeUp]   =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :C => :sum_full, :Ts_expSup => :sum_full), part = :lim)
-        parDef_dic[:oprCapaStSizeLow]  =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
-        parDef_dic[:oprCapaStSizeFix]  =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
+    parDef_dic[:insCapaStSizeUp]   =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :C => :sum_full, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:insCapaStSizeLow]  =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
+    parDef_dic[:insCapaStSizeFix]  =   (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
 
-        parDef_dic[:oprCapaExcUp]   =   (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_full), part = :lim)
-        parDef_dic[:oprCapaExcLow]  =   (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_any),  part = :lim)
-        parDef_dic[:oprCapaExcFix]  =   (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_any),  part = :lim)
-    end
+    parDef_dic[:insCapaExcUp]   =   (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_full), part = :lim)
+    parDef_dic[:insCapaExcLow]  =   (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_any),  part = :lim)
+    parDef_dic[:insCapaExcFix]  =   (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_any),  part = :lim)
+
 
     # XXX limits on quantites (including emissions and emission factors)
 
@@ -175,6 +183,10 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:trdSellUp]   =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
     parDef_dic[:trdSellLow]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any, :scr => :up),  part = :lim)
     parDef_dic[:trdSellFix]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_dis => :sum_any,  :C => :sum_any, :scr => :up),  part = :lim)
+
+    # limits on deployment
+
+
 
     # emission limits and factors (are computed as net values of trade and exchange)
     parDef_dic[:emissionUp]    =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), defVal = nothing, herit = upHerit_tup, part = :lim)
@@ -270,7 +282,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
     parDef_dic = defineParameter(anyM.options,anyM.report)
     undefinedPar_arr = setdiff(unique(vcat(values(parToFile_dic)...)),keys(parDef_dic))
     if !isempty(undefinedPar_arr)
-        for undefined in undefinedPar_arr push!(anyM.report,(3,"parameter read-in","definition","parameter with the name $(string(undefined)) does not exist")) end
+        for undefined in undefinedPar_arr push!(anyM.report,(3,"parameter read-in","definition","parameter with the name '$(string(undefined))' does not exist")) end
         print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options)
     end
 
@@ -308,7 +320,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
         # XXX checks for duplicates and removes them in case
         nonUnique_bool = nonunique(allParData_df)
         if any(nonUnique_bool)
-            push!(anyM.report,(1,"parameter read-in","validity check","non-unique entries discovered for $(string(parIt))"))
+            push!(anyM.report,(1,"parameter read-in","validity check","non-unique entries discovered for '$(string(parIt))'"))
             delete!(allParData_df,nonUnique_bool)
         end
 
@@ -317,7 +329,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
         if !isempty(rmvVal_df)
             contradic_bool = nonunique(allParData_df[:,rmvVal_df])
             if any(contradic_bool)
-                 push!(anyM.report,(3,"parameter read-in","validity check","contradicting entries discovered for $(string(parIt))"))
+                 push!(anyM.report,(3,"parameter read-in","validity check","contradicting entries discovered for '$(string(parIt))'"))
             end
         end
 
@@ -425,7 +437,6 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
             capaLvl_df[!,:lvlTs] .= reso_tup[1]; capaLvl_df[!,:lvlR] .= reso_tup[2];
 		end
 
-
         # expand based on code above to full table for pre-setting of dispatch paramters
 		dispReso_df = expandExpToDisp(capaLvl_df,ts_dic,r_dic)
 
@@ -514,13 +525,13 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String
             modeGrpDef_arr = filter(r -> cntM_int == size(r,1), collect(modeGrp_gdf))
 
             if length(modeGrp_gdf.ends) > length(modeGrpDef_arr)
-                push!(report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was not specified for all modes in some cases for $tStr, existing values were ignored"))
+                push!(report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was not specified for all modes in some cases for '$tStr', existing values were ignored"))
             end
 
             # filters entries where mode values are not distinct, reports on it and uses these entries as non-mode specific data
             disMode_arr = filter(r -> length(unique(r[!,:val])) != 1, modeGrpDef_arr)
             if length(modeGrpDef_arr) > length(disMode_arr)
-                push!(report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was the same for all modes in some cases for $tStr, no differentiation between modes was applied in these cases"))
+                push!(report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was the same for all modes in some cases for '$tStr', no differentiation between modes was applied in these cases"))
                 noMode_df = vcat(noMode_df, vcat(filter(r -> length(unique(r[!,:val])) == 1, modeGrpDef_arr)...) )
             end
 

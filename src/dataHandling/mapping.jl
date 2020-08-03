@@ -32,16 +32,16 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
 
     	# check if level values can be converted to integers
     	if any(map(x -> tryparse(Int,x), values(resVal_dic)) .== nothing)
-    		push!(anyM.report,(2,"carrier mapping","","no resolutions written for $(createFullString(car_int,anyM.sets[:C])), provide as integer, carrier was skipped"))
+    		push!(anyM.report,(2,"carrier mapping","","no resolutions written for '$(createFullString(car_int,anyM.sets[:C]))', provide as integer, carrier was skipped"))
     		continue
     	end
     	res_dic = Dict(resLongShort_tup[x] => parse(Int,row[x]) for x in resCol_tup)
     	# writes levels after consistency check
     	if res_dic[:lvlTsDis] < res_dic[:lvlTsExp]
-    		push!(anyM.report,(3,"carrier mapping","","temporal resolution of expansion can not be more detailed than for dispatch for $(createFullString(car_int,anyM.sets[:C]))"))
+    		push!(anyM.report,(3,"carrier mapping","","temporal resolution of expansion can not be more detailed than for dispatch for '$(createFullString(car_int,anyM.sets[:C]))'"))
     		continue
     	elseif res_dic[:lvlRDis] > res_dic[:lvlRExp]
-    		push!(anyM.report,(3,"carrier mapping","","spatial resolution of expansion must be at least as detailed as dispatch for $(createFullString(car_int,anyM.sets[:C]))"))
+    		push!(anyM.report,(3,"carrier mapping","","spatial resolution of expansion must be at least as detailed as dispatch for '$(createFullString(car_int,anyM.sets[:C]))'"))
     		continue
     	else
     		anyM.cInfo[car_int] = (tsDis = res_dic[:lvlTsDis],tsExp = res_dic[:lvlTsExp],rDis = res_dic[:lvlRDis],rExp = res_dic[:lvlRExp], eq = eq_boo)
@@ -76,12 +76,12 @@ function evaluateReso(startIdx_int::Int,car_tree::Tree,cInfo_dic::Dict{Int,Named
 	# tries to inherit resolutions from children, if no data exists yet
 	if !haskey(cInfo_dic,startIdx_int)
 		if isempty(allChildIdx_arr)
-			push!(report,(3,"carrier mapping","","carrier $(carName_str) got no resolution and could not inherit from children either"))
+			push!(report,(3,"carrier mapping","","carrier '$(carName_str)' got no resolution and could not inherit from children either"))
 			return cInfo_dic
 		else
 			newReso_dic = Dict(y => minimum([getfield(cInfo_dic[x],y) for x in allChildIdx_arr]) for y in (:tsDis,:tsExp,:rDis,:rExp))
 			cInfo_dic[startIdx_int] = (tsDis = newReso_dic[:tsDis],tsExp = newReso_dic[:tsExp],rDis = newReso_dic[:rDis],rExp = newReso_dic[:rExp], eq = false)
-			push!(report,(1,"carrier mapping","","carrier $(carName_str) inherited resolution from children"))
+			push!(report,(1,"carrier mapping","","carrier '$(carName_str)' inherited resolution from children"))
 			return cInfo_dic
 		end
 	# checks if existing resolution is flawed
@@ -89,7 +89,7 @@ function evaluateReso(startIdx_int::Int,car_tree::Tree,cInfo_dic::Dict{Int,Named
 		for childIdx in allChildIdx_arr
 			# check if any children got a smaller resolution value
 			if any(map(x -> getfield(cInfo_dic[startIdx_int],x) > getfield(cInfo_dic[childIdx],x),(:tsDis,:tsExp,:rDis,:rExp)))
-				push!(report,(3,"carrier mapping","","carrier $(carName_str) got a resolution more detailed than its childrens'"))
+				push!(report,(3,"carrier mapping","","carrier '$(carName_str)' got a resolution more detailed than its childrens'"))
 			end
 		end
 	end
@@ -149,7 +149,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 	carId_dic = Dict(z => tuple(map(x -> getDicEmpty(nameC_dic,x),carStrArr_dic[z])...) for z in keys(carStrArr_dic))
 
 	for x in filter(x -> Int[] in carId_dic[x], collectKeys(keys(carId_dic)))
-		push!(anyM.report,(3,"technology mapping","carrier","$(typeStr_dic[x]) carrier of technology $(string(tSym)) not entered correctly"))
+		push!(anyM.report,(3,"technology mapping","carrier","$(typeStr_dic[x]) carrier of technology '$(string(tSym))' not entered correctly"))
 		carId_dic[x] = tuple(filter(y -> y != Int[],collect(carId_dic[x]))...)
 	end
 
@@ -158,7 +158,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 		for c in carId_dic[type]
 			if anyM.supTs.lvl == anyM.cInfo[c].tsDis
 				carId_dic[type] = tuple(filter(x -> x != c,collect(carId_dic[type]))...)
-				push!(anyM.report,(2,"technology mapping","carrier","carrier $(createFullString(c,anyM.sets[:C])) of technology $(string(tSym)) cannot be stored, because carrier is balanced on supordiante dispatch level"))
+				push!(anyM.report,(2,"technology mapping","carrier","carrier '$(createFullString(c,anyM.sets[:C]))' of technology '$(string(tSym))' cannot be stored, because carrier is balanced on supordiante dispatch level"))
 			end
 		end
 	end
@@ -176,19 +176,19 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 	part.actSt = actSt_tup
 
 	# report on suspicious looking carrier constellations
-    if isempty(union(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])) push!(anyM.report,(2,"technology mapping","carrier","technology $(string(tSym)) has no output")) end
+    if isempty(union(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])) push!(anyM.report,(2,"technology mapping","carrier","technology '$(string(tSym))' has no output")) end
 
     if !isempty(setdiff(carId_dic[:carrier_stored_in],union(carGrp_ntup.stIntOut,carGrp_ntup.stExtOut))) && !isempty(carId_dic[:carrier_stored_in])
-        push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology $(string(tSym)) can be charged but not discharged"))
+        push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology '$(string(tSym))' can be charged but not discharged"))
     end
 
     if !isempty(setdiff(carId_dic[:carrier_stored_out],union(carGrp_ntup.stIntIn,carGrp_ntup.stExtIn))) && !isempty(carId_dic[:carrier_stored_out])
-        push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology $(string(tSym)) can be discharged but not charged"))
+        push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology '$(string(tSym))' can be discharged but not charged"))
     end
 
 	for c in part.actSt
 		if !(c in vcat(map(x -> vcat(getDescendants(x,anyM.sets[:C],true)...,x), union(carGrp_ntup.stExtIn,carGrp_ntup.stExtOut))...))
-			push!(anyM.report,(3,"technology mapping","carrier","$(createFullString(c,anyM.sets[:C])) for active storage of technology $(string(tSym)) is not stored or a descendant of a stored carrier"))
+			push!(anyM.report,(3,"technology mapping","carrier","'$(createFullString(c,anyM.sets[:C]))' for active storage of technology '$(string(tSym))' is not stored or a descendant of a stored carrier"))
 		end
 	end
 
@@ -200,7 +200,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
         inherCar_tup = relCar_tup[findall(map(x -> !(isempty(filter(z -> z != x,intersect(getDescendants(x,anyM.sets[:C],true),relCar_tup)))),relCar_tup))]
         if !isempty(inherCar_tup)
             for inher in inherCar_tup
-                push!(anyM.report,(3,"technology mapping","carrier","for technology $(string(tSym)) the $(typeStr_dic[type]) carrier $(createFullString(inher,anyM.sets[:C])) is a parent of another $(typeStr_dic[type]) carrier, this is not supported"))
+                push!(anyM.report,(3,"technology mapping","carrier","for technology '$(string(tSym))' the $(typeStr_dic[type]) carrier '$(createFullString(inher,anyM.sets[:C]))' is a parent of another $(typeStr_dic[type]) carrier, this is not supported"))
             end
         end
     end
@@ -213,10 +213,22 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 		type_str = "mature"
 	end
     if !haskey(typeStringInt_dic,String(type_str))
-        push!(anyM.report,(3,"technology mapping","type","unknown technology type $type_str used, allowed are: $(join(keys(typeStringInt_dic),", "))"))
+        push!(anyM.report,(3,"technology mapping","type","unknown technology type '$type_str' used, allowed are: $(join(keys(typeStringInt_dic),"', '"))"))
         return
     end
     part.type = Symbol(type_str)
+
+	# XXX writes decommissioning option for technology
+	if :technology_decomm in namesSym(row_df)
+		type_str = row_df[:technology_decomm]
+	else
+		type_str = "none"
+	end
+	if !(type_str in ("none","decomm","recomm"))
+		push!(anyM.report,(3,"technology mapping","decomm","unknown decommissioning type '$type_str' used, allowed are: 'none','decomm', and 'recomm'"))
+		return
+	end
+	part.decomm = Symbol(type_str)
 
 
     # XXX writes modes of technology
@@ -230,7 +242,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
     # determines carrier based expansion resolutions
 	cEx_boo = true
     if isempty(vcat(collect.(values(carGrp_ntup))...))
-		push!(anyM.report,(2,"technology mapping","carrier","for technology $(string(tSym)) no carriers were provided"))
+		push!(anyM.report,(2,"technology mapping","carrier","for technology '$(string(tSym))' no carriers were provided"))
 		cEx_boo = false
 	end
 
@@ -243,9 +255,9 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 
 		if !isnothing(tsExpSpc_int)
 			if tsExpSpc_int > anyM.supTs.lvl
-				push!(anyM.report,(2,"technology mapping","expansion level","specific temporal expansion level provided for $(string(tSym)) is below superordinate dispatch level and therefore could not be used"))
+				push!(anyM.report,(2,"technology mapping","expansion level","specific temporal expansion level provided for technology '$(string(tSym))' is below superordinate dispatch level and therefore could not be used"))
 			else
-				push!(anyM.report,(1,"technology mapping","expansion level","specific temporal expansion level provided for $(string(tSym)) was used instead of a carrier based value"))
+				push!(anyM.report,(1,"technology mapping","expansion level","specific temporal expansion level provided for technology '$(string(tSym))' was used instead of a carrier based value"))
 				tsExp_int = tsExpSpc_int
 			end
 		end
@@ -257,11 +269,11 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 
 		if !isnothing(rExpSpc_int)
 			if rExpSpc_int < rExp_int
-				push!(anyM.report,(2,"technology mapping","expansion level","specific spatial expansion level provided for $(string(tSym)) is less detailed than default value obtained from carriers and therefore could not be used"))
+				push!(anyM.report,(2,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(tSym))' is less detailed than default value obtained from carriers and therefore could not be used"))
 			elseif rExpSpc_int == rExp_int
-				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for $(string(tSym)) is equal to default value obtained from carriers"))
+				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(tSym))' is equal to default value obtained from carriers"))
 			else
-				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for $(string(tSym)) was used instead of a carrier based value"))
+				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(tSym))' was used instead of a carrier based value"))
 				rExp_int = rExpSpc_int
 			end
 		end
@@ -279,7 +291,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 		elseif daggR_str == "no"
 			disAgg_boo = false
 		else
-			push!(anyM.report,(3,"technology mapping","spatial aggregation","unknown keyword $type_str used to control spatial aggregation, please use 'yes' or 'no'"))
+			push!(anyM.report,(3,"technology mapping","spatial aggregation","unknown keyword '$type_str' used to control spatial aggregation, please use 'yes' or 'no'"))
 			return
 		end
 	elseif rExp_int > rExpOrg_int # disaggregate by default, if it makes sense
@@ -340,14 +352,7 @@ function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
 			end
             push!(carConstr_arr, carIt_arr...)
         end
-
-        #  identifies and addresses "crossings" (one carrier is temporal more  but spatially less detailed than another one) by converting into new restriction mappings
         carConstrUni_arr = unique(carConstr_arr)
-        cross_arr = filter(x -> (any(map(z -> (x[2] > z[2] && x[3] < z[3]) || (x[3] > z[3] && x[2] < z[2]), carConstrUni_arr))),carConstrUni_arr)
-        if !isempty(cross_arr)
-            newEntry_tup = (union(getindex.(cross_arr,1)...), minimum(getindex.(cross_arr,2)),minimum(getindex.(cross_arr,3)))
-            carConstrUni_arr = unique(vcat(newEntry_tup,carConstrUni_arr))
-        end
 
         # filter redundant and "dominated" combinations (less or the same carriers, but not more temporal or spatial detail)
         carConstrUni_arr2 = map(i -> map(x -> x[i],carConstrUni_arr),1:3)
@@ -357,11 +362,11 @@ function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
                         ((x[2] .< carConstrUni_arr2[2]) .& (x[3] .<= carConstrUni_arr2[3])) 	.|
                         ((x[2] .<= carConstrUni_arr2[2]) .& (x[3] .<= carConstrUni_arr2[3]))))	.& BitArray(map(y -> y != x,carConstrUni_arr)))) end
 
-        carConFilt_arr2 = map(i -> map(x -> x[i],carConFilt_arr),1:3)
+        carConFilt_arr2 = map(i -> map(x -> x[i],carConstrUni_arr),1:3)
 		typeCapa_sym = side == :use ? "in" : "out"
 
         # adds necessary capacity restrictions below reference level
-        map(x -> push!(capaDispRestr_arr,(typeCapa_sym, carConFilt_arr2[1][x], carConFilt_arr2[2][x], carConFilt_arr2[3][x])),1:length(carConFilt_arr))
+        map(x -> push!(capaDispRestr_arr,(typeCapa_sym, carConstrUni_arr2[1][x], carConstrUni_arr2[2][x], carConstrUni_arr2[3][x])),1:length(carConFilt_arr))
     end
 
     # XXX writes dimension of capacity restrictions for storage
@@ -411,7 +416,7 @@ function createScenarioMapping!(anyM::anyModel)
 		sca_dic = Dict(control_df[!,:Ts_disSup] .=> control_df[!,:val])
 
 		for x in eachrow(filter(x -> x.val != 1.0,control_df))
-			push!(anyM.report,(2,"scenario","probability","for superordinate dispatch timestep $(createFullString(x.Ts_disSup,anyM.sets[:Ts])) scenario probabilities do not sum up to 1.0, values were adjusted accordingly"))
+			push!(anyM.report,(2,"scenario","probability","for superordinate dispatch timestep '$(createFullString(x.Ts_disSup,anyM.sets[:Ts]))' scenario probabilities do not sum up to 1.0, values were adjusted accordingly"))
 		end
 
 		prop_df[!,:val] .= map(x -> x.val/sca_dic[x.Ts_disSup] ,eachrow(prop_df))
@@ -429,4 +434,72 @@ function createScenarioMapping!(anyM::anyModel)
 
 	# assigns mappings to final object
 	anyM.supTs = (lvl = anyM.supTs.lvl, step = anyM.supTs.step, sca = anyM.supTs.sca, scr = tsToScr_dic, scrProp = tsScrToProp_dic)
+end
+
+# XXX adjusts model object according to distributed generation
+function distributedMapping!(anyM::anyModel,prepTech_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},prepExc_dic::Dict{Symbol,NamedTuple})
+
+	subPro = anyM.subPro
+
+	if anyM.subPro != (0,0) # XXX case of sub-problem
+
+		# get tuple of unrequired time-steps and scenarios
+		rmvId_tup = (Ts_dis = union(map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x != subPro[1],collect(anyM.supTs.step)))...),
+							Ts_exp = union(map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x > subPro[1],collect(anyM.supTs.step)))...),
+																scr = filter(x -> x != subPro[2] && x != 0,getfield.(values(anyM.sets[:scr].nodes),:idx)))
+
+		# remove unrequired nodes from trees of scenarios
+		foreach(y ->  delete!(anyM.sets[:scr].nodes,y),rmvId_tup.scr)
+
+		# rewrite information an superordinate time-steps
+		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(subPro[1],), sca = filter(x -> x[1][1] == subPro[1],anyM.supTs.sca),
+																	scr = Dict(subPro[1] => [subPro[2],]), scrProp = filter(x -> x[1] == (subPro[1],subPro[2]), anyM.supTs.scrProp))
+
+		# XXX adjust dictionaries for expansion preparation
+
+		# technology dictionaries
+		for tSym in collect(keys(prepTech_dic))
+			# delete all fields from preparation except for capa
+			foreach(y -> delete!(prepTech_dic[tSym],y), filter(x -> string(x)[1:4] != "capa",collectKeys(keys(prepTech_dic[tSym]))))
+			# remove other superordinate dispatch timesteps from field for capacity variables
+			for etr in collectKeys(keys(prepTech_dic[tSym]))
+				var_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepTech_dic[tSym][etr].var)
+				resi_df = filter(x -> x.Ts_disSup in anyM.supTs,prepTech_dic[tSym][etr].resi)
+				prepTech_dic[tSym][etr] = (var = var_df,resi = resi_df)
+			end
+		end
+
+		# exchange dictionary
+		foreach(y -> delete!(prepExc_dic,y), filter(x -> x != :capaExc,collectKeys(keys(prepExc_dic))))
+		var_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepExc_dic[:capaExc].var)
+		resi_df = filter(x -> x.Ts_disSup in anyM.supTs,prepExc_dic[:capaExc].resi)
+		prepExc_dic[:capaExc] = (var = var_df,resi = resi_df)
+
+		# XXX remove parameter data
+
+		# remove unrequired parameter data from tech objects
+		for pName in collect(keys(anyM.parts.tech)), parName in collectKeys(keys(anyM.parts.tech[pName].par))
+			parData_df = anyM.parts.tech[pName].par[parName].data
+			rmv_arr = intersect(namesSym(parData_df),[:Ts_dis,:scr])
+			if isempty(rmv_arr)
+				continue
+			else
+				anyM.parts.tech[pName].par[parName].data  = filter(x -> !any(map(y -> x[y] in getfield(rmvId_tup,y),rmv_arr)),parData_df)
+			end
+		end
+
+		# remove unrequired parameter data from all other objects
+		for pName in (:trd,:exc,:bal,:lim,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
+			parData_df = getfield(anyM.parts,pName).par[parName].data
+			rmv_arr = intersect(namesSym(parData_df),[:Ts_dis,:scr])
+			if isempty(rmv_arr)
+				continue
+			else
+				getfield(anyM.parts,pName).par[parName].data  = filter(x -> !any(map(y -> x[y] in getfield(rmvId_tup,y),rmv_arr)),parData_df)
+			end
+		end
+		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be a sub-problem")
+	else # XXX case of top-problem
+		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be the top-problem")
+	end
 end

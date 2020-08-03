@@ -5,20 +5,28 @@ Create constraints of the model's underlying optimization problem.
 """
 function createOptModel!(anyM::anyModel)
 
-
 	# <editor-fold desc="create technology related variables and constraints"
 
 	techSym_arr = collect(keys(anyM.parts.tech))
     parDef_dic = defineParameter(anyM.options,anyM.report)
 
-    # XXX get dimension of expansion and capacity variables and mapping of capacity constraints
+    # XXX gets dictionary with dimensions of expansion and capacity variables
     tsYear_dic = Dict(zip(anyM.supTs.step,collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
-    prepVar_dic = Dict{Symbol,Dict{Symbol,NamedTuple}}()
-    prepareTechs!(techSym_arr,prepVar_dic,tsYear_dic,anyM)
+    prepTech_dic = Dict{Symbol,Dict{Symbol,NamedTuple}}()
+    prepareTechs!(techSym_arr,prepTech_dic,tsYear_dic,anyM)
+
+	prepExc_dic = Dict{Symbol,NamedTuple}()
+	prepareExc!(prepExc_dic,anyM)
+
+	# XXX remove unrequired elements in case of distributed model creation
+	if !isempty(subPro)
+	    distributedMapping!(anyM,prepTech_dic,prepExc_dic)
+	end
+	# abort if there is already an error
     if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
 
     # remove technologies without any potential capacity variables
-    techSym_arr = collect(keys(prepVar_dic))
+    techSym_arr = collect(keys(prepTech_dic))
     foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),techSym_arr))
 
     # XXX create all technology related elements
@@ -40,7 +48,7 @@ function createOptModel!(anyM::anyModel)
 	tech_itr = collect(enumerate(techSym_arr))
 
 	@threads for (idx,tSym) in tech_itr
-		techCnsDic_arr[idx] = createTech!(techInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepVar_dic[tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
+		techCnsDic_arr[idx] = createTech!(techInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepTech_dic[tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
 	end
 
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
@@ -53,36 +61,33 @@ function createOptModel!(anyM::anyModel)
 
 	# <editor-fold desc="create exchange related variables and constraints"
 
-	prepExc_dic = Dict{Symbol,NamedTuple}()
-	partExc = anyM.parts.exc
-	partLim = anyM.parts.lim
-
-	# obtain dimensions of expansion variables for exchange
-	potExc_df = prepareExcExpansion!(partExc,partLim,prepExc_dic,tsYear_dic,anyM)
-
-	# obtain capacity dimensions solely based on expansion variables
-	prepareCapacity!(partExc,prepExc_dic,prepExc_dic[:expExc].var,:capaExc,anyM)
-	addResidualCapaExc!(partExc,prepExc_dic,potExc_df,anyM)
-
 	if !all(map(x -> isempty(x),values(prepExc_dic[:capaExc])))
+		partExc = anyM.parts.exc
 		# create expansion and capacity variables
 		createExpCap!(partExc,prepExc_dic,anyM)
 		# create capacity constraint
-		createCapaExcCns!(partExc,anyM)
+		if isempty(anyM.subPro) || anyM.subPro == (0,0)
+			createCapaExcCns!(partExc,anyM)
+		end
 		produceMessage(anyM.options,anyM.report, 2," - Created all variables and constraints related to expansion and capacity for exchange")
-		# create dispatch related variables
-		createExcVar!(partExc,ts_dic,anyM)
-		produceMessage(anyM.options,anyM.report, 2," - Created all dispatch variables for exchange")
-		# create capacity restrictions
-		createRestrExc!(ts_dic,partExc,anyM)
-		produceMessage(anyM.options,anyM.report, 2," - Created all capacity restrictions for exchange")
-		produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for exchange")
+		# create dispatch related exchange elements
+		if isempty(anyM.subPro) || anyM.subPro != (0,0)
+			# create dispatch variables
+			createExcVar!(partExc,ts_dic,anyM)
+			produceMessage(anyM.options,anyM.report, 2," - Created all dispatch variables for exchange")
+			# create capacity restrictions
+			createRestrExc!(ts_dic,partExc,anyM)
+			produceMessage(anyM.options,anyM.report, 2," - Created all capacity restrictions for exchange")
+			produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for exchange")
+		end
 	end
 
 	# </editor-fold>
 
-	createTradeVarCns!(anyM.parts.trd,ts_dic,anyM)
-	createEnergyBal!(techSym_arr,ts_dic,anyM)
+	if isempty(anyM.subPro) || anyM.subPro != (0,0)
+		createTradeVarCns!(anyM.parts.trd,ts_dic,anyM)
+		createEnergyBal!(techSym_arr,ts_dic,anyM)
+	end
 	createLimitCns!(anyM.parts.lim,anyM)
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")
