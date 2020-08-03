@@ -17,9 +17,9 @@ version = "0.5.10"
 
 [[Bzip2_jll]]
 deps = ["Libdl", "Pkg"]
-git-tree-sha1 = "3663bfffede2ef41358b6fc2e1d8a6d50b3c3904"
+git-tree-sha1 = "5ccb0770e3d1c185a52e6d36e3ffb830639ed3d2"
 uuid = "6e34b625-4abd-537c-b88f-471c36dfa7a0"
-version = "1.0.6+2"
+version = "1.0.6+3"
 
 [[CSV]]
 deps = ["CategoricalArrays", "DataFrames", "Dates", "FilePathsBase", "Mmap", "Parsers", "PooledArrays", "Tables", "Unicode", "WeakRefStrings"]
@@ -139,9 +139,9 @@ uuid = "9fa8497b-333b-5362-9e8d-4d0656e87820"
 
 [[HTTP]]
 deps = ["Base64", "Dates", "IniFile", "MbedTLS", "Sockets"]
-git-tree-sha1 = "eca61b35cdd8cd2fcc5eec1eda766424a995b02f"
+git-tree-sha1 = "2ac03263ce44be4222342bca1c51c36ce7566161"
 uuid = "cd3eb016-35fb-5094-929b-558a96fad6f3"
-version = "0.8.16"
+version = "0.8.17"
 
 [[IniFile]]
 deps = ["Test"]
@@ -239,9 +239,9 @@ uuid = "d8a4904e-b15c-11e9-3269-09a3773c0cb0"
 version = "0.2.10"
 
 [[NaNMath]]
-git-tree-sha1 = "928b8ca9b2791081dc71a51c55347c27c618760f"
+git-tree-sha1 = "c84c576296d0e2fbb3fc134d3e09086b3ea617cd"
 uuid = "77ba4419-2d1f-58cd-9bb1-8ffee604a2e3"
-version = "0.3.3"
+version = "0.3.4"
 
 [[OpenSpecFun_jll]]
 deps = ["CompilerSupportLibraries_jll", "Libdl", "Pkg"]
@@ -347,9 +347,9 @@ version = "1.0.0"
 
 [[Tables]]
 deps = ["DataAPI", "DataValueInterfaces", "IteratorInterfaceExtensions", "LinearAlgebra", "TableTraits", "Test"]
-git-tree-sha1 = "c45dcc27331febabc20d86cb3974ef095257dcf3"
+git-tree-sha1 = "b7f762e9820b7fab47544c36f26f54ac59cf8abf"
 uuid = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
-version = "1.0.4"
+version = "1.0.5"
 
 [[Test]]
 deps = ["Distributed", "InteractiveUtils", "Logging", "Random"]
@@ -381,6 +381,6 @@ version = "0.6.2"
 
 [[Zlib_jll]]
 deps = ["Libdl", "Pkg"]
-git-tree-sha1 = "622d8b6dc0c7e8029f17127703de9819134d1b71"
+git-tree-sha1 = "d5bba6485811931e4b8958e2d7ca3738273ac468"
 uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
-version = "1.2.11+14"
+version = "1.2.11+15"
