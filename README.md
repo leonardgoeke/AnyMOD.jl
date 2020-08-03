@@ -1,5 +1,6 @@
 [![Build Status](https://travis-ci.org/leonardgoeke/AnyMOD.jl.svg?branch=master)](https://travis-ci.org/leonardgoeke/AnyMOD.jl)
 [![Gitter chat](https://badges.gitter.im/leonardgoeke/AnyMOD.jl.png)](https://gitter.im/AnyMOD-jl/community "Gitter chat")
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 <img src="docs/src/assets/schriftzug_plus_logo.png" alt="logo" width="950px"/>
 
