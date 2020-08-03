@@ -1,5 +1,5 @@
 [![Build Status](https://travis-ci.org/leonardgoeke/AnyMOD.jl.svg?branch=master)](https://travis-ci.org/leonardgoeke/AnyMOD.jl)
-[![Gitter chat](https://badges.gitter.im/leonardgoeke/AnyMOD.jl.png)](https://gitter.im/AnyMOD.jl/community "Gitter chat")
+[![Gitter chat](https://badges.gitter.im/leonardgoeke/AnyMOD.jl.png)](https://gitter.im/AnyMOD-jl/community "Gitter chat")
 
 <img src="docs/src/assets/schriftzug_plus_logo.png" alt="logo" width="950px"/>
 
