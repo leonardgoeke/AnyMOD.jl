@@ -146,7 +146,6 @@ The optional argument <code>checkRng</code> can be used to specify a maximum ran
 
 ### 2. Row scaling
 ```@raw html
-
 <p class="norm">
 The second step scales the rows (= constraints) of the optimization problem by multiplying them with a constant factor. If the scaling of columns successfully decreased the range of coefficients to $10^9$, this allows to move coefficients into a range from $10^{-3}$ to $10^6$. In the example, the used factors are $10^{2}$ and $10^4$ for the first and second row, respectively, which results in the following optimization problem:
 </p>
@@ -162,9 +161,38 @@ By default, ranges in anyMOD are more narrow than in the example: matrix coeffic
 
 # Variable limits
 
-upper limits einfach
+```@raw html
+<p class="norm">
+Numerical stability of the Barrier algorithm can be increased by imposing additional upper limits on model variables. For this purpose, general variable limits can be added to a model by using the <code>bound</code> argument of the <a href="../model_object">model constructor</a>. Since the sole purpose of these limits is to increase solver performance, they are not intended to have any real world equivalents. Consequently, they should be set to high values that prevent them from becoming binding constraints.    
+</p>
+
+<p class="norm" >
+Limits are provided as a NamedTuple with fields for dispatch variables, capacity variables, and for the objective itself: <code>(disp = NaN, capa = NaN, obj = NaN)</code>
+For capacity and dispatch, values are provided in GW and limits on dispatch are scaled to energy units to comply with the temporal resolution of the respective carrier. The limit on the objective function is provided in million Euros.
+</p>
+
+<p class="norm" >
+In general, it is strongly advised to provide a limit for the objective function. Doing so achieves a noticeable increase in performance without risking to distort model results. Instead a model will just turn infeasible, if the set limit is below the actual objective value.
+</p>
+
+<p class="norm" >
+General limits on dispatch and capacity variables should only be set with great caution and used as a measure of last resort against numerical instability. Improper limits could create binding constraints that impact final results, but remain undetected by the user. In addition, their positive impact on performance is not as clear, because they also cause a substantial increase in model size.
+</p>
+```
 
 
-# Other measures
+# Range of factors
 
-auch losses storage and exchange und minimum value for availability, aber beides nur kurz im eingangsabsatz
+```@raw html
+<p class="norm">
+Since numerical stability is closely linked to the range of factors in the optimization problem, two more options are available to limit that range. Again, both these options are set as optional arguments of the <a href="../model_object">model constructor</a>.
+</p>
+
+<p class="norm">
+<code>avaMin</code> sets a lower limit for the <a href="../parameter_list/#Availability-1">availablity parameter</a> meaning all availabilities below this limit are replaced by zero. Since the parameter is inversed within the <a href="../constraints/#Conversion-capacity-restriction-1">capacity restrictions</a>, small availabilites can lead to large factors and cause numerical instability. The default value is 0.01 (= 1%).
+</p>
+
+<p class="norm">
+The argument <code>emissionLoss</code> controls, if losses incurred by <a href="../parameter_list/#Exchange-losses-1">exchange</a> and <a href="../parameter_list/#Storage-self-discharge-1">self-discharge of storage</a> are taken into account when emissions are computed. Due to the high range of factors, emissions constraints are already neuralgic points when it comes to numerical stability. Adding even smaller factors to account for the named losses adds to this problem. The default is <code>true</code> meaning self-discharge and exchange losses are accounted for.
+</p>
+```

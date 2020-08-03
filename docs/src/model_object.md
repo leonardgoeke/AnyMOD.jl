@@ -190,7 +190,7 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 <td>
 <ul class="liste">
 <li>availabilities smaller than this value are set to zero</li>
-<li>avoids high coefficients in <a href="../constraints/#Conversion-capacity-restriction">conversion</a> and <a href="../constraints/#Storage-capacity-restriction">storage capacity restriction</a>, because availabilities <br> are inversed</li>
+<li>avoids high coefficients in <a href="../constraints/#Conversion-capacity-restriction">conversion</a> and <a href="../constraints/#Storage-capacity-restriction">storage capacity restriction</a>, because availabilities <br> are inversed (see <a href="../performance/#Range-of-factors">Range of factors</a>)</li>
 </ul>
 </td>
 <td><code>0.01</code></td>
@@ -201,7 +201,7 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 <td><code>emissionLoss</code></td>
 <td>
 <ul class="liste">
-<li>determines if losses from exchange and self-discharge of storage are subject to emissions</li>
+<li>determines if losses from exchange and self-discharge of storage are subject to emissions <br> (see <a href="../performance/#Range-of-factors">Range of factors</a>)</li>
 </ul>
 </td>
 <td><code>true</code></td>
@@ -235,7 +235,7 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 <td colspan = "2">
 <ul class="liste">
 <li>specifies the maximum range of coefficients in the matrix and right-hand side of the model's underlying <br> optimization problem</li>
-<li>format for argument is <code>(mat = (1e-2,1e5), rhs = (1e-2,1e2))</code> </li>
+<li>format for argument is <code>(mat = (1e-2,1e5), rhs = (1e-2,1e2))</code></li>
 <li>see <a href="../performance/#Scaling">Row scaling</a> for details and defaults</li>
 </ul>
 </td>
@@ -249,6 +249,8 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 <ul class="liste">
 <li>sets external bounds for all capacities and dispatch variables (in GW) and for the objective value (in Mil. €)</li>
 <li>see <a href="../performance/#Variable-limits">Variable limits</a> for details and defaults</li>
+<li>format for argument is <code>(capa = NaN, disp = NaN, obj = NaN)</code></li>
+
 </ul>
 </td>
 </tr>
