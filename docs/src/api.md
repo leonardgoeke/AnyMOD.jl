@@ -10,20 +10,29 @@ Modules = [AnyMOD]
 
 
 ## Functions
-test
+
 ```@docs
 anyModel
 createOptModel!
 setObjective!
+reportResults
+reportTimeSeries
+printObject
+printDuals
+printIIS
+plotTree
+plotEnergyFlow
+moveNode!
 ```
 
 
 ## Types
 
 ```@docs
-TechPart
-OthPart
-ParElement
 Node
 Tree
+ParElement
+TechPart
+OthPart
+graInfo
 ```
