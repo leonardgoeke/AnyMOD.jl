@@ -157,7 +157,7 @@ mutable struct OthPart <: AbstractModelPart
 	OthPart() = new(Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())
 end
 
-# XXX container to store data defining a constraint (used to seperate definition and actual jump creation of constraints)
+# XXX container to store data defining a constraint (used to separate definition and actual jump creation of constraints)
 struct cnsCont
     data::DataFrame
     sign::Symbol

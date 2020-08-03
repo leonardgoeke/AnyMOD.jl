@@ -323,7 +323,7 @@ function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
 
         carConstr_arr = Tuple{Array{Int,1},Int,Int}[]
 
-        # writes all relevant combinations by going from finest resolution up, seperately for temporal and spatial (2 and 3)
+        # writes all relevant combinations by going from finest resolution up, separately for temporal and spatial (2 and 3)
         for j = [2,3]
             # sorts descinding by j-th column and ascending by other column
             carDisSort_arr = sort(collect(carDis_tup), by = x -> x[j], rev=true)

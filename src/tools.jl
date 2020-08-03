@@ -326,7 +326,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 	end
 end
 
-# XXX print time series for in and out into seperate tables
+# XXX print time series for in and out into separate tables
 function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in,:out), minVal::Number = 1e-3, mergeVar::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
 	# XXX converts carrier named provided to index
@@ -693,7 +693,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 		flowGrap_obj.nodePos = Dict(id_arr[x] => pos_dic[x] for x in keys(pos_dic))
     end
 
-    # seperate into edges between technologies and carriers and between carriers, then get respective colors
+    # separate into edges between technologies and carriers and between carriers, then get respective colors
     cEdges_arr = filter(x -> x[1] in ordC_arr && x[2] in ordC_arr, collect(graph_obj.edges))
     edgeColC_arr = map(x -> anyM.graInfo.colors[idToName_dic[x[1]]], cEdges_arr)
 
@@ -868,7 +868,7 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
       if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
       if isempty(relNodes_arr) continue end
 
-      if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
+      if length(rmvStr_arr) == 2 # if rmv contains two strings separated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
         relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
         if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
 
