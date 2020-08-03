@@ -1,6 +1,7 @@
+[![Build Status](https://travis-ci.org/leonardgoeke/AnyMOD.jl.svg?branch=master)](https://travis-ci.org/leonardgoeke/AnyMOD.jl)
+
 <img src="docs/src/assets/schriftzug_plus_logo.png" alt="logo" width="950px"/>
 
-https://travis-ci.org/leonardgoeke/AnyMOD.jl.svg?branch=master
 
 [AnyMOD.jl](https://github.com/leonardgoeke/AnyMOD.jl) is a [Julia](https://julialang.org/) framework to create large scale energy system models with multiple periods of capacity expansion formulated as linear optimization problems. It was developed to address the challenges in modelling high-levels of intermittent generation and sectoral integration. A comprehensive documentation can be found [here](https://leonardgoeke.github.io/AnyMOD.jl/dev/).
 
