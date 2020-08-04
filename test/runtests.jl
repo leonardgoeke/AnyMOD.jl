@@ -2,14 +2,14 @@
 using AnyMOD, Cbc, CSV, Test
 
 @testset "run_demo" begin
-    cd("..")
+    dir = normpath(@__DIR__, "..")
     # manipulate set_carrier.csv to test on smaller resolution, because otherwise Cbs times out during test
-    carrier_df = CSV.read("examples/demo/set_carrier.csv")
+    carrier_df = CSV.read(dir * "examples/demo/set_carrier.csv")
     preserveReso_arr = carrier_df[!,:timestep_dispatch]
     carrier_df[!,:timestep_dispatch] = min.(carrier_df[!,:timestep_dispatch],2)
-    CSV.write("examples/demo/set_carrier.csv",carrier_df)
+    CSV.write(dir * "examples/demo/set_carrier.csv",carrier_df)
 
-    anyM = anyModel("examples/demo","examples", objName = "demo", shortExp = 10)
+    anyM = anyModel(dir * "examples/demo",dir *"examples", objName = "demo", shortExp = 10)
 
     plotTree(:region,anyM)
     plotEnergyFlow(:graph,anyM)
@@ -25,9 +25,9 @@ using AnyMOD, Cbc, CSV, Test
     plotEnergyFlow(:sankey,anyM)
 
     # recreates old set_carrier file
-    carrier_df = CSV.read("examples/demo/set_carrier.csv")
+    carrier_df = CSV.read(dir * "examples/demo/set_carrier.csv")
     carrier_df[!,:timestep_dispatch] = preserveReso_arr
-    CSV.write("examples/demo/set_carrier.csv",carrier_df)
+    CSV.write(dir * "examples/demo/set_carrier.csv",carrier_df)
 
     @test length(anyM.report) == 2
     @test round(objective_value(anyM.optModel),digits = 1) == 141395.1
