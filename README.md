@@ -1,4 +1,5 @@
 [![Build Status](https://travis-ci.org/leonardgoeke/AnyMOD.jl.svg?branch=master)](https://travis-ci.org/leonardgoeke/AnyMOD.jl)
+[![codecov](https://codecov.io/gh/leonardgoeke/AnyMOD.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/leonardgoeke/AnyMOD.jl)
 [![Gitter chat](https://badges.gitter.im/AnyMOD-jl/typedoc.svg)](https://gitter.im/AnyMOD-jl/community)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
