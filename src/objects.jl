@@ -3,12 +3,24 @@
 
 # XXX defines struct for handling parameter data
 """
-Type including data and additional information on parameters. Fields relate to what is provided in [Parameter list](@ref) and include:
-* `name::Symbol`: name of the parameter
-* `dim::Tuple`: potential dimensions of parameter data
-* `defVal::Union{Nothing,Float64}`: default value
-* `herit::Tuple`: inheritance rules for parameter, see [Parameter overview](@ref) for details
-* `data::DataFrame`: specified parameter data, see <a href="../data/#printObject"><code>printObject</code></a> on how to export in a readable format
+```julia
+mutable struct ParElement
+	name::Symbol
+    dim::Tuple
+    defVal::Union{Nothing,Float64}
+    herit::Tuple
+    data::DataFrame
+	techPre::NamedTuple{(:preset,:mode),Tuple{Symbol,Tuple{Vararg{Symbol,N} where N}}}
+end
+```
+Type to store parameter data. Includes data and additional information specified in [Parameter list](@ref).
+
+**Fields**
+- `name::Symbol`: name of the parameter
+- `dim::Tuple`: potential dimensions of parameter data
+- `defVal::Union{Nothing,Float64}`: default value
+- `herit::Tuple`: inheritance rules for parameter, see [Parameter overview](@ref) for details
+- `data::DataFrame`: parameter data
 """
 mutable struct ParElement
 	name::Symbol
@@ -116,17 +128,50 @@ abstract type AbstractModelPart end
 
 """
 ```julia
-	TechPart <: AbstractModelPart
+mutable struct TechPart <: AbstractModelPart
+	name::Tuple{Vararg{String,N} where N}
+	par::Dict{Symbol,ParElement}
+	var::Dict{Symbol,DataFrame}
+	cns::Dict{Symbol,DataFrame}
+	carrier::NamedTuple
+	balLvl::NamedTuple{(:exp,:ref),Tuple{Tuple{Int,Int},Union{Nothing,Tuple{Int,Int}}}}
+	capaRestr::DataFrame
+	actSt::Tuple
+	type::Symbol
+	disAgg::Bool
+	modes::Tuple{Vararg{Int,N} where N}
+	TechPart(name::Tuple{Vararg{String,N} where N}) = new(name,Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())
+	TechPart() = new()
+end
 ```
-Type used for technology parts. Parameters, variables, and constraints are assigned as dictionaries via the fields `par`, `var`, and  `cns`, respectively. Additional fields include:
-* `name::Tuple`: name of technology as a series of nodes from the technology tree
-* `carrier::NamedTuple`: energy carriers by index assigned to technology by groups (e.g. generation, use, ...)
-* `balLvl::NamedTuple`: temporal and spatial resolution for expansion and balance of the technology
-* `capaRestr::DataFrame`: specification of capacity restrictions required for technology
-* `actSt::Tuple`: actively stored carriers  altough they are not leafs by index
-* `type::Tuple`: type of technology (stock, mature, or evolving)
-* `disAgg::Bool`: if true, dispatch is modelled at expansion resolution instead of dispatch resolution
-* `modes::Tuple`: different operational modes of technology
+Type used for technology <a href="../parts">model parts</a>.
+```@raw html
+<p class="norm">
+<strong>General fields</strong>
+<ul>
+<li><code>par::Dict{Symbol,ParElement}</code>: dictionary of <a href="../parameter_overview">parameters</a> with names as keys</li>
+<li><code>var::Dict{Symbol,DataFrame}</code>: dictionary of <a href="../variables">variables</a> with names as keys</li>
+<li><code>cns::Dict{Symbol,DataFrame}</code>: dictionary of <a href="../constraints">constraints</a> with names as keys</li>
+</ul>
+</p>
+
+<p class="norm">
+<strong>Technology specific fields</strong>
+</p>
+<p class="norm">
+Mostly relating to <a href="../sets/#Technologies-1">optional mappings</a> for technologies.
+<ul>
+<li><code>name::Tuple</code>: full name of technology as a series of nodes from the technology tree </li>
+<li><code>carrier::NamedTuple</code>: energy carriers by index assigned to technology by groups (e.g. generation, use, ...)</li>
+<li><code>balLvl::NamedTuple</code>: temporal and spatial resolution for expansion and balance of the technology </li>
+<li><code>capaRestr::DataFrame</code>: specification of capacity restrictions required for technology</li>
+<li><code>actSt::Tuple</code>: ids of carriers actively stored altough they are not leafs</li>
+<li><code>type::Tuple</code>: type of technology (stock, mature, or evolving)</li>
+<li><code>disAgg::Bool</code>: if <code>true</code>, dispatch is modelled at expansion resolution instead of dispatch resolution</li>
+<li><code>modes::Tuple</code>: different operational modes of technology </li>
+</ul>
+</p>
+```
 """
 mutable struct TechPart <: AbstractModelPart
 	name::Tuple{Vararg{String,N} where N}
@@ -146,9 +191,27 @@ end
 
 """
 ```julia
-	OthPart <: AbstractModelPart
+mutable struct TechPart <: AbstractModelPart
+	par::Dict{Symbol,ParElement}
+	var::Dict{Symbol,DataFrame}
+	cns::Dict{Symbol,DataFrame}
+	OthPart() = new(Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}(
+end
 ```
-Type used for 'exchange', 'trade', 'balance', 'limits', and 'objectives' model parts. Parameters, variables, and constraints are assigned as dictionaries via the fields `par`, `var`, and  `cns`, respectively.
+
+```@raw html
+<p class="norm">
+Type used for 'exchange', 'trade', 'balance', 'limits', and 'objective' <a href="../parts">model parts</a>.
+</p>
+<p class="norm">
+<strong>Fields</strong>
+<ul>
+<li><code>par::Dict{Symbol,ParElement}</code>: dictionary of <a href="../parameter_overview">parameters</a> with names as keys</li>
+<li><code>var::Dict{Symbol,DataFrame}</code>: dictionary of <a href="../variables">variables</a> with names as keys</li>
+<li><code>cns::Dict{Symbol,DataFrame}</code>: dictionary of <a href="../constraints">constraints</a> with names as keys</li>
+</ul>
+</p>
+```
 """
 mutable struct OthPart <: AbstractModelPart
 	par::Dict{Symbol,ParElement}
@@ -169,7 +232,22 @@ end
 
 # XXX define nodes for set tree and tree itself
 """
-bla
+```julia
+mutable struct Node
+	idx::Int
+	val::String
+	lvl::Int
+	subIdx::Int
+	down::Array{Int,1}
+end
+```
+Type to store nodes of hierarchical trees.
+**Fields**
+- `idx`: internal node id
+- `val`: name originally assigned
+- `lvl`: level of node within hierarchical tree
+- `subIdx`: numbered position among all nodes sharing the same direct ancestor
+- `down`: array of children
 """
 mutable struct Node
 	idx::Int
@@ -180,7 +258,23 @@ mutable struct Node
 end
 
 """
-blub
+```julia
+mutable struct Tree
+	nodes::Dict{Int,Node}
+	srcTup::Dict{Tuple,Array{Int,1}}
+	srcStr::Dict{Tuple{String,Int},Array{Int,1}}
+	up::Dict{Int,Int}
+	height::Int
+	Tree() = new(Dict{Int,Node}(),Dict{Tuple,Int}(),Dict{String,Array{Int,1}}(),Dict{Int,Int}(),1)
+end
+```
+Type to store hierarchical trees.
+**Fields**
+- `nodes`: dictionary of nodes with node ids as keys
+- `srcTup`: assigns a tuple of consecutive node names to the corresponding id
+- `srcStr`: assigns a tuple with a node name and a level to the corresponding id
+- `up`: assigns the id of each node to the id of its ancestor
+- `height`: maximum level of tree
 """
 mutable struct Tree
 	nodes::Dict{Int,Node}
@@ -296,6 +390,20 @@ mutable struct flowGraph
 end
 
 # XXX specific information for graphical evaluation
+"""
+```julia
+mutable struct graInfo
+	graph::flowGraph
+	names::Dict{String,String}
+	colors::Dict{String,Tuple{Float64,Float64,Float64}}
+end
+```
+Type to store information on stlying of graphs. See [Styling](@ref) for details.
+**Fields**
+- `graph`: saved layout for the qualitative energy flow graph
+- `names`: assigns names of nodes to labels used in plots
+- `colors`: assigns names or label of nodes to RGB color specified as tuple of three numbers between 0 and 1
+"""
 mutable struct graInfo
 	graph::flowGraph
 	names::Dict{String,String}
@@ -326,44 +434,44 @@ end
 
 # XXX finally, the model object itself
 """
-* `options::modOptions`
-* `lock::ReentrantLock`
-* `supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}}`
-* `cInfo::Dict{Int,NamedTuple}`
-
+```julia
+mutable struct anyModel <: AbstractModel
+	options::modOptions
+	report::Array{Tuple,1}
+	optModel::Model
+	lock::ReentrantLock
+	supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}}
+	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}}
+	sets::Dict{Symbol,Tree}
+	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Symbol,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
+	graInfo::graInfo
+end
+```
 The core model object containing all related data and subordinate objects.
-#  Constructor and arguments
+
+**Fields**
+
+```@raw html
+<ul>
+<li><code class="language-julia">options</code>: model options provided as keyword arguments to constructor</li>
+<li><code class="language-julia">report</code>: entries for writing to the reporting file (see <a href="../error/#Error-handling">Error handling</a> for details)</li>
+<li><code class="language-julia">optModel::Model</code>: the actual <a href="https://github.com/JuliaOpt/JuMP.jl">JuMP</a> object of the model's underlying optimization problem</li>
+<li><code class="language-julia">lock</code>: lock used for multi-threading</li>
+<li><code class="language-julia">supTs</code>: information and mappings for superordinate time-steps</li>
+<li><code class="language-julia">cInfo</code>: information on resolution of energy carriers</li>
+<li><code class="language-julia">sets::Dict{Symbol,Tree}</code>: sets organized as <a href="../api/#AnyMOD.Tree"><code>Tree</code></a> objects (see <a href="../sets_and_mappings">Sets and mappings</a> for details)</li>
+<li><code class="language-julia">parts::NamedTuple</code>: all <a href="../api/#AnyMOD.OthPart"><code>part</code></a> objects of the model (see <a href="../parts">Parts</a> for details)</li>
+<li><code class="language-julia">graInfo::graInfo</code>: properties for creation of plots and graphics, can be used to adjust colors and labels (see <a href="../plots/#Styling">Styling</a> for details)</li>
+</ul>
+```
+
+**Constructor**
+
 ```julia
 anyModel(inDir::Union{String,Array{String,1}},outDir::String; kwargs)
 ```
-* `inDir::Union{String,Array{String,1}}`: directory of input files, also allows for provide multiple directories via an array
-* `outDir::String`: directory of output files are written to
-# Optional arguments, data handling
-* `objName::String`: name of the model object, will be added to the name of output files and printed during reporting, default is an empty string
-* `csvDelim::String`: specifies the delimiter used within the read-in csv files, default is a comma `,`
-# Optional arguments, model generation
-* `decomm::Symbol`: specifies if the model should perform endogenous decommissioning, options are:
-    - `:decomm`: capacities are decommissioned endogenously, once decommissioned capacities cannot be put into operation again (default)
-    - `:none`: no endogenous decommissioning, operated capacities equal installed capacities
-    - `:recomm`: capacities are decommissioned endogenously and can be put back into operation
-* `interCapa::Symbol`: capacity expansion can be modelled at a resolution less detailed than yearly, this options determines how capacities are distributed among the subsequent years in this case, options are:
-    - `:linear`: expansion is equally distributed among years resulting in a linear increase in capacity (default)
-    - `:none`: all expansion occurs in the first  year
-* `supTsLvl::Int`: specifies the depth in the tree of time-steps that provides years, default is `0`
-* `shortExp::Int`: intervall in years between years of capacity expansion, default is `10`
-* `redStep::Float64`: scales down energy quantities within the model, can be relevant when working with reduced time-series, default is `1.0`
 
-# Optional arguments, reporting (see [Data files](@ref) for details)
-* `reportLvl::Int`: controls the frequency of writing updates to the console, default is `2`
-* `errCheckLvl::Int`: controls the frequency of checking for errors, default is `2`
-* `errWrtLvl::Int`: controls the frequency of writing an error report to a csv file, default is`1`
-# Optional arguments, numerical issues (see [Performance and stability](@ref) for details)
-* `coefRng::NamedTuple`: specifies the maximum range of coefficients in the matrix and right-hand side of the model's underlying optimization problem, default is `(mat = (1e-2,1e5), rhs = (1e-2,1e2))`
-* `checkRng::Float64`: if set, reports all equations whose range exceeds the specified value, default is `NaN`
-* `scaFac::NamedTuple`: scales different groups of variables within the model, default is `(capa = 1e1, oprCapa = 1e2, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0)`
-* `bound::NamedTuple`: sets external bounds for all capacities and dispatch variables (both in GW) and for the objective value (in Mil. €), default is `(capa = NaN, disp = NaN, obj = NaN)`
-* `avaMin::Float64`: availabilities smaller than this value are set to zero, since in the [Conversion capacity restriction](@ref) and [Storage capacity restriction](@ref) availabilities are inversed, this avoids high coefficients, default is `0.01`
-* `emissionLoss::Bool`: determines if losses from exchange and self-discharge of storage are subject to emissions, default is `true`
+See for a detailed list of arguments see [Model Object](@ref).
 """
 mutable struct anyModel <: AbstractModel
 

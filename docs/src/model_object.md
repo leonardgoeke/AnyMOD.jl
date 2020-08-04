@@ -265,9 +265,9 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 ```@raw html
 Relevant fields of the model object include:
 <ul>
-<li><code class="language-julia">sets::Dict{Symbol,Tree}</code>: sets defined within the model and their tree structure each saved as an `Tree` objects (see <a href="../sets_and_mappings">Sets and mappings</a> for details)</li>
+<li><code class="language-julia">sets::Dict{Symbol,Tree}</code>: sets defined within the model and their tree structure each saved as <a href="../api/#AnyMOD.Tree"><code>Tree</code></a> object (see <a href="../sets_and_mappings">Sets and mappings</a> for details)</li>
 <li><code class="language-julia">parts::NamedTuple</code>: all parts of the model, these contain the specific parameters, variables, and constraints (see <a href="../parts">Parts</a> for details)</li>
-<li><code class="language-julia">report::Array{Tuple,1}</code>: status reports of model execution (see <a href="../error/#Error-handling">Error handling</a> for details)</li>
+<li><code class="language-julia">report::Array{Tuple,1}</code>: entries for writing to the reporting file (see <a href="../error/#Error-handling">Error handling</a> for details)</li>
 <li><code class="language-julia">graInfo::graInfo</code>: properties for creation of plots and graphics, can be used to adjust colors and labels (see <a href="../plots/#Styling">Styling</a> for details)</li>
 <li><code class="language-julia">optModel::Model</code>: the actual <a href="https://github.com/JuliaOpt/JuMP.jl">JuMP</a> object of the models underlying optimization problem</li>
 </ul>

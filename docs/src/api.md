@@ -12,7 +12,6 @@ Modules = [AnyMOD]
 ## Functions
 
 ```@docs
-anyModel
 createOptModel!
 setObjective!
 reportResults
@@ -29,10 +28,11 @@ moveNode!
 ## Types
 
 ```@docs
+anyModel
+TechPart
+OthPart
 Node
 Tree
 ParElement
-TechPart
-OthPart
 graInfo
 ```

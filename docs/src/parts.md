@@ -16,17 +16,7 @@ The <code>parts</code> field of the <a href="../api/#AnyMOD.anyModel"><code>anyM
 
 ```@raw html
 <p class="norm">
-The <a href="../api/#AnyMOD.TechPart"><code>part</code></a> for technologies is accessed via <code>modelObject.parts.tech[:techName]</code>. These objects include all expansion and dispatch related elements for the respective technology. Technology parts have additional fields to store information specific to technologies. Many of them directly related to the <a href="../sets/#Technologies-1">optional mappings</a> for technologies.
-<ul>
-<li><code>name::Tuple</code>: full name of technology as a series of nodes from the technology tree </li>
-<li><code>carrier::NamedTuple</code>: energy carriers by index assigned to technology by groups (e.g. generation, use, ...)</li>
-<li><code>balLvl::NamedTuple</code>: temporal and spatial resolution for expansion and balance of the technology </li>
-<li><code>capaRestr::DataFrame</code>: specification of capacity restrictions required for technology</li>
-<li><code>actSt::Tuple</code>: actively stored carriers although they are not leafs by index</li>
-<li><code>type::Tuple</code>: type of technology (stock, mature, or evolving)</li>
-<li><code>disAgg::Bool</code>: if true, dispatch is modelled at expansion resolution instead of dispatch resolution</li>
-<li><code>modes::Tuple</code>: different operational modes of technology </li>
-</ul>
+The <a href="../api/#AnyMOD.TechPart"><code>part</code></a> for technologies is accessed via <code>modelObject.parts.tech[:techName]</code>. These objects include all expansion and dispatch related elements for the respective technology. Technology parts have additional fields to store information specific to technologies.
 </p>
 ```
 
