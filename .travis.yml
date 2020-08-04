@@ -9,9 +9,12 @@ julia:
 notifications:
   email: false
 
+script:
+   - julia --project=. -e 'using Pkg; Pkg.test(coverage=true)'
+
 
 after_success:
-   - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'
+   - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(process_folder())'
 
 jobs:
   include:
