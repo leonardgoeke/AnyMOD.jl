@@ -1,6 +1,4 @@
 language: julia
-codecov: true
-coveralls: true
 
 os:
   - linux
@@ -10,6 +8,10 @@ julia:
 
 notifications:
   email: false
+
+
+after_success:
+   - julia -e 'using Pkg; Pkg.add("Coverage"); using Coverage; Codecov.submit(Codecov.process_folder())'
 
 jobs:
   include:
