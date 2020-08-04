@@ -30,9 +30,8 @@ Requires = "1.0.1"
 julia = "1.3.1"
 
 [extras]
-CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 Cbc = "9961bab8-2fa3-5c5a-9d89-47fab24efd76"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
-test = ["Cbc", "Test", "CSV"]
+test = ["Cbc", "Test"]

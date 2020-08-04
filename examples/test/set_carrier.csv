@@ -1,0 +1,7 @@
+carrier_1,carrier_2,timestep_dispatch,timestep_expansion,region_dispatch,region_expansion,carrier_equality,carrier_trade
+electricity,,2,1,1,2,yes,yes
+heat,districtHeat,2,1,2,2,no,yes
+gas,naturalGas,2,1,2,2,no,yes
+gas,synthGas,2,1,1,1,no,yes
+coal,,1,1,1,1,no,yes
+hydrogen,,1,1,1,1,no,yes
