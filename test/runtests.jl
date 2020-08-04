@@ -2,10 +2,14 @@
 using AnyMOD, Cbc, CSV, Test
 
 @testset "run_demo" begin
+    dir = normpath(@__DIR__, "..")
     @test 2 == 2
 end
 
 #=
+anyM.sets[:Ts]
+
+
 dir = normpath(@__DIR__, "..")
 # manipulate set_carrier.csv to test on smaller resolution, because otherwise Cbs times out during test
 carrier_df = CSV.read(dir * "examples/demo/set_carrier.csv")
