@@ -144,34 +144,26 @@ mutable struct TechPart <: AbstractModelPart
 	TechPart() = new()
 end
 ```
-Type used for technology <a href="../parts">model parts</a>.
-```@raw html
-<p class="norm">
-<strong>General fields</strong>
-<ul>
-<li><code>par::Dict{Symbol,ParElement}</code>: dictionary of <a href="../parameter_overview">parameters</a> with names as keys</li>
-<li><code>var::Dict{Symbol,DataFrame}</code>: dictionary of <a href="../variables">variables</a> with names as keys</li>
-<li><code>cns::Dict{Symbol,DataFrame}</code>: dictionary of <a href="../constraints">constraints</a> with names as keys</li>
-</ul>
-</p>
+Type used for technology model parts.
 
-<p class="norm">
-<strong>Technology specific fields</strong>
-</p>
-<p class="norm">
-Mostly relating to <a href="../sets/#Technologies-1">optional mappings</a> for technologies.
-<ul>
-<li><code>name::Tuple</code>: full name of technology as a series of nodes from the technology tree </li>
-<li><code>carrier::NamedTuple</code>: energy carriers by index assigned to technology by groups (e.g. generation, use, ...)</li>
-<li><code>balLvl::NamedTuple</code>: temporal and spatial resolution for expansion and balance of the technology </li>
-<li><code>capaRestr::DataFrame</code>: specification of capacity restrictions required for technology</li>
-<li><code>actSt::Tuple</code>: ids of carriers actively stored altough they are not leafs</li>
-<li><code>type::Tuple</code>: type of technology (stock, mature, or evolving)</li>
-<li><code>disAgg::Bool</code>: if <code>true</code>, dispatch is modelled at expansion resolution instead of dispatch resolution</li>
-<li><code>modes::Tuple</code>: different operational modes of technology </li>
-</ul>
-</p>
-```
+**General fields**
+
+- `par`: dictionary of parameters with names as keys
+- `var`: dictionary of variables with names as keys
+- `cns`: dictionary of constraints with names as key
+
+
+**Technology specific fields**
+
+`name`: full name of technology as a series of nodes from the technology tree
+`carrier`: energy carriers by index assigned to technology by groups (e.g. generation, use, ...)
+`balLvl`: temporal and spatial resolution for expansion and balance of the technology
+`capaRestr`: specification of capacity restrictions required for technology
+`actSt`: ids of carriers actively stored altough they are not leafs
+`type`: type of technology (stock, mature, or evolving)
+`disAgg`: if `true`, dispatch is modelled at expansion resolution instead of dispatch resolution
+`modes`: different operational modes of technology
+
 """
 mutable struct TechPart <: AbstractModelPart
 	name::Tuple{Vararg{String,N} where N}
@@ -199,19 +191,14 @@ mutable struct TechPart <: AbstractModelPart
 end
 ```
 
-```@raw html
-<p class="norm">
-Type used for 'exchange', 'trade', 'balance', 'limits', and 'objective' <a href="../parts">model parts</a>.
-</p>
-<p class="norm">
-<strong>Fields</strong>
-<ul>
-<li><code>par::Dict{Symbol,ParElement}</code>: dictionary of <a href="../parameter_overview">parameters</a> with names as keys</li>
-<li><code>var::Dict{Symbol,DataFrame}</code>: dictionary of <a href="../variables">variables</a> with names as keys</li>
-<li><code>cns::Dict{Symbol,DataFrame}</code>: dictionary of <a href="../constraints">constraints</a> with names as keys</li>
-</ul>
-</p>
-```
+Type used for 'exchange', 'trade', 'balance', 'limits', and 'objective' model parts.
+
+**Fields**
+
+- `par`: dictionary of parameters with names as keys
+- `var`: dictionary of variables with names as keys
+- `cns`: dictionary of constraints with names as keys
+
 """
 mutable struct OthPart <: AbstractModelPart
 	par::Dict{Symbol,ParElement}
@@ -241,8 +228,11 @@ mutable struct Node
 	down::Array{Int,1}
 end
 ```
+
 Type to store nodes of hierarchical trees.
+
 **Fields**
+
 - `idx`: internal node id
 - `val`: name originally assigned
 - `lvl`: level of node within hierarchical tree
@@ -268,8 +258,11 @@ mutable struct Tree
 	Tree() = new(Dict{Int,Node}(),Dict{Tuple,Int}(),Dict{String,Array{Int,1}}(),Dict{Int,Int}(),1)
 end
 ```
+
 Type to store hierarchical trees.
+
 **Fields**
+
 - `nodes`: dictionary of nodes with node ids as keys
 - `srcTup`: assigns a tuple of consecutive node names to the corresponding id
 - `srcStr`: assigns a tuple with a node name and a level to the corresponding id
@@ -399,7 +392,9 @@ mutable struct graInfo
 end
 ```
 Type to store information on stlying of graphs. See [Styling](@ref) for details.
+
 **Fields**
+
 - `graph`: saved layout for the qualitative energy flow graph
 - `names`: assigns names of nodes to labels used in plots
 - `colors`: assigns names or label of nodes to RGB color specified as tuple of three numbers between 0 and 1
@@ -451,19 +446,16 @@ The core model object containing all related data and subordinate objects.
 
 **Fields**
 
-```@raw html
-<ul>
-<li><code class="language-julia">options</code>: model options provided as keyword arguments to constructor</li>
-<li><code class="language-julia">report</code>: entries for writing to the reporting file (see <a href="../error/#Error-handling">Error handling</a> for details)</li>
-<li><code class="language-julia">optModel::Model</code>: the actual <a href="https://github.com/JuliaOpt/JuMP.jl">JuMP</a> object of the model's underlying optimization problem</li>
-<li><code class="language-julia">lock</code>: lock used for multi-threading</li>
-<li><code class="language-julia">supTs</code>: information and mappings for superordinate time-steps</li>
-<li><code class="language-julia">cInfo</code>: information on resolution of energy carriers</li>
-<li><code class="language-julia">sets::Dict{Symbol,Tree}</code>: sets organized as <a href="../api/#AnyMOD.Tree"><code>Tree</code></a> objects (see <a href="../sets_and_mappings">Sets and mappings</a> for details)</li>
-<li><code class="language-julia">parts::NamedTuple</code>: all <a href="../api/#AnyMOD.OthPart"><code>part</code></a> objects of the model (see <a href="../parts">Parts</a> for details)</li>
-<li><code class="language-julia">graInfo::graInfo</code>: properties for creation of plots and graphics, can be used to adjust colors and labels (see <a href="../plots/#Styling">Styling</a> for details)</li>
-</ul>
-```
+- `options`: model options provided as keyword arguments to constructor
+- `report`: entries for writing to the reporting file (see <a href="../error/#Error-handling">Error handling</a> for details)
+- `optModel::Model`: the actual [JuMP](https://github.com/JuliaOpt/JuMP.jl) object of the model's underlying optimization problem
+- `lock`: lock used for multi-threading
+- `supTs`: information and mappings for superordinate time-steps
+- `cInfo`: information on resolution of energy carriers
+- `sets`: sets organized as [Tree](@ref) objects (see [Sets and mappings](@ref) for details)
+- `parts::NamedTuple`: all part objects of the model (see [Parts](@ref) for details)
+- `graInfo::graInfo`: properties for creation of plots and graphics, can be used to adjust colors and labels (see [Styling](@ref) for details)
+
 
 **Constructor**
 
@@ -471,7 +463,7 @@ The core model object containing all related data and subordinate objects.
 anyModel(inDir::Union{String,Array{String,1}},outDir::String; kwargs)
 ```
 
-See for a detailed list of arguments see [Model Object](@ref).
+See [Model Object](@ref) for a detailed list of arguments.
 """
 mutable struct anyModel <: AbstractModel
 
