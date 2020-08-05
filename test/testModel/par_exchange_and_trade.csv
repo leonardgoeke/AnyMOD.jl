@@ -2,6 +2,7 @@ timestep_1,carrier_1,carrier_2,region_1,region_2,region_1,region_2,parameter,val
 ,coal,,,,,,trdBuyPrc,8,allows to buy coal from an external market
 ,gas,naturalGas,,,,,trdBuyPrc,30,allows to buy naturalGas from an external market
 ,hydrogen,,,,,,trdBuyPrc,400,allows to buy hydrogen from an external market
+,hydrogen,,,,,,trdBuyCap,80,
 all,electricity,,West,WestNorth,West,WestSouth,capaExcUp,14,sets an upper limit for electricity exchange
 all,electricity,,East,EastNorth,East,EastSouth,capaExcUp,20,sets an upper limit for electricity exchange
 all,electricity,,West,WestNorth,East,EastNorth,capaExcUp,3,sets an upper limit for electricity exchange
@@ -23,3 +24,5 @@ all,electricity,,West,WestNorth,East,EastNorth,capaExcResi,0,defining a residuca
 ,electricity,,West,WestNorth,East,EastSouth,lossExcDir,0.02,
 ,electricity,,,,,,costExpExc,1000,
 ,gas,,,,,,costOprExc,2,
+,,,,,,,costVarExc,3,
+,,,,,,,emissionPrc,8,
