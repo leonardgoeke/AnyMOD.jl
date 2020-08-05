@@ -180,10 +180,11 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 				dirCost_df = matchSetParameter(convertExcCol(allDisp_df),anyM.parts.obj.par[:costVarExcDir],anyM.sets,newCol = :costVar)
 			else
 				dirCost_df = convertExcCol(allDisp_df[[],:])
+				dirCost_df[!,:costVar] .= 0.0
 			end
 			noDirCost_df = matchSetParameter(antijoin(convertExcCol(allDisp_df),dirCost_df, on = intCol(dirCost_df)),anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
 
-			allDisp_df = rename(convertExcCol(vcat(dirCost_df,noDirCost_df)),:var => :disp)
+			allDisp_df = convertExcCol(vcat(dirCost_df,noDirCost_df))
 		elseif va == :use && :emissionPrc in parObj_arr && :emissionFac in keys(anyM.parts.lim.par)
 			# get emission prices as a costs entry
 			emPrc_df = matchSetParameter(select(allDisp_df,Not(:disp)),partObj.par[:emissionPrc],anyM.sets, newCol = :prc)
