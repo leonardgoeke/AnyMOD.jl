@@ -649,7 +649,7 @@ Lastly, for <code>decomm</code> both equations apply. The second equation will t
 Within the cost equations the discount factor is used to discount costs to the present. The discount factor for a year $t$ is computed from the <a href="../parameter_list/#Discount-rate-1">discount rates</a> of the current and the previous years as follows:
 </p>
 <p class="norm">
-$discFac_{t} = \displaystyle \prod_{t' = t_{0}}^{t}(1 \, + \, rateDisc_{t'})^{-1}$
+$\scriptstyle discFac_{t} = \displaystyle \prod_{t' = t_{0}}^{t}(1 \, + \, rateDisc_{t'})^{-1}$
 </p>
 ```
 
