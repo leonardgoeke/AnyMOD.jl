@@ -7,7 +7,7 @@
 
 [AnyMOD.jl](https://github.com/leonardgoeke/AnyMOD.jl) is a [Julia](https://julialang.org/) framework to create large scale energy system models with multiple periods of capacity expansion formulated as linear optimization problems. It was developed to address the challenges in modelling high-levels of intermittent generation and sectoral integration. A comprehensive description of the framework's graph based methodology can found in the working paper [Göke (2020), AnyMOD - A graph-based framework for energy system modelling with high levels of renewables and sector integration](https://arxiv.org/abs/2004.10184).
 
-Any questions, suggestions, feature requests, or contributions are welcome. To get in touch open a [issue][https://github.com/leonardgoeke/AnyMOD.jl/issues] or use the [chat](https://gitter.im/AnyMOD-jl/community).
+Any questions, suggestions, feature requests, or contributions are welcome. To get in touch open an [issue](https://github.com/leonardgoeke/AnyMOD.jl/issues) or use the [chat](https://gitter.im/AnyMOD-jl/community).
 
 
 ## Documentation
