@@ -19,7 +19,6 @@ using AnyMOD, Cbc, Test
     reportResults(:costs,anyM, rtnOpt = (:raw,:rawDf,:csv,:csvDf))
     reportTimeSeries(:electricity, anyM, rtnOpt = (:raw,:rawDf,:csv,:csvDf))
     reportTimeSeries(:electricity, anyM, rtnOpt = (:raw,:rawDf,:csv,:csvDf), mergeVar = false)
-    printDuals(anyM.parts.bal.cns[:electricity],anyM)
 
     # create plots
     plotEnergyFlow(:sankey,anyM, rmvNode = ("export",))
