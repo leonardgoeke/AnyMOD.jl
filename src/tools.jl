@@ -1,5 +1,12 @@
 
 # XXX prints dataframe to csv file
+"""
+```julia
+printObject(print_df::DataFrame, model_object::anyModel)
+```
+
+Writes a DataFrame of parameters, constraints, or variables to a `.csv` file in readable format (strings instead of ids). See [Individual elements](@ref).
+"""
 function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true)
 
 	sets = anyM.sets
@@ -40,7 +47,11 @@ end
 
 # <editor-fold desc="report results to csv files"
 """
-    reportResults(reportType::Symbol,anyM::anyModel; rtnOpt::Tuple = (:csv,))
+```julia
+reportResults(reportType::Symbol, model_object::anyModel; rtnOpt::Tuple = (:csv,))
+```
+
+Writes results to `.csv` file with content depending on `reportType`. Available types are `:summary`, `:exchange`, and `:costs`. See [Analysed results](@ref).
 """
 reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{reportType}(),anyM::anyModel; kwargs...)
 
@@ -327,6 +338,13 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 end
 
 # XXX print time series for in and out into separate tables
+"""
+```julia
+reportTimeSeries(car_sym::Symbol, model_object::anyModel)
+```
+
+Writes elements of energy balance for carrier specified by `car_sym` to `.csv` file. See [Time-series](@ref).
+"""
 function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in,:out), minVal::Number = 1e-3, mergeVar::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
 	# XXX converts carrier named provided to index
@@ -488,6 +506,13 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 end
 
 # XXX write dual values for constraint dataframe
+"""
+```julia
+printDuals(print_df::DataFrame, model_object::anyModel)
+```
+
+Writes duals of a constraint DataFrame to a `.csv` file in readable format (strings instead of ids). See [Individual elements](@ref).
+"""
 function printDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x -> true, fileName::String = "", rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
     if !(:cns in namesSym(cns_df)) error("No constraint column found!") end
@@ -517,18 +542,12 @@ end
 
 # XXX plots tree graph for input set
 """
-    drawNodeTree(Tree_df::DataFrame, options::modOptions; args...)
-Plots a tree for all nodes provided by the set data frame and copies it to the output directory defined within options.
+```julia
+plotTree(tree_sym::Symbol, model_object::anyModel)
+```
 
-# Options and default values:
-- `trans = 4.5`
-    - Controls fading of color going further down the tree.
-- `wide = fill(1.0,maximum(Tree_df[!,:lvl]))`
-    - Ratio of distances between nodes that have and do not have the same parent (separate on each level).
-- `labelsize = 7`
-    - Size of labels in graph.
-- `ratio = 1.0`
-	- Aspect ratio of output graph.
+Plots the hierarchical tree of nodes for the set specified by `tree_sym`. See [Node trees](@ref).
+
 """
 function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Float64} = (8.0,4.5), fontSize::Int = 12, useColor::Bool = true, wide::Array{Float64,1} = fill(1.0,30))
 
@@ -639,6 +658,14 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
     # </editor-fold>
 end
 
+"""
+```julia
+plotEnergyFlow(plotType::Symbol, model_object::anyModel)
+```
+
+Plots the energy flow in a model. Set `plotType` to `:graph` for a qualitative node graph or to `:sankey` for a quantitative Sankey diagram. See [Energy flow](@ref).
+
+"""
 plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
 
 # XXX plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
@@ -1019,6 +1046,14 @@ function getNodeColors(node_arr::Array{Int,1}, label_dic::Dict{Int64,String},any
 end
 
 # XXX move a node after positions were created within energy flow graph
+"""
+```julia
+moveNode!(model_object::anyModel, newPos_arr::Union{Array{Tuple{String,Array{Float64,1}},1},Tuple{String,Array{Float64,1}}})
+```
+
+Moves a node within the current layout of the node graph created with `plotEnergyFlow`. See [Energy flow](@ref).
+
+"""
 function moveNode!(anyM::anyModel,newPos_arr::Union{Array{Tuple{String,Array{Float64,1}},1},Tuple{String,Array{Float64,1}}})
 
     flowGrap_obj = anyM.graInfo.graph
@@ -1057,3 +1092,14 @@ function moveNode!(anyM::anyModel,newPos_arr::Union{Array{Tuple{String,Array{Flo
 end
 
 # </editor-fold>
+
+# XXX dummy function just do provide a docstring for printIIS (docstring in printIIS wont work, because read-in is conditional)
+"""
+```julia
+printIIS(model_object::anyModel)
+```
+
+Uses Gurobi's computeIIS function to determine the constraints of the optimization problem that cause infeasibility.
+"""
+function printIIS(anyM::anyModel,d::Int)
+end

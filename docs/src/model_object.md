@@ -29,7 +29,7 @@ The <a href="../api/#AnyMOD.anyModel"><code>anyModel</code></a> object is the ov
 ```
 
 ```julia
-anyModel(inDir::Union{String,Array{String,1}},outDir::String; kwargs)
+anyModel(inDir::Union{String,Array{String,1}}, outDir::String; kwargs)
 ```
 
 ## In- and output files

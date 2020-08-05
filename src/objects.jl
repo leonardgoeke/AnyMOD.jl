@@ -19,7 +19,7 @@ Type to store parameter data. Includes data and additional information specified
 - `name::Symbol`: name of the parameter
 - `dim::Tuple`: potential dimensions of parameter data
 - `defVal::Union{Nothing,Float64}`: default value
-- `herit::Tuple`: inheritance rules for parameter, see [Parameter overview](@ref) for details
+- `herit::Tuple`: inheritance rules for parameter, see [Parameter overview](@ref)
 - `data::DataFrame`: parameter data
 """
 mutable struct ParElement
@@ -148,21 +148,23 @@ Type used for technology model parts.
 
 **General fields**
 
-- `par`: dictionary of parameters with names as keys
-- `var`: dictionary of variables with names as keys
-- `cns`: dictionary of constraints with names as key
+- `par`: dictionary of parameters with names as keys (see [Parameter list](@ref))
+- `var`: dictionary of variables with names as keys (see [Variables](@ref))
+- `cns`: dictionary of constraints with names as key (see [Constraints](@ref))
 
 
 **Technology specific fields**
 
-`name`: full name of technology as a series of nodes from the technology tree
-`carrier`: energy carriers by index assigned to technology by groups (e.g. generation, use, ...)
-`balLvl`: temporal and spatial resolution for expansion and balance of the technology
-`capaRestr`: specification of capacity restrictions required for technology
-`actSt`: ids of carriers actively stored altough they are not leafs
-`type`: type of technology (stock, mature, or evolving)
-`disAgg`: if `true`, dispatch is modelled at expansion resolution instead of dispatch resolution
-`modes`: different operational modes of technology
+See [Technologies](@ref) for details.
+
+- `name`: full name of technology as a series of nodes from the technology tree
+- `carrier`: ids of energy carriers assigned to technology by groups (e.g. generation, use, ...)
+- `balLvl`: temporal and spatial resolution for expansion and conversion balance of the technology
+- `capaRestr`: specification of capacity restrictions required for technology
+- `actSt`: ids of carriers actively stored although they are not leafs
+- `type`: type of technology (`stock`, `mature`, or `evolving`)
+- `disAgg`: if `true`, dispatch is modelled at expansion resolution instead of dispatch resolution
+- `modes`: different operational modes of technology
 
 """
 mutable struct TechPart <: AbstractModelPart
@@ -195,9 +197,9 @@ Type used for 'exchange', 'trade', 'balance', 'limits', and 'objective' model pa
 
 **Fields**
 
-- `par`: dictionary of parameters with names as keys
-- `var`: dictionary of variables with names as keys
-- `cns`: dictionary of constraints with names as keys
+- `par`: dictionary of parameters with names as keys (see [Parameter list](@ref))
+- `var`: dictionary of variables with names as keys (see [Variables](@ref))
+- `cns`: dictionary of constraints with names as keys (see [Constraints](@ref))
 
 """
 mutable struct OthPart <: AbstractModelPart
@@ -391,7 +393,7 @@ mutable struct graInfo
 	colors::Dict{String,Tuple{Float64,Float64,Float64}}
 end
 ```
-Type to store information on stlying of graphs. See [Styling](@ref) for details.
+Type to store information on styling of graphs. See [Styling](@ref).
 
 **Fields**
 
@@ -447,14 +449,14 @@ The core model object containing all related data and subordinate objects.
 **Fields**
 
 - `options`: model options provided as keyword arguments to constructor
-- `report`: entries for writing to the reporting file (see <a href="../error/#Error-handling">Error handling</a> for details)
+- `report`: entries for writing to the reporting file [Error handling](@ref)
 - `optModel::Model`: the actual [JuMP](https://github.com/JuliaOpt/JuMP.jl) object of the model's underlying optimization problem
 - `lock`: lock used for multi-threading
 - `supTs`: information and mappings for superordinate time-steps
 - `cInfo`: information on resolution of energy carriers
-- `sets`: sets organized as [Tree](@ref) objects (see [Sets and mappings](@ref) for details)
-- `parts::NamedTuple`: all part objects of the model (see [Parts](@ref) for details)
-- `graInfo::graInfo`: properties for creation of plots and graphics, can be used to adjust colors and labels (see [Styling](@ref) for details)
+- `sets`: sets organized as [Tree](@ref) objects (see [Sets and mappings](@ref))
+- `parts::NamedTuple`: all part objects of the model (see [Parts](@ref))
+- `graInfo::graInfo`: properties for creation of plots and graphics, can be used to adjust colors and labels (see [Styling](@ref))
 
 
 **Constructor**

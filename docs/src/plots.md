@@ -31,7 +31,7 @@ The graphs that build the conceptual basis for the modelling approach pursued by
 The `plotTree` function is used to plot the hierarchical trees of sets as introduced in [Sets and Mappings](@ref).
 
 ```julia
-plotTree(tree_sym::Symbol, anyM::anyModel)                                
+plotTree(tree_sym::Symbol, model_object::anyModel)                                
 ```
 
 
@@ -102,7 +102,7 @@ The `plotEnergyFlow` function provides two ways to visualize the flow of energy 
 To plot a qualitative node graph use the `plotEnergyFlow` command with the `:graph` argument.
 
 ```julia
-plotEnergyFlow(:graph,anyM::anyModel)
+plotEnergyFlow(:graph, model_object::anyModel)
 ```
 
 Nodes either correspond to technologies (grey dots) or energy carriers (colored squares). Edges between technology and energy carrier nodes indicate the carrier is either an input (entering edge) or an output (leaving edge) of the respective technology. Edges between carriers result from inheritance relationships between carriers. These are included, because, according to AnyMOD's graph-based approach, descendants can satisfy the demand for an ancestral carrier (see [Göke (2020)](https://arxiv.org/abs/2004.10184) for details).
@@ -116,15 +116,15 @@ The layout of the graph is created using a [force-directed drawing algorithm](ht
 In many cases the resulting layout will be sufficient to get an overview of energy flows for debugging, but inadequate for publication. For this reason, the `moveNode!` function can be used to adjust the layout.
 
 ```julia
-moveNode!(anyM::anyModel,newPos_arr::Array{Tuple{String,Array{Float64,1}},1})
+moveNode!(model_object::anyModel, newPos_arr::Array{Tuple{String,Array{Float64,1}},1})
 ```
 
 `moveNode!` requires an initial layout within that specific nodes are moved. In the example below, an initial layout is created by calling `plotEnergyFlow`. Afterwards, the node for 'ocgt' is moved 0.2 units to the right and 0.1 units up. The node for 'coal' is moved accordingly. Afterwards, the graph is plotted again with the new layout.
 
 ```julia
-plotEnergyFlow(:graph,anyM)
-moveNode!(anyM,[("ocgt",[0.2,0.1]),("coal",[0.15,0.0])])
-plotEnergyFlow(:graph,anyM, replot = false)
+plotEnergyFlow(:graph, model_object)
+moveNode!(model_object, [("ocgt",[0.2,0.1]),("coal",[0.15,0.0])])
+plotEnergyFlow(:graph, model_object, replot = false)
 ```
 
 When plotting again, it is important to set the optional `replot` argument to `false`. Otherwise, the original layout algorithm will be run again and overwrite any changes made manually.
@@ -211,7 +211,7 @@ Optional arguments for plotting the qualitative node graph are listed below:
 To plot the qualitative energy flows for a solved model use `plotEnergyFlow` command with the `:sankey` argument:
 
 ```julia
-plotEnergyFlow(:sankey,anyM::anyModel)
+plotEnergyFlow(:sankey, model_object::anyModel)
 ```
 
 ```@raw html

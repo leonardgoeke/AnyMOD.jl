@@ -20,16 +20,16 @@ Before we can start working with AnyMOD, it needs to be imported via the `using`
 
 ```julia
 using AnyMOD
-anyM = anyModel("../demo","results", objName = "demo", shortExp = 10)
+model_object = anyModel("../demo","results", objName = "demo", shortExp = 10)
 ```
 
 During the construction process, all input files are read-in and checked for errors. Afterwards sets are mapped to each other and parameter data is assigned to the different model parts. During the whole process status updates are printed to the console and comprehensive reports are written to a dedicated `.csv` file. Since after construction, all qualitative model information, meaning all sets and their interrelations, is written, several graphs describing a models´ structure can be plotted.
 
 ```julia
-plotTree(:region,anyM)
-plotTree(:carrier,anyM)
-plotTree(:tech,anyM, plotSize = (28.0,5.0))
-plotEnergyFlow(:graph,anyM)
+plotTree(:region, model_object)
+plotTree(:carrier, model_object)
+plotTree(:tech, model_object, plotSize = (28.0,5.0))
+plotEnergyFlow(:graph, model_object)
 ```
 
 All of these plots will be written to the specified results folder. The first three graphs plotted by `plotTree` show the rooted tree defining the sets of regions, carriers, and technologies, respectively. As an example, the rooted tree for carriers is displayed below.
@@ -43,24 +43,24 @@ The fourth graph created by using `plotEnergyFlow` with keyword `:graph` gives a
 To create the variables and constraints of the model's underlying optimization problem, the model object is passed to the `createOptModel!` function. Afterwards, the `setObjective!` function is used to set the objective function for optimizing. The function requires a keyword input to indicate what is optimized, but so far only `:costs` has been implemented. Again, updates and reports are written to the console and to a dedicated reporting file.
 
 ```julia
-createOptModel!(anyM)
-setObjective!(:costs,anyM)
+createOptModel!(model_object)
+setObjective!(:costs, model_object)
 ```
 
 To actually solve the created optimization problem, the field of the model structure containing the corresponding JuMP object is passed to the functions of the [JuMP](https://github.com/JuliaOpt/JuMP.jl) package used for this purpose. The JuMP package itself is part of AnyMOD’s dependencies and therefore does not have to be added separately, but the solver does. In this case we used Gurobi, but CPLEX or a non-commercial solver could have been used as well.
 
 ```julia
 using Gurobi
-set_optimizer(anyM.optModel,Gurobi.Optimizer)
-optimize!(anyM.optModel)
+set_optimizer(model_object.optModel, Gurobi.Optimizer)
+optimize!(model_object.optModel)
 ```
 
 Once a model is solved, results can be obtained and analyzed by the following functions:
 
 ```julia
-reportResults(:summary,anyM)
-reportTimeSeries(:electricity, anyM)
-plotEnergyFlow(:sankey,anyM)
+reportResults(:summary, model_object)
+reportTimeSeries(:electricity, model_object)
+plotEnergyFlow(:sankey, model_object)
 ```
 
 Depending on the keyword provided, `reportResults` writes aggregated results to a csv file. `:summary` gives an overview of installed capacities and yearly use and generation of energy carriers. Other keywords available are `:costs` and `:exchange`. `reportTimeSeries` will write the energy balance and the value of each term within the energy balance of the carrier provided as a keyword. Finally, `plotEnergyFlow` used with the keyword `:sankey` creates a sankey diagram that visualizes the quantitative energy flows in the solved model.

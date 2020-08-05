@@ -56,11 +56,11 @@ Model elements used to impose certain limits on model variables are stored in <c
 
 ```@raw html
 <p class="norm">
-The field <code>modelObject.parts.obj</code> gathers elements relating to the objective function of a model's underlying optimization problem. So far, the only available objective in AnyMOD is cost minimization and set by the following command.
+The field <code>modelObject.parts.obj</code> gathers elements relating to the objective function of a model's underlying optimization problem. So far, the only available objective in AnyMOD is cost minimization and set by the <a href="../api/#AnyMOD.setObjective!"><code>setObjective!</code></a> function.
 </p>
 ```
 
 ```julia
-setObjective!(:costs,anyM)
+setObjective!(:costs, model_object)
 ```
 An objective function has to be set after the optimization problem itself was created.

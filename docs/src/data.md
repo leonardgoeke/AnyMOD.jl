@@ -28,7 +28,7 @@ AnyMOD includes several functions to obtain the results of a solved model.
 Different analysis can be printed with the `reportResults` functions depending on the `reportType` keyword.
 
 ```julia
-reportResults(reportType::Symbol,anyM::anyModel; rtnOpt::Tuple = (:csv,))
+reportResults(reportType::Symbol, model_object::anyModel; rtnOpt::Tuple = (:csv,))
 ```
 
 The keyword argument `rtnOpt` controls the output format. Available options are:
@@ -218,7 +218,7 @@ The keyword <code>:costs</code> provides the values of all <a href="../variables
 The `reportTimeSeries` function writes a table with the values of all elements occuring in the energy balance of a respective `carrier`.
 
 ```julia
-reportTimeSeries(carrier::Symbol, anyM::anyModel)
+reportTimeSeries(carrier::Symbol, model_object::anyModel)
 ```
 
 Optional arguments include:
@@ -315,14 +315,14 @@ In addition to the <code>reportResults</code> and <code>reportTimeSeries</code> 
 
 The `printObject` function writes a copy of the respective inputted DataFrame, but replaces the internal node ids with their written name.  
 ```julia
-printObject(element::DataFrame,anyM::anyModel)
+printObject(element::DataFrame, model_object::anyModel)
 ```
 For variables, the table will provide their value and for constraints the corresponding constraint expression.
 
 
 The `printDuals` function works analogously, but returns the duals or shadow prices for the respective elements.  
 ```julia
-printDuals(element::DataFrame,anyM::anyModel)
+printDuals(element::DataFrame, model_object::anyModel)
 ```
 
 ```@raw html
