@@ -9,7 +9,6 @@
 
 Any questions, suggestions, feature requests, or contributions are welcome. To get in touch open an [issue](https://github.com/leonardgoeke/AnyMOD.jl/issues) or use the [chat](https://gitter.im/AnyMOD-jl/community).
 
-
 ## Documentation
 
 - [**STABLE**](https://leonardgoeke.github.io/AnyMOD.jl/stable/) &mdash; **last thoroughly tested and fully documented version**
