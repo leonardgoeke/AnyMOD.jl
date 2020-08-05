@@ -561,7 +561,7 @@ Ensures operated capacities comply with installed capacities.
 Decommissioning behaviour is determined by the <code>decomm</code> argument of the <a href="../model_object">model constructor</a>. For <code>none</code>, the equations listed here are not enforced. Instead operated and installed capacities are identical. When the argument is set to <code>recomm</code>, only the first equation that limits operated capacities to installed capacities is enforced.
 </p>
 <p class="norm">
-Lastly, for <code>decomm</code> both equations apply. The second equation will then ensure, that once decommissioned capacities cannot be re-decommissioned again. The expression $\Delta Resi_{+}$ in the equation denotes any increase of residual capacities from $t-1$ to $t$.
+Lastly, for <code>decomm</code> both equations apply. The second equation will then ensure, that once decommissioned capacities cannot be re-decommissioned again. The expression $\displaystyle \Delta Resi_{+}$ in the equation denotes any increase of residual capacities from $\displaystyle t-1$ to $\displaystyle  t$.
 </p>
 
 <table class="tabelle">
