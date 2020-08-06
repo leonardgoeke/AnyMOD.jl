@@ -21,13 +21,26 @@ using AnyMOD, Cbc, Test
     reportTimeSeries(:electricity, anyM, rtnOpt = (:raw,:rawDf,:csv,:csvDf), mergeVar = false)
 
     # create plots
-    plotEnergyFlow(:sankey,anyM, rmvNode = ("export",))
+    plotEnergyFlow(:sankey,anyM, rmvNode = ("electricity; export","import"))
     plotTree(:region,anyM)
     plotEnergyFlow(:graph,anyM)
     moveNode!(anyM,("coal",[0.1,0.1]))
 
-
     @test length(anyM.report) == 33
-    @test round(objective_value(anyM.optModel),digits = 1) == 147521.1
+    @test round(objective_value(anyM.optModel),digits = 1) == 135781.1
+
+    # create additional models with several errors
+    anyM = anyModel(["testModel","errorTest"],"testModel", objName = "test", shortExp = 10, checkRng = 1e8)
+
+    err = false
+    try
+        createOptModel!(anyM)
+    catch
+        err = true
+    end
+    @test err
+
+    @test length(anyM.report) == 52
+
 
 end

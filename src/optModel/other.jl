@@ -74,7 +74,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},anyM::anyModel)
 	# finds all carriers that require an energy balance (not required for carriers that can only be shifted (temporal or spatial), e.g. that only have storage or exchange defined for them)
 	relC_arr = Array{Int,1}()
 
-	# if demand does not specific a carrier, it is assumed all carriers are relevant
+	# if demand does not specify a carrier, it is assumed all carriers are relevant
 	if !isempty(anyM.parts.bal.par[:dem].data)
 		if :C in namesSym(anyM.parts.bal.par[:dem].data)
 			append!(relC_arr,unique(anyM.parts.bal.par[:dem].data[!,:C]))
@@ -517,9 +517,8 @@ end
 
 # XXX check range of coefficients in expressions within input array
 function checkExprRng(expr_arr::Array{AffExpr,1},rngThres_fl::Float64)
-
 	# obtains range of coefficients for matrix and rhs
-	matRng_arr = map(x -> abs.(values(x.terms)) |> (y -> (minimum(y),maximum(y))), expr_arr)
+	matRng_arr = map(x -> abs.(values(x.terms)) |> (y -> isempty(y) ? (0.0,0.0) : (minimum(y),maximum(y))), expr_arr)
 	rhs_arr = abs.(getfield.(expr_arr,:constant))
 	both_arr = max.(getindex.(matRng_arr,2),replace(rhs_arr,0.0 => -Inf)) ./ min.(getindex.(matRng_arr,1),replace(rhs_arr,0.0 => Inf))
 

@@ -26,3 +26,4 @@ all,electricity,,West,WestNorth,East,EastNorth,capaExcResi,0,defining a residuca
 ,gas,,,,,,costOprExc,2,
 ,,,,,,,costVarExc,3,
 ,,,,,,,emissionPrc,8,
+,,,,,,,costLss,100,
