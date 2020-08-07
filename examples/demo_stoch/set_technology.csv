@@ -1,7 +1,7 @@
 technology_1,technology_2,technology_3,mode,carrier_conversion_in,carrier_conversion_out,carrier_stored_in,carrier_stored_out,technology_type,region_disaggregate,technology_decomm,comment
 wind,,,,,electricity,,,mature,yes,none,
 solar,openspace,,,,electricity,,,mature,yes,none,
-solar,rooftop,photovoltaic,,,electricity,,electricity,mature,yes,none,
+solar,rooftop,photovoltaic,,,electricity,,,mature,yes,none,
 solar,rooftop,solarThermal,,,heat,,heat,mature,yes,none,
 gasPlant,ccgt,ccgtNoCHP,,gas,electricity,,,stock,no,none,
 gasPlant,ccgt,ccgtCHP,moreHeat; moreElec,gas,electricity; districtHeat,,,mature,no,none,

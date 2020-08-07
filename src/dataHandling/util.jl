@@ -60,6 +60,9 @@ plus(a::Nothing,b::Int) = b
 namesSym(df::DataFrame) = map(x -> Symbol(x),names(df))
 namesSym(df::DataFrameRow) = map(x -> Symbol(x),names(df))
 
+# XXX to add an "and $nameOfScenario" or nothing to a reporting line
+getScrName(id::Int,scr_tree::Tree) = id != 0 ? " and scenario '$(createFullString(id,scr_tree))'" : ""
+
 # XXX returns dataframe columns without value column
 removeVal(input_df::DataFrame) = filter(x -> !(x in (:val,:ratio)),namesSym(input_df))
 removeVal(col_arr::Array{Symbol,1}) = filter(x -> !(x in (:val,:ratio)),col_arr)
@@ -85,7 +88,7 @@ mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  
 filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in namesSym(var_df) ? filter(r -> r.C in c_arr,var_df) : var_df
 
 # XXX makes first letter of string or symbol capital
-makeUp(in::String) = String(uppercase(string(in)[1]),string(in)[2:end])
+makeUp(in::String) = isempty(in) ? "" : string(uppercase(in[1]),in[2:end])
 makeUp(in::Symbol) = Symbol(uppercase(string(in)[1]),string(in)[2:end])
 
 # XXX creates a dictionary that assigns each dispatch timestep inputed to its superordinate dispatch timestep
@@ -373,9 +376,9 @@ function expandExpToCapa(in_df::DataFrame)
 end
 
 # XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
-function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},preserveTsSupTs::Bool = false)
+function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},scr_dic::Dict{Int64,Array{Int64,1}},preserveTsSupTs::Bool = false)
 
-	inData_df[!,:scr] = map(x -> anyM.supTs.scr[x], inData_df[!,:Ts_disSup])
+	inData_df[!,:scr] = map(x -> scr_dic[x], inData_df[!,:Ts_disSup])
 	inData_df = flatten(inData_df,:scr)
 
 	# adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)
@@ -412,12 +415,18 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 	techSym_arr = collect(keys(anyM.parts.tech))
 
 	if !(va in keys(varToPart_dic)) # get all variables for technologies
-		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut))
+		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :in => (:use,:stIntOut), :out => (:gen,:stIntIn))
 		techType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(anyM.parts.tech[y].var), techSym_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
+
 		if !isempty(techType_arr)
 			allVar_df = vcat(map(x -> anyM.parts.tech[x[2]].var[x[1]], vcat(map(x -> collect(zip(fill(x[1],length(x[2])),x[2])),techType_arr)...))...)
 		else
 			allVar_df = DataFrame()
+		end
+
+		# aggregate variables if different types where obtained
+		if va in keys(va_dic) && !isempty(allVar_df)
+			allVar_df = combine(groupby(allVar_df, intCol(allVar_df)), :var => (x -> sum(x)) => :var)
 		end
 	elseif va != :emission # get variables from other parts
 		if va in keys(getfield(anyM.parts,varToPart_dic[va]).var)

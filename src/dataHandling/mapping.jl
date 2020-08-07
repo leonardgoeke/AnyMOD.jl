@@ -158,7 +158,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 		for c in carId_dic[type]
 			if anyM.supTs.lvl == anyM.cInfo[c].tsDis
 				carId_dic[type] = tuple(filter(x -> x != c,collect(carId_dic[type]))...)
-				push!(anyM.report,(2,"technology mapping","carrier","carrier '$(createFullString(c,anyM.sets[:C]))' of technology '$(string(tSym))' cannot be stored, because carrier is balanced on supordiante dispatch level"))
+				push!(anyM.report,(2,"technology mapping","carrier","carrier '$(createFullString(c,anyM.sets[:C]))' of technology '$(string(tSym))' cannot be stored, because carrier is balanced on superordinate dispatch level"))
 			end
 		end
 	end
@@ -441,11 +441,11 @@ function distributedMapping!(anyM::anyModel,prepTech_dic::Dict{Symbol,Dict{Symbo
 
 	subPro = anyM.subPro
 
-	if anyM.subPro != (0,0) # XXX case of sub-problem
+	if subPro != (0,0) # XXX case of sub-problem
 
 		# get tuple of unrequired time-steps and scenarios
-		rmvId_tup = (Ts_dis = union(map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x != subPro[1],collect(anyM.supTs.step)))...),
-							Ts_exp = union(map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x > subPro[1],collect(anyM.supTs.step)))...),
+		rmvId_tup = (Ts_dis = map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x != subPro[1],collect(anyM.supTs.step))) |> (y -> isempty(y) ? Int[] : union(y...)),
+							Ts_exp = map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x > subPro[1],collect(anyM.supTs.step))) |> (y -> isempty(y) ? Int[] : union(y...)),
 																scr = filter(x -> x != subPro[2] && x != 0,getfield.(values(anyM.sets[:scr].nodes),:idx)))
 
 		# remove unrequired nodes from trees of scenarios
@@ -464,7 +464,7 @@ function distributedMapping!(anyM::anyModel,prepTech_dic::Dict{Symbol,Dict{Symbo
 			# remove other superordinate dispatch timesteps from field for capacity variables
 			for etr in collectKeys(keys(prepTech_dic[tSym]))
 				var_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepTech_dic[tSym][etr].var)
-				resi_df = filter(x -> x.Ts_disSup in anyM.supTs,prepTech_dic[tSym][etr].resi)
+				resi_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepTech_dic[tSym][etr].resi)
 				prepTech_dic[tSym][etr] = (var = var_df,resi = resi_df)
 			end
 		end
@@ -472,34 +472,55 @@ function distributedMapping!(anyM::anyModel,prepTech_dic::Dict{Symbol,Dict{Symbo
 		# exchange dictionary
 		foreach(y -> delete!(prepExc_dic,y), filter(x -> x != :capaExc,collectKeys(keys(prepExc_dic))))
 		var_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepExc_dic[:capaExc].var)
-		resi_df = filter(x -> x.Ts_disSup in anyM.supTs,prepExc_dic[:capaExc].resi)
+		resi_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepExc_dic[:capaExc].resi)
 		prepExc_dic[:capaExc] = (var = var_df,resi = resi_df)
 
 		# XXX remove parameter data
-
-		# remove unrequired parameter data from tech objects
-		for pName in collect(keys(anyM.parts.tech)), parName in collectKeys(keys(anyM.parts.tech[pName].par))
-			parData_df = anyM.parts.tech[pName].par[parName].data
-			rmv_arr = intersect(namesSym(parData_df),[:Ts_dis,:scr])
-			if isempty(rmv_arr)
-				continue
-			else
-				anyM.parts.tech[pName].par[parName].data  = filter(x -> !any(map(y -> x[y] in getfield(rmvId_tup,y),rmv_arr)),parData_df)
+		# remove unrequired parameter data from technology parts
+		for pName in collectKeys(keys(anyM.parts.tech)), parName in collectKeys(keys(getfield(anyM.parts.tech[pName],:par)))
+			if anyM.parts.tech[pName].par[parName].problem == :top # completely delete parameters not relating to subproblems
+				delete!(anyM.parts.tech[pName].par,parName)
+			else # remove unrequired data, but keep the parameter itself
+				parData_df = anyM.parts.tech[pName].par[parName].data
+				rmv_arr = intersect(namesSym(parData_df),[:Ts_dis,:scr])
+				if isempty(rmv_arr)
+					continue
+				else
+					anyM.parts.tech[pName].par[parName].data  = filter(x -> !any(map(y -> x[y] in getfield(rmvId_tup,y),rmv_arr)),parData_df)
+				end
 			end
 		end
-
 		# remove unrequired parameter data from all other objects
 		for pName in (:trd,:exc,:bal,:lim,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
-			parData_df = getfield(anyM.parts,pName).par[parName].data
-			rmv_arr = intersect(namesSym(parData_df),[:Ts_dis,:scr])
-			if isempty(rmv_arr)
-				continue
+			if getfield(anyM.parts,pName).par[parName].problem == :top
+				delete!(getfield(anyM.parts,pName).par,parName)
 			else
-				getfield(anyM.parts,pName).par[parName].data  = filter(x -> !any(map(y -> x[y] in getfield(rmvId_tup,y),rmv_arr)),parData_df)
+				parData_df = getfield(anyM.parts,pName).par[parName].data
+				rmv_arr = intersect(namesSym(parData_df),[:Ts_dis,:scr])
+				if isempty(rmv_arr)
+					continue
+				else
+					getfield(anyM.parts,pName).par[parName].data  = filter(x -> !any(map(y -> x[y] in getfield(rmvId_tup,y),rmv_arr)),parData_df)
+				end
 			end
 		end
-		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be a sub-problem")
+
+		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be a sub-problem for time-step '$(createFullString(subPro[1],anyM.sets[:Ts]))'$(getScrName(subPro[2],anyM.sets[:scr]))")
 	else # XXX case of top-problem
+
+		# XXX remove parameter data
+		# remove unrequired parameter data from technology parts
+		for pName in collectKeys(keys(anyM.parts.tech)), parName in collectKeys(keys(getfield(anyM.parts.tech[pName],:par)))
+			if anyM.parts.tech[pName].par[parName].problem == :sub # completely delete parameters not relating to subproblems
+				delete!(anyM.parts.tech[pName].par,parName)
+			end
+		end
+		# remove unrequired parameter data from all other objects
+		for pName in (:trd,:exc,:bal,:lim,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
+			if getfield(anyM.parts,pName).par[parName].problem == :sub
+				delete!(getfield(anyM.parts,pName).par,parName)
+			end
+		end
 		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be the top-problem")
 	end
 end

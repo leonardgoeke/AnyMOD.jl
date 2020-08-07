@@ -2,7 +2,7 @@
 # <editor-fold desc= prepare and create exchange related variables"
 
 # XXX prepare dictionary that specifies dimensions for expansion and capacity variables
-function prepareExc!(prepExc_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
+function prepareExc!(prepExc_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},anyM::anyModel)
 	partExc = anyM.parts.exc
 	partLim = anyM.parts.lim
 
@@ -13,7 +13,7 @@ function prepareExc!(prepExc_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
 	prepareCapacity!(partExc,prepExc_dic,prepExc_dic[:expExc].var,:capaExc,anyM)
 	addResidualCapaExc!(partExc,prepExc_dic,potExc_df,anyM)
 
-	if part.decomm != :none && :capaExc in keys(prepExc_dic)
+	if anyM.options.decommExc != :none && :capaExc in keys(prepExc_dic)
 		prepExc_dic[:insCapaExc] =  (var = prepExc_dic[:capaExc].var, resi = DataFrame())
 	end
 end
@@ -187,7 +187,7 @@ function createCapaExcCns!(partExc::ExcPart,anyM::anyModel)
 	end
 
 	# create and control operated capacity variables
-	if anyM.options.decomm != :none && :capaExc in keys(partExc.var)
+	if anyM.options.decommExc != :none && :capaExc in keys(partExc.var)
 		# constraints for operated capacities are saved into a dictionary of containers and then actually created
 		cns_dic = Dict{Symbol,cnsCont}()
 		createOprVarCns!(partExc,cns_dic,anyM)

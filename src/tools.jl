@@ -51,43 +51,45 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
 	# XXX get demand values
-	dem_df = copy(anyM.parts.bal.par[:dem].data)
-	if !isempty(dem_df)
-		dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, :C in namesSym(dem_df) ? dem_df[!,:C] : filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx)))
+	if :dem in keys(anyM.parts.bal.par)
+		dem_df = copy(anyM.parts.bal.par[:dem].data)
+		if !isempty(dem_df)
+			dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, :C in namesSym(dem_df) ? dem_df[!,:C] : filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx)))
 
-		# aggregates demand values
+			# aggregates demand values
 
-		# artificially add dispatch dimensions, if none exist
-		if :Ts_dis in namesSym(dem_df)
-			ts_dic = Dict(x => anyM.sets[:Ts].nodes[x].lvl == anyM.supTs.lvl ? x : getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(dem_df[!,:Ts_dis]))
-			dem_df[!,:Ts_disSup] = map(x -> ts_dic[x],dem_df[!,:Ts_dis])
-		else
-			dem_df[!,:Ts_disSup] .= anyM.supTs.step
-			dem_df = flatten(dem_df,:Ts_disSup)
+			# artificially add dispatch dimensions, if none exist
+			if :Ts_dis in namesSym(dem_df)
+				ts_dic = Dict(x => anyM.sets[:Ts].nodes[x].lvl == anyM.supTs.lvl ? x : getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(dem_df[!,:Ts_dis]))
+				dem_df[!,:Ts_disSup] = map(x -> ts_dic[x],dem_df[!,:Ts_dis])
+			else
+				dem_df[!,:Ts_disSup] .= anyM.supTs.step
+				dem_df = flatten(dem_df,:Ts_disSup)
+			end
+
+			# artificially add scenario dimensions, if none exist
+			if !(:scr in namesSym(dem_df))
+				dem_df[!,:scr] = map(x -> anyM.supTs.scr[x], dem_df[!,:Ts_disSup])
+				dem_df = flatten(dem_df,:scr)
+			end
+
+			dem_df[!,:val] = dem_df[!,:val]	.* getResize(dem_df,anyM.sets[:Ts],anyM.supTs) ./ anyM.options.redStep
+
+			allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
+			allLvlR_arr = unique(dem_df[!,:lvlR])
+			r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl < x[2] ? getDescendants(x[1], anyM.sets[:R],false,x[2]) : getAncestors(x[1],anyM.sets[:R],:int,x[2])[end]) for x in Iterators.product(allR_arr,allLvlR_arr))
+			if :R_dis in namesSym(dem_df)
+				dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis,x.lvlR],eachrow(dem_df[!,[:R_dis,:lvlR]]))
+			else
+				dem_df[!,:R_dis] .= 0
+			end
+
+			dem_df = combine(groupby(dem_df,[:Ts_disSup,:R_dis,:C,:scr]),:val => ( x -> sum(x) / 1000) => :value)
+			dem_df[!,:Te] .= 0
+			dem_df[!,:variable] .= :demand
+			if wrtSgn dem_df[!,:value] = dem_df[!,:value] .* -1 end
+			allData_df = vcat(allData_df,dem_df)
 		end
-
-		# artificially add scenario dimensions, if none exist
-		if !(:scr in namesSym(dem_df))
-			dem_df[!,:scr] = map(x -> anyM.supTs.scr[x], dem_df[!,:Ts_disSup])
-			dem_df = flatten(dem_df,:scr)
-		end
-
-		dem_df[!,:val] = dem_df[!,:val]	.* getResize(dem_df,anyM.sets[:Ts],anyM.supTs) ./ anyM.options.redStep
-
-		allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
-		allLvlR_arr = unique(dem_df[!,:lvlR])
-		r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl < x[2] ? getDescendants(x[1], anyM.sets[:R],false,x[2]) : getAncestors(x[1],anyM.sets[:R],:int,x[2])[end]) for x in Iterators.product(allR_arr,allLvlR_arr))
-		if :R_dis in namesSym(dem_df)
-			dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis,x.lvlR],eachrow(dem_df[!,[:R_dis,:lvlR]]))
-		else
-			dem_df[!,:R_dis] .= 0
-		end
-
-		dem_df = combine(groupby(dem_df,[:Ts_disSup,:R_dis,:C,:scr]),:val => ( x -> sum(x) / 1000) => :value)
-		dem_df[!,:Te] .= 0
-		dem_df[!,:variable] .= :demand
-		if wrtSgn dem_df[!,:value] = dem_df[!,:value] .* -1 end
-		allData_df = vcat(allData_df,dem_df)
 	end
 
 	# XXX get expansion and capacity variables
@@ -96,7 +98,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
 		# get installed capacity values
-		for va in intersect(keys(part.var),(:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :oprCapaConv, :oprCapaStIn, :oprCapaStOut, :oprCapaStSize))
+		for va in intersect(keys(part.var),(:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :insCapaConv, :insCapaStIn, :insCapaStOut, :insCapaStSize))
 			capa_df = copy(part.var[va])
 			if va in (:expConv, :expStIn, :expStOut, :expStSize)
 				capa_df = flatten(capa_df,:Ts_expSup)
@@ -104,7 +106,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 				rename!(capa_df,:Ts_expSup => :Ts_disSup)
 			end
 			# set carrier column to zero for conversion capacities and add a spatial dispatch column
-			if va in (:expConv,:capaConv,:oprCapaConv)
+			if va in (:expConv,:capaConv,:insCapaConv)
 				capa_df[!,:C] .= 0
 				capa_df[!,:R_dis] = map(x -> getAncestors(x,anyM.sets[:R],:int,part.balLvl.ref[2])[end],capa_df[!,:R_exp])
 			else
@@ -164,11 +166,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	end
 
 	# XXX get full load hours for conversion, storage input and storage output
-	if anyM.options.decomm == :none
-		flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
-	else
-		flh_dic = Dict(:oprCapaConv => :flhConv, :oprCapaStIn => :flhStIn, :oprCapaStOut => :flhStOut)
-	end
+	flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
 
 	for flhCapa in collect(keys(flh_dic))
 		capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
@@ -177,11 +175,11 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		# get relevant dispatch variables for respective group
 		vlh_arr = map(eachrow(capaFlh_df)) do row
 			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te && y.scr == row.scr, allData_df)
-			if flhCapa in (:capaConv,:oprCapaConv)
+			if flhCapa == :capaConv
 				var_arr = unique(relRow_df[!,:variable]) |> (i -> (i,intersect(i,(:use,:stIntOut)))) |> (j -> isempty(j[2]) ? intersect(j[1],(:gen,:stIntIn)) : j[2])
-			elseif flhCapa in (:oprCapaStIn,:capaStIn)
+			elseif flhCapa  == :capaStIn
 				var_arr = [:stIntIn,:stExtIn]
-			elseif flhCapa in (:oprCapaStOut,:capaStOut)
+			elseif flhCapa  == :capaStOut
 				var_arr = [:stIntOut,:stExtOut]
 			end
 			return sum(abs.(filter(y -> y.variable in var_arr,relRow_df)[!,:value]))/row.value*1000
@@ -193,11 +191,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	end
 
 	# XXX comptue storage cycles
-	if anyM.options.decomm == :none
-		cyc_dic = Dict(:capaStIn => :cycStIn, :capaStOut => :cycStOut)
-	else
-		cyc_dic = Dict(:oprCapaStIn => :cycStIn, :oprCapaStOut => :cycStOut)
-	end
+	cyc_dic = Dict(:capaStIn => :cycStIn, :capaStOut => :cycStOut)
 
 	for cycCapa in collect(keys(cyc_dic))
 		capaCyc_df = filter(x -> x.variable == :capaStSize, allData_df)
@@ -206,9 +200,9 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		# get relevant dispatch variables for respective group
 		cyc_arr = map(eachrow(capaCyc_df)) do row
 			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te && y.scr == row.scr,allData_df)
-			if cycCapa in (:oprCapaStIn,:capaStIn)
+			if cycCapa == :capaStIn
 				var_arr = [:stIntIn,:stExtIn]
-			elseif cycCapa in (:oprCapaStOut,:capaStOut)
+			elseif cycCapa == :capaStOut
 				var_arr = [:stIntOut,:stExtOut]
 			end
 			return sum(abs.(filter(y -> y.variable in var_arr,relRow_df)[!,:value]))/row.value*1000
@@ -307,12 +301,12 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 	capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
 	capa_df[!,:variable] .= :capaExc
 
-	if anyM.options.decomm != :none
-		oprCapa_df = copy(anyM.parts.exc.var[:oprCapaExc])
-		oprCapa_df = vcat(oprCapa_df,rename(filter(x -> x.dir == 0, oprCapa_df),:R_from => :R_to, :R_to => :R_from))
-		oprCapa_df = combine(groupby(oprCapa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
-		oprCapa_df[!,:variable] .= :oprCapaExc
-		capa_df = vcat(capa_df,oprCapa_df)
+	if anyM.options.decommExc != :none
+		insCapa_df = copy(anyM.parts.exc.var[:insCapaExc])
+		insCapa_df = vcat(insCapa_df,rename(filter(x -> x.dir == 0, insCapa_df),:R_from => :R_to, :R_to => :R_from))
+		insCapa_df = combine(groupby(insCapa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
+		insCapa_df[!,:variable] .= :insCapaExc
+		capa_df = vcat(capa_df,insCapa_df)
 	end
 
 	# XXX dispatch variables

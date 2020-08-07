@@ -16,10 +16,10 @@ function createOptModel!(anyM::anyModel)
     prepareTechs!(techSym_arr,prepTech_dic,tsYear_dic,anyM)
 
 	prepExc_dic = Dict{Symbol,NamedTuple}()
-	prepareExc!(prepExc_dic,anyM)
+	prepareExc!(prepExc_dic,tsYear_dic,anyM)
 
 	# XXX remove unrequired elements in case of distributed model creation
-	if !isempty(subPro)
+	if !isempty(anyM.subPro)
 	    distributedMapping!(anyM,prepTech_dic,prepExc_dic)
 	end
 	# abort if there is already an error

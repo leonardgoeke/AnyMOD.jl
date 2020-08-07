@@ -13,14 +13,14 @@ timestep_1,technology_1,technology_2,technology_3,mode,carrier_1,carrier_2,scena
 ,fuelCell,,,,,,,effConv,0.918,
 ,gasPlant,,,,,,,avaConv,0.95,
 ,coalPlant,,,,,,,avaConv,0.85,
-,gasPlant,ccgt,ccgtCHP,moreHeat,electricity,,,ratioEnerGenFix,0.444,
-,gasPlant,ccgt,ccgtCHP,moreElec,electricity,,,ratioEnerGenFix,0.625,"for CHP ccgtPlants two modes are assumed, ""moreHeat"" as a lower overall efficiency, but a smaller smaller electricity share "
-,coalPlant,,,,electricity,,,ratioEnerGenLow,0.424,"for CHP ccgtPlants two modes are assumed, ""moreHeat"" as a lower overall efficiency, but a smaller smaller electricity share "
-,coalPlant,,,,electricity,,,ratioEnerGenUp,0.471,
-2020,fuelCell,,,,electricity,,,ratioEnerGenFix,0.523,
-2030,fuelCell,,,,electricity,,,ratioEnerGenFix,0.534,
-2020,methanation,,,,gas,synthGas,,ratioEnerGenFix,0.769,
-2030,methanation,,,,gas,synthGas,,ratioEnerGenFix,0.817,"synthGas ratio of output, the remaining share is excess heat, so increasing value implies increase in ""efficiency"""
+,gasPlant,ccgt,ccgtCHP,moreHeat,electricity,,,ratioEnerOutFix,0.444,
+,gasPlant,ccgt,ccgtCHP,moreElec,electricity,,,ratioEnerOutFix,0.625,"for CHP ccgtPlants two modes are assumed, ""moreHeat"" as a lower overall efficiency, but a smaller smaller electricity share "
+,coalPlant,,,,electricity,,,ratioEnerOutLow,0.424,"for CHP ccgtPlants two modes are assumed, ""moreHeat"" as a lower overall efficiency, but a smaller smaller electricity share "
+,coalPlant,,,,electricity,,,ratioEnerOutUp,0.471,
+2020,fuelCell,,,,electricity,,,ratioEnerOutFix,0.523,
+2030,fuelCell,,,,electricity,,,ratioEnerOutFix,0.534,
+2020,methanation,,,,gas,synthGas,,ratioEnerOutFix,0.769,
+2030,methanation,,,,gas,synthGas,,ratioEnerOutFix,0.817,"synthGas ratio of output, the remaining share is excess heat, so increasing value implies increase in ""efficiency"""
 ,solar,rooftop,photovoltaic,,electricity,,,effStIn,0.96,"synthGas ratio of output, the remaining share is excess heat, so increasing value implies increase in ""efficiency"""
 ,solar,rooftop,solarThermal,,heat,,,effStIn,0.894,
 ,gasStorage,,,,,,,effStIn,0.98,
@@ -31,3 +31,4 @@ timestep_1,technology_1,technology_2,technology_3,mode,carrier_1,carrier_2,scena
 ,hydro,,,,,,,effStOut,0.89,
 ,solar,rooftop,photovoltaic,,electricity,,,stDis,0.0001,
 ,solar,rooftop,solarThermal,,heat,,,stDis,0.001,
+,gasPlant,,,,,,,flhConvLow,6000,

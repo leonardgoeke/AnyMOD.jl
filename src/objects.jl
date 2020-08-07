@@ -12,6 +12,7 @@ Type including data and additional information on parameters. Fields relate to w
 """
 mutable struct ParElement
 	name::Symbol
+	problem::Symbol
     dim::Tuple
     defVal::Union{Nothing,Float64}
     herit::Tuple
@@ -21,7 +22,7 @@ mutable struct ParElement
 	function ParElement(paraData_df::DataFrame,paraDef_ntup::NamedTuple,name::Symbol,report::Array{Tuple,1})
 
         setLongShort_dic = Dict(:Ts => :timestep, :R => :region, :C => :carrier, :Te => :technology, :M => :mode)
-		if isempty(paraData_df) return new(name,paraDef_ntup.dim,paraDef_ntup.defVal,paraDef_ntup.herit,DataFrame()) end
+		if isempty(paraData_df) return new(name,paraDef_ntup.problem,paraDef_ntup.dim,paraDef_ntup.defVal,paraDef_ntup.herit,DataFrame()) end
 
         # XXX check consistency of rows in input dataframe and definition of set and rename columns according to set defintion
         # assigns array of used suffixes according to parameter defintion to each set
@@ -56,7 +57,7 @@ mutable struct ParElement
         writeData_df = paraData_df[:,collect(keys(newCol_dic))]
         DataFrames.rename!(writeData_df,newCol_dic)
 
-        new_obj = new(name,paraDef_ntup.dim,paraDef_ntup.defVal,paraDef_ntup.herit,writeData_df)
+        new_obj = new(name,paraDef_ntup.problem,paraDef_ntup.dim,paraDef_ntup.defVal,paraDef_ntup.herit,writeData_df)
         # defines on which level parameter is presetted and which capacity restrictions are affected by different modes for all dispatch parameters, where this is specified
         if haskey(paraDef_ntup,:techPre) new_obj.techPre = paraDef_ntup.techPre end
         return new_obj
