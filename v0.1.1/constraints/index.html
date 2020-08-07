@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Constraints · AnyMOD.jl</title><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.11.1/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.png" alt="AnyMOD.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit">AnyMOD.jl</span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><span class="tocitem">Model Elements</span><ul><li><a class="tocitem" href="../model_object/">Model object</a></li><li><a class="tocitem" href="../sets/">Sets and Mappings</a></li><li><a class="tocitem" href="../parts/">Parts</a></li><li><input class="collapse-toggle" id="menuitem-2-4" type="checkbox"/><label class="tocitem" for="menuitem-2-4"><span class="docs-label">Parameter</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../parameter_overview/">Parameter overview</a></li><li><a class="tocitem" href="../parameter_list/">Parameter list</a></li></ul></li><li><a class="tocitem" href="../variables/">Variables</a></li><li class="is-active"><a class="tocitem" href>Constraints</a><ul class="internal"><li class="toplevel"><a class="tocitem" href="#Balances"><span>Balances</span></a></li><li class="toplevel"><a class="tocitem" href="#Dispatch-restrictions"><span>Dispatch restrictions</span></a></li><li class="toplevel"><a class="tocitem" href="#Capacity-expansion"><span>Capacity expansion</span></a></li><li class="toplevel"><a class="tocitem" href="#Cost-equations"><span>Cost equations</span></a></li><li class="toplevel"><a class="tocitem" href="#Limiting-constraints"><span>Limiting constraints</span></a></li></ul></li></ul></li><li><span class="tocitem">Tools</span><ul><li><input class="collapse-toggle" id="menuitem-3-1" type="checkbox"/><label class="tocitem" for="menuitem-3-1"><span class="docs-label">Reporting</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../error/">Error handling</a></li><li><a class="tocitem" href="../data/">Data files</a></li><li><a class="tocitem" href="../plots/">Plots</a></li></ul></li><li><a class="tocitem" href="../performance/">Performance and stability</a></li></ul></li><li><span class="tocitem">Annex</span><ul><li><a class="tocitem" href="../tips/">Tips</a></li><li><a class="tocitem" href="../api/">API</a></li><li><a class="tocitem" href="../related/">Related material</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Model Elements</a></li><li class="is-active"><a href>Constraints</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Constraints</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/leonardgoeke/AnyMOD.jl/blob/master/docs/src/constraints.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><style>
+table.tabelle td {
+  border-left: 1px solid;
+  border-color: #dbdbdb;
+}
+table.tabelle td:first-child {
+  border-right: 2.5px solid;
+  border-color: #dbdbdb;
+  border-left: none;
+}
+ul.liste {
+  list-style-position: inside;
+  margin-left: 0em;
+  margin-top: 0em;
+  white-space: nowrap;
+  display:inline-block;
+  text-align: left;
+}
+</style><h1 id="Constraints"><a class="docs-heading-anchor" href="#Constraints">Constraints</a><a id="Constraints-1"></a><a class="docs-heading-anchor-permalink" href="#Constraints" title="Permalink"></a></h1><p class="norm">
+In the following, all constraints used in AnyMOD are listed. Information includes the name used throughout the model, its dimensions and a stylized formulation of the constraint itself (see <a href="https://arxiv.org/abs/2004.10184)">Göke (2020)</a> for details). Within these constraints, variables are printed in bold. In addition, the parameters, variables, and the model part associated with the constraints are listed.
+</p>
+<p class="norm">
+To increase performance, AnyMOD stores constraints within DataFrames instead of using JuMPs native containers. Each dimension is represented by a column and integers in these columns relate to nodes within the hierarchical trees of sets (see <a href="../data/#printObject"><code>printObject</code></a> on how to export these in a readable format). An additional <code>cns</code> column stores the corresponding constraint. Note that final constraints will look unintuitive, because they are <a href="../performance/#Scaling">scaled</a> to increase performance and converted to standard form by JuMP.
+</p>
+<p class="norm">
+New constraints beyond those listed here can freely be added to a model by using standard JuMP commands.
+</p><h1 id="Balances"><a class="docs-heading-anchor" href="#Balances">Balances</a><a id="Balances-1"></a><a class="docs-heading-anchor-permalink" href="#Balances" title="Permalink"></a></h1><h3 id="Energy-balance"><a class="docs-heading-anchor" href="#Energy-balance">Energy balance</a><a id="Energy-balance-1"></a><a class="docs-heading-anchor-permalink" href="#Energy-balance" title="Permalink"></a></h3><p>Constraints supply to at least exceed demand.</p><p>The energy balance can alternatively be enforced as an equality constraint (see <a href="../sets/#Carriers">Carriers</a> for details). Instead of having a fixed name the constraint is always assigned the name of the carrier being balanced.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td><em>carrier name</em></td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{dis}$, $R_{dis}$, $C$</td>
+</tr>
+<tr>
+<td><strong>instances</strong></td>
+<td><ul class="liste">
+<li>dispatch resolution of carrier</li>
+</ul></td>
+</tr>
+<tr>
+<td rowspan = "2"><strong>formulation</strong></td>
+<td style="text-align:left;border-bottom:none;padding-bottom:0px">$ \scriptstyle dem \, + \, \sum\bm{use} \, + \, \sum\bm{stExt_{in}} \, + \, \sum \bm{exc_{exp}}\, + \, \sum\bm{trd_{sell}} \, + \, \bm{lss}  \, \leq \, $</td>
+</tr>
+<tr>
+<td style="text-align:right;border-right:none;border-top:none;padding-top:0px">$ \scriptstyle \; \; \; \; \sum\bm{gen} \, + \, \sum\bm{stExt_{out}} \, + \, \sum (1-lossExc) \bm{exc_{imp}} \, + \, \sum\bm{trd_{buy}} \, + \, \bm{crt} $</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td><ul class="liste">
+<li><a href="../parameter_list/#Demand-1">demand</a></li>
+<li><a href="../parameter_list/#Exchange-losses-1">exchange losses</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td><ul class="liste">
+<li><a href="../variables/#Generation-and-use-1">generation and use</a></li>
+<li><a href="../variables/#Charging-and-discharging-1">charging and discharging</a></li>
+<li><a href="../variables/#Exchange-1">exchange</a></li>
+<li><a href="../variables/#Buy-and-sell-1">buy and sell</a></li>
+<li><a href="../variables/#Curtailment-and-loss-of-load-1">curtailment and loss-of-load</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Balance-1">balance</a></td>
+</tr>
+</tbody>
+</table><h3 id="Conversion-balance"><a class="docs-heading-anchor" href="#Conversion-balance">Conversion balance</a><a id="Conversion-balance-1"></a><a class="docs-heading-anchor-permalink" href="#Conversion-balance" title="Permalink"></a></h3><p>Controls the ratio between used and generated quantities.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>convBal</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{exp}$, $Ts_{dis}$, $R_{dis}$, $Te$, ($M$)</td>
+</tr>
+<tr>
+<td><strong>instances</strong></td>
+<td><ul class="liste">
+<li>reference resolution of technology</li>
+<li>expansion time-steps of technology</li>
+<li>relevant modes of technology</li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>formulation</strong></td>
+<td>$ \scriptstyle eff_{conv} (\sum\bm{use} \, + \, \sum\bm{stInt_{out}}) \, = \, \sum\bm{gen} \, + \,  \sum\bm{stInt_{in}} $</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td><ul class="liste">
+<li><a href="../parameter_list/#Efficiency-1">conversion efficiency</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td><ul class="liste">
+<li><a href="../variables/#Generation-and-use-1">generation and use</a></li>
+<li><a href="../variables/#Charging-and-discharging-1">charging and discharging</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h3 id="Storage-Balance"><a class="docs-heading-anchor" href="#Storage-Balance">Storage Balance</a><a id="Storage-Balance-1"></a><a class="docs-heading-anchor-permalink" href="#Storage-Balance" title="Permalink"></a></h3><p>Ensures storage levels comply with charged and discharged quantities.</p>
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>stBal</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{exp}$, $Ts_{dis}$, $R_{dis}$, $Te$, $C$, ($M$)</td>
+</tr>
+<tr>
+<td><strong>instances</strong></td>
+<td><ul class="liste">
+<li>dispatch resolution of carrier</li>
+<li>expansion time-steps of technology</li>
+<li>relevant modes of technology</li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>formulation</strong></td>
+<td>$ \scriptstyle \bm{stLvl_{t}} \, = \, \frac{\bm{stLvl_{t-1}}}{1\,-\,stDis} \, + \,  stInflow \, + \, \frac{\bm{stExt_{in}} \, + \, \bm{stInt_{in}}}{1/effSt_{in}} \, - \, \frac{\bm{stExt_{out}} \, + \, \bm{stInt_{out}}}{effSt_{out}} $</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td><ul class="liste">
+<li><a href="../parameter_list/#Efficiency-1">storage efficiencies</a></li>
+<li><a href="../parameter_list/#Storage-self-discharge-1">storage self-discharge</a></li>
+<li><a href="../parameter_list/#Storage-inflow-1">storage inflow</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td><ul class="liste">
+<li><a href="../variables/#Charging-and-discharging-1">charging and discharging</a></li>
+<li><a href="../variables/#Storage-level-1">storage level</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h1 id="Dispatch-restrictions"><a class="docs-heading-anchor" href="#Dispatch-restrictions">Dispatch restrictions</a><a id="Dispatch-restrictions-1"></a><a class="docs-heading-anchor-permalink" href="#Dispatch-restrictions" title="Permalink"></a></h1><h3 id="Conversion-capacity-restriction"><a class="docs-heading-anchor" href="#Conversion-capacity-restriction">Conversion capacity restriction</a><a id="Conversion-capacity-restriction-1"></a><a class="docs-heading-anchor-permalink" href="#Conversion-capacity-restriction" title="Permalink"></a></h3><p>Ensures quantities converted comply with the operated conversion capacity.</p><p class="norm">
+The graph-based approach that allows to vary resolution by energy carrier  within the same model complicates the formulation of capacity constraints for conversion technologies. What kind of constraints are necessary is specified in the <code>capaRestr</code> of the technology <a href="../api/#AnyMOD.TechPart"><code>part object</code></a> (see <a href="https://arxiv.org/abs/2004.10184)">Göke (2020)</a> on how this is derived). Capacity constraints are either enforced on used or generated quantities. In the latter case, quantities have to be corrected for the respective efficiency since AnyMOD always denotes capacities <u>after efficiency</u>.
+</p>
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>inRestr</td>
+<td>outRestr</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="2"; style="text-align:center">$Ts_{exp}$, $Ts_{dis}$, $R_{dis}$, $Te$</td>
+</tr>
+<tr>
+<td><strong>instances</strong></td>
+<td colspan="2"; style="text-align:center"><ul class="liste">
+<li>required capacity restrictions according to <code>capaRestr</code> field of part</li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>formulation</strong></td>
+<td>$ \scriptstyle \frac{\bm{use} \, + \, \bm{stInt_{out}}}{ava_{conv}} \, \leq \, \bm{oprCapa_{conv}} $</td>
+<td>$ \scriptstyle \frac{\bm{gen} \, + \, \bm{stInt_{in}}}{eff_{conv} \, ava_{conv}} \, \leq \, \bm{oprCapa_{conv}} $</td>
+</tr>
+<tr>
+<td rowspan="2"><strong>parameter</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ul class="liste">
+<li><a href="../parameter_list/#Availability-1">conversion availability</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">
+</td>
+<td colspan="1"; style="text-align:center;padding-top:0px">
+<ul class="liste">
+<li><a href="../parameter_list/#Efficiency-1">conversion efficiency</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td colspan="2"; style="text-align:left;padding-left:10.25em"><ul class="liste">
+<li><a href="../variables/#Generation-and-use-1">generation and use</a></li>
+<li><a href="../variables/#Charging-and-discharging-1">charging and discharging</a></li>
+<li><a href="../variables/#Operated-capacity-1">operated conversion capacity</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h3 id="Storage-capacity-restriction"><a class="docs-heading-anchor" href="#Storage-capacity-restriction">Storage capacity restriction</a><a id="Storage-capacity-restriction-1"></a><a class="docs-heading-anchor-permalink" href="#Storage-capacity-restriction" title="Permalink"></a></h3><p>Ensures quantities stored comply with the operated storage-input, storage-output, storage-size capacity.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>stInRestr</td>
+<td>stOutRestr</td>
+<td>stSizeRestr</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="3"; style="text-align:center">$Ts_{exp}$, $Ts_{dis}$, $R_{dis}$, $Te$, $C$</td>
+</tr>
+<tr>
+<td><strong>instances</strong></td>
+<td colspan="3"; style="text-align:center"><ul class="liste">
+<li>dispatch resolution of carrier</li>
+<li>expansion time-steps of technology</li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>formulation</strong></td>
+<td>$ \scriptstyle \frac{\bm{stExt_{in}} \, + \, \bm{stInt_{in}}}{ava_{stIn}} \, \leq \, \bm{oprCapa_{stIn}} $</td>
+<td>$ \scriptstyle \frac{\bm{stExt_{out}} \, + \, \bm{stInt_{out}}}{ava_{stOut}} \, \leq \, \bm{oprCapa_{stOut}} $</td>
+<td>$ \scriptstyle \frac{\bm{stLvl}}{ava_{stOut}} \, \leq \, \bm{oprCapa_{stSize}} $</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td colspan="3"; style="text-align:center"><ul class="liste">
+<li><a href="../parameter_list/#Availability-1">storage availability</a></li>
+</ul></td>
+</tr>
+<tr>
+<td rowspan="2"><strong>variables</strong></td>
+<td colspan="3"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ul class="liste">
+<li><a href="../variables/#Operated-capacity-1">operated storage capacity</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">
+<ul class="liste">
+<li><a href="../variables/#Charging-and-discharging-1">charging and discharging</a></li>
+</ul>
+</td>
+<td colspan="1"; style="text-align:left;padding-top:0px">
+<ul class="liste">
+<li><a href="../variables/#Storage-level-1">storage level</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="3"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h3 id="Energy-ratio-restriction"><a class="docs-heading-anchor" href="#Energy-ratio-restriction">Energy ratio restriction</a><a id="Energy-ratio-restriction-1"></a><a class="docs-heading-anchor-permalink" href="#Energy-ratio-restriction" title="Permalink"></a></h3><p>Ensures used and generated quantities comply with the specified ratios.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>ratioEnerUse{Fix/Low/Up}</td>
+<td>ratioEnerGen{Fix/Low/Up}</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="2"; style="text-align:center">$Ts_{exp}$, $Ts_{dis}$, $R_{dis}$, $Te$, $C$, ($M$)</td>
+</tr>
+<tr>
+<td><strong>instances</strong></td>
+<td colspan="2"; style="text-align:center"><ul class="liste">
+<li><a href="../parameter_list/#Ratios-of-carrier-use-and-generation-1">ratios</a> defined</li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>formulation</strong></td>
+<td>$ \scriptstyle \bm{use} \; \begin{smallmatrix} = \\[0.5pt] \geq \\[2pt] \leq \end{smallmatrix} \; ratioEner^{use}_{fix/low/up} \sum \bm{use} $</td>
+<td>$ \scriptstyle \bm{gen} \; \begin{smallmatrix} = \\[0.5pt] \geq \\[2pt] \leq \end{smallmatrix} \; ratioEner^{gen}_{fix/low/up} \sum \bm{gen} $</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td colspan="2"; style="text-align:center">
+<ul class="liste">
+<li><a href="../variables/#Ratios-of-carrier-use-and-generation">generation and use ratios</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td colspan="2"; style="text-align:left;padding-left:8.25em">
+<ul class="liste">
+<li><a href="../variables/#Generation-and-use-1">generation and use</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h3 id="Exchange-capacity-restriction"><a class="docs-heading-anchor" href="#Exchange-capacity-restriction">Exchange capacity restriction</a><a id="Exchange-capacity-restriction-1"></a><a class="docs-heading-anchor-permalink" href="#Exchange-capacity-restriction" title="Permalink"></a></h3><p>Ensures exchanged quantities comply with the operated exchange capacity.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>excRestr</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{dis}$, $R_{from}$, $R_{to}$, $C$</td>
+</tr>
+<tr>
+<td><strong>instances</strong></td>
+<td><ul class="liste">
+<li>dispatch resolution of carrier and descendant carriers</li>
+<li>regions can exchange carrier</li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>formulation</strong></td>
+<td>$ \scriptstyle \sum \frac{\bm{exc}}{ava_{exc}} \, \leq \, \bm{oprCapa_{exc}} $</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td><ul class="liste">
+<li><a href="../parameter_list/#Exchange-availability-1">exchange availablity</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td><ul class="liste">
+<li><a href="../variables/#Exchange-1">exchange</a></li>
+<li><a href="../variables/#Operated-capacity-1">operated exchange capacity</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Exchange-1">exchange</a></td>
+</tr>
+</tbody>
+</table><h3 id="Trade-capacity-restriction"><a class="docs-heading-anchor" href="#Trade-capacity-restriction">Trade capacity restriction</a><a id="Trade-capacity-restriction-1"></a><a class="docs-heading-anchor-permalink" href="#Trade-capacity-restriction" title="Permalink"></a></h3><p>Ensures traded quantities comply with the specified trade capacity.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>trdBuyCap</td>
+<td>trdSellCap</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="2"; style="text-align:center">$Ts_{dis}$, $R_{dis}$, $C$, $id$</td>
+</tr>
+<tr>
+<td><strong>instances</strong></td>
+<td colspan="2"; style="text-align:center"><ul class="liste">
+<li><a href="../parameter_list/#Trade-price-1">trade price</a> defined</li>
+<li><a href="../parameter_list/#Trade-capacity-1">trade capacity</a> defined</li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>formulation</strong></td>
+<td>$ \scriptstyle \bm{trdBuy} \, \leq \, trdBuyCap $</td>
+<td>$ \scriptstyle \bm{trdSell} \, \leq \, trdSellCap $</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td colspan="2"; style="text-align:center"><ul class="liste">
+<li><a href="../parameter_list/#Trade-capacity-1">trade capacity</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td colspan="2"; style="text-align:left;padding-left:6.4em"><ul class="liste">
+<li><a href="../variables/#Buy-and-sell-1">buy and sell</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"><a href="../parts/#Trade-1">trade</a></td>
+</tr>
+</tbody>
+</table><h1 id="Capacity-expansion"><a class="docs-heading-anchor" href="#Capacity-expansion">Capacity expansion</a><a id="Capacity-expansion-1"></a><a class="docs-heading-anchor-permalink" href="#Capacity-expansion" title="Permalink"></a></h1><h3 id="Definition-of-installed-capacity"><a class="docs-heading-anchor" href="#Definition-of-installed-capacity">Definition of installed capacity</a><a id="Definition-of-installed-capacity-1"></a><a class="docs-heading-anchor-permalink" href="#Definition-of-installed-capacity" title="Permalink"></a></h3><p class="norm">
+Connects installed capacities to expansion variables and residual capacities.
+</p>
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>capaConv</td>
+<td><nobr>capaSt{In/Out/Size}</nobr></td>
+<td>capaExc</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+<td>$Ts_{exp}$, $R_{from}$, $R_{to}$, $C$</td>
+</tr>
+<tr>
+<td rowspan="3"><strong>instance</strong></td>
+<td colspan="3"; style="text-align:center;border-bottom:none;padding-bottom:0px">
+<ul class="liste">
+<li>superordinate dispatch resolution (usually years)</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td colspan="2"; style="text-align:center;border-right:none;border-top:none;border-bottom:none;padding-top:0px;padding-bottom:0px">
+<ul class="liste">
+<li>spatial expansion resolution of technology</li>
+</ul>
+</td>
+<td colspan="1"; rowspan="2"; style="text-align:center;border-right:none;padding-top:0px;padding-right:0.0px">
+<ul class="liste">
+<li>spatial expansion resolution of carrier</li>
+<li>regions can exchange carrier</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;padding-top:0px">
+<ul class="liste"; start="4">
+<li>if uses or generates carriers</li>
+</ul>
+</td>
+<td colspan="1"; style="text-align:center;padding-top:0px">
+<ul class="liste"; start="4">
+<li>each stored carrier</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>formulation</strong></td>
+<td colspan="3"; style="text-align:center">$ \scriptstyle \bm{capa_{t}} \, = \, resiCapa_{t} \, + \, \sum\limits_{t' \in (t \, + \, del, t \, +\,del \, + \, life]} \bm{exp_{t'}} $</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td colspan="3"; style="text-align:left;padding-left:18.5em"><ul class="liste">
+<li><a href="../parameter_list/#Residual-capacities-1">residual capacity</a></li>
+<li><a href="../parameter_list/#Technical-lifetime-1">technical lifetime</a></li>
+<li><a href="../parameter_list/#Construction-time-1">construction time</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td colspan="3"; style="text-align:left;padding-left:18.5em"><ul class="liste">
+<li><a href="../variables/#Installed-capacity-1">installed capacity</a></li>
+<li><a href="../variables/#Expansion-1">capacity expansion</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+<td style="text-align:center"><a href="../parts/#Exchange-1">exchange</a></td>
+</tr>
+</tbody>
+</table><h3 id="Decommissioning-of-operated-capacitiy"><a class="docs-heading-anchor" href="#Decommissioning-of-operated-capacitiy">Decommissioning of operated capacitiy</a><a id="Decommissioning-of-operated-capacitiy-1"></a><a class="docs-heading-anchor-permalink" href="#Decommissioning-of-operated-capacitiy" title="Permalink"></a></h3><p>Ensures operated capacities comply with installed capacities.</p><p class="norm">
+Decommissioning behaviour is determined by the <code>decomm</code> argument of the <a href="../model_object">model constructor</a>. For <code>none</code>, the equations listed here are not enforced. Instead operated and installed capacities are identical. When the argument is set to <code>recomm</code>, only the first equation that limits operated capacities to installed capacities is enforced.
+</p>
+<p class="norm">
+Lastly, for <code>decomm</code> both equations apply. The second equation will then ensure, that once decommissioned capacities cannot be re-decommissioned again. The expression $\displaystyle \Delta Resi_{+}$ in the equation denotes any increase of residual capacities from $\displaystyle t-1$ to $\displaystyle  t$.
+</p>
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>oprCapaConv</td>
+<td style="padding-right:0.52em"><nobr>oprCapaSt{In/Out/Size}</nobr></td>
+<td>oprCapaExc</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+<td>$Ts_{exp}$, $R_{from}$, $R_{to}$, $C$</td>
+</tr>
+<tr>
+<td rowspan="3"><strong>instance</strong></td>
+<td colspan="3"; style="text-align:center;border-bottom:none;padding-bottom:0px">
+<ul class="liste">
+<li>superordinate dispatch resolution (usually years)</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td colspan="2"; style="text-align:center;border-right:none;border-top:none;border-bottom:none;padding-top:0px;padding-bottom:0px">
+<ul class="liste">
+<li>spatial expansion resolution of technology</li>
+</ul>
+</td>
+<td colspan="1"; rowspan="2"; style="text-align:center;border-right:none;padding-top:0px;padding-right:0px">
+<ul class="liste">
+<li>spatial expansion resolution of carrier</li>
+<li>regions can exchange carrier</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;padding-top:0px;padding-right:0.52em">
+<ul class="liste"; start="4">
+<li>if uses or generates carriers</li>
+</ul>
+</td>
+<td colspan="1"; style="text-align:center;padding-top:0px">
+<ul class="liste"; start="4">
+<li>each stored carrier</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td rowspan = "2"><strong>formulation</strong></td>
+<td colspan = "3"; style="text-align:center;border-bottom:none">$ \scriptstyle \bm{oprCapa} \, \leq \,  \bm{capa}$</td>
+</tr>
+<tr>
+<td colspan = "3"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">$ \scriptstyle \bm{oprCapa_{t}} \, \leq \, \bm{oprCapa_{t\,-\,1}} \, + \, \bm{exp_{t}} \, + \, \Delta Resi_{+} $</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td colspan="3"; style="text-align:left;padding-left:18.1em"><ul class="liste">
+<li><a href="../parameter_list/#Residual-capacities-1">residual capacity</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td colspan="3"; style="text-align:left;padding-left:18.1em"><ul class="liste">
+<li><a href="../variables/#Operated-capacity-1">operated capacity</a></li>
+<li><a href="../variables/#Installed-capacity-1">installed capacity</a></li>
+<li><a href="../variables/#Expansion-1">capacity expansion</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+<td style="text-align:center"><a href="../parts/#Exchange-1">exchange</a></td>
+</tr>
+</tbody>
+</table><h1 id="Cost-equations"><a class="docs-heading-anchor" href="#Cost-equations">Cost equations</a><a id="Cost-equations-1"></a><a class="docs-heading-anchor-permalink" href="#Cost-equations" title="Permalink"></a></h1><p class="norm">
+Within the cost equations the discount factor is used to discount costs to the present. The discount factor for a year $t$ is computed from the <a href="../parameter_list/#Discount-rate-1">discount rates</a> of the current and the previous years as follows:
+</p>
+<p class="norm">
+$\scriptstyle discFac_{t} = \displaystyle \prod_{t' = t_{0}}^{t}(1 \, + \, rateDisc_{t'})^{-1}$
+</p><h3 id="Expansion-cost-equation"><a class="docs-heading-anchor" href="#Expansion-cost-equation">Expansion cost equation</a><a id="Expansion-cost-equation-1"></a><a class="docs-heading-anchor-permalink" href="#Expansion-cost-equation" title="Permalink"></a></h3><p>Determines costs of capacity expansion.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>costExp{Conv,StIn,StOut,StSize}</td>
+<td>costExp{Exc}</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{sup}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{sup}$, $C$</td>
+</tr>
+<tr>
+<td rowspan="2"><strong>formulation</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none">
+$ \scriptstyle \bm{costExp\{...\}} \, = \, \sum discFac \, \cdot \,  ann\{...\} \, \cdot \,  \bm{exp\{...\}} $
+</td>
+</tr>
+<tr>
+<td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">
+$ \scriptstyle ann\{...\} \, = \, costExp\{...\} \, \cdot \, \frac{rateExp\{...\} \, (1\,+\,rateExp\{...\})^{lifeEco\{...\}}}{(1\,+\,rateExp\{...\})^{lifeEco\{...\}}\,-\,1}$
+</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td colspan="2"; style="text-align:left;padding-left:8em">
+<ul class="liste">
+<li><a href="../parameter_list/#Discount-rate-1">discount rate</a></li>
+<li><a href="../parameter_list/#Interest-rate-1">interest rate</a></li>
+<li><a href="../parameter_list/#Expansion-cost-1">expansion cost</a></li>
+<li><a href="../parameter_list/#Economic-lifetime-1">economic lifetime</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td colspan="2"; style="text-align:left;padding-left:8em">
+<ul class="liste">
+<li><a href="../variables/#Expansion-1">expansion</a></li>
+<li><a href="../variables/#Expansion-cost-1">expansion cost</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="3"; style="text-align:center"><a href="../parts/#Objective-1">objective</a></td>
+</tr>
+</tbody>
+</table><h3 id="Operating-cost-equation"><a class="docs-heading-anchor" href="#Operating-cost-equation">Operating cost equation</a><a id="Operating-cost-equation-1"></a><a class="docs-heading-anchor-permalink" href="#Operating-cost-equation" title="Permalink"></a></h3><p>Determines costs of operating capacity.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>costOpr{Conv,StIn,StOut,StSize}</td>
+<td>costOpr{Exc}</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{sup}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{sup}$, $C$</td>
+</tr>
+<tr>
+<td><strong>formulation</strong></td>
+<td colspan="2"; style="text-align:center">
+$ \scriptstyle \bm{costOpr\{...\}} \, = \, \sum discFac \, \cdot \,  costOpr\{...\} \, \cdot \,  \bm{oprCapa\{...\}} $
+</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td colspan="2"; style="text-align:left;padding-left:8em">
+<ul class="liste">
+<li><a href="../parameter_list/#Discount-rate-1">discount rate</a></li>
+<li><a href="../parameter_list/#Operating-cost-1">operating cost</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td colspan="2"; style="text-align:left;padding-left:8em">
+<ul class="liste">
+<li><a href="../variables/#Operated-capacity-1">operated capacity</a></li>
+<li><a href="../variables/#Operating-cost-1">operating cost</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="3"; style="text-align:center"><a href="../parts/#Objective-1">objective</a></td>
+</tr>
+</tbody>
+</table><h3 id="Variable-cost-equation"><a class="docs-heading-anchor" href="#Variable-cost-equation">Variable cost equation</a><a id="Variable-cost-equation-1"></a><a class="docs-heading-anchor-permalink" href="#Variable-cost-equation" title="Permalink"></a></h3><p class="norm">
+Determines costs associated with quantities dispatched. Costs incurred by <a href="../parameter_list/#Emission-price-1">emission prices</a> are included in <code>costVarUse</code>.
+</p>
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>costVar{Use,Gen}</td>
+<td>costVar{StIn,StOut}</td>
+<td>costVar{Exc}</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{sup}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{sup}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{sup}$, $C$</td>
+</tr>
+<tr>
+<td rowspan="2"><strong>formulation</strong></td>
+<td colspan="3"; style="text-align:center;border-bottom:none;padding-bottom:0px">
+$ \scriptstyle \bm{costVar\{...\}} \, = \, \sum discFac \, \cdot \,  costVar\{...\} \, \cdot \,  \{use,gen,stIn,stOut,exc\} \, \cdot \, 10^3 $
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">
+$ \scriptstyle + \, \sum emFac \, \cdot \,  emPrc \, \cdot \, \bm{use} \, \cdot \,  10^3$
+</td>
+<td colspan="2"; style="text-align:left;padding-top:0px">
+</td>
+</tr>
+<tr>
+<td rowspan="3"><strong>parameter</strong></td>
+<td colspan="3"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ul class="liste">
+<li><a href="../parameter_list/#Discount-rate-1">discount rate</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0px;border-bottom:none;padding-bottom:0.1875em">
+<ul class="liste">
+<li><a href="../parameter_list/#Variable-cost-1">variable cost of technologies</a></li>
+</ul>
+</td>
+<td colspan="1"; style="text-align:left;padding-top:0px;border-bottom:none">
+<ul class="liste">
+<li><a href="../parameter_list/#Exchange-cost-1">exchange cost</a></li>
+</ul>
+</td>
+</tr>
+
+<tr>
+<td style="text-align:center;border-right:none;border-top:none;padding-top:0px">
+<ul class="liste">
+<li><a href="../parameter_list/#Emission-factor-1">emission factor</a></li>
+<li><a href="../parameter_list/#Emission-price-1">emission price</a></li>
+</ul>
+</td>
+<td></td>
+<td></td>
+</tr>
+
+<tr>
+<td rowspan="2"><strong>variables</strong></td>
+<td colspan="3"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ul class="liste">
+<li><a href="../variables/#Variable-cost-1">variable cost</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:left;border-right:none;border-top:none;padding-top:0px">
+<ul class="liste">
+<li><a href="../variables/#Generation-and-use-1">generation and use</a></li>
+</ul>
+</td>
+<td colspan="1"; style="text-align:left;border-right:none;border-top:none;padding-top:0px">
+<ul class="liste">
+<li><a href="../variables/#Charging-and-discharging-1">charging and discharging</a></li>
+</ul>
+</td>
+<td colspan="1"; style="text-align:left;padding-top:0px">
+<ul class="liste">
+<li><a href="../variables/#Exchange-quantities-1">exchange quantities</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="3"; style="text-align:center"><a href="../parts/#Objective-1">objective</a></td>
+</tr>
+</tbody>
+</table><h3 id="Trade-cost-equation"><a class="docs-heading-anchor" href="#Trade-cost-equation">Trade cost equation</a><a id="Trade-cost-equation-1"></a><a class="docs-heading-anchor-permalink" href="#Trade-cost-equation" title="Permalink"></a></h3><p>Determines costs and revenues from buying or selling carriers on an external market.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>costTrdBuy</td>
+<td>costTrdSell</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="2"; style="text-align:center">$Ts_{sup}$, $R_{exp}$, $C$</td>
+</tr>
+<tr>
+<td rowspan="2"><strong>formulation</strong></td>
+<td style="text-align:left;border-bottom:none;padding-bottom:0px">
+$ \scriptstyle \bm{costTrdBuy} \, = $
+</td>
+<td style="text-align:left;border-bottom:none;padding-bottom:0px">
+$ \scriptstyle \bm{costTrdSell} \, =  $
+</td>
+</tr>
+<tr>
+<td style="text-align:right;border-right:none;border-top:none;padding-top:0px">
+$ \scriptstyle \sum discFac \, \cdot \,  trdBuyPrc \, \cdot \,  \bm{trdBuy} \, \cdot \, 10^3  $
+</td>
+<td style="text-align:right;border-top:none;padding-top:0px">
+$ \scriptstyle \sum discFac \, \cdot \,  trdSellPrc \, \cdot \,  \bm{trdSell} \, \cdot \, 10^3 $
+</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td colspan="2"; style="text-align:left;padding-left:13.2em">
+<ul class="liste">
+<li><a href="../parameter_list/#Discount-rate-1">discount rate</a></li>
+<li><a href="../parameter_list/#Trade-price-1">trade price</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td colspan="2"; style="text-align:left;padding-left:13.2em">
+<ul class="liste">
+<li><a href="../variables/#Buy-and-sell-1">buy and sell</a></li>
+<li><a href="../variables/#Trade-cost-1">trade cost</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Objective-1">objective</a></td>
+</tr>
+</tbody>
+</table><h3 id="Curtailment-and-loss-of-load-cost-equation"><a class="docs-heading-anchor" href="#Curtailment-and-loss-of-load-cost-equation">Curtailment and loss-of-load cost equation</a><a id="Curtailment-and-loss-of-load-cost-equation-1"></a><a class="docs-heading-anchor-permalink" href="#Curtailment-and-loss-of-load-cost-equation" title="Permalink"></a></h3><p>Determines costs of curtailment and unmet demand.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>costCrt</td>
+<td>costLss</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="2"; style="text-align:center">$Ts_{sup}$, $R_{exp}$, $C$</td>
+</tr>
+<tr>
+<td rowspan="2"><strong>formulation</strong></td>
+<td style="text-align:left;border-bottom:none;padding-bottom:0px">
+$ \scriptstyle \bm{costCrt} \, = $
+</td>
+<td style="text-align:left;border-bottom:none;padding-bottom:0px">
+$ \scriptstyle \bm{costLss} \, =  $
+</td>
+</tr>
+<tr>
+<td style="text-align:right;border-right:none;border-top:none;padding-top:0px">
+$ \scriptstyle \sum discFac \, \cdot \,  costCrt \, \cdot \,  \bm{crt} \, \cdot \, 10^3  $
+</td>
+<td style="text-align:right;border-top:none;padding-top:0px">
+$ \scriptstyle \sum discFac \, \cdot \,  costLss \, \cdot \,  \bm{lss} \, \cdot \, 10^3 $
+</td>
+</tr>
+<tr>
+<td><strong>parameter</strong></td>
+<td colspan="2"; style="text-align:left;padding-left:5.3em">
+<ul class="liste">
+<li><a href="../parameter_list/#Discount-rate-1">discount rate</a></li>
+<li><a href="../parameter_list/#Cost-of-curtailment-and-loss-of-load-1">cost of curtailment and loss of load</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>variables</strong></td>
+<td colspan="2"; style="text-align:left;padding-left:5.3em">
+<ul class="liste">
+<li><a href="../variables/#Curtailment-and-loss-of-load-1">curtailment and loss-of-load</a></li>
+<li><a href="../variables/#Curtailment-and-loss-of-load cost-1">curtailment and loss-of-load cost</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Objective-1">objective</a></td>
+</tr>
+</tbody>
+</table><h1 id="Limiting-constraints"><a class="docs-heading-anchor" href="#Limiting-constraints">Limiting constraints</a><a id="Limiting-constraints-1"></a><a class="docs-heading-anchor-permalink" href="#Limiting-constraints" title="Permalink"></a></h1>
+<p class="norm">
+Limiting constraints are largely shaped by the corresponding limit parameters on <a href="../parameter_list/#Limits-on-quantities-dispatched">quantities dispatched</a>, <a href="../parameter_list/#Limits-on-expansion-and-capacity">expansion and capacity</a>, and by the <a href="../parameter_list/#Emission-limit">emission limit</a>.
+</p>
+
+<p class="norm">
+The name of the constraint will correspond to the name of the respective parameter. Dimension and formulation depend on the way parameter data was provided, as explained <a href="../parameter_list/#Limits-on-quantities-dispatched">here</a>. Lastly, all constraints are stored in the <a href="../parts/#Limit">limit part</a>.
+</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../variables/">« Variables</a><a class="docs-footer-nextpage" href="../error/">Error handling »</a></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Friday 7 August 2020 00:25">Friday 7 August 2020</span>. Using Julia version 1.3.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
