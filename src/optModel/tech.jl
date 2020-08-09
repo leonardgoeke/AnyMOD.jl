@@ -584,7 +584,7 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},r_dic::Dic
 	va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :in => (:use,:stIntOut), :out => (:gen,:stIntIn))
 
 	# loop over all variables that are subject to any type of limit (except emissions)
-	signLim_dic = Dict(:Up => :smaller, :Low => :greater, :Fix => :equal)
+	signLim_dic = Dict(:Up => :greater, :Low => :smaller, :Fix => :equal)
 
 	# loop over parameters for conversion ratios
 	for par in filter(x -> occursin("ratioEner",string(x)),collectKeys(keys(parToLim_dic)))
@@ -651,26 +651,40 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},r_dic::Dic
 		for limVa in limVa_arr, lim in parToLim_dic[par]
 
 			# get variables for denominator
-			cns_df = rename(matchSetParameter(part.var[limVa[1]],part.par[Symbol(par,lim)],anyM.sets),:var => :denom)
+			cns_df = copy(part.var[limVa[1]])
+
+			# adjustments for flh and cycling restrictions
+			if !capaRatio_boo
+				# aggregate to dispatch regions
+				cns_df[!,:R_dis] = map(x -> r_dic[x,part.balLvl.ref[2]][1],cns_df[!,:R_exp])
+				select!(cns_df,Not([:R_exp]))
+				cns_df = combine(groupby(cns_df,intCol(cns_df)), :var => (x -> sum(x)) => :var)
+				# extend to scenarios
+				cns_df[!,:scr] = map(x -> anyM.supTs.scr[x], cns_df[!,:Ts_disSup])
+				cns_df = flatten(cns_df,:scr)
+			end
+
+			# matches variables with parameters denominator
+			cns_df = rename(matchSetParameter(cns_df,part.par[Symbol(par,lim)],anyM.sets),:var => :denom)
 
 			# get variables for nominator
 			rlvTop_arr =  limVa[2] in keys(va_dic) ? intersect(keys(part.carrier),va_dic[limVa[2]]) : (limVa[2],)
 
+			# use out instead of in for flh of conversion technologies, if technology has no conversion input
 			if isempty(rlvTop_arr) && rat == :flhConv
 				rlvTop_arr = intersect(keys(part.carrier),(:stIntIn))
 			end
 
 			top_df = vcat(map(x -> part.var[x],rlvTop_arr)...)
 
-			# expand to expansion regions and change column name for cns_df, if nominator is a dispatch variable
-			if !capaRatio_boo
-				top_df[!,:R_exp] = map(x -> r_dic[x,part.balLvl.exp[2]],top_df[!,:R_dis])
-				top_df = flatten(select(top_df,Not([:R_dis])),:R_exp)
-				cns_df = rename(cns_df,:Ts_disSup => :Ts_dis)
-			end
+			# rename column for aggregation
+			if !capaRatio_boo cns_df = rename(cns_df,:Ts_disSup => :Ts_dis) end
 
 			# connect denominator and nominator
 			cns_df[!,:nom] =  aggDivVar(top_df, cns_df, tuple(intCol(cns_df)...), anyM.sets)
+
+			# name column back again
+			if !capaRatio_boo cns_df = rename(cns_df,:Ts_dis => :Ts_disSup) end
 
 			# create constraint
 			cns_df[!,:cnsExpr] = map(x -> x.val * x.denom - x.nom, eachrow(cns_df))
