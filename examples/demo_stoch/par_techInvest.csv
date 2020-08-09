@@ -42,5 +42,7 @@ all,West,WestNorth,gasStorage,,,capaStSizeResi,70000,
 all,West,WestSouth,gasStorage,,,capaStSizeResi,80000,
 ,,,solar,rooftop,photovoltaic,stOutToStInFix,1,
 ,,,solar,rooftop,solarThermal,stOutToStInFix,1,
-all,East,,,,,capaConvLow,250,
-all,West,,,,,capaConvLow,100,
+,,,solar,rooftop,photovoltaic,sizeToStInLow,0.5,sets range for e to p ratio
+,,,solar,rooftop,solarThermal,sizeToStInLow,0.5,sets range for e to p ratio
+,,,solar,rooftop,photovoltaic,sizeToStInUp,10,sets range for e to p ratio
+,,,solar,rooftop,solarThermal,sizeToStInUp,4,sets range for e to p ratio
