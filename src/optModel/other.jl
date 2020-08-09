@@ -249,7 +249,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		for lim in varToPar_dic[va]
 			par_obj = copy(partLim.par[Symbol(va,lim)])
 
-			if va in (:capaExc,:oprCapaExc) && :R_a in namesSym(par_obj.data) && :R_b in namesSym(par_obj.data)
+			if va in (:capaExc,:insCapaExc) && :R_a in namesSym(par_obj.data) && :R_b in namesSym(par_obj.data)
 				par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_a => :R_b,:R_b => :R_a))
 			end
 			agg_tup = tuple(intCol(par_obj.data)...)

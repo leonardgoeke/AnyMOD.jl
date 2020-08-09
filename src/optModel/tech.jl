@@ -205,8 +205,15 @@ end
 function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple},anyM::anyModel,ratioVar_dic::Dict{Symbol,Pair{String,String}} = Dict{Symbol,Pair{String,String}}())
 	for expVar in sort(collectKeys(keys(prep_dic)))
 		varMap_tup = prep_dic[expVar]
+		# determines scaling factor
+		if occursin("exp",string(expVar)) || occursin("insCapa",string(expVar))
+			scaFac_fl = anyM.options.scaFac.insCapa
+		else
+			scaFac_fl = anyM.options.scaFac.capa
+		end
+
 		# create dataframe of capacity or expansion variables by creating the required capacity variables and join them with pure residual values
-		var_df = createVar(varMap_tup.var,string(expVar),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
+		var_df = createVar(varMap_tup.var,string(expVar),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = scaFac_fl)
 		if !isempty(varMap_tup.resi)
 			if expVar == :capaExc # flips and repeats entries for directed exchange variabes before moving on
 				var_df = filter(r -> r.dir,var_df) |> (x -> vcat(filter(r -> !r.dir,var_df),vcat(x,rename(x,replace(namesSym(x),:R_to => :R_from, :R_from => :R_to)))))
