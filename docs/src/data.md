@@ -21,23 +21,27 @@ ul.liste {
 
 # Data files
 
-sdfdsfsdf, wie reporting, printObject und getDuals?
+AnyMOD includes several functions to obtain the results of a solved model.
 
-# Aggregated results
+# Analysed results
+
+Different analysis can be printed with the `reportResults` functions depending on the `reportType` keyword.
 
 ```julia
-reportResults(reportType::Symbol,anyM::anyModel; rtnOpt::Tuple = (:csv,))
+reportResults(reportType::Symbol, model_object::anyModel; rtnOpt::Tuple = (:csv,))
 ```
 
-- `:csv`: asdf
-- `:raw`: asdf
-- `:rawDf`: sdf
-- `:csvDf`: as
+The keyword argument `rtnOpt` controls the output format. Available options are:
+
+- `:csv`: writes a "readable" `.csv` file
+- `:csvDf`: returns the same "readable" data as a DataFrame
+- `:raw`: writes a `.csv` file with "raw" data, this means sets are not indicated by their name, but their internal id
+- `:rawDf`: returns the same "raw" data as a DataFrame
 
 
 ### Summary
 
-mention dimensions wrtSgn = true
+Using the `reportType` keyword `:summary` will provide a general overview of results. If the optional argument `wrtSgn` is set to `true`, output quantities (e.g. use or storage input) are given a negative sign. The table below lists all variables included.
 
 ```@raw html
 <table class="tabelle2">
@@ -161,7 +165,7 @@ mention dimensions wrtSgn = true
 </td>
 </tr>
 </tbody>
-</table><h3 id="Exchange"><a class="docs-heading-anchor" href="#Exchange">Exchange</a><a id="Exchange-1"></a><a class="docs-heading-anchor-permalink" href="#Exchange" title="Permalink"></a></h3><p>mention dimension</p><table class="tabelle2">
+</table><h3 id="Exchange"><a class="docs-heading-anchor" href="#Exchange">Exchange</a><a id="Exchange-1"></a><a class="docs-heading-anchor-permalink" href="#Exchange" title="Permalink"></a></h3><p>The keyword <code>:exchange</code> gives detailed results on exchange capacities and quantities. Again, reported variables are listed below.</p><table class="tabelle2">
 <tbody>
 <tr>
 <td><strong>explanation</strong></td>
@@ -206,14 +210,123 @@ mention dimensions wrtSgn = true
 ### Costs
 
 ```@raw html
-siehe kosten variablen <a href="../variables/#Costs">cost</a>
+The keyword <code>:costs</code> provides the values of all <a href="../variables/#Costs">cost variables</a>. All costs are provided in million Euros.
 ```
 
 # Time-series
 
+The `reportTimeSeries` function writes a table with the values of all elements occuring in the energy balance of a respective `carrier`.
+
+```julia
+reportTimeSeries(carrier::Symbol, model_object::anyModel)
+```
+
+Optional arguments include:
+
+```@raw html
+<table class="tabelle2">
+<tbody>
+<tr>
+<td><strong>argument</strong></td>
+<td><strong>explanation</strong></td>
+<td><strong>default</strong></td>
+</tr>
+
+
+
+<tr>
+<td><code>filterFunc</code></td>
+<td>
+<ul class="liste">
+<li>function to filter certain time-series data</li>
+<li>for example <code>x -> x.R_dis == 1</code> will only provide time-series data for the region with id 1 (see <br> documentation of <a href="../api/#AnyMOD.Tree"><code>tree objects</code></a> on how to obtain ids)</li>
+</ul>
+</td>
+<td><code>x -> true</code></td>
+</tr>
+
+<tr>
+<td><code>unstck</code></td>
+<td>
+<ul class="liste">
+<li>controls if data is provided as an unstacked table or in pivot format</li>
+</ul>
+</td>
+<td><code>true</code></td>
+</tr>
+
+<tr>
+<td><code>signVar</code></td>
+<td>
+<ul class="liste">
+<li>specifies groups of variables to write to output table</li>
+<li><code>:in</code> refers to energy inputs (e.g. <a href="../variables/#Generation-and-use-1">generated</a> or <a href="../variables/#Buy-and-sell-1">bought</a> quantities) and <code>:out</code> refers to energy out- <br> puts (e.g. <a href="../variables/#Generation-and-use-1">used</a>, <a href="../parameter_list/#Demand-1">demanded</a>, or  <a href="../variables/#Buy-and-sell-1">sold</a> quantities)</li>
+</ul>
+</td>
+<td><code>(:in,:out)</code></td>
+</tr>
+
+<tr>
+<td><code>mergeVar</code></td>
+<td>
+<ul class="liste">
+<li>if set to <code>false</code> results for energy in- and output are written to separate files</li>
+</ul>
+</td>
+<td><code>true</code></td>
+</tr>
+
+<tr>
+<td><code>minVal</code></td>
+<td>
+<ul class="liste">
+<li>threshold for values to be included</li>
+<li>useful to filter out really small but non-zero values that result from using Barrier without Crossover</li>
+</ul>
+</td>
+<td><code>1e-3</code></td>
+</tr>
+
+<tr>
+<td><code>rtnOpt</code></td>
+<td>
+<ul class="liste">
+<li>controls the output format as documentated for <a href="#Analysed-results">Analysed results</a></li>
+</ul>
+</td>
+<td><code>(:csv,)</code></td>
+</tr>
+
+
+
+</tbody>
+</table>
+```
+
+The
+
 # Individual elements
 
+```@raw html
+<p class="norm">
+In addition to the <code>reportResults</code> and <code>reportTimeSeries</code> that aggregate various model elements and report on them, individual variables or constraints can also be printed directly. In this case, the DataFrames used to store variables and constraints within the <a href="../api/#AnyMOD.TechPart"><code>model part</code></a> objects serve as inputs.
+</p>
+```
 
-### `printObject`
+The `printObject` function writes a copy of the respective inputted DataFrame, but replaces the internal node ids with their written name.  
+```julia
+printObject(element::DataFrame, model_object::anyModel)
+```
+For variables, the table will provide their value and for constraints the corresponding constraint expression.
 
-### `printDuals`
+
+The `printDuals` function works analogously, but returns the duals or shadow prices for the respective elements.  
+```julia
+printDuals(element::DataFrame, model_object::anyModel)
+```
+
+```@raw html
+<p class="norm">
+For both functions the optional arguments <code>filterFunc</code> and <code>rtnOpt</code> as introduced for <a href="#Analysed-results">Analysed results</a> and <a href="#Time-series">Time series</a> are available. In addition, the argument <code>fileName</code> can be used to specify the name of the output file.
+</p>
+```

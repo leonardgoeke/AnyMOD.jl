@@ -20,18 +20,18 @@ ul.liste {
 ```
 # Error handling
 
-
+To report on errors during model initialization and construction, status reports are printed into the console and a detailed report is written to the output directory. In the report are three different types of entries:
 
 ```@raw html
 <ul class="liste">
-<li><p style="color:rgb(0,188,0);font-weight:bold">green</p></li>
-<li><p style="color:rgb(240,237,27);font-weight:bold">yellow</p></li>
-<li><p style="color:rgb(205,49,49);font-weight:bold">red</p></li>
+<li><span style="color:rgb(0,188,0);font-weight:bold">green</span>: information on some automated modelling decision</li>
+<li><span style="color:rgb(240,237,27);font-weight:bold">yellow</span>: some aspects of the model setup look suspicious</li>
+<li><span style="color:rgb(205,49,49);font-weight:bold">red</span>: current model setup contains logical inconsistencies and will lead to an infeasible model</li>
 </ul>
-<br>
 
-<a href="../parameter_list/#Emission-factor-1">emission factor</a>
-<br>
+<p class="norm">
+Entries of the third kind will throw an error and cause termination. If for example a wrong name is provided for the <a href="../parameter_list/#Emission-factor-1">emission factor</a> parameter in <a href="https://github.com/leonardgoeke/AnyMOD.jl/blob/master/examples/demo/par_emissions.csv"><code>par_emissions.csv</code></a>, the following reporting file results:
+</p>
 
 <table class="tabelle2">
 <tbody>
@@ -61,4 +61,11 @@ ul.liste {
 </tr>
 </tbody>
 </table>
+
+<p class="norm">
+Optional arguments of the <a href="../model_object">model constructor</a> can be set to values between 1 and 3 to adjust the frequency of reporting:
+</p>
 ```
+- `reportLvl`: frequency of writing updates to the console
+- `errWrtLvl`: frequency of writing to the report file
+- `errCheckLvl`: frequency of checking for errors

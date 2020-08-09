@@ -3,9 +3,9 @@
 """
 Set the objective of the model's underlying optimization problem.
 ```julia
-setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyModel)
+setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol}, model_object::anyModel)
 ```
-`obj_dic` is a key-word argument that specifies the respective objective. To enable multi-criteria optimization, it can also be a dictionary assigning a weight to each objective. So far, the only supported key-word is `costs`.
+`obj_dic` is a keyword argument that specifies the respective objective. To perform a multi-criteria optimization, it can also be a dictionary with the keywords as keys and weights as values. So far, the only supported key-word is `:costs`.
 """
 function setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyModel,minimize::Bool=true)
 

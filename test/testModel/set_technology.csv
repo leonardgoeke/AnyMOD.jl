@@ -1,0 +1,16 @@
+technology_1,technology_2,technology_3,mode,carrier_conversion_in,carrier_conversion_out,carrier_stored_in,carrier_stored_out,technology_type,region_disaggregate,region_expansion,timestep_expansion
+wind,,,,,electricity,,,mature,yes,1,1
+solar,openspace,,,,electricity,,,mature,yes,2,1
+solar,rooftop,photovoltaic,,,electricity,,electricity,mature,yes,2,1
+solar,rooftop,solarThermal,,,heat,,heat,mature,yes,2,1
+gasPlant,ccgt,ccgtNoCHP,,gas,electricity,,,stock,no,2,1
+gasPlant,ccgt,ccgtCHP,moreHeat; moreElec,gas,electricity; districtHeat,,,mature,no,2,1
+gasPlant,ocgt,,,gas,electricity,,,mature,no,2,1
+coalPlant,,,,coal,electricity; districtHeat,,,stock,no,2,1
+heatpump,,,,electricity,heat,,,mature,no,2,1
+gasStorage,,,,,,gas,gas,stock,no,2,1
+gasBoiler,,,,gas,heat,,,mature,no,2,1
+hydro,,,,,,electricity,electricity,stock,no,2,1
+electrolysis,,,,electricity,hydrogen,,,emerging,no,2,1
+methanation,,,,hydrogen,synthGas,,,emerging,no,2,1
+fuelCell,,,,hydrogen,electricity; districtHeat,,,emerging,no,2,1

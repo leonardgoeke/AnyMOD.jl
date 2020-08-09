@@ -21,21 +21,29 @@ ul.liste {
 ```
 # Variables
 
-erklärung grundsätzliches format, dataframe mit werten und ids, erklären wie das ganze ausgegeben werden kann, hinweis, dass zelle nicht einfach eine JuMP variable sondern eine expression enthält
+In the following, all variables used in AnyMOD are listed. Information includes the name used throughout the model, the variables' unit, and its dimensions according to the symbols introduced in [Sets and Mappings](@ref). Also, it is specified what determines the instances a variable is actually created for, in which constraints a variable appears, and the model part it is assigned to.
+```@raw html
+<p class="norm">
+To increase performance, AnyMOD stores variables within DataFrames instead of using JuMPs native containers. Each variable dimension is represented by a column and integers in these columns relate to nodes within the hierarchical trees of sets (see <a href="../data/#printObject"><code>printObject</code></a> on how to export these in a readable format). An additional <code>var</code> column stores the corresponding variables. These variables are not JuMP variable objects, but JuMP expressions, that already include <a href="../performance/#Scaling">scaling factors</a>.
+</p>
+<p class="norm">
+All variables are defined positive. New variables beyond those listed here can freely be added to a model by using standard JuMP commands.
+</p>
+```
 
-all positive defined as positive
 
-note: anyMOD benutzt nicht die jump container, da variablen extrem sparse highly inefficient
 
 # Dispatch of technologies
 
-[Technologies](@ref)
-
 ### Generation and use
 
-sdf, not all modes relevant for each technology, no variables für ava gleich 0
+Quantities generated and used by technology.
 
 ```@raw html
+<p class="norm">
+To reduce model size variables are not created, if the <a href="../parameter_list/#Availability-1">availability</a> is zero. Also, mode dependant variables are only created where required. For example, for a technology with mode specific <a href="../parameter_list/#Ratios-of-carrier-use-and-generation-1">generation ratios</a>, different variables for each mode are only created for <code>gen</code>, but not for <code>use</code>.  
+</p>
+
 <table class="tabelle">
 <tbody>
 <tr>
@@ -82,7 +90,13 @@ sdf, not all modes relevant for each technology, no variables für ava gleich 0
 
 ### Charging and discharging
 
+Externally and internally charged and discharged quantities (see [Technologies](@ref) for explanation).
+
 ```@raw html
+<p class="norm">
+To reduce model size variables are not created, if the <a href="../parameter_list/#Availability-1">availability</a> is zero. Also, mode dependant variables are only created where required.  
+</p>
+
 <table class="tabelle">
 <tbody>
 <tr>
@@ -139,7 +153,13 @@ sdf, not all modes relevant for each technology, no variables für ava gleich 0
 
 ### Storage level
 
+Quantity stored by storage system.
+
 ```@raw html
+<p class="norm">
+To reduce model size variables are not created, if the <a href="../parameter_list/#Availability-1">availability</a> is zero. Also, mode dependant variables are only created where required.  
+</p>
+
 <table class="tabelle">
 <tbody>
 <tr>
@@ -185,10 +205,12 @@ sdf, not all modes relevant for each technology, no variables für ava gleich 0
 
 ### Exchange quantities
 
-directed!
-explain what determines potential interconnection
+Quantity exchanged from one region to the other. The variable is directed meaning it only denotes exchange into one direction.
 
 ```@raw html
+<p class="norm">
+Variables are only created between regions that can actually exchange energy, which depends on the definition of <a href="../parameter_list/#Residual-capacities-1">residual capacity</a>.
+</p>
 <table class="tabelle">
 <tbody>
 <tr>
@@ -207,7 +229,7 @@ explain what determines potential interconnection
 <td><strong>instances</strong></td>
 <td><ul class="liste">
 <li>dispatch resolution of carrier</li>
-<li>regions can exchange carrier</li>
+<li><a href="../parameter_list/#Residual-capacities-1">residual capacity</a> between regions defined</li>
 </ul></td>
 </tr>
 <tr>
@@ -229,6 +251,8 @@ explain what determines potential interconnection
 ```
 
 ### Buy and sell
+
+Quantities bought or sold on an external market.
 
 ```@raw html
 <table class="tabelle">
@@ -273,7 +297,8 @@ explain what determines potential interconnection
 
 ### Curtailment and loss-of-load
 
-fully analogous to trade buy and sell, just created to faciliate reporting since aims to represent other aspects
+Curtailed quantities and unmet demand.
+
 
 ```@raw html
 <table class="tabelle">
@@ -319,7 +344,13 @@ fully analogous to trade buy and sell, just created to faciliate reporting since
 
 ### Expansion
 
+Expansion of conversion, storage-input, storage-output, storage-size, and exchange capacity.
+
 ```@raw html
+<p class="norm">
+As explained <a href="../parameter_list/#Capacity-expansion">here</a>, capacity refers to <strong>capacity before efficiency</strong>!
+</p>
+
 <table class="tabelle">
 <tbody>
 <tr>
@@ -384,7 +415,13 @@ fully analogous to trade buy and sell, just created to faciliate reporting since
 
 ### Installed capacity
 
+Installed capacity of conversion, storage-input, storage-output, storage-size, and exchange capacity.
+
 ```@raw html
+<p class="norm">
+As explained <a href="../parameter_list/#Capacity-expansion">here</a>, capacity refers to <strong>capacity before efficiency</strong>!
+</p>
+
 <table class="tabelle">
 <tbody>
 <tr>
@@ -456,7 +493,12 @@ fully analogous to trade buy and sell, just created to faciliate reporting since
 
 ### Operated capacity
 
+Operated capacity of conversion, storage-input, storage-output, storage-size, and exchange capacity.
+
 ```@raw html
+<p class="norm">
+As explained <a href="../parameter_list/#Capacity-expansion">here</a>, capacity refers to <strong>capacity before efficiency</strong>!
+</p>
 <table class="tabelle">
 <tbody>
 <tr>
@@ -545,13 +587,16 @@ fully analogous to trade buy and sell, just created to faciliate reporting since
 
 # Costs
 
-emissionPrc is included via use,
-
-dimensions just picked for internal purposes, more detailed information via reporting functions
+The variables listed here solely serve the purpose to aggregate different kinds of costs and do not have any other function within the model. Therefore, their structure is a bit arbitrary and was chosen to facilitate reporting without adversely affecting performance.
 
 ### Expansion cost
-sdf
+
+Costs of capacity expansion.
+
 ```@raw html
+<p class="norm">
+As explained <a href="../parameter_list/#Capacity-expansion">here</a>, capacity and thus also costs of capacity expansion, refer to <strong>capacity before efficiency</strong>!
+</p>
 <table class="tabelle">
 <tbody>
 <tr>
@@ -592,8 +637,13 @@ sdf
 
 
 ### Operating cost
-sdf
+
+Costs of operating capacity.
+
 ```@raw html
+<p class="norm">
+As explained <a href="../parameter_list/#Capacity-expansion">here</a>, capacity and thus also operating costs, refer to <strong>capacity before efficiency</strong>!
+</p>
 <table class="tabelle">
 <tbody>
 <tr>
@@ -635,6 +685,9 @@ sdf
 ### Variable cost
 
 ```@raw html
+<p class="norm">
+Variable costs associated with quantities dispatched. Costs incurred by <a href="../parameter_list/#Emission-price-1">emission prices</a> are included in <code>costVarUse</code>.
+</p>
 <table class="tabelle">
 <tbody>
 <tr>
@@ -676,7 +729,7 @@ sdf
 
 ### Trade cost
 
-and revenues!
+Costs and revenues from buying or selling carriers on an external market.
 
 ```@raw html
 <table class="tabelle">
@@ -718,7 +771,9 @@ and revenues!
 
 ### Curtailment and loss-of-load cost
 
-costs can be negative
+Cost of curtailment and unmet demand.
+
+To allow for revenues and costs from curtailment, `costCrt` is the only model variable that can also take negative values.
 
 ```@raw html
 <table class="tabelle">

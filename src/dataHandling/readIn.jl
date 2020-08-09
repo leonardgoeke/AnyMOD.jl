@@ -232,7 +232,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 
 	# XXX convert column names if sets are defined for multiple instances (e.g. two regions in case of trade related parameters)
 	if split(fileName_str,"/")[end][1:3] == "par"
-		# creates a dictionary that assigns everything after the set name seperated with a "_" to the respective set
+		# creates a dictionary that assigns everything after the set name separated with a "_" to the respective set
 		splitCol_arr = map(x -> split(String(x),"_"),setdiff(namesSym(readIn_df),oprNames_arr[1]))
 		setCol_arr = unique(map(x -> Symbol(x[1]),splitCol_arr))
 		grpCol_dic = Dict(x => map(z -> z[2:end],filter(y -> String(x) == y[1],splitCol_arr)) for x in setCol_arr)

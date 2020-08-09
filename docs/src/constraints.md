@@ -21,21 +21,25 @@ ul.liste {
 ```
 # Constraints
 
-[Energy balance](@ref)
-
-sehen nicht aus wie erwartet, limits hier nicht drin
-
-analog zu Variables, was format etc. anbetrifft
-
-note: constraints can look unexpected
-
-stylized equations see paper for detail
+```@raw html
+<p class="norm">
+In the following, all constraints used in AnyMOD are listed. Information includes the name used throughout the model, its dimensions and a stylized formulation of the constraint itself (see <a href="https://arxiv.org/abs/2004.10184)">Göke (2020)</a> for details). Within these constraints, variables are printed in bold. In addition, the parameters, variables, and the model part associated with the constraints are listed.
+</p>
+<p class="norm">
+To increase performance, AnyMOD stores constraints within DataFrames instead of using JuMPs native containers. Each dimension is represented by a column and integers in these columns relate to nodes within the hierarchical trees of sets (see <a href="../data/#printObject"><code>printObject</code></a> on how to export these in a readable format). An additional <code>cns</code> column stores the corresponding constraint. Note that final constraints will look unintuitive, because they are <a href="../performance/#Scaling">scaled</a> to increase performance and converted to standard form by JuMP.
+</p>
+<p class="norm">
+New constraints beyond those listed here can freely be added to a model by using standard JuMP commands.
+</p>
+```
 
 # Balances
 
 ### Energy balance
 
-explain name
+Constraints supply to at least exceed demand.
+
+The energy balance can alternatively be enforced as an equality constraint (see [Carriers](@ref) for details). Instead of having a fixed name the constraint is always assigned the name of the carrier being balanced.
 
 ```@raw html
 <table class="tabelle">
@@ -86,8 +90,9 @@ explain name
 </table>
 ```
 
-
 ### Conversion balance
+
+Controls the ratio between used and generated quantities.
 
 ```@raw html
 <table class="tabelle">
@@ -135,7 +140,10 @@ explain name
 
 ### Storage Balance
 
+Ensures storage levels comply with charged and discharged quantities.
+
 ```@raw html
+
 <table class="tabelle">
 <tbody>
 <tr>
@@ -184,12 +192,16 @@ explain name
 
 # Dispatch restrictions
 
+
 ### Conversion capacity restriction
 
-verweis auf: [Technologies](@ref) wegen eff und allgemein
-verweis auf paper wegen feld mit capacity restrictions, da auch noch verweis auf das objekt
+Ensures quantities converted comply with the operated conversion capacity.
 
 ```@raw html
+<p class="norm">
+The graph-based approach that allows to vary resolution by energy carrier  within the same model complicates the formulation of capacity constraints for conversion technologies. What kind of constraints are necessary is specified in the <code>capaRestr</code> of the technology <a href="../api/#AnyMOD.TechPart"><code>part object</code></a> (see <a href="https://arxiv.org/abs/2004.10184)">Göke (2020)</a> on how this is derived). Capacity constraints are either enforced on used or generated quantities. In the latter case, quantities have to be corrected for the respective efficiency since AnyMOD always denotes capacities <u>after efficiency</u>.
+</p>
+
 <table class="tabelle">
 <tbody>
 <tr>
@@ -247,6 +259,8 @@ verweis auf paper wegen feld mit capacity restrictions, da auch noch verweis auf
 
 ### Storage capacity restriction
 
+Ensures quantities stored comply with the operated storage-input, storage-output, storage-size capacity.
+
 ```@raw html
 <table class="tabelle">
 <tbody>
@@ -281,6 +295,7 @@ verweis auf paper wegen feld mit capacity restrictions, da auch noch verweis auf
 </tr>
 <tr>
 <td rowspan="2"><strong>variables</strong></td>
+<td colspan="3"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
 <ul class="liste">
 <li><a href="../variables/#Operated-capacity-1">operated storage capacity</a></li>
 </ul>
@@ -308,7 +323,7 @@ verweis auf paper wegen feld mit capacity restrictions, da auch noch verweis auf
 
 ### Energy ratio restriction
 
-do not include internal storage!
+Ensures used and generated quantities comply with the specified ratios.
 
 ```@raw html
 <table class="tabelle">
@@ -358,6 +373,8 @@ do not include internal storage!
 
 ### Exchange capacity restriction
 
+Ensures exchanged quantities comply with the operated exchange capacity.
+
 ```@raw html
 <table class="tabelle">
 <tbody>
@@ -403,7 +420,7 @@ do not include internal storage!
 
 ### Trade capacity restriction
 
-capacity no variable here
+Ensures traded quantities comply with the specified trade capacity.
 
 ```@raw html
 <table class="tabelle">
@@ -455,6 +472,10 @@ capacity no variable here
 ### Definition of installed capacity
 
 ```@raw html
+<p class="norm">
+Connects installed capacities to expansion variables and residual capacities.
+</p>
+
 <table class="tabelle">
 <tbody>
 <tr>
@@ -532,10 +553,17 @@ capacity no variable here
 
 ### Decommissioning of operated capacitiy
 
-2 gleichungen, wann aktive, decom, recom, verweis of anyModel objekt definition
-erkläre delta residual
+Ensures operated capacities comply with installed capacities.
+
 
 ```@raw html
+<p class="norm">
+Decommissioning behaviour is determined by the <code>decomm</code> argument of the <a href="../model_object">model constructor</a>. For <code>none</code>, the equations listed here are not enforced. Instead operated and installed capacities are identical. When the argument is set to <code>recomm</code>, only the first equation that limits operated capacities to installed capacities is enforced.
+</p>
+<p class="norm">
+Lastly, for <code>decomm</code> both equations apply. The second equation will then ensure, that once decommissioned capacities cannot be re-decommissioned again. The expression $\displaystyle \Delta Resi_{+}$ in the equation denotes any increase of residual capacities from $\displaystyle t-1$ to $\displaystyle  t$.
+</p>
+
 <table class="tabelle">
 <tbody>
 <tr>
@@ -616,11 +644,18 @@ erkläre delta residual
 
 # Cost equations
 
-erkläre discount factor, erkläre das aggregiert wird, auflösung dient nur reporting zwecken, tro
-
-$ discFac = \frac{1}{(1 \, + \, rateDisc)^a} $
+```@raw html
+<p class="norm">
+Within the cost equations the discount factor is used to discount costs to the present. The discount factor for a year $t$ is computed from the <a href="../parameter_list/#Discount-rate-1">discount rates</a> of the current and the previous years as follows:
+</p>
+<p class="norm">
+$\scriptstyle discFac_{t} = \displaystyle \prod_{t' = t_{0}}^{t}(1 \, + \, rateDisc_{t'})^{-1}$
+</p>
+```
 
 ### Expansion cost equation
+
+Determines costs of capacity expansion.
 
 ```@raw html
 <table class="tabelle">
@@ -677,6 +712,8 @@ $ \scriptstyle ann\{...\} \, = \, costExp\{...\} \, \cdot \, \frac{rateExp\{...\
 
 ### Operating cost equation
 
+Determines costs of operating capacity.
+
 ```@raw html
 <table class="tabelle">
 <tbody>
@@ -724,9 +761,11 @@ $ \scriptstyle \bm{costOpr\{...\}} \, = \, \sum discFac \, \cdot \,  costOpr\{..
 
 ### Variable cost equation
 
-erkläre das use hier mit drin
-
 ```@raw html
+<p class="norm">
+Determines costs associated with quantities dispatched. Costs incurred by <a href="../parameter_list/#Emission-price-1">emission prices</a> are included in <code>costVarUse</code>.
+</p>
+
 <table class="tabelle">
 <tbody>
 <tr>
@@ -755,7 +794,7 @@ $ \scriptstyle + \, \sum emFac \, \cdot \,  emPrc \, \cdot \, \bm{use} \, \cdot 
 </td>
 </tr>
 <tr>
-<td rowspan="2"><strong>parameter</strong></td>
+<td rowspan="3"><strong>parameter</strong></td>
 <td colspan="3"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
 <ul class="liste">
 <li><a href="../parameter_list/#Discount-rate-1">discount rate</a></li>
@@ -763,19 +802,29 @@ $ \scriptstyle + \, \sum emFac \, \cdot \,  emPrc \, \cdot \, \bm{use} \, \cdot 
 </td>
 </tr>
 <tr>
-<td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">
+<td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0px;border-bottom:none;padding-bottom:0.1875em">
 <ul class="liste">
 <li><a href="../parameter_list/#Variable-cost-1">variable cost of technologies</a></li>
-<li><a href="../parameter_list/#Emission-factor-1">emission factor</a></li>
-<li><a href="../parameter_list/#Emission-price-1">emission price</a></li>
 </ul>
 </td>
-<td colspan="1"; style="text-align:left;padding-top:0px">
+<td colspan="1"; style="text-align:left;padding-top:0px;border-bottom:none">
 <ul class="liste">
 <li><a href="../parameter_list/#Exchange-cost-1">exchange cost</a></li>
 </ul>
 </td>
 </tr>
+
+<tr>
+<td style="text-align:center;border-right:none;border-top:none;padding-top:0px">
+<ul class="liste">
+<li><a href="../parameter_list/#Emission-factor-1">emission factor</a></li>
+<li><a href="../parameter_list/#Emission-price-1">emission price</a></li>
+</ul>
+</td>
+<td></td>
+<td></td>
+</tr>
+
 <tr>
 <td rowspan="2"><strong>variables</strong></td>
 <td colspan="3"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
@@ -810,6 +859,8 @@ $ \scriptstyle + \, \sum emFac \, \cdot \,  emPrc \, \cdot \, \bm{use} \, \cdot 
 ```
 
 ### Trade cost equation
+
+Determines costs and revenues from buying or selling carriers on an external market.
 
 ```@raw html
 <table class="tabelle">
@@ -870,6 +921,8 @@ $ \scriptstyle \sum discFac \, \cdot \,  trdSellPrc \, \cdot \,  \bm{trdSell} \,
 
 ### Curtailment and loss-of-load cost equation
 
+Determines costs of curtailment and unmet demand.
+
 ```@raw html
 <table class="tabelle">
 <tbody>
@@ -928,4 +981,13 @@ $ \scriptstyle \sum discFac \, \cdot \,  costLss \, \cdot \,  \bm{lss} \, \cdot 
 
 # Limiting constraints
 
-allgemein erklären
+```@raw html
+
+<p class="norm">
+Limiting constraints are largely shaped by the corresponding limit parameters on <a href="../parameter_list/#Limits-on-quantities-dispatched">quantities dispatched</a>, <a href="../parameter_list/#Limits-on-expansion-and-capacity">expansion and capacity</a>, and by the <a href="../parameter_list/#Emission-limit">emission limit</a>.
+</p>
+
+<p class="norm">
+The name of the constraint will correspond to the name of the respective parameter. Dimension and formulation depend on the way parameter data was provided, as explained <a href="../parameter_list/#Limits-on-quantities-dispatched">here</a>. Lastly, all constraints are stored in the <a href="../parts/#Limit">limit part</a>.
+</p>
+```

@@ -1,7 +1,11 @@
 
 # XXX create optimization model after anyModel has been initialized
 """
-Create constraints of the model's underlying optimization problem.
+```julia
+createOptModel!(model_object::anyModel)
+```
+
+Create all elements of the model's underlying optimization problem except for the objective function.
 """
 function createOptModel!(anyM::anyModel)
 

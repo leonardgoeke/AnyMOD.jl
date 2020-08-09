@@ -360,7 +360,7 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	out_arr = intersect(keys(part.carrier),(:gen,:stIntIn))
 
 	for va in union(in_arr,out_arr)
-		if :M in namesSym(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
+		if :M in namesSym(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated separately
 			cns_df[!,va] .= AffExpr()
 			cns_df[m_arr,va] = aggUniVar(part.var[va], select(cns_df[m_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResM_ntup, anyM.sets)
 			cns_df[noM_arr,va] = aggUniVar(part.var[va], select(cns_df[noM_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResNoM_ntup, anyM.sets)
@@ -433,7 +433,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 				return typVar_df[!,Not(:val)]
 			end
 
-			# adds dispatch variable to constraint dataframe, mode dependant and non-mode dependant balances have to be aggregated seperately
+			# adds dispatch variable to constraint dataframe, mode dependant and non-mode dependant balances have to be aggregated separately
 			dispVar_df = vcat(typExpr_arr...)
 			cnsC_df[!,typ] .= AffExpr()
 			cnsC_df[m_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[m_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 1,), anyM.sets)

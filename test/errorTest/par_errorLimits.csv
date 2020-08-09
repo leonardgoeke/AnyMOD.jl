@@ -1,0 +1,10 @@
+timestep_1,region_1,region_2,region_1,technology_1,technology_2,technology_3,parameter,value,comment
+all,West,WestSouth,,wind,,,capaConvLow,150,
+all,West,WestSouth,,wind,,,capaConvFix,130,
+all,West,WestNorth,,wind,,,capaConvFix,140,
+2020,East,EastNorth,,coalPlant,,,capaConvUp,30,
+all,,,,gasPlant,ccgt,ccgtCHP,capaConvUp,0,
+all,,,,gasPlant,ccgt,ccgtCHP,capaConvLow,0,
+all,,,,gasPlant,ccgt,ccgtCHP,capaConvFix,0,
+,,,,gasPlant,ccgt,ccgtNoCHP,capaConvUp,30,
+,electricity,,West,WestSouth,East,EastSouth,capaExcFix,2,

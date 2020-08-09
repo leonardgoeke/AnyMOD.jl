@@ -42,7 +42,7 @@ module AnyMOD
     include("dataHandling/util.jl")
 
     export anyModel, initializeModel, createOptModel!, setObjective!
-    export reportResults, reportTimeSeries, printObject, reportDuals
+    export reportResults, reportTimeSeries, printObject, printDuals
     export plotTree, plotEnergyFlow, moveNode!
 
     # XXX define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
