@@ -26,9 +26,9 @@ include("src/dataHandling/util.jl")
 # create and solve example problem
 anyM = anyModel("examples/demo_stoch","results", objName = "stoch")
 createOptModel!(anyM)
+setObjective!(:costs,anyM)
 
-
-anyM.parts.tech
+anyM.parts.obj
 
 using Gurobi
 set_optimizer(anyM.optModel,Gurobi.Optimizer)
