@@ -177,7 +177,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
 	if isempty(anyM.subPro) || anyM.subPro != (0,0)
 		# XXX add elements for variable costs of technologies
-		for va in (:use,:gen,:stIn,:stOut,:exc)
+		for va in (:use,:gen,:stIn,:stOut,:exc,:in,:out)
 
 			costPar_sym = string(va) |> (x -> Symbol(:costVar,uppercase(x[1]),x[2:end]))
 
