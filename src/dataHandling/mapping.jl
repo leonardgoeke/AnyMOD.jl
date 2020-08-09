@@ -307,7 +307,9 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 		refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
         refLvl_tup = (refTs_int, refR_int)
     else
-        refLvl_tup = nothing
+		refTs_int = minimum([minimum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:stExtIn, :stExtOut))])
+		refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:stExtIn, :stExtOut))])
+		refLvl_tup = (refTs_int, refR_int)
     end
 
     part.balLvl = (exp = expLvl_tup, ref = refLvl_tup)
