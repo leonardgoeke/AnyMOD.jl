@@ -28,12 +28,10 @@ anyM = anyModel("examples/demo_stoch","results", objName = "stoch")
 createOptModel!(anyM)
 setObjective!(:costs,anyM)
 
-anyM.parts.obj
-
 using Gurobi
 set_optimizer(anyM.optModel,Gurobi.Optimizer)
 set_optimizer_attribute(anyM.optModel, "Method", 2)
-set_optimizer_attribute(anyM.optModel, "Crossover", 1)
+set_optimizer_attribute(anyM.optModel, "Crossover", 0)
 set_optimizer_attribute(anyM.optModel, "BarOrder", 0)
 optimize!(anyM.optModel)
 

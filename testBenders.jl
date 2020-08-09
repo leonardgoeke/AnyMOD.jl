@@ -74,6 +74,7 @@ end
 function runTopLevel!(top_mod::anyModel,bendersData_arr::Array{bendersData})
 
 	bounds_tup = (0.0,0.0)
+	capaData_obj = bendersData()
 
 	# add benders cut
 	if any(map(x -> !isempty(x.capaTech),bendersData_arr))
@@ -190,7 +191,7 @@ bendersData_arr = fill(bendersData(), length(sub_tup))
 fullReport_df = DataFrame(timestep_superordinate_dispatch = String[], region_dispatch = String[], technology = String[], carrier = String[], variable = Symbol[], iteration = Int[], value = Float64[])
 
 # XXX run benders
-while abs(bounds_tup[1]-bounds_tup[2]) > 1e6
+while true
 	# solve top level problem
 	capaData_obj, bounds_tup = runTopLevel!(top_mod,bendersData_arr)
 
