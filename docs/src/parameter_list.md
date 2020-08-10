@@ -1078,7 +1078,7 @@ Interest rate to compute annuity costs of investments. See [Cost equations](@ref
 Costs of capacity expansion (or investment).
 
 !!! warning "Cost data before efficiency"
-    Ensure the cost data provided relates to capacity **before efficiency** (see beginning of section)! In general, costs before efficiency can be obtained by multiplying costs after efficiency with a nominal efficiency ``K_{before} = K_{after} \cdot \eta``.
+    Ensure the cost data provided relates to capacity **before efficiency** (see beginning of section)! Costs before efficiency can be obtained by multiplying costs after efficiency with a nominal efficiency ``K_{before} = K_{after} \cdot \eta``.
 
 ```@raw html
 <table class="tabelle">
@@ -1145,7 +1145,7 @@ Costs of capacity expansion (or investment).
 Costs of operating installed capacities.
 
 !!! warning "Cost data before efficiency"
-    Ensure the cost data provided relates to capacity **before efficiency** (see beginning of section)! In general, costs before efficiency can be obtained by multiplying costs after efficiency with a nominal efficiency ``K_{before} = K_{after} \cdot \eta``.
+    Ensure the cost data provided relates to capacity **before efficiency** (see beginning of section)! Costs before efficiency can be obtained by multiplying costs after efficiency with a nominal efficiency ``K_{before} = K_{after} \cdot \eta``.
 
 
 ```@raw html
