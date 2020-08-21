@@ -100,7 +100,7 @@ function readInputFolder(inputFolders::Array{String,1},files_dic::Dict{String,Ar
     for folder in inputFolders
 	    for file in readdir(folder)
 	        if occursin(".",file) fileType_str = file[findfirst(".",file)[1]+1:end] else fileType_str = "" end
-	        fileGrp_str = file[1:3]
+	        fileGrp_str = file[1:min(3,length(file))]
 	        fileDir_str = string(folder,"/",file)
 	        # loops over subfolders, if any exist
 	        if (fileType_str == "csv" && fileGrp_str in ("set","par","var","eqn"))
