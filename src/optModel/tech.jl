@@ -84,6 +84,18 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dic
 		# check for capacities variables that have to be created, because of residual capacities provided
 		addResidualCapa!(prepTech_dic, part, tInt, anyM)
 
+		# add entries for other storage types in case of stock technologies
+		allStSym_arr = [:capaStIn,:capaStOut,:capaStSize]
+		stSym_arr = intersect(allStSym_arr,collect(keys(prepTech_dic)))
+
+		if stSym_arr != allStSym_arr && !isempty(stSym_arr)
+			usedDim_sym = intersect(allStSym_arr,stSym_arr)[1]
+			# detect missing storage dimensions and adds them
+			for st in setdiff(allStSym_arr,stSym_arr)
+				prepTech_dic[st] = (var = select(prepTech_dic[usedDim_sym].resi,Not([:var])), resi = filter(x -> false,prepTech_dic[usedDim_sym].resi))
+			end
+		end
+
 		# map required capacity constraints
 		createCapaRestrMap!(tSym, anyM)
 
