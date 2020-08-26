@@ -298,13 +298,17 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 	if isempty(anyM.parts.exc.var) error("No exchange data found") end
 
     # XXX expansion variables
-	exp_df = copy(anyM.parts.exc.var[:expExc]) |> (x -> vcat(x,rename(x,:R_from => :R_to, :R_to => :R_from)))
-	exp_df = flatten(exp_df,:Ts_expSup)
-	select!(exp_df,Not(:Ts_disSup))
-	rename!(exp_df,:Ts_expSup => :Ts_disSup)
+	if :expExc in collectKeys(keys(anyM.parts.exc.var))
+		exp_df = copy(anyM.parts.exc.var[:expExc]) |> (x -> vcat(x,rename(x,:R_from => :R_to, :R_to => :R_from)))
+		exp_df = flatten(exp_df,:Ts_expSup)
+		select!(exp_df,Not(:Ts_disSup))
+		rename!(exp_df,:Ts_expSup => :Ts_disSup)
 
-	exp_df = combine(groupby(exp_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
-	exp_df[!,:variable] .= :expExc
+		exp_df = combine(groupby(exp_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
+		exp_df[!,:variable] .= :expExc
+	else
+		exp_df = DataFrame(Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], variable = Symbol[], value = Float64[])
+	end
 
 	# XXX capacity variables
 	capa_df = copy(anyM.parts.exc.var[:capaExc])
