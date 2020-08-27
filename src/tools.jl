@@ -99,7 +99,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 			dem_df[!,:Te] .= 0
 			dem_df[!,:variable] .= :demand
 			if wrtSgn dem_df[!,:value] = dem_df[!,:value] .* -1 end
-			allData_df = vcat(allData_df,dem_df)
+			allData_df = vcat(allData_df,flatten(dem_df,:R_dis))
 		end
 	end
 
