@@ -364,11 +364,11 @@ function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
                         ((x[2] .< carConstrUni_arr2[2]) .& (x[3] .<= carConstrUni_arr2[3])) 	.|
                         ((x[2] .<= carConstrUni_arr2[2]) .& (x[3] .<= carConstrUni_arr2[3]))))	.& BitArray(map(y -> y != x,carConstrUni_arr)))) end
 
-        carConFilt_arr2 = map(i -> map(x -> x[i],carConstrUni_arr),1:3)
+        carConFilt_arr2 = map(i -> map(x -> x[i],carConFilt_arr),1:3)
 		typeCapa_sym = side == :use ? "in" : "out"
 
         # adds necessary capacity restrictions below reference level
-        map(x -> push!(capaDispRestr_arr,(typeCapa_sym, carConstrUni_arr2[1][x], carConstrUni_arr2[2][x], carConstrUni_arr2[3][x])),1:length(carConFilt_arr))
+        map(x -> push!(capaDispRestr_arr,(typeCapa_sym, carConFilt_arr[x][1], carConFilt_arr[x][2], carConFilt_arr[x][3])),1:length(carConFilt_arr))
     end
 
     # XXX writes dimension of capacity restrictions for storage
