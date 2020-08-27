@@ -84,15 +84,20 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dic
 		# check for capacities variables that have to be created, because of residual capacities provided
 		addResidualCapa!(prepTech_dic, part, tInt, anyM)
 
-		# add entries for other storage types in case of stock technologies
-		allStSym_arr = [:capaStIn,:capaStOut,:capaStSize]
-		stSym_arr = intersect(allStSym_arr,collect(keys(prepTech_dic)))
+		# ensure consistency among different storage capacities (to every storage in- or output capacity a corresponding storage size has to exist)
+		stKey_arr = collectKeys(keys(prepTech_dic))
 
-		if stSym_arr != allStSym_arr && !isempty(stSym_arr)
-			usedDim_sym = intersect(allStSym_arr,stSym_arr)[1]
-			# detect missing storage dimensions and adds them
-			for st in setdiff(allStSym_arr,stSym_arr)
-				prepTech_dic[st] = (var = select(prepTech_dic[usedDim_sym].resi,Not([:var])), resi = filter(x -> false,prepTech_dic[usedDim_sym].resi))
+		if !isempty(intersect([:capaStIn,:capaStOut],stKey_arr))
+			# determines all defined storage in- and output capacities
+			allSt_arr = filter(z -> !isempty(z), vcat(map(y -> collect(map(x -> getfield(prepTech_dic[y],x),(:var,:resi))),intersect([:capaStIn,:capaStOut],stKey_arr))...))
+			relSt_df = unique(vcat(map(w -> select(w,intCol(w)), allSt_arr)...))
+
+			# finds cases where no storage size capacity can be matched to in- or output and adds corresponding entries
+			if :capaStSize in stKey_arr
+				newSize_df = (part.type == :stock ? :resi : :var) |> (z -> vcat(prepTech_dic[:capaStSize].var,antijoin(relSt_df,getfield(prepTech_dic[:capaStSize],z), on = names(relSt_df))))
+				prepTech_dic[:capaStSize] = (var = newSize_df, resi = prepTech_dic[:capaStSize].resi)
+			else
+				prepTech_dic[:capaStSize]= (var = relSt_df, resi = DataFrame)
 			end
 		end
 
