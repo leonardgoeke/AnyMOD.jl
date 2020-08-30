@@ -28,8 +28,8 @@ using AnyMOD, Cbc, Test
     moveNode!(anyM,("coal",[0.1,0.1]))
 
     @test length(anyM.report) == 33
-    @test round(objective_value(anyM.optModel),digits = 1) == 135781.1
-
+    @test round(objective_value(anyM.optModel),digits = 1) == 137566.6
+ 
     # create additional models with several errors
     anyM = anyModel(["testModel","errorTest"],"testModel", objName = "test", shortExp = 10, checkRng = 1e8)
 

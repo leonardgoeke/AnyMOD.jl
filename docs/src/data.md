@@ -298,12 +298,10 @@ Optional arguments include:
 </tr>
 
 
-
 </tbody>
 </table>
 ```
 
-The
 
 # Individual elements
 

@@ -28,7 +28,7 @@ During the construction process, all input files are read-in and checked for err
 ```julia
 plotTree(:region, model_object)
 plotTree(:carrier, model_object)
-plotTree(:tech, model_object, plotSize = (28.0,5.0))
+plotTree(:technology, model_object, plotSize = (28.0,5.0))
 plotEnergyFlow(:graph, model_object)
 ```
 
