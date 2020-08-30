@@ -48,7 +48,7 @@ In the example, currently the targeted range is obviously in the first and secon
 ### 1. Column substitution
 ```@raw html
 <p class="norm">
-The first step substitutes columns (= variables) of the optimization problem. In the example, the variable $x_1$ is substituted with $x_{10^3} x'_1$:
+The first step substitutes columns (= variables) of the optimization problem. In the example, the variable $x_1$ is substituted with $10^3 \, x'_1$:
 </p>
 
 <p>
