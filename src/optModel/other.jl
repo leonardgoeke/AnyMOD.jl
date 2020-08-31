@@ -322,7 +322,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 			# fix and lower limit contradicting each other
 			if :Fix in limitCol_arr && :Low in limitCol_arr
-				for x in findall(replace(allLimit_df[!,:Fix],nothing => Inf) .< replace(allLimit_df[!,:Low],nothing => 0.0))
+				for x in findall(replace(allLimit_df[!,:Fix],nothing => Inf) .< replace(allLimit_df[!,:Low],nothing => 0.0) .- 0.0001)
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"fixed limit is smaller than lower limit for: " * dim_str))
