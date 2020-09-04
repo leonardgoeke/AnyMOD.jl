@@ -812,7 +812,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 end
 
 # XXX plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor = true)
+function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor = true, netExc = true)
     plt = pyimport("plotly")
     flowGrap_obj = anyM.graInfo.graph
 
@@ -828,17 +828,36 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 
     # get summarised data and filter dispatch variables
     data_df = reportResults(:summary,anyM,rtnOpt = (:rawDf,))
-    filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
+	filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
+
+	# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
+	c_dic, r_dic = [anyM.sets[x].nodes for x in [:C,:R]]
+	if :scr in namesSym(data_df)
+		data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.scr == x.scr && y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+	else
+		data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+	end
+	
+	# converts export and import quantities into net values
+	if netExc
+		allExc_df = filter(x -> x.variable in (:import,:export),data_df)
+		joinedExc_df = joinMissing(select(rename(filter(x -> x.variable == :export,allExc_df),:value => :export),Not([:variable])),select(rename(filter(x -> x.variable == :import,allExc_df),:value => :import),Not([:variable])),intCol(data_df),:left,Dict(:export => 0.0,:import => 0.0))
+		joinedExc_df[!,:value] = joinedExc_df[!,:export] .+ joinedExc_df[!,:import]
+		select!(joinedExc_df,Not([:export,:import]))
+		joinedExc_df[!,:variable] = map(x -> x > 0.0 ? :netImport : :netExport, joinedExc_df[!,:value])
+		joinedExc_df[!,:value] = abs.(joinedExc_df[!,:value])
+		data_df = vcat(joinedExc_df,filter(x -> !(x.variable in (:export,:import)) ,data_df))
+	end
 
     # filter non relevant entries
     filter!(x -> abs(x.value) > minVal, data_df)
     filter!(filterFunc, data_df)
 
-    # create dictionaries for nodes that are neither technology nor carrier
+	# create dictionaries for nodes that are neither technology nor carrier
     othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])))))
-    othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
+	othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
 
-    # </editor-fold>
+	# </editor-fold>
 
     # <editor-fold desc="prepare labels and colors"
 
@@ -885,10 +904,10 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	      a = Array{Any,1}(undef,3)
 
 	      # technology related entries
-	      if x.variable in (:demand,:export,:trdSell,:crt)
+	      if x.variable in (:demand,:export,:trdSell,:crt,:netExport)
 	        a[1] = flowGrap_obj.nodeC[x.C]
 	        a[2] = othNode_dic[(x.C,x.variable)]
-	      elseif x.variable in (:import,:trdBuy,:lss)
+	      elseif x.variable in (:import,:trdBuy,:lss,:netImport)
 	        a[1] = othNode_dic[(x.C,x.variable)]
 	        a[2] = flowGrap_obj.nodeC[x.C]
 	      elseif x.variable in (:gen,:stOut)

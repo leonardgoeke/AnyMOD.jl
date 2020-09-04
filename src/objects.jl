@@ -422,7 +422,7 @@ mutable struct graInfo
 
 		# specify some default names and colors used in visualisations
 		namesDef_arr = ["coalPlant" => "coal plant", "gasPlant" => "gas plant", "districtHeat" => "district heat", "naturalGas" => "natural gas", "synthGas" => "synthetic gas", "fossilGas" => "fossil gas",
-									"demand" => "final demand", "export" => "export", "import" => "import", "crt" => "curtailment", "lss" => "loss of load", "trdSell" => "trade sell", "trdBuy" => "trade buy"]
+									"demand" => "final demand", "export" => "export", "import" => "import", "netImport" => "net import", "netExport" => "net export","crt" => "curtailment", "lss" => "loss of load", "trdSell" => "trade sell", "trdBuy" => "trade buy"]
 
 		# create dictionary assigning internal model names to names used within visualisations
 		allVal_arr = unique(vcat(map(x -> getfield.(values(anyM.sets[x].nodes),:val) ,collect(keys(anyM.sets)))...))
