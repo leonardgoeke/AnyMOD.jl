@@ -92,6 +92,8 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dic
 			allSt_arr = filter(z -> !isempty(z), vcat(map(y -> collect(map(x -> getfield(prepTech_dic[y],x),(:var,:resi))),intersect([:capaStIn,:capaStOut],stKey_arr))...))
 			relSt_df = unique(vcat(map(w -> select(w,intCol(w)), allSt_arr)...))
 
+			if isempty(relSt_df) continue end
+
 			# finds cases where no storage size capacity can be matched to in- or output and adds corresponding entries
 			if :capaStSize in stKey_arr
 				newSize_df = (part.type == :stock ? :resi : :var) |> (z -> vcat(prepTech_dic[:capaStSize].var,antijoin(relSt_df,getfield(prepTech_dic[:capaStSize],z), on = names(relSt_df))))

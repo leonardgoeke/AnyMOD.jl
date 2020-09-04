@@ -101,21 +101,27 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		subC_arr = unique([c,getDescendants(c,anyM.sets[:C],true)...])
 		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
 
-		# XXX add demand and size it
-		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets)
-		cns_df[!,:dem] = cns_df[!,:val] .* getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
-		select!(cns_df,Not(:val))
-
+		# XXX add and scale demand values
+		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets) # demand for carrier being balanced
+		cns_df[!,:val] = cns_df[!,:val] .* getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
+		cns_df = rename(cns_df,:val => :dem)
+				
 		# XXX get relevant variables
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
 
 		# add tech variables
-		cns_df[!,:techVar] = getTechEnerBal(c,subC_arr,src_df,anyM.parts.tech,anyM.cInfo,anyM.sets)
+		cns_df[!,:techVar], unEtr_arr = getTechEnerBal(c,subC_arr,src_df,anyM.parts.tech,anyM.cInfo,anyM.sets)
+		# determine where an energy balance is required because a specific demand was defined
+		unEtr_arr = map(x -> x == 0.0 ,cns_df[!,:dem]) .* unEtr_arr
 
 		# add curtailment variables
 		for varType in (:crt,:lss)
 			if varType in keys(partBal.var)
 				cns_df[!,Symbol(varType,:Var)] = filterCarrier(partBal.var[varType],subC_arr) |> (x -> aggUniVar(x,src_df,agg_arr, cRes_tup,anyM.sets))
+				# determine where an energy balance is required because a curtailment variable was defined
+				if varType == :crt
+					unEtr_arr = map(x -> x == AffExpr(),cns_df[!,Symbol(varType,:Var)]) .* unEtr_arr
+				end
 			else
 				cns_df[!,Symbol(varType,:Var)] .= AffExpr()
 			end
@@ -124,6 +130,10 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		# add trade variables
 		if !isempty(anyM.parts.trd.var)
 			cns_df[!,:trdVar] = sum([filterCarrier(anyM.parts.trd.var[trd],subC_arr) |> (x -> aggUniVar(x,src_df,agg_arr,cRes_tup,anyM.sets) |> (y -> trd != :trdSell ? y : -1.0 * y)) for trd in keys(anyM.parts.trd.var)])
+			# determine where an energy balance is required because a trade sell variable was defined 
+			if :trdSell in keys(anyM.parts.trd.var)
+				unEtr_arr = map(x -> x == AffExpr(), aggUniVar(filterCarrier(anyM.parts.trd.var[:trdSell],[c]),src_df,agg_arr,cRes_tup,anyM.sets)) .* unEtr_arr
+			end
 		else
 			cns_df[!,:trdVar] .= AffExpr()
 		end
@@ -138,17 +148,33 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 			excVarFrom_df[!,:var] = excVarFrom_df[!,:var] .* (1.0 .- excVarFrom_df[!,:loss])
 			select!(excVarFrom_df,Not(:loss))
 
-			balTo_tup, balFrom_tup = [tuple(replace(collect(bal_tup),:R_dis => x)...) for x in [:R_to, :R_from]]
-
+			# aggregate import (from) and export (to) variables
 			excFrom_arr = aggUniVar(convertExcCol(excVarFrom_df),rename(src_df,:R_dis => :R_to),[:Ts_dis,:R_to,:C,:scr],(Ts_dis = cRes_tup[1], R_to = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
-			excTo_arr  = aggUniVar(excVarTo_df,rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C,:scr],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
+			excToMain_arr  = aggUniVar(filter(x -> x.C == c, excVarTo_df),rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C,:scr],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
+			excToDesc_arr  = aggUniVar(filter(x -> x.C != c, excVarTo_df),rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C,:scr],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
 
-			cns_df[!,:excVar] =  excFrom_arr .- excTo_arr
+			# determine where an energy balance is required because an export variable was defined
+			unEtr_arr = map(x -> x == AffExpr(), excToMain_arr) .* unEtr_arr
+			delete!(cns_df, unEtr_arr) # remove rows for unrequired energy balances	
+			
+			# create final column with import and export variables
+			cns_df[!,:excVar] =  excFrom_arr[.!unEtr_arr] .- excToMain_arr[.!unEtr_arr] .- excToDesc_arr[.!unEtr_arr]
 		else
+			delete!(cns_df, unEtr_arr) # remove rows for unrequired energy balances	
 			cns_df[!,:excVar] .= AffExpr()
 		end
 
-		# prepare, scale and save constraints to dictionary
+		# XXX add demand from descendant carriers
+		for cSub in filter(x -> x != c, getDescendants(c,anyM.sets[:C],false)) # demand for descendant carriers that has to be aggregated
+			demSub_df = filter(x -> x.val != 0.0, matchSetParameter(filter(x -> x.C == cSub,allDim_df),partBal.par[:dem],anyM.sets))
+			if isempty(demSub_df) continue end
+			if anyM.cInfo[c].tsDis == anyM.cInfo[cSub].tsDis # also scales demand to be aggregated if dispatch resolution is the same as for the ancestral carrier
+				demSub_df[!,:val] = demSub_df[!,:val] .* getResize(demSub_df,anyM.sets[:Ts],anyM.supTs)
+			end
+			cns_df[!,:dem] = aggDivVar(vcat(demSub_df,rename(select(cns_df,intCol(cns_df,:dem)),:dem => :val)),select(cns_df,intCol(cns_df)),(:Ts_dis,:R_dis,:scr),anyM.sets)
+		end
+
+		# XXX prepare, scale and save constraints to dictionary
 		c_str = Symbol(anyM.sets[:C].nodes[c].val)
 		cns_df[!,:cnsExpr] = map(x -> x.techVar + x.excVar + x.trdVar + x.lssVar - x.dem - x.crtVar, eachrow(cns_df))
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
@@ -211,9 +237,23 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 			grpVar_df = combine(groupby(allVar_df, [:Ts_dis, :R_dis, :scr]), :var => (x -> sum(x)) => :var)
 			techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis, :scr], :left, Dict(:var => AffExpr()))[!,:var]
 		end
+
+
 	end
 
-	return map(x -> sum(x),eachrow(hcat(techVar_arr...)))
+	# check where tech variables are sinks for energy carriers, which means in this case an energy balance will be necessary 
+	if !cInfo_dic[cBal_int].eq 
+		if unique(techVar_arr[1]) != [AffExpr()] # sinks are terms with a negative sign
+			unEtr_arr = map(x -> values(x.terms) |> (y -> isempty(y) ? true : minimum(collect(y)) >= 0.0), techVar_arr[1])
+		else # if all expressions are empty there aren't any sinks
+			unEtr_arr = fill(true, length(techVar_arr[1]))
+		end
+	else # for equality constraints the energy balance is always necessary, so checking for sinks is not required
+		unEtr_arr = fill(false, length(techVar_arr[1]))
+	end
+
+
+	return map(x -> sum(x),eachrow(hcat(techVar_arr...))), unEtr_arr
 end
 
 # XXX create constarints that enforce any type of limit (Up/Low/Fix) on any type of variable

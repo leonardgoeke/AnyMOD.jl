@@ -228,11 +228,14 @@ end
 # XXX aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if entries of search can have different resolutions (not all entries in a relevant column are on the same level)
 function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, sets_dic::Dict{Symbol,Tree}; aggFilt::Tuple = ())
 
+	aff_boo = :var in namesSym(aggEtr_df) # detects if values (meaning Float types) or variables (meaning AffExpr types are aggregated)
+	agg_sym = aff_boo ? :var : :val
+
 	# XXX sanity checks regarding columns
 	if all(namesSym(aggEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to be aggregated") end
 	if all(namesSym(srcEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to aggregate") end
 
-	select!(aggEtr_df,intCol(aggEtr_df,:var))
+	select!(aggEtr_df,intCol(aggEtr_df,agg_sym))
 	# XXX filter entries from aggEtr_df, that based on isolated analysis of columns will not be aggregated
 	for dim in intersect(aggFilt,agg_tup)
 		set_sym = Symbol(split(string(dim),"_")[1])
@@ -240,7 +243,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 		aggEtr_df = aggEtr_df[findall(map(x -> (x in allSrc_set),aggEtr_df[!,dim])),:]
 	end
 
-	if isempty(aggEtr_df) return fill(AffExpr(),size(srcEtr_df,1)) end
+	if isempty(aggEtr_df) return fill(aff_boo ? AffExpr() : 0.0,size(srcEtr_df,1)) end
 
 	# XXX filter entries from srcEtr_df, that based on isolated anlysis of columns will not have any values aggregated to
 	idxRel_set = BitSet(1:size(srcEtr_df,1))
@@ -251,7 +254,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 	end
 	srcEtrAct_df = srcEtr_df[collect(idxRel_set),:]
 	# group aggregation dataframe to relevant columns and removes unrequired columns
-	aggEtrGrp_df = combine(groupby(aggEtr_df,collect(agg_tup)), :var => (x -> sum(x)) => :var)
+	aggEtrGrp_df = combine(groupby(aggEtr_df,collect(agg_tup)), agg_sym => (x -> sum(x)) => agg_sym)
 
 	# XXX create dictionaries in each dimension that assign rows suited for aggregation for each value
 	chldRows = Dict{Symbol,Dict{Int,BitSet}}()
@@ -287,9 +290,9 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 	end
 
 	# XXX aggregates values according to lookup
-	out_arr = Array{AffExpr}(undef,size(srcEtr_df,1))
-	out_arr[collect(idxRel_set)] =  map(x -> sum(aggEtrGrp_df[x,:var]), collect.(aggRow_arr))
-	out_arr[setdiff(1:size(srcEtr_df,1),idxRel_set)] .= AffExpr()
+	out_arr = aff_boo ? Array{AffExpr}(undef,size(srcEtr_df,1)) : Array{Float64}(undef,size(srcEtr_df,1))
+	out_arr[collect(idxRel_set)] =  map(x -> sum(aggEtrGrp_df[x,agg_sym]), collect.(aggRow_arr))
+	out_arr[setdiff(1:size(srcEtr_df,1),idxRel_set)] .= aff_boo ? AffExpr() : 0.0
 
 	return out_arr
 end
