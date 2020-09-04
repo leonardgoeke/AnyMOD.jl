@@ -1,5 +1,5 @@
 
-# XXX maps their different levels to carriers
+# ! maps their different levels to carriers
 function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     # determines number of specified carrier levels
     lvlCar_arr = [Symbol("carrier_",i) for i in 1:anyM.sets[:C].height]
@@ -62,7 +62,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     produceMessage(anyM.options,anyM.report, 3," - Created mapping for carriers")
 end
 
-# XXX checks carrier for errors in resolution or derive resolution from lower carriers
+# ! checks carrier for errors in resolution or derive resolution from lower carriers
 function evaluateReso(startIdx_int::Int,car_tree::Tree,cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}},report::Array{Tuple,1})
 	# extracts all children and all columns related to resolution
 	carName_str = createFullString(startIdx_int,car_tree)
@@ -97,9 +97,9 @@ function evaluateReso(startIdx_int::Int,car_tree::Tree,cInfo_dic::Dict{Int,Named
 	return cInfo_dic
 end
 
-# XXX maps information about timesteps used
+# ! maps information about timesteps used
 function createTimestepMapping!(anyM::anyModel)
-    # XXX writes the superordinate dispatch level, the timesteps on this level and scaling factor for timesteps depending on the respective superordinate dispatch timestep and the level
+    # ! writes the superordinate dispatch level, the timesteps on this level and scaling factor for timesteps depending on the respective superordinate dispatch timestep and the level
     supTsLvl_int = maximum(map(x -> getfield(x,:tsExp),values(anyM.cInfo)))
 
 	if anyM.options.supTsLvl != 0
@@ -123,7 +123,7 @@ function createTimestepMapping!(anyM::anyModel)
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for time steps")
 end
 
-# XXX writes basic information for each technology
+# ! writes basic information for each technology
 function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 
     part = anyM.parts.tech[tSym]
@@ -143,7 +143,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
     # gets datarow for respective technology
 	row_df = anyM.sets[:Te].nodes[t_int].val |> (z -> filter(x -> any(map(y -> z == x[y],lvlTech_arr)) ,setData_dic[:Te])[1,:])
 
-    # XXX writes carrier info
+    # ! writes carrier info
     # gets string array of carriers for input, output and stored, looks up respective ids afterwards and writes to mapping file
     carStrArr_dic = Dict(y => y in namesSym(row_df) ? split(replace(row_df[y]," " => ""),";") |> (z -> filter(x -> !isempty(x),z)) : String[] for y in carCol_tup)
 	carId_dic = Dict(z => tuple(map(x -> getDicEmpty(nameC_dic,x),carStrArr_dic[z])...) for z in keys(carStrArr_dic))
@@ -205,7 +205,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
         end
     end
 
-    # XXX writes technology type
+    # ! writes technology type
     # finds technology type and tries to convert to an integer
 	if :technology_type in namesSym(row_df)
     	type_str = row_df[:technology_type]
@@ -218,7 +218,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
     end
     part.type = Symbol(type_str)
 
-	# XXX writes decommissioning option for technology
+	# ! writes decommissioning option for technology
 	if :technology_decomm in namesSym(row_df)
 		type_str = row_df[:technology_decomm]
 	else
@@ -231,14 +231,14 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 	part.decomm = Symbol(type_str)
 
 
-    # XXX writes modes of technology
+    # ! writes modes of technology
     if :mode in namesSym(row_df) && length(anyM.sets[:M].nodes) > 1
         part.modes = tuple(collect(lookupTupleTree(tuple(string(x),),anyM.sets[:M],1)[1] for x in filter(x -> x != "",split(replace(row_df[:mode]," " => ""),";")))...)
     else
         part.modes = tuple()
     end
 
-    # XXX determines resolution of expansion
+    # ! determines resolution of expansion
     # determines carrier based expansion resolutions
 	cEx_boo = true
     if isempty(vcat(collect.(values(carGrp_ntup))...))
@@ -281,7 +281,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 
     expLvl_tup = (tsExp_int,rExp_int)
 
-	# XXX checks if dispatch variables should be disaggregated by expansion regions
+	# ! checks if dispatch variables should be disaggregated by expansion regions
 	rExpOrg_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:rDis), vcat(collect.(values(carGrp_ntup))...))) : 0
 
 	if :region_disaggregate in namesSym(row_df) && rExp_int > rExpOrg_int # relies on information in explicit column, if disaggregation is possible and column exists
@@ -301,7 +301,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 	end
 	part.disAgg = disAgg_boo
 
-    # XXX determines reference resolution for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
+    # ! determines reference resolution for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
     if !isempty(union(carGrp_ntup.use,carGrp_ntup.gen))
 		refTs_int = minimum([minimum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
 		refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
@@ -317,7 +317,7 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for technology $(string(tSym))")
 end
 
-# XXX maps capacity constraints to technology
+# ! maps capacity constraints to technology
 function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
 
     part = anyM.parts.tech[tSym]
@@ -328,7 +328,7 @@ function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
     balLvl_ntup = part.balLvl
     disAgg_boo  = part.disAgg
 
-    # XXX writes dimension of capacity restrictions for conversion part (even if there are no inputs)
+    # ! writes dimension of capacity restrictions for conversion part (even if there are no inputs)
     for side in intersect((:use,:gen),keys(carGrp_ntup))
         # get respective carrier and their reference level
         carDis_tup = map(getfield(carGrp_ntup,side)) do x
@@ -371,7 +371,7 @@ function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
         map(x -> push!(capaDispRestr_arr,(typeCapa_sym, carConFilt_arr[x][1], carConFilt_arr[x][2], carConFilt_arr[x][3])),1:length(carConFilt_arr))
     end
 
-    # XXX writes dimension of capacity restrictions for storage
+    # ! writes dimension of capacity restrictions for storage
     stInVar_arr, stOutVar_arr = [intersect(x,keys(carGrp_ntup)) for x in ((:stExtIn,:stIntIn),(:stExtOut,:stIntOut))]
     if !isempty(stInVar_arr) || !isempty(stOutVar_arr)
         allCar_arr = unique(vcat(collect.([getproperty(carGrp_ntup,y) for y in union(stInVar_arr,stOutVar_arr)])...))
@@ -389,7 +389,7 @@ function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
     part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : categorical(rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR))
 end
 
-# XXX create scenario
+# ! create scenario
 function createScenarioMapping!(anyM::anyModel)
 
 	allScr_arr = filter(x -> x != 0,getfield.(collect(values(anyM.sets[:scr].nodes)),:idx))
@@ -438,12 +438,12 @@ function createScenarioMapping!(anyM::anyModel)
 	anyM.supTs = (lvl = anyM.supTs.lvl, step = anyM.supTs.step, sca = anyM.supTs.sca, scr = tsToScr_dic, scrProp = tsScrToProp_dic)
 end
 
-# XXX adjusts model object according to distributed generation
+# ! adjusts model object according to distributed generation
 function distributedMapping!(anyM::anyModel,prepTech_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},prepExc_dic::Dict{Symbol,NamedTuple})
 
 	subPro = anyM.subPro
 
-	if subPro != (0,0) # XXX case of sub-problem
+	if subPro != (0,0) # ! case of sub-problem
 
 		# get tuple of unrequired time-steps and scenarios
 		rmvId_tup = (Ts_dis = map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x != subPro[1],collect(anyM.supTs.step))) |> (y -> isempty(y) ? Int[] : union(y...)),
@@ -457,7 +457,7 @@ function distributedMapping!(anyM::anyModel,prepTech_dic::Dict{Symbol,Dict{Symbo
 		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(subPro[1],), sca = filter(x -> x[1][1] == subPro[1],anyM.supTs.sca),
 																	scr = Dict(subPro[1] => [subPro[2],]), scrProp = filter(x -> x[1] == (subPro[1],subPro[2]), anyM.supTs.scrProp))
 
-		# XXX adjust dictionaries for expansion preparation
+		# ! adjust dictionaries for expansion preparation
 
 		# technology dictionaries
 		for tSym in collect(keys(prepTech_dic))
@@ -477,7 +477,7 @@ function distributedMapping!(anyM::anyModel,prepTech_dic::Dict{Symbol,Dict{Symbo
 		resi_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepExc_dic[:capaExc].resi)
 		prepExc_dic[:capaExc] = (var = var_df,resi = resi_df)
 
-		# XXX remove parameter data
+		# ! remove parameter data
 		# remove unrequired parameter data from technology parts
 		for pName in collectKeys(keys(anyM.parts.tech)), parName in collectKeys(keys(getfield(anyM.parts.tech[pName],:par)))
 			if anyM.parts.tech[pName].par[parName].problem == :top # completely delete parameters not relating to subproblems
@@ -508,9 +508,9 @@ function distributedMapping!(anyM::anyModel,prepTech_dic::Dict{Symbol,Dict{Symbo
 		end
 
 		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be a sub-problem for time-step '$(createFullString(subPro[1],anyM.sets[:Ts]))'$(getScrName(subPro[2],anyM.sets[:scr]))")
-	else # XXX case of top-problem
+	else # ! case of top-problem
 
-		# XXX remove parameter data
+		# ! remove parameter data
 		# remove unrequired parameter data from technology parts
 		for pName in collectKeys(keys(anyM.parts.tech)), parName in collectKeys(keys(getfield(anyM.parts.tech[pName],:par)))
 			if anyM.parts.tech[pName].par[parName].problem == :sub # completely delete parameters not relating to subproblems

@@ -1,7 +1,7 @@
 
-# <editor-fold desc="reporting of calculation progress and error handling"
+#region # * reporting of calculation progress and error handling
 
-# XXX return elapsed time since Start_date
+# ! return elapsed time since Start_date
 function getElapsed(start::DateTime)
     elapSec_per = Dates.value(floor(now() - start,Dates.Second(1)))
     if elapSec_per < 3600*24
@@ -12,7 +12,7 @@ function getElapsed(start::DateTime)
     return elap_str
 end
 
-# XXX teste for errors so far and optional writes report file, even if no serious errrors occured yet
+# ! teste for errors so far and optional writes report file, even if no serious errrors occured yet
 function errorTest(report::Array{Tuple,1},options::modOptions;write::Bool = false, inCode::Bool = false)
     errStatus_dic = Dict(1 => :green, 2 => :yellow,3 => :red)
     if any(getindex.(report,1) .== 3)
@@ -32,7 +32,7 @@ function errorTest(report::Array{Tuple,1},options::modOptions;write::Bool = fals
     end
 end
 
-# XXX produces a output message and tests for errors accordingly to globally set reporting values
+# ! produces a output message and tests for errors accordingly to globally set reporting values
 function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::Int64,fixedString::String,dynamicString::Any="")
 	sty_dic = Dict(1 => :bold, 2 => :normal, 3 => :light_black)
 
@@ -47,52 +47,52 @@ function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::I
     if options.errCheckLvl >= currentLvl errorTest(report,options,write = options.errWrtLvl >= currentLvl) end
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc="miscellaneous data processing"
+#region # * miscellaneous data processing
 
-# XXX new plus function to avoid error when one element being added up is nothing
+# ! new plus function to avoid error when one element being added up is nothing
 plus(a::Int,b::Int) = a + b
 plus(a::Int,b::Nothing) = a
 plus(a::Nothing,b::Int) = b
 
-# XXX provides names of columns as array of symbols ('names' function itself was changed from strings to symbols)
+# ! provides names of columns as array of symbols ('names' function itself was changed from strings to symbols)
 namesSym(df::DataFrame) = map(x -> Symbol(x),names(df))
 namesSym(df::DataFrameRow) = map(x -> Symbol(x),names(df))
 
-# XXX to add an "and $nameOfScenario" or nothing to a reporting line
+# ! to add an "and $nameOfScenario" or nothing to a reporting line
 getScrName(id::Int,scr_tree::Tree) = id != 0 ? " and scenario '$(createFullString(id,scr_tree))'" : ""
 
-# XXX returns dataframe columns without value column
+# ! returns dataframe columns without value column
 removeVal(input_df::DataFrame) = filter(x -> !(x in (:val,:ratio)),namesSym(input_df))
 removeVal(col_arr::Array{Symbol,1}) = filter(x -> !(x in (:val,:ratio)),col_arr)
 
-# XXX return an empty integer array instead of an error, if a key is not in a dictionary
+# ! return an empty integer array instead of an error, if a key is not in a dictionary
 getDicEmpty(dic::Dict,key::Any) = key in keys(dic) ? dic[key] : Int[]
 
-# XXX get names of column of type integer
+# ! get names of column of type integer
 intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, collect(pairs(eachcol(in_df)))),1)
 intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(namesSym(in_df),[add_sym]))
 
-# XXX puts relevant dimensions in consistent order and adds remaining entries at the end
+# ! puts relevant dimensions in consistent order and adds remaining entries at the end
 orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :C, :Te, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
 orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
 
-# XXX puts dataframes columns in consistent order
+# ! puts dataframes columns in consistent order
 orderDf(in_df::DataFrame) = select(in_df,orderDim(namesSym(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
 
-# XXX writes all tuples occuring in a tuple of pairs and tuples
+# ! writes all tuples occuring in a tuple of pairs and tuples
 mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  x
 
-# XXX check if dataframe should be considered, if energy balance is created for carriers in array
+# ! check if dataframe should be considered, if energy balance is created for carriers in array
 filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in namesSym(var_df) ? filter(r -> r.C in c_arr,var_df) : var_df
 
-# XXX makes first letter of string or symbol capital
+# ! makes first letter of string or symbol capital
 makeUp(in::String) = isempty(in) ? "" : string(uppercase(in[1]),in[2:end])
 makeUp(in::Symbol) = Symbol(uppercase(string(in)[1]),string(in)[2:end])
 
 
-# XXX create dataframe with all potential dimensions for carrier provided
+# ! create dataframe with all potential dimensions for carrier provided
 function createPotDisp(c_arr::Array{Int,1},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
 	lvl_arr = map(x -> anyM.cInfo[x], c_arr) |> (y -> map(z -> getfield.(y,z),[:tsDis, :rDis]))
@@ -117,15 +117,15 @@ function createPotDisp(c_arr::Array{Int,1},ts_dic::Dict{Tuple{Int64,Int64},Array
 	return var_df
 end
 
-# XXX gets technology name as symbol from id and the other way around
+# ! gets technology name as symbol from id and the other way around
 techSym(tInt::Int,tech_tree::Tree) = Symbol(getUniName(tInt,tech_tree)[end])
 techInt(tSym::Symbol,tech_tree::Tree) = filter(x -> x.val == string(tSym),collect(values(tech_tree.nodes)))[1].idx
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc="data frame based manipulations"
+#region # * data frame based manipulations
 
-# XXX finds entries where expansion or capacity would be fixed to zero
+# ! finds entries where expansion or capacity would be fixed to zero
 function filterZero(src_df::DataFrame,par_obj::ParElement,anyM::anyModel)
 	if isdefined(par_obj,:name)
 	# copies parameter obj and adds ":up" to inheritance for any dimensions, otherwise variables would be created, but fixed to zero due to a zero limit on a higher level in the tree
@@ -139,7 +139,7 @@ function filterZero(src_df::DataFrame,par_obj::ParElement,anyM::anyModel)
 	return zero_df
 end
 
-# XXX removes all entries occuring in remove array from input table
+# ! removes all entries occuring in remove array from input table
 function removeEntries(remove_arr::Array{DataFrame,1},input_df::DataFrame)
     if !isempty(remove_arr)
         remove_df = length(remove_arr) == 1 ? remove_arr[1] : vcat(remove_arr...)
@@ -151,7 +151,7 @@ function removeEntries(remove_arr::Array{DataFrame,1},input_df::DataFrame)
     end
 end
 
-# XXX merge provided dataframe into prep_dic
+# ! merge provided dataframe into prep_dic
 function mergePrepDic!(key_sym::Symbol,prep_dic::Dict{Symbol,NamedTuple},capaResi_df::DataFrame)
 	if key_sym in keys(prep_dic)
 		prep_dic[key_sym]= (var = prep_dic[key_sym].var, resi = capaResi_df)
@@ -160,7 +160,7 @@ function mergePrepDic!(key_sym::Symbol,prep_dic::Dict{Symbol,NamedTuple},capaRes
 	end
 end
 
-# XXX performs a left or outer join operation and replaces any missing values
+# ! performs a left or outer join operation and replaces any missing values
 function joinMissing(leftData_df::DataFrame, rightData_df::DataFrame, key_arr::Union{Array{Symbol,1},Array{Pair{Symbol,Symbol},1}}, how_sym::Symbol, missVal_dic::Dict, uni_boo::Bool = false)
 
 	# perform join operation
@@ -182,7 +182,7 @@ function joinMissing(leftData_df::DataFrame, rightData_df::DataFrame, key_arr::U
     return dropmissing(joinData_df)
 end
 
-# XXX get array of scaling factors for add_df
+# ! get array of scaling factors for add_df
 function getResize(add_df::DataFrame,time_obj::Tree,supDis::NamedTuple)
     tsDisLvl_dic = Dict(x => x == 0 ? 1 : getfield(time_obj.nodes[x],:lvl) for x in unique(add_df[!,:Ts_dis]))
 	lvl_arr = map(x -> tsDisLvl_dic[x],add_df[!,:Ts_dis])
@@ -191,7 +191,7 @@ function getResize(add_df::DataFrame,time_obj::Tree,supDis::NamedTuple)
     return sca_arr
 end
 
-# XXX gets the upper bound used for dispatch variables
+# ! gets the upper bound used for dispatch variables
 function getUpBound(in_df::DataFrame,dispBound_fl::Float64,supTs::NamedTuple,treeTs::Tree)
 	if !isnan(dispBound_fl)
 		upBound_arr = dispBound_fl * getResize(in_df,treeTs,supTs)
@@ -201,11 +201,11 @@ function getUpBound(in_df::DataFrame,dispBound_fl::Float64,supTs::NamedTuple,tre
 	return upBound_arr
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc="functions and sub-functions to aggregate variables"
+#region # * functions and sub-functions to aggregate variables
 
-# XXX aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if all entries of search have the same resolution (all entries in a relevant column are on the same level)
+# ! aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if all entries of search have the same resolution (all entries in a relevant column are on the same level)
 function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Symbol,1},srcRes_tup::NamedTuple,sets_dic::Dict{Symbol,Tree})
 	if isempty(aggEtr_df) return fill(AffExpr(),size(srcEtr_df,1)) end
 
@@ -225,18 +225,18 @@ function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Sy
 	return var_arr
 end
 
-# XXX aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if entries of search can have different resolutions (not all entries in a relevant column are on the same level)
+# ! aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if entries of search can have different resolutions (not all entries in a relevant column are on the same level)
 function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, sets_dic::Dict{Symbol,Tree}; aggFilt::Tuple = ())
 
 	aff_boo = :var in namesSym(aggEtr_df) # detects if values (meaning Float types) or variables (meaning AffExpr types are aggregated)
 	agg_sym = aff_boo ? :var : :val
 
-	# XXX sanity checks regarding columns
+	# ! sanity checks regarding columns
 	if all(namesSym(aggEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to be aggregated") end
 	if all(namesSym(srcEtr_df) |> (y -> map(x -> !(x in y),agg_tup))) error("tried to perform aggregation on column not existing in dataframe to aggregate") end
 
 	select!(aggEtr_df,intCol(aggEtr_df,agg_sym))
-	# XXX filter entries from aggEtr_df, that based on isolated analysis of columns will not be aggregated
+	# ! filter entries from aggEtr_df, that based on isolated analysis of columns will not be aggregated
 	for dim in intersect(aggFilt,agg_tup)
 		set_sym = Symbol(split(string(dim),"_")[1])
 		allSrc_set = unique(srcEtr_df[!,dim]) |> (z -> union(BitSet(z),map(x -> BitSet(getDescendants(x,sets_dic[set_sym],true)),z)...))
@@ -245,7 +245,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 
 	if isempty(aggEtr_df) return fill(aff_boo ? AffExpr() : 0.0,size(srcEtr_df,1)) end
 
-	# XXX filter entries from srcEtr_df, that based on isolated anlysis of columns will not have any values aggregated to
+	# ! filter entries from srcEtr_df, that based on isolated anlysis of columns will not have any values aggregated to
 	idxRel_set = BitSet(1:size(srcEtr_df,1))
 	for dim in agg_tup
 		set_sym = Symbol(split(string(dim),"_")[1])
@@ -256,7 +256,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 	# group aggregation dataframe to relevant columns and removes unrequired columns
 	aggEtrGrp_df = combine(groupby(aggEtr_df,collect(agg_tup)), agg_sym => (x -> sum(x)) => agg_sym)
 
-	# XXX create dictionaries in each dimension that assign rows suited for aggregation for each value
+	# ! create dictionaries in each dimension that assign rows suited for aggregation for each value
 	chldRows = Dict{Symbol,Dict{Int,BitSet}}()
 	for col in agg_tup
 		# row that are potentially aggregated
@@ -282,14 +282,14 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 		end
 	end
 
-	# XXX finds aggregation by intersecting suited rows in each dimension
+	# ! finds aggregation by intersecting suited rows in each dimension
 	if isempty(chldRows)
 		aggRow_arr = fill(BitSet(),size(srcEtrAct_df,1))
 	else
 		aggRow_arr = collectKeys(keys(chldRows)) |> (y -> map(x -> intersect(map(y -> chldRows[y][x[y]],y)...) ,eachrow(srcEtrAct_df)))
 	end
 
-	# XXX aggregates values according to lookup
+	# ! aggregates values according to lookup
 	out_arr = aff_boo ? Array{AffExpr}(undef,size(srcEtr_df,1)) : Array{Float64}(undef,size(srcEtr_df,1))
 	out_arr[collect(idxRel_set)] =  map(x -> sum(aggEtrGrp_df[x,agg_sym]), collect.(aggRow_arr))
 	out_arr[setdiff(1:size(srcEtr_df,1),idxRel_set)] .= aff_boo ? AffExpr() : 0.0
@@ -297,11 +297,11 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 	return out_arr
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc="manipulate model related data frames"
+#region # * manipulate model related data frames
 
-# XXX add superordinate dispatch timestep to expansion dataframe
+# ! add superordinate dispatch timestep to expansion dataframe
 function addSupTsToExp(expMap_df::DataFrame,para_obj::Dict{Symbol,ParElement},type_sym::Symbol,tsYear_dic::Dict{Int,Int},anyM::anyModel)
 	if !isempty(expMap_df)
 		lftm_df = matchSetParameter(flatten(expMap_df,:Ts_expSup),para_obj[Symbol(:life,type_sym)],anyM.sets,newCol = :life)
@@ -316,7 +316,7 @@ function addSupTsToExp(expMap_df::DataFrame,para_obj::Dict{Symbol,ParElement},ty
 	return expMap_df
 end
 
-# XXX expand expansion dataframe to capacity dataframe
+# ! expand expansion dataframe to capacity dataframe
 function expandExpToCapa(in_df::DataFrame)
 
 	noExpCol_arr = intCol(in_df)
@@ -337,7 +337,7 @@ function expandExpToCapa(in_df::DataFrame)
 	return orderDf(capa_df)
 end
 
-# XXX expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
+# ! expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
 function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},scr_dic::Dict{Int64,Array{Int64,1}},preserveTsSupTs::Bool = false)
 
 	inData_df[!,:scr] = map(x -> scr_dic[x], inData_df[!,:Ts_disSup])
@@ -352,7 +352,7 @@ function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{
 	return expTs_df
 end
 
-# XXX obtains residual capacities for technologies
+# ! obtains residual capacities for technologies
 function checkResiCapa(var_sym::Symbol, stockCapa_df::DataFrame, part::AbstractModelPart, anyM::anyModel, addSym::Symbol = Symbol())
   resiPar_sym = Symbol(var_sym,:Resi,addSym)
    if resiPar_sym in tuple(keys(part.par)...)
@@ -370,7 +370,7 @@ function checkResiCapa(var_sym::Symbol, stockCapa_df::DataFrame, part::AbstractM
    return stock_df
 end
 
-# XXX get a dataframe with all variable of the specified type
+# ! get a dataframe with all variable of the specified type
 function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, filterFunc::Function = x -> true)
 
 	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :insCapaExc => :exc, :expExc => :exc, :crt => :bal, :lss => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
@@ -482,7 +482,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 	return filter(filterFunc,allVar_df)
 end
 
-# XXX replaces orginal carriers in var_df with all leafes connected to respective carrier (and itself) and flattens it
+# ! replaces orginal carriers in var_df with all leafes connected to respective carrier (and itself) and flattens it
 function replCarLeafs(var_df::DataFrame,c_tree::Tree;cCol::Symbol=:C,noLeaf::Array{Int,1} = Int[])
 
 	cToLeafs_dic = Dict(x => filter(y -> isempty(c_tree.nodes[y].down) || y in noLeaf,[x,getDescendants(x,c_tree,true)...]) for x in unique(var_df[!,cCol]))
@@ -492,7 +492,7 @@ function replCarLeafs(var_df::DataFrame,c_tree::Tree;cCol::Symbol=:C,noLeaf::Arr
 	return var_df
 end
 
-# XXX returns array of technologies and respective dispatch variables relevant for input carrier
+# ! returns array of technologies and respective dispatch variables relevant for input carrier
 function getRelTech(c::Int,tech_dic::Dict{Symbol,TechPart},c_tree::Tree)
 
 	techSym_arr = collect(keys(tech_dic))
@@ -510,4 +510,4 @@ function getRelTech(c::Int,tech_dic::Dict{Symbol,TechPart},c_tree::Tree)
 	return relTech_arr
 end
 
-# </editor-fold>
+#endregion

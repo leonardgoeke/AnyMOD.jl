@@ -1,6 +1,6 @@
 module AnyMOD
 
-    # XXX enforce use of Julia's own python distribution to avoid interference with local python installations
+    # ! enforce use of Julia's own python distribution to avoid interference with local python installations
     using Pkg
     # save current value of environment variable
     if "PYTHON" in keys(ENV)
@@ -45,7 +45,7 @@ module AnyMOD
     export reportResults, reportTimeSeries, printObject, printDuals
     export plotTree, plotEnergyFlow, moveNode!
 
-    # XXX define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
+    # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
     function __init__()
         @require Gurobi="2e9cd046-0924-5485-92f1-d5272153d98b" include("dataHandling/gurobiTools.jl")
     end
