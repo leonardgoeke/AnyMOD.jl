@@ -21,8 +21,8 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
 		# check, if carrier got an equality constraint or not
 		if :carrier_equality in namesSym(row)
 			if !(row[:carrier_equality] in ("no","yes"))
-				push!(anyM.report,(2,"carrier mapping","","column carrier_equality can only contain keywords 'yes' or 'no'"))
-				continue
+				push!(anyM.report,(2,"carrier mapping","","column carrier_equality can only contain keywords 'yes' or 'no', assumed 'no'"))
+				eq_boo = false
 			else
 				eq_boo = row[:carrier_equality] == "yes" ? true : false
 			end
@@ -51,7 +51,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
 	if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
 
 	 #  loops over all carriers and check consistency of resolutions and tries to inherit a resolution where none was defined, cannot be carried if above they have already been errors detected
-    for c in filter(x -> x != 0, keys(anyM.sets[:C].nodes))
+	for c in filter(x -> x != 0, keys(anyM.sets[:C].nodes))
     	anyM.cInfo = evaluateReso(c,anyM.sets[:C],anyM.cInfo,anyM.report)
     end
 
@@ -69,7 +69,7 @@ function evaluateReso(startIdx_int::Int,car_tree::Tree,cInfo_dic::Dict{Int,Named
 	allChildIdx_arr = getDescendants(startIdx_int,car_tree)
 
 	# all entries need to have a resoultion => otherwise evaluateReso on them
-	for noResoIdx = setdiff(allChildIdx_arr,collect(keys(cInfo_dic)))
+	for noResoIdx in setdiff(allChildIdx_arr,collect(keys(cInfo_dic)))
 		cInfo_dic = evaluateReso(noResoIdx,car_tree,cInfo_dic,report)
 	end
 
