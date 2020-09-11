@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Data files · AnyMOD.jl</title><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.11.1/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.png" alt="AnyMOD.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit">AnyMOD.jl</span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><span class="tocitem">Model Elements</span><ul><li><a class="tocitem" href="../model_object/">Model object</a></li><li><a class="tocitem" href="../sets/">Sets and Mappings</a></li><li><a class="tocitem" href="../parts/">Parts</a></li><li><input class="collapse-toggle" id="menuitem-2-4" type="checkbox"/><label class="tocitem" for="menuitem-2-4"><span class="docs-label">Parameter</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../parameter_overview/">Parameter overview</a></li><li><a class="tocitem" href="../parameter_list/">Parameter list</a></li></ul></li><li><a class="tocitem" href="../variables/">Variables</a></li><li><a class="tocitem" href="../constraints/">Constraints</a></li></ul></li><li><span class="tocitem">Tools</span><ul><li><input class="collapse-toggle" id="menuitem-3-1" type="checkbox" checked/><label class="tocitem" for="menuitem-3-1"><span class="docs-label">Reporting</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../error/">Error handling</a></li><li class="is-active"><a class="tocitem" href>Data files</a><ul class="internal"><li class="toplevel"><a class="tocitem" href="#Analysed-results"><span>Analysed results</span></a></li><li class="toplevel"><a class="tocitem" href="#Time-series"><span>Time-series</span></a></li><li class="toplevel"><a class="tocitem" href="#Individual-elements"><span>Individual elements</span></a></li></ul></li><li><a class="tocitem" href="../plots/">Plots</a></li></ul></li><li><a class="tocitem" href="../performance/">Performance and stability</a></li></ul></li><li><span class="tocitem">Annex</span><ul><li><a class="tocitem" href="../tips/">Tips</a></li><li><a class="tocitem" href="../api/">API</a></li><li><a class="tocitem" href="../related/">Related material</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Tools</a></li><li><a class="is-disabled">Reporting</a></li><li class="is-active"><a href>Data files</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Data files</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/leonardgoeke/AnyMOD.jl/blob/master/docs/src/data.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><style>
+table.tabelle2 td {
+  padding-left: 0.57em;
+  padding-right: 0.57em;
+  border-right: solid 1px;
+  border-color: #dbdbdb;
+  font-size: small;
+}
+ul.liste {
+  list-style-position: outside;
+  padding-left: 1em;
+  margin-left: 0em;
+  margin-top: 0em;
+  white-space: nowrap;
+  display:inline-block;
+  text-align: left;
+}
+</style><h1 id="Data-files"><a class="docs-heading-anchor" href="#Data-files">Data files</a><a id="Data-files-1"></a><a class="docs-heading-anchor-permalink" href="#Data-files" title="Permalink"></a></h1><p>AnyMOD includes several functions to obtain the results of a solved model.</p><h1 id="Analysed-results"><a class="docs-heading-anchor" href="#Analysed-results">Analysed results</a><a id="Analysed-results-1"></a><a class="docs-heading-anchor-permalink" href="#Analysed-results" title="Permalink"></a></h1><p>Different analysis can be printed with the <code>reportResults</code> functions depending on the <code>reportType</code> keyword.</p><pre><code class="language-julia">reportResults(reportType::Symbol, model_object::anyModel; rtnOpt::Tuple = (:csv,))</code></pre><p>The keyword argument <code>rtnOpt</code> controls the output format. Available options are:</p><ul><li><code>:csv</code>: writes a &quot;readable&quot; <code>.csv</code> file</li><li><code>:csvDf</code>: returns the same &quot;readable&quot; data as a DataFrame</li><li><code>:raw</code>: writes a <code>.csv</code> file with &quot;raw&quot; data, this means sets are not indicated by their name, but their internal id</li><li><code>:rawDf</code>: returns the same &quot;raw&quot; data as a DataFrame</li></ul><h3 id="Summary"><a class="docs-heading-anchor" href="#Summary">Summary</a><a id="Summary-1"></a><a class="docs-heading-anchor-permalink" href="#Summary" title="Permalink"></a></h3><p>Using the <code>reportType</code> keyword <code>:summary</code> will provide a general overview of results. If the optional argument <code>wrtSgn</code> is set to <code>true</code>, output quantities (e.g. use or storage input) are given a negative sign. The table below lists all variables included.</p><table class="tabelle2">
+<tbody>
+<tr>
+<td><strong>explanation</strong></td>
+<td style="border-right:none"><strong>definition</strong></td>
+</tr>
+<tr>
+<td><code>exp{Conv/StIn/StOut/StSize}</code></td>
+<td style="border-right:none"><ul class="liste">
+<li><a href="../variables/#Expansion-1">expansion variable</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>capa{Conv/StIn/StOut/StSize}</code></td>
+<td style="border-right:none"><ul class="liste">
+<li><a href="../variables/#Installed-capacity-1">installed capacity variable</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>oprCapa{Conv/StIn/StOut/StSize}</code></td>
+<td style="border-right:none"><ul class="liste">
+<li><a href="../variables/#Operated-capacity-1">operated capacity variable</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>demand</code></td>
+<td style="border-right:none"><ul class="liste">
+<li>aggregated <a href="../parameter_list/#Demand-1">demand parameter</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>use</code> & <code>gen</code></td>
+<td style="border-right:none"><ul class="liste">
+<li>aggregated <a href="../variables/#Generation-and-use-1">generation and use variables</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>stIn</code> & <code>stOut</code></td>
+<td style="border-right:none"><ul class="liste">
+<li>aggregated <a href="../variables/#Charging-and-discharging-1">charging and discharging variables</a> (both in- and external)</li>
+</ul></td>
+</tr>
+<tr>
+<td><code>stExt{In/Out}</code> & <code>stInt{In/Out}</code></td>
+<td style="border-right:none"><ul class="liste">
+<li>aggregated <a href="../variables/#Charging-and-discharging-1">charging and discharging variables</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>import</code> & <code>export</code></td>
+<td style="border-right:none"><ul class="liste">
+<li>net aggregation of <a href="../variables/#Exchange-1">exchange variables</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>trdBuy</code> & <code>trdSell</code></td>
+<td style="border-right:none"><ul class="liste">
+<li>aggregated <a href="../variables/#Buy-and-sell-1">buy and sell variables</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>crt</code> & <code>lss</code></td>
+<td style="border-right:none"><ul class="liste">
+<li>aggregated <a href="../variables/#Curtailment-and-loss-of-load-1">curtailment and loss-of-load variables</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>emission</code></td>
+<td style="border-right:none"><ul class="liste">
+<li>aggregated emissions</li>
+<li>defined as $emFac \cdot \bm{use} \cdot 10^3$</li>
+</ul></td>
+</tr>
+<tr>
+<td><code>flhConv</code></td>
+<td style="border-right:none">
+<ul class="liste">
+<li>measure of conversion capacity utilization</li>
+<li>defined as $\frac{oprCapaConv}{\sum use + stIntOut}$ or $\frac{oprCapaConv}{\sum gen + stIntIn}$ if no carriers are used</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>flhStIn</code></td>
+<td style="border-right:none">
+<ul class="liste">
+<li>measure of capacity utilization regarding storage input</li>
+<li>defined as $\frac{oprCapaStIn}{\sum stExtIn + stIntIn}$</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>flhStOut</code></td>
+<td style="border-right:none">
+<ul class="liste">
+<li>measure of capacity utilization regarding storage output</li>
+<li>defined as $\frac{oprCapaStOut}{\sum stExtOut + stIntOut}$</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>cycStIn</code></td>
+<td style="border-right:none">
+<ul class="liste">
+<li>measure to characterize utilization of storage size based on charged quantities</li>
+<li>small values indicate long- and large values short-term storage</li>
+<li>defined as $\frac{oprCapaStSize}{\sum stExtIn + stIntIn}$</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><code>cycStOut</code></td>
+<td style="border-right:none">
+<ul class="liste">
+<li>measure to characterize utilization of storage size based on discharged quantities</li>
+<li>small values indicate long- and large values short-term storage</li>
+<li>defined as $\frac{oprCapaStSize}{\sum stExtOut + stIntOut}$</li>
+</ul>
+</td>
+</tr>
+</tbody>
+</table><h3 id="Exchange"><a class="docs-heading-anchor" href="#Exchange">Exchange</a><a id="Exchange-1"></a><a class="docs-heading-anchor-permalink" href="#Exchange" title="Permalink"></a></h3><p>The keyword <code>:exchange</code> gives detailed results on exchange capacities and quantities. Again, reported variables are listed below.</p><table class="tabelle2">
+<tbody>
+<tr>
+<td><strong>explanation</strong></td>
+<td style="border-right:none"><strong>definition</strong></td>
+</tr>
+<tr>
+<td><code>expExc</code></td>
+<td style="border-right:none"><ul class="liste">
+<li><a href="../variables/#Expansion-1">exchange expansion variable</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>capaExc</code></td>
+<td style="border-right:none"><ul class="liste">
+<li><a href="../variables/#Installed-capacity-1">installed exchange capacity variable</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>oprCapaExc</code></td>
+<td style="border-right:none"><ul class="liste">
+<li><a href="../variables/#Operated-capacity-1">operated exchange capacity variable</a></li>
+</ul></td>
+</tr>
+<tr>
+<td><code>flhExc</code></td>
+<td style="border-right:none"><ul class="liste">
+<li>utilization of exchange capacities</li>
+<li>defined as $\frac{oprCapaExc}{exc}$</li>
+</ul></td>
+</tr>
+<tr>
+<td><code>exc</code></td>
+<td style="border-right:none"><ul class="liste">
+<li><a href="../variables/#Exchange-1">exchange variables</a></li>
+</ul></td>
+</tr>
+</tbody>
+</table><h3 id="Costs"><a class="docs-heading-anchor" href="#Costs">Costs</a><a id="Costs-1"></a><a class="docs-heading-anchor-permalink" href="#Costs" title="Permalink"></a></h3>The keyword <code>:costs</code> provides the values of all <a href="../variables/#Costs">cost variables</a>. All costs are provided in million Euros.<h1 id="Time-series"><a class="docs-heading-anchor" href="#Time-series">Time-series</a><a id="Time-series-1"></a><a class="docs-heading-anchor-permalink" href="#Time-series" title="Permalink"></a></h1><p>The <code>reportTimeSeries</code> function writes a table with the values of all elements occuring in the energy balance of a respective <code>carrier</code>.</p><pre><code class="language-julia">reportTimeSeries(carrier::Symbol, model_object::anyModel)</code></pre><p>Optional arguments include:</p><table class="tabelle2">
+<tbody>
+<tr>
+<td><strong>argument</strong></td>
+<td><strong>explanation</strong></td>
+<td><strong>default</strong></td>
+</tr>
+
+
+
+<tr>
+<td><code>filterFunc</code></td>
+<td>
+<ul class="liste">
+<li>function to filter certain time-series data</li>
+<li>for example <code>x -> x.R_dis == 1</code> will only provide time-series data for the region with id 1 (see <br> documentation of <a href="../api/#AnyMOD.Tree"><code>tree objects</code></a> on how to obtain ids)</li>
+</ul>
+</td>
+<td><code>x -> true</code></td>
+</tr>
+
+<tr>
+<td><code>unstck</code></td>
+<td>
+<ul class="liste">
+<li>controls if data is provided as an unstacked table or in pivot format</li>
+</ul>
+</td>
+<td><code>true</code></td>
+</tr>
+
+<tr>
+<td><code>signVar</code></td>
+<td>
+<ul class="liste">
+<li>specifies groups of variables to write to output table</li>
+<li><code>:in</code> refers to energy inputs (e.g. <a href="../variables/#Generation-and-use-1">generated</a> or <a href="../variables/#Buy-and-sell-1">bought</a> quantities) and <code>:out</code> refers to energy out- <br> puts (e.g. <a href="../variables/#Generation-and-use-1">used</a>, <a href="../parameter_list/#Demand-1">demanded</a>, or  <a href="../variables/#Buy-and-sell-1">sold</a> quantities)</li>
+</ul>
+</td>
+<td><code>(:in,:out)</code></td>
+</tr>
+
+<tr>
+<td><code>mergeVar</code></td>
+<td>
+<ul class="liste">
+<li>if set to <code>false</code> results for energy in- and output are written to separate files</li>
+</ul>
+</td>
+<td><code>true</code></td>
+</tr>
+
+<tr>
+<td><code>minVal</code></td>
+<td>
+<ul class="liste">
+<li>threshold for values to be included</li>
+<li>useful to filter out really small but non-zero values that result from using Barrier without Crossover</li>
+</ul>
+</td>
+<td><code>1e-3</code></td>
+</tr>
+
+<tr>
+<td><code>rtnOpt</code></td>
+<td>
+<ul class="liste">
+<li>controls the output format as documentated for <a href="#Analysed-results">Analysed results</a></li>
+</ul>
+</td>
+<td><code>(:csv,)</code></td>
+</tr>
+
+
+</tbody>
+</table><h1 id="Individual-elements"><a class="docs-heading-anchor" href="#Individual-elements">Individual elements</a><a id="Individual-elements-1"></a><a class="docs-heading-anchor-permalink" href="#Individual-elements" title="Permalink"></a></h1><p class="norm">
+In addition to the <code>reportResults</code> and <code>reportTimeSeries</code> that aggregate various model elements and report on them, individual variables or constraints can also be printed directly. In this case, the DataFrames used to store variables and constraints within the <a href="../api/#AnyMOD.TechPart"><code>model part</code></a> objects serve as inputs.
+</p><p>The <code>printObject</code> function writes a copy of the respective inputted DataFrame, but replaces the internal node ids with their written name.  </p><pre><code class="language-julia">printObject(element::DataFrame, model_object::anyModel)</code></pre><p>For variables, the table will provide their value and for constraints the corresponding constraint expression.</p><p>The <code>printDuals</code> function works analogously, but returns the duals or shadow prices for the respective elements.  </p><pre><code class="language-julia">printDuals(element::DataFrame, model_object::anyModel)</code></pre><p class="norm">
+For both functions the optional arguments <code>filterFunc</code> and <code>rtnOpt</code> as introduced for <a href="#Analysed-results">Analysed results</a> and <a href="#Time-series">Time series</a> are available. In addition, the argument <code>fileName</code> can be used to specify the name of the output file.
+</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../error/">« Error handling</a><a class="docs-footer-nextpage" href="../plots/">Plots »</a></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Friday 11 September 2020 00:30">Friday 11 September 2020</span>. Using Julia version 1.3.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
