@@ -97,14 +97,14 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
 			# use technical lifetime where no economic lifetime could be obtained
 			if va != :Exc
-				allPar_arr = filter(w -> !(isempty(w)),map(x -> anyM.parts.tech[x].par[Symbol(:life,va)].data,filter(y -> var_sym in keys(anyM.parts.tech[y].var), techFilt_arr)))
+				allPar_arr = map(w -> isempty(w) ? DataFrame(val = [20.0]) : w,map(x -> anyM.parts.tech[x].par[Symbol(:life,va)].data,filter(y -> var_sym in keys(anyM.parts.tech[y].var), techFilt_arr)))
 				union(intCol.(allPar_arr)...) |> (z -> map(x -> map(y -> insertcols!(x,1,(y => fill(0,size(x,1)))) , setdiff(z,intCol(x)) ) ,allPar_arr))
-				lifePar_obj = copy(anyM.parts.tech[techFilt_arr[1]].par[Symbol(:life,va)],vcat(allPar_arr...))
+				lifePar_obj = copy(anyM.parts.tech[techFilt_arr[1]].par[Symbol(:life,va)],unique(vcat(allPar_arr...)))
 			else
 				lifePar_obj = anyM.parts.exc.par[:lifeExc]
 			end
 			techLife_df = matchSetParameter(filter(x -> isnothing(x.life),allExp_df)[!,Not(:life)],lifePar_obj,anyM.sets,newCol = :life)
-			allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),allExp_df))
+			allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),allExp_df))	
 
 			# gets expansion costs and interest rate to compute annuity
 			allExp_df = matchSetParameter(convertExcCol(allExp_df),partObj.par[costPar_sym],anyM.sets,newCol = :costExp)

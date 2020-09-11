@@ -41,7 +41,7 @@ using AnyMOD, Cbc, Test
     end
     @test err
 
-    @test length(anyM.report) == 52
+    @test length(anyM.report) == 46
 
 
 end

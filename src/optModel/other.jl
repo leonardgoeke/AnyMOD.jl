@@ -400,6 +400,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			end
 		end
 
+
 		# if installed capacities differ depending on the direction, because residual values were defined and at the same time fixed limits on the installed capacity were provided
 		# an error will occur, because a value cannot be fixed but and the same time differ by direction, this is detected here
 		if :Fix in limitCol_arr && va == :capaExc
