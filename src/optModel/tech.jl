@@ -99,7 +99,7 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dic
 				newSize_df = (part.type == :stock ? :resi : :var) |> (z -> vcat(prepTech_dic[:capaStSize].var,antijoin(relSt_df,getfield(prepTech_dic[:capaStSize],z), on = names(relSt_df))))
 				prepTech_dic[:capaStSize] = (var = newSize_df, resi = prepTech_dic[:capaStSize].resi)
 			else
-				prepTech_dic[:capaStSize]= (var = relSt_df, resi = DataFrame)
+				prepTech_dic[:capaStSize]= (var = relSt_df, resi = DataFrame())
 			end
 		end
 
@@ -116,7 +116,6 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dic
 				end
 			end
 		end
-
 		# if any capacity variables or residuals were prepared, add these to overall dictionary
 		if collect(values(prepTech_dic)) |> (z -> any(map(x -> any(.!isempty.(getfield.(z,x))), (:var,:resi))))
 			prepVar_dic[tSym] = prepTech_dic
