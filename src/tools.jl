@@ -119,7 +119,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 			# set carrier column to zero for conversion capacities and add a spatial dispatch column
 			if va in (:expConv,:capaConv,:insCapaConv)
 				capa_df[!,:C] .= 0
-				capa_df[!,:R_dis] = map(x -> getAncestors(x,anyM.sets[:R],:int,part.balLvl.ref[2])[end],capa_df[!,:R_exp])
+				capa_df[!,:R_dis] = map(x -> getAncestors(x,anyM.sets[:R],:int,part.balLvl.exp[2])[end],capa_df[!,:R_exp])
 			else
 				capa_df[!,:R_dis] = map(x -> getAncestors(x.R_exp,anyM.sets[:R],:int,anyM.cInfo[x.C].rDis)[end],eachrow(capa_df))
 			end
@@ -812,7 +812,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 end
 
 # ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor = true, netExc = true)
+function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = true, netExc::Bool = true, name::String = "")
     plt = pyimport("plotly")
     flowGrap_obj = anyM.graInfo.graph
 
@@ -854,9 +854,13 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
     filter!(filterFunc, data_df)
 
 	# create dictionaries for nodes that are neither technology nor carrier
-    othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])))))
+	oth_df = unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])
+	if netExc && !(:region in dropDown)
+		oth_df[!,:variable] =  map(x -> x == :netExport ? :exchangeLoss : x, oth_df[!,:variable])
+	end	
+    othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(oth_df))))
 	othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
-
+	 
 	#endregion
 
     #region # * prepare labels and colors
@@ -895,8 +899,22 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	    if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,anyM.sets[:R],true)...] end
 	    for d in dropDown
 	      filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
-	    end
-
+		end
+		
+		if netExc
+			allExc_df = filter(x -> x.variable in (:netImport,:netExport),dropData_df)
+			allExc_df[!,:value] = map(x -> x.variable == :netExport ? x.value * -1 : x.value, eachrow(allExc_df))
+			aggExc_df = combine(groupby(allExc_df,[:Ts_disSup,:Te,:C]), :value => (x -> sum(x)) => :value)
+			aggExc_df[!,:variable] = map(x -> x.value > 0.0 ? :netImport : :netExport, eachrow(aggExc_df))
+			# renames net-export into storage losses in case regions does not appear in drop dropDown
+			if !(:region in dropDown)
+				aggExc_df[!,:variable] = map(x -> x == :netExport ? :exchangeLoss : x, aggExc_df[!,:variable])
+				aggExc_df[!,:R_dis] .= 0
+			else
+				aggExc_df[!,:R_dis] .= drop.R_dis
+			end
+			dropData_df = vcat(filter(x -> !(x.variable in (:netImport,:netExport)),dropData_df),aggExc_df)
+		end
 	    flow_arr = Array{Tuple,1}()
 
 	    # write flows reported in data summary
@@ -904,7 +922,7 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	      a = Array{Any,1}(undef,3)
 
 	      # technology related entries
-	      if x.variable in (:demand,:export,:trdSell,:crt,:netExport)
+	      if x.variable in (:demand,:export,:trdSell,:crt,:netExport,:exchangeLoss)
 	        a[1] = flowGrap_obj.nodeC[x.C]
 	        a[2] = othNode_dic[(x.C,x.variable)]
 	      elseif x.variable in (:import,:trdBuy,:lss,:netImport)
@@ -948,7 +966,8 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	    flow_arr = map(unique(map(x -> x[1:2],flow_arr))) do fl
 	      allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
 	      return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
-	    end
+		end
+		
 
 	    # removes nodes accoring function input provided
 	    for rmv in rmvNode
@@ -1004,7 +1023,8 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	    push!(dropData_arr,Dict(:args => fullData_arr, :label => label_str, :method => "restyle"))
 
 	    #endregion
-    end
+	
+	end
 
     #region # * create various dictionaries to define format and create plot
 
@@ -1012,8 +1032,9 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
     data_dic = Dict(:type => "sankey", :orientation => "h", :valueformat => ".0f", :textfont => Dict(:family => "Arial"), :node => Dict(:pad => 8, :thickness => 36, :line => Dict(:color => "white",:width => 0.01), :hoverinfo => "skip"))
     layout_dic = Dict(:width => 125*plotSize[1], :height => 125*plotSize[2], :updatemenus => menues_dic, :font => Dict(:size => 32, :family => "Arial"))
 
-    fig = Dict(:data => [data_dic], :layout => layout_dic)
-    plt.offline.plot(fig, filename="$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown),"_"))_$(anyM.options.outStamp).html")
+	fig = Dict(:data => [data_dic], :layout => layout_dic)
+	
+    plt.offline.plot(fig, filename="$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown),"_"))_$(anyM.options.outStamp)$(name == "" ? "" : "_" * name).html")
 
     #endregion
 end

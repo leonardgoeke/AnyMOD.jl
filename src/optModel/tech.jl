@@ -65,7 +65,7 @@ end
 #region # * prepare to create expansion and capacity variables
 
 # ! prepare dictionaries that specifies dimensions for expansion and capacity variables
-function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},tsYear_dic::Dict{Int,Int},anyM::anyModel)
+function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},tsYear_dic::Dict{Int,Int},anyM::anyModel)  
 
 	for tSym in techSym_arr
 		prepTech_dic = Dict{Symbol,NamedTuple}()
@@ -188,7 +188,7 @@ function prepareCapacity!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTup
 	end
 
 	# create entry for capacity
-	prep_dic[capaVar] =  (var = orderDf(capaVar_df), resi = DataFrame())
+	prep_dic[capaVar] =  (var = unique(orderDf(capaVar_df)), resi = DataFrame())
 end
 
 # ! capacity values for stock technologies
