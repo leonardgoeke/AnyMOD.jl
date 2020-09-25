@@ -52,7 +52,7 @@ function prepareExcExpansion!(partExc::ExcPart,partLim::OthPart,prepExc_dic::Dic
 	filter!(x -> x.R_a != x.R_b, allExExp_df)
 
 	# save result to dictionary for variable creation
-	exp_df = addSupTsToExp(allExExp_df,partExc.par,:Exc,tsYear_dic,anyM)
+	exp_df = unique(addSupTsToExp(allExExp_df,partExc.par,:Exc,tsYear_dic,anyM))
 	prepExc_dic[:expExc] = (var = convertExcCol(exp_df), resi = DataFrame())
 
 	return potExc_df
@@ -155,7 +155,7 @@ function addResidualCapaExc!(partExc::ExcPart,prepExc_dic::Dict{Symbol,NamedTupl
 
 	# adjust dictionary accordingly
 	capaResi_df[!,:Ts_expSup] .= 0
-	prepExc_dic[:capaExc] = (var = adjVar_df, ratio = DataFrame(), resi = convertExcCol(capaResi_df))
+	prepExc_dic[:capaExc] = (var = unique(adjVar_df), resi = convertExcCol(capaResi_df))
 end
 
 # ! converts table where exchange regins are given as "R_a" and "R_b" to "R_to" and "R_from" and the other way around
