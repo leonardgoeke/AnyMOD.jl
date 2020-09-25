@@ -302,17 +302,18 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
 	part.disAgg = disAgg_boo
 
     # ! determines reference resolution for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
-    if !isempty(union(carGrp_ntup.use,carGrp_ntup.gen))
-		refTs_int = minimum([minimum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
-		refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
-        refLvl_tup = (refTs_int, refR_int)
-    else
-		refTs_int = minimum([minimum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:stExtIn, :stExtOut))])
-		refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:stExtIn, :stExtOut))])
-		refLvl_tup = (refTs_int, refR_int)
-    end
-
-    part.balLvl = (exp = expLvl_tup, ref = refLvl_tup)
+	if !isempty(part.carrier)
+		if !isempty(union(carGrp_ntup.use,carGrp_ntup.gen))
+			refTs_int = minimum([minimum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
+			refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
+			refLvl_tup = (refTs_int, refR_int)
+		else
+			refTs_int = minimum([minimum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:stExtIn, :stExtOut))])
+			refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:stExtIn, :stExtOut))])
+			refLvl_tup = (refTs_int, refR_int)
+		end
+		part.balLvl = (exp = expLvl_tup, ref = refLvl_tup)
+	end
 
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for technology $(string(tSym))")
 end
