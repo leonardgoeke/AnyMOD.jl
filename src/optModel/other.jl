@@ -373,7 +373,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			# residual values already violate limits
 			resiVal_arr = getfield.(allLimit_df[!,:var],:constant)
 			if :Up in limitCol_arr
-				for x in findall(resiVal_arr .>  replace(allLimit_df[!,:Up],nothing => Inf))
+				for x in findall(resiVal_arr.>  replace(allLimit_df[!,:Up] ,nothing => Inf))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"residual values already exceed the upper limit for: " * dim_str))
@@ -399,7 +399,6 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 				end
 			end
 		end
-
 
 		# if installed capacities differ depending on the direction, because residual values were defined and at the same time fixed limits on the installed capacity were provided
 		# an error will occur, because a value cannot be fixed but and the same time differ by direction, this is detected here
@@ -498,15 +497,15 @@ function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns
 end
 
 # ! adds column with JuMP variable to dataframe
-function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64,Array{Float64,1}},optModel::Model,lock_::ReentrantLock,sets::Dict{Symbol,Tree}; scaFac::Float64 = 1.0, lowBd::Float64 = 0.0)
+function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64,Array{Float64,1}},optModel::Model,lock_::ReentrantLock,sets::Dict{Symbol,Tree}; scaFac::Float64 = 1.0, lowBd::Float64 = 0.0, bi::Bool = false)
 	# adds an upper bound to all variables if provided within the options
 	#if isempty(setData_df) return DataFrame(var = AffExpr[]) end
 	arr_boo = typeof(upBd_fl) <: Array
 	if arr_boo
-		info = VariableInfo.(!isnan(lowBd), lowBd, .!isnan.(upBd_fl), upBd_fl, false, NaN, false, NaN, false, false)
+		info = VariableInfo.(!isnan(lowBd), lowBd, .!isnan.(upBd_fl), upBd_fl, false, NaN, false, NaN, bi, false)
 		var_obj = JuMP.build_variable.(error, info)
 	else
-		info = VariableInfo(!isnan(lowBd), lowBd, !isnan(upBd_fl), upBd_fl, false, NaN, false, NaN, false, false)
+		info = VariableInfo(!isnan(lowBd), lowBd, !isnan(upBd_fl), upBd_fl, false, NaN, false, NaN, bi, false)
 		var_obj = JuMP.build_variable(error, info)
 	end
 

@@ -298,7 +298,7 @@ end
 abstract type AbstractModel end
 
 # ! defines final model object and its options
-struct modOptions
+mutable struct modOptions
 	# data in- and output
 	inDir::Array{String,1}
 	outDir::String
@@ -562,5 +562,3 @@ mutable struct anyModel <: AbstractModel
 
 	anyModel() = new()
 end
-
-#endregion

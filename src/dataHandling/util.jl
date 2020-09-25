@@ -33,18 +33,18 @@ function errorTest(report::Array{Tuple,1},options::modOptions;write::Bool = fals
 end
 
 # ! produces a output message and tests for errors accordingly to globally set reporting values
-function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::Int64,fixedString::String,dynamicString::Any="")
+function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::Int64,fixedString::String,dynamicString::Any="";testErr::Bool = true)
 	sty_dic = Dict(1 => :bold, 2 => :normal, 3 => :light_black)
 
 	sty_dic[currentLvl]
     if options.reportLvl >= currentLvl
-		if options.errCheckLvl >= currentLvl
+		if options.errCheckLvl >= currentLvl && testErr
 			printstyled(options.objName; color = :underline); printstyled(" ", getElapsed(options.startTime), fixedString, dynamicString; color = sty_dic[currentLvl])
 		else
 			printstyled(options.objName; color = :underline); printstyled(" ",getElapsed(options.startTime), fixedString, dynamicString, "\n"; color = sty_dic[currentLvl])
 		end
 	end
-    if options.errCheckLvl >= currentLvl errorTest(report,options,write = options.errWrtLvl >= currentLvl) end
+    if options.errCheckLvl >= currentLvl && testErr errorTest(report,options,write = options.errWrtLvl >= currentLvl) end
 end
 
 #endregion

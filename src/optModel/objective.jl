@@ -31,15 +31,16 @@ function setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyMode
 	# ! adds alpha variable for benders
 	if anyM.subPro == (0,0)
 		info = VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)
-		push!(partObj.var[:objVar],(name = :alpha, group = :benders, var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, info),"alpha")))
+		push!(partObj.var[:objVar],(name = :allCut, group = :benders, var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, info),"allCut")))
 		obj_dic[:benders] = 1.0
-		partObj.cns[:bendersCuts] = DataFrame(id=Int[],cns = ConstraintRef[])
+		partObj.cns[:bendersCuts] = DataFrame(id=Int[], Ts_disSup = Int[], scr = Int[], cut = String[], cns = ConstraintRef[])
 	end
 
     # ! sets overall objective variable with upper limits and according to weights provided in dictionary
 	objBd_flt = anyM.options.bound.obj |> (x -> isnan(x) ? NaN : x / anyM.options.scaFac.obj)
 	obj_var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, !isnan(objBd_flt), objBd_flt, false, NaN, false, NaN, false, false)),"obj") * anyM.options.scaFac.obj
 	obj_eqn = @constraint(anyM.optModel, obj_var == sum(map(x -> sum(filter(r -> r.group == x,partObj.var[:objVar])[!,:var])*obj_dic[x], collectKeys(keys(obj_dic)))))
+	partObj.var[:obj] = DataFrame(var = obj_var)
 
     if minimize
         @objective(anyM.optModel, Min, obj_var / anyM.options.scaFac.obj)
