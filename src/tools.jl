@@ -903,17 +903,19 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 		
 		if netExc
 			allExc_df = filter(x -> x.variable in (:netImport,:netExport),dropData_df)
-			allExc_df[!,:value] = map(x -> x.variable == :netExport ? x.value * -1 : x.value, eachrow(allExc_df))
-			aggExc_df = combine(groupby(allExc_df,[:Ts_disSup,:Te,:C]), :value => (x -> sum(x)) => :value)
-			aggExc_df[!,:variable] = map(x -> x.value > 0.0 ? :netImport : :netExport, eachrow(aggExc_df))
-			# renames net-export into storage losses in case regions does not appear in drop dropDown
-			if !(:region in dropDown)
-				aggExc_df[!,:variable] = map(x -> x == :netExport ? :exchangeLoss : x, aggExc_df[!,:variable])
-				aggExc_df[!,:R_dis] .= 0
-			else
-				aggExc_df[!,:R_dis] .= drop.R_dis
+			if !isempty(allExc_df)
+				allExc_df[!,:value] = map(x -> x.variable == :netExport ? x.value * -1 : x.value, eachrow(allExc_df))
+				aggExc_df = combine(groupby(allExc_df,[:Ts_disSup,:Te,:C]), :value => (x -> sum(x)) => :value)
+				aggExc_df[!,:variable] = map(x -> x.value > 0.0 ? :netImport : :netExport, eachrow(aggExc_df))
+				# renames net-export into storage losses in case regions does not appear in drop dropDown
+				if !(:region in dropDown)
+					aggExc_df[!,:variable] = map(x -> x == :netExport ? :exchangeLoss : x, aggExc_df[!,:variable])
+					aggExc_df[!,:R_dis] .= 0
+				else
+					aggExc_df[!,:R_dis] .= drop.R_dis
+				end
+				dropData_df = vcat(filter(x -> !(x.variable in (:netImport,:netExport)),dropData_df),aggExc_df)
 			end
-			dropData_df = vcat(filter(x -> !(x.variable in (:netImport,:netExport)),dropData_df),aggExc_df)
 		end
 	    flow_arr = Array{Tuple,1}()
 
