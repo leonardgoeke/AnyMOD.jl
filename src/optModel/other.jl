@@ -342,7 +342,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 			# upper and lower limit contradicting each other
 			if :Low in limitCol_arr && :Up in limitCol_arr
-				for x in findall(replace(allLimit_df[!,:Low],nothing => 0.0) .> replace(allLimit_df[!,:Up],nothing => Inf))
+				for x in findall(replace(allLimit_df[!,:Low],nothing => 0.0) .- 0.0001 .> replace(allLimit_df[!,:Up],nothing => Inf))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"contradicting values for upper and lower limit detected for: " * dim_str))
