@@ -449,7 +449,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			# filter respective limits (low, fix or up) out of the entire dataframe
 			relLim_df = filter(x -> !isnothing(x[lim]),allLimit_df[!,Not(filter(x -> x != lim,limitCol_arr))])
 			relLim_df = filter(x -> x.var != AffExpr(), relLim_df)
-			if :Fix in namesSym(relLim_df) relLim_df = filter(x -> x.Fix != 0.0, relLim_df) end
+			#if :Fix in namesSym(relLim_df) && va in (:expConv,:expStIn,:expStOut,:expStSize,:expExc) relLim_df = filter(x -> x.Fix != 0.0, relLim_df) end
             if isempty(relLim_df) continue end
 			rename!(relLim_df,lim => :Lim)
 
