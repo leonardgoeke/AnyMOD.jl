@@ -1036,7 +1036,7 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 
 	fig = Dict(:data => [data_dic], :layout => layout_dic)
 	
-    plt.offline.plot(fig, filename="$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown),"_"))_$(anyM.options.outStamp)$(name == "" ? "" : "_" * name).html")
+    plt.offline.plot(fig, filename="$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown),"_"))$(name == "" ? "" : "_" * name)_$(anyM.options.outStamp).html")
 
     #endregion
 end

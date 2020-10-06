@@ -14,7 +14,9 @@ function prepareExc!(prepExc_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,I
 	addResidualCapaExc!(partExc,prepExc_dic,potExc_df,anyM)
 
 	if anyM.options.decommExc != :none && :capaExc in keys(prepExc_dic)
-		prepExc_dic[:insCapaExc] =  (var = prepExc_dic[:capaExc].var, resi = DataFrame())
+		prepExc_dic[:insCapaExc] =  (var = prepExc_dic[:capaExc].var, resi = prepExc_dic[:capaExc].resi)
+		excResi_df = select(prepExc_dic[:capaExc].resi,Not([:var,:Ts_expSup]))
+		prepExc_dic[:capaExc] =  (var = unique(vcat(prepExc_dic[:capaExc].var, filter(x -> x.R_from < x.R_to, vcat(excResi_df,rename(excResi_df,:R_from => :R_to,:R_to => :R_from))))), resi = DataFrame())
 	end
 end
 

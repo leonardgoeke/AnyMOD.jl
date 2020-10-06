@@ -111,9 +111,11 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dic
 		if part.decomm != :none
 			for capTy in intersect(keys(prepTech_dic),(:capaConv,:capaStIn,:capaStOut,:capaStSize,:capaExc))
 				if part.type != :stock
-					prepTech_dic[Symbol(:ins,makeUp(capTy))] =  (var = prepTech_dic[capTy].var, resi = DataFrame())
+					prepTech_dic[Symbol(:ins,makeUp(capTy))] =  (var = prepTech_dic[capTy].var, resi = prepTech_dic[capTy].resi)
+					prepTech_dic[capTy] =  (var = prepTech_dic[capTy].var, resi = DataFrame())
 				else
-					prepTech_dic[Symbol(:ins,makeUp(capTy))] =  (var = select(prepTech_dic[capTy].resi,Not([:var])), resi = DataFrame())
+					prepTech_dic[Symbol(:ins,makeUp(capTy))] =  (var = prepTech_dic[capTy].resi[[],:], resi = prepTech_dic[capTy].resi)
+					prepTech_dic[capTy] =  (var = select(prepTech_dic[capTy].resi,Not([:var])), resi = DataFrame())
 				end
 			end
 		end
@@ -320,7 +322,14 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 		var_df = part.var[insVar_sym]
 
 		# ! create constraint to connect operated and installed capacity
-		var_df[!,:cnsExpr] = map(x -> x[2] - x[1],zip(var_df[!,:var],part.var[capaVar][!,:var]))
+		if :R_from in intCol(var_df)
+			var_df = innerjoin(var_df,rename(select(vcat(part.var[capaVar],rename(part.var[capaVar],:R_from => :R_to, :R_to => :R_from)),Not([:dir])),:var => :var_2),on = intCol(var_df))
+			var_df[!,:cnsExpr] = map(x -> x.var_2 - x.var ,eachrow(var_df))
+			select!(var_df,Not([:var_2]))
+		else
+			var_df[!,:cnsExpr] = map(x -> x[2] - x[1],zip(var_df[!,:var],part.var[capaVar][!,:var]))
+		end
+		
 		cns_dic[insVar_sym] = cnsCont(select(var_df,Not(:var)),:smaller)
 
 		# ! create constraint to prevent re-commissioning of capacity once decommissioned
