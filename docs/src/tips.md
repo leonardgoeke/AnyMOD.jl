@@ -23,7 +23,8 @@ See the [Performance and stability](@ref) section for greater detail on this iss
 ```@raw html
 <p class="norm">
 <ul>
-<li>Do not read-in your time-series data until the rest of your model is fully functioning.</li>
+<li>Check, if you provided your parameter data according to the units given in the <a href="../parameter_list">parameter list</a>.</li>
+<li>To save time, do not read-in your time-series data until the rest of your model is fully functioning.</li>
 <li>Set a less detailed temporal resolution for debugging to speed up the process.</li>
 <li>If your model is infeasible and you use Gurobi, try AnyMODs <a href="../api/#AnyMOD.printIIS"><code>printIIS(model_object)</code></a> function. It uses Gurobi's computeIIS function to obtain a set of constraints causing the infeasibility. Generally, this works better the more obvious a contradiction is (e.g. upper limits on expansion contradicts lower limit on installed capacity).</li>
 <li>Define <a href="../parameter_list/#Cost-of-curtailment-and-loss-of-load-1">loss-of-load costs</a> in order to create <a href="../variables/#Curtailment-and-loss-of-load-1">loss-of-load variables</a> for each energy carrier.</li>

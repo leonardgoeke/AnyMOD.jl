@@ -298,11 +298,11 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))
 		entr_int = size(allLimit_df,1)
 		if :Low in limitCol_arr || :Up in limitCol_arr
-			# XXX Errors
+			# ! errors
 
 			# upper and lower limit contradicting each other
 			if :Low in limitCol_arr && :Up in limitCol_arr
-				for x in findall(replace(allLimit_df[!,:Low],nothing => 0.0) .>= replace(allLimit_df[!,:Up],nothing => Inf))
+				for x in findall(replace(allLimit_df[!,:Low],nothing => 0.0) .> replace(allLimit_df[!,:Up],nothing => Inf))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"contradicting values for upper and lower limit detected for: " * dim_str))
@@ -312,7 +312,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 			# fix and upper limit contradicting each other
 			if :Fix in limitCol_arr && :Up in limitCol_arr
-				for x in findall(replace(allLimit_df[!,:Fix],nothing => 0.0) .>= replace(allLimit_df[!,:Up],nothing => Inf))
+				for x in findall(replace(allLimit_df[!,:Fix],nothing => 0.0) .> (replace(allLimit_df[!,:Up],nothing => Inf) .+ 0.0001))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"fixed limit exceeds upper limit for: " * dim_str))
@@ -322,7 +322,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 			# fix and lower limit contradicting each other
 			if :Fix in limitCol_arr && :Low in limitCol_arr
-				for x in findall(replace(allLimit_df[!,:Fix],nothing => Inf) .<= replace(allLimit_df[!,:Low],nothing => 0.0))
+				for x in findall(replace(allLimit_df[!,:Fix],nothing => Inf) .< replace(allLimit_df[!,:Low],nothing => 0.0) .- 0.0001)
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"fixed limit is smaller than lower limit for: " * dim_str))
@@ -341,7 +341,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 				end
 			end
 
-			# XXX warning
+			# ! warnings
 			# upper or lower limit of zero
 			if !isempty(limitCol_arr |> (y -> filter(x -> collect(x[y]) |> (z -> any(isnothing.(z)) ? false : any(z .== 0)),allLimit_df))) && va != :emission
 				lock(anyM.lock)
@@ -359,6 +359,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 				end
 			end
 		end
+
 
 		# if installed capacities differ depending on the direction, because residual values were defined and at the same time fixed limits on the installed capacity were provided
 		# an error will occur, because a value cannot be fixed but and the same time differ by direction, this is detected here

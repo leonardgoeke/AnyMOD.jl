@@ -258,7 +258,7 @@ The table above corresponds to the following tree:
 In addition to defining carriers, the `set_carrier.csv` file also maps them to regions and time-steps to specify the resolution there are modelled at. This is done separately for dispatch and expansion in the columns `timestep_dispatch`,`timestep_expansion`,`region_dispatch`, and `region_expansion`. The numbers in these columns correspond to levels of the respective trees. In the example displayed below, `4` in the `timestep_dispatch` column for `electricity` means, dispatch for electricity is modelled for each time-step on level 4. Going back to the definition of time-steps above, this corresponds to an hourly resolution.
 
 !!! tip "Less detailed resolution for debugging"
-    Creating and especially solving a model is much faster if the temporal resolution of dispatch is decreased. Therefore, it is advisable to first test new models at a less detailed temporal resolution. In the example this would be achieved by replacing the ´4´ for electricity with ´2´ to switch to a daily resolution. This will help you to spot and fix mistakes or unintended effects more efficiently.
+    Creating and especially solving a model is much faster if the temporal resolution of dispatch is decreased. Therefore, it is advisable to first test new models at a less detailed temporal resolution. In the example this would be achieved by replacing the `4` for electricity with `2` to switch to a daily resolution. This will help you to spot and fix mistakes or unintended effects more efficiently.
 
 AnyMOD checks the specified resolutions and will throw an error, if any logical inconsistencies are detected. Resolutions provided in a specific row only apply to the last carrier in that row. However, carrier on higher levels without a specified resolution, like `gas` in the example,  automatically inherit a resolution from their descendants.
 
@@ -321,7 +321,7 @@ The hierarchical tree of technologies is defined analogously to regions and time
 <tr>
 <td style="border-right:none">gasPlant</td>
 <td style="border-right:none">ccgt</td>
-<td>cccgtNoCHP</td>
+<td>ccgtNoCHP</td>
 <td style="border-right:none">gas</td>
 <td style="border-right:none">electricity</td>
 <td style="border-right:none"></td>
@@ -330,7 +330,7 @@ The hierarchical tree of technologies is defined analogously to regions and time
 <tr>
 <td style="border-right:none">gasPlant</td>
 <td style="border-right:none">ccgt</td>
-<td>cccgtCHP</td>
+<td>ccgtCHP</td>
 <td style="border-right:none">gas</td>
 <td style="border-right:none">electricity; districtHeat</td>
 <td style="border-right:none"></td>
