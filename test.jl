@@ -21,8 +21,9 @@ include("src/dataHandling/readIn.jl")
 include("src/dataHandling/tree.jl")
 include("src/dataHandling/util.jl")
 
-using Gurobi
+#using Gurobi
 
+   
 
 csvDelim = ","
 decomm = :decomm
@@ -55,3 +56,7 @@ optimize!(anyM.optModel)
 
 
 printObject(anyM.parts.exc.cns[:excCapa], anyM, fileName = "bla2")
+
+
+using AnyMOD
+  

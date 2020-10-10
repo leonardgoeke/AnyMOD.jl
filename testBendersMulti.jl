@@ -294,7 +294,7 @@ top_mod.parts.obj.var[:cut] = map(y -> map(x -> sub_tup[x][y], 1:length(sub_tup)
 push!(top_mod.parts.obj.cns[:objEqn], (name = :aggCut, group = :benders, cns = @constraint(top_mod.optModel, sum(top_mod.parts.obj.var[:cut][!,:var]) == filter(x -> x.name == :allCut,top_mod.parts.obj.var[:objVar])[1,:var])))
 
 # set lower limit on objective of the top problem to speed up first iterations (implementiere smarter und ggf. im algorithmus, damit echte gesamtobergrenze möglich ist, inkl. der subprobleme)
-@constraint(top_mod.optModel, sum(filter(x -> x.group == :costs, top_mod.parts.obj.var[:objVar])[!,:var]) >= 1.3e5)
+#@constraint(top_mod.optModel, sum(filter(x -> x.group == :costs, top_mod.parts.obj.var[:objVar])[!,:var]) >= 1.3e5)
 # creates column to save information on when which cut is binding
 
 # create sub level problems
@@ -424,10 +424,11 @@ let
 		i = i +1
 	end
 
+	CSV.write(joinpath("results/iteration_details.csv"), fullReport_df)
+	CSV.write(joinpath("results/binding_cuts.csv"), top_mod.parts.obj.cns[:bendersCuts])
 end
 
-CSV.write(joinpath("results/iteration_details.csv"), fullReport_df)
-CSV.write(joinpath("results/binding_cuts.csv"), top_mod.parts.obj.cns[:bendersCuts])
+
 
 # TODO teste tatsächlich mal mit lösung des töglichen problems
 
