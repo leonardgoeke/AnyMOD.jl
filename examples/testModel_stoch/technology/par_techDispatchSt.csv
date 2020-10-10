@@ -1,0 +1,5 @@
+technology_1,parameter_1,value_1,parameter_2,value_2,parameter_3,value_3,source
+battery_li,effStIn,0.98,effStOut,0.98,stDis,0.00008,OSMOSE
+caes,effStIn,0.84,effStOut,0.84,stDis,0.00034,OSMOSE
+pumpedHydro,effStIn,0.89,effStOut,0.89,stDis,0,OSMOSE
+hydrogenStorage,effStIn,0.99,effStOut,0.99,stDis,0,OSMOSE

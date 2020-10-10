@@ -1,0 +1,4 @@
+carrier_1,timestep_dispatch,timestep_expansion,region_dispatch,region_expansion,carrier_equality
+electricity,2,1,1,1,no
+synthGas,2,1,1,1,no
+hydrogen,2,1,1,1,no

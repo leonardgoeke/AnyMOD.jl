@@ -1,0 +1,7 @@
+carrier_1,parameter,value,source
+electricity,costLss,13000,Growitsch2013
+,rateDisc,0,
+,rateExpConv,0.02,
+,rateExpStIn,0.02,
+,rateExpStOut,0.02,
+,rateExpStSize,0.02,

@@ -1,0 +1,5 @@
+technology_1,parameter,value,comment
+gasPlant,effConv,0.66,openEntrance
+electrolyzer,effConv,0.785,OSMOSE
+methanation,effConv,0.675,OSMOSE
+hydrogenPlant,effConv,0.63,openEntrance

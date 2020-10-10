@@ -1,0 +1,4 @@
+technology_1,technology_2,parameter,value,comment
+photovoltaik,photovoltaikOpen,capaConvUp,198,openEntrance
+wind_onshore,,capaConvUp,381,openEntrance
+photovoltaik,photovoltaikRoof,capaConvUp,707,openEntrance

@@ -1,0 +1,9 @@
+technology_1,technology_2,parameter_1,value_1,parameter_2,value_2,parameter_3,value_3,comment,
+gasPlant,,costExpConv,344.9,costOprConv,8.6,lifeConv,30,openEntrance,
+electrolyzer,,costExpConv,418,costOprConv,14.6,lifeConv,30,OSMOSE,ist schon auf input
+methanation,,costExpConv,719,costOprConv,18,lifeConv,30,OSMOSE,ist schon auf input
+hydrogenPlant,,costExpConv,184.9,costOprConv,3.3,lifeConv,30,openEntrance,
+photovoltaik,photovoltaikOpen,costExpConv,317,costOprConv,7.9,lifeConv,25,Fraunhofer EE,
+photovoltaik,photovoltaikRoof,costExpConv,462.5,costOprConv,11.5,lifeConv,25,Fraunhofer EE,
+wind_onshore,,costExpConv,1140,costOprConv,30,lifeConv,25,Fraunhofer EE,
+methanation,,costVarGen,0.283,,,,,,

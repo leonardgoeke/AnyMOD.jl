@@ -1,0 +1,12 @@
+technology_1,technology_2,carrier_conversion_in,carrier_conversion_out,carrier_stored_in,carrier_stored_out,technology_type
+battery_li,,,,electricity,electricity,mature
+caes,,,,electricity,electricity,stock
+pumpedHydro,,,,electricity,electricity,mature
+gasPlant,,synthGas,electricity,,,mature
+electrolyzer,,electricity,hydrogen,,,mature
+methanation,,hydrogen,synthGas,,,mature
+hydrogenPlant,,hydrogen,electricity,,,mature
+photovoltaik,photovoltaikOpen,,electricity,,,mature
+wind_onshore,,,electricity,,,mature
+photovoltaik,photovoltaikRoof,,electricity,,,mature
+hydrogenStorage,,,,hydrogen,hydrogen,mature

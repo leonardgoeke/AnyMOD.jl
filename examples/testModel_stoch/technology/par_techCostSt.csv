@@ -1,0 +1,18 @@
+technology_1,parameter_1,value_1,parameter_2,value_2,parameter_3,value_3,comment
+battery_li,costExpStIn,74.7,lifeStIn,18,lifeStOut,18,OSMOSE
+caes,costExpStIn,454.7,lifeStIn,30,lifeStOut,30,OSMOSE
+pumpedHydro,costExpStIn,745.1,lifeStIn,60,lifeStOut,60,OSMOSE
+battery_li,costExpStSize,164.1,stOutToStInFix,1.020408163,lifeStSize,18,OSMOSE
+caes,costExpStSize,26.4,stOutToStInFix,1.19047619,lifeStSize,30,OSMOSE
+pumpedHydro,costExpStSize,10,stOutToStInFix,1.123595506,lifeStSize,60,OSMOSE
+hydrogenStorage,costExpStIn,0.095,lifeStOut,30,lifeStOut,30,OSMOSE und Neumann (2008)
+hydrogenStorage,costExpStSize,0.1,stOutToStInFix,1.01010101,lifeStSize,30,OSMOSE
+pumpedHydro,capaStInUp,7,,,,,
+pumpedHydro,capaStSizeUp,35,,,,,
+caes,capaStInUp,6,,,,,
+caes,capaStSizeUp,24,,,,,
+battery_li,sizeToStInFix,2,,,,,
+caes,sizeToStInFix,10,,,,,
+pumpedHydro,sizeToStInFix,12,,,,,
+hydrogenStorage,sizeToStInLow,500,,,,,
+hydrogenStorage,sizeToStInUp,5000,,,,,
