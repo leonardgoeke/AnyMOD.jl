@@ -1,14 +1,14 @@
 
-# <editor-fold desc= create other elements of model"
+#region # * create other elements of model
 
-# XXX create variables and capacity constraints for trade variables
+# ! create variables and capacity constraints for trade variables
 function createTradeVarCns!(partTrd::OthPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 	for type in (:Buy, :Sell)
 		trdPrc_sym = Symbol(:trd,type,:Prc)
 		trd_sym = Symbol(:trd,type)
 		if trdPrc_sym in keys(partTrd.par) && :C in namesSym(partTrd.par[trdPrc_sym].data)
 
-			# <editor-fold desc="create trade variables"
+			#region # * create trade variables
 			c_arr = unique(partTrd.par[trdPrc_sym].data[!,:C])
 
 			# create dataframe with all potential entries for trade/sell variable
@@ -20,9 +20,9 @@ function createTradeVarCns!(partTrd::OthPart,ts_dic::Dict{Tuple{Int64,Int64},Arr
 			var_df = createVar(var_df,string(:trd,type),getUpBound(var_df,anyM.options.bound.disp / anyM.options.scaFac.dispTrd,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispTrd)
 			partTrd.var[trd_sym] = orderDf(var_df)
 			produceMessage(anyM.options,anyM.report, 3," - Created variables for $(type == :Buy ? "buying" : "selling") carriers")
-			# </editor-fold>
+			#endregion
 
-			# <editor-fold desc="create capacity constraint on variable"
+			#region # * create capacity constraint on variable
 			trdCap_sym = Symbol(trd_sym,:Cap)
 			if trdCap_sym in keys(partTrd.par)
 				cns_df = matchSetParameter(var_df,partTrd.par[trdCap_sym],anyM.sets,newCol = :cap)
@@ -37,14 +37,14 @@ function createTradeVarCns!(partTrd::OthPart,ts_dic::Dict{Tuple{Int64,Int64},Arr
 				produceMessage(anyM.options,anyM.report, 3," - Created capacity restrictions for $(type == :Buy ? "buying" : "selling") carriers")
 			end
 
-			# </editor-fold>
+			#endregion
 		end
 		produceMessage(anyM.options,anyM.report, 2," - Created variables and constraints for $(type == :Buy ? "buying" : "selling") carriers")
 	end
 	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for trade")
 end
 
-# XXX create all energy balances (and curtailment variables if required)
+# ! create all energy balances (and curtailment variables if required)
 function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
 	partBal = anyM.parts.bal
@@ -53,7 +53,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	bal_tup = (:C,:Ts_dis)
 	agg_arr = [:Ts_dis, :R_dis, :C, :scr]
 
-	# <editor-fold desc="create potential curtailment and loss loss load variables
+	#region # * create potential curtailment and loss loss load variables
 
 	for varType in (:crt,:lss)
 		# get defined entries
@@ -67,9 +67,9 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 			partBal.var[varType] = orderDf(createVar(var_df,string(varType),getUpBound(var_df,anyM.options.bound.disp / anyM.options.scaFac.dispTrd,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispTrd))
 		end
 	end
-	# </editor-fold>
+	#endregion
 
-	# <editor-fold desc="create actual balance"
+	#region # * create actual balance
 
 	# finds all carriers that require an energy balance (not required for carriers that can only be shifted (temporal or spatial), e.g. that only have storage or exchange defined for them)
 	relC_arr = Array{Int,1}()
@@ -101,21 +101,27 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		subC_arr = unique([c,getDescendants(c,anyM.sets[:C],true)...])
 		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
 
-		# XXX add demand and size it
-		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets)
-		cns_df[!,:dem] = cns_df[!,:val] .* getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
-		select!(cns_df,Not(:val))
-
-		# XXX get relevant variables
+		# ! add and scale demand values
+		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets) # demand for carrier being balanced
+		cns_df[!,:val] = cns_df[!,:val] .* getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
+		cns_df = rename(cns_df,:val => :dem)
+				
+		# ! get relevant variables
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
 
 		# add tech variables
-		cns_df[!,:techVar] = getTechEnerBal(c,subC_arr,src_df,anyM.parts.tech,anyM.cInfo,anyM.sets)
+		cns_df[!,:techVar], unEtr_arr = getTechEnerBal(c,subC_arr,src_df,anyM.parts.tech,anyM.cInfo,anyM.sets)
+		# determine where an energy balance is required because a specific demand was defined
+		unEtr_arr = map(x -> x == 0.0 ,cns_df[!,:dem]) .* unEtr_arr
 
 		# add curtailment variables
 		for varType in (:crt,:lss)
 			if varType in keys(partBal.var)
 				cns_df[!,Symbol(varType,:Var)] = filterCarrier(partBal.var[varType],subC_arr) |> (x -> aggUniVar(x,src_df,agg_arr, cRes_tup,anyM.sets))
+				# determine where an energy balance is required because a curtailment variable was defined
+				if varType == :crt
+					unEtr_arr = map(x -> x == AffExpr(),cns_df[!,Symbol(varType,:Var)]) .* unEtr_arr
+				end
 			else
 				cns_df[!,Symbol(varType,:Var)] .= AffExpr()
 			end
@@ -124,6 +130,10 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		# add trade variables
 		if !isempty(anyM.parts.trd.var)
 			cns_df[!,:trdVar] = sum([filterCarrier(anyM.parts.trd.var[trd],subC_arr) |> (x -> aggUniVar(x,src_df,agg_arr,cRes_tup,anyM.sets) |> (y -> trd != :trdSell ? y : -1.0 * y)) for trd in keys(anyM.parts.trd.var)])
+			# determine where an energy balance is required because a trade sell variable was defined 
+			if :trdSell in keys(anyM.parts.trd.var)
+				unEtr_arr = map(x -> x == AffExpr(), aggUniVar(filterCarrier(anyM.parts.trd.var[:trdSell],[c]),src_df,agg_arr,cRes_tup,anyM.sets)) .* unEtr_arr
+			end
 		else
 			cns_df[!,:trdVar] .= AffExpr()
 		end
@@ -138,17 +148,33 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 			excVarFrom_df[!,:var] = excVarFrom_df[!,:var] .* (1.0 .- excVarFrom_df[!,:loss])
 			select!(excVarFrom_df,Not(:loss))
 
-			balTo_tup, balFrom_tup = [tuple(replace(collect(bal_tup),:R_dis => x)...) for x in [:R_to, :R_from]]
-
+			# aggregate import (from) and export (to) variables
 			excFrom_arr = aggUniVar(convertExcCol(excVarFrom_df),rename(src_df,:R_dis => :R_to),[:Ts_dis,:R_to,:C,:scr],(Ts_dis = cRes_tup[1], R_to = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
-			excTo_arr  = aggUniVar(excVarTo_df,rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C,:scr],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
+			excToMain_arr  = aggUniVar(filter(x -> x.C == c, excVarTo_df),rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C,:scr],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
+			excToDesc_arr  = aggUniVar(filter(x -> x.C != c, excVarTo_df),rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C,:scr],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
 
-			cns_df[!,:excVar] =  excFrom_arr .- excTo_arr
+			# determine where an energy balance is required because an export variable was defined
+			unEtr_arr = map(x -> x == AffExpr(), excToMain_arr) .* unEtr_arr
+			delete!(cns_df, unEtr_arr) # remove rows for unrequired energy balances	
+			
+			# create final column with import and export variables
+			cns_df[!,:excVar] =  excFrom_arr[.!unEtr_arr] .- excToMain_arr[.!unEtr_arr] .- excToDesc_arr[.!unEtr_arr]
 		else
+			delete!(cns_df, unEtr_arr) # remove rows for unrequired energy balances	
 			cns_df[!,:excVar] .= AffExpr()
 		end
 
-		# prepare, scale and save constraints to dictionary
+		# ! add demand from descendant carriers
+		for cSub in filter(x -> x != c, getDescendants(c,anyM.sets[:C],false)) # demand for descendant carriers that has to be aggregated
+			demSub_df = filter(x -> x.val != 0.0, matchSetParameter(filter(x -> x.C == cSub,allDim_df),partBal.par[:dem],anyM.sets))
+			if isempty(demSub_df) continue end
+			if anyM.cInfo[c].tsDis == anyM.cInfo[cSub].tsDis # also scales demand to be aggregated if dispatch resolution is the same as for the ancestral carrier
+				demSub_df[!,:val] = demSub_df[!,:val] .* getResize(demSub_df,anyM.sets[:Ts],anyM.supTs)
+			end
+			cns_df[!,:dem] = aggDivVar(vcat(demSub_df,rename(select(cns_df,intCol(cns_df,:dem)),:dem => :val)),select(cns_df,intCol(cns_df)),(:Ts_dis,:R_dis,:scr),anyM.sets)
+		end
+
+		# ! prepare, scale and save constraints to dictionary
 		c_str = Symbol(anyM.sets[:C].nodes[c].val)
 		cns_df[!,:cnsExpr] = map(x -> x.techVar + x.excVar + x.trdVar + x.lssVar - x.dem - x.crtVar, eachrow(cns_df))
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
@@ -165,10 +191,10 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	end
 
 	produceMessage(anyM.options,anyM.report, 1," - Created energy balances for all carriers")
-	# </editor-fold>
+	#endregion
 end
 
-# XXX aggregate all technology variables for energy balance
+# ! aggregate all technology variables for energy balance
 function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,tech_dic::Dict{Symbol,TechPart},
 																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}},sets_dic::Dict{Symbol,Tree})
 	techVar_arr = Array{Array{AffExpr,1}}(undef,length(subC_arr))
@@ -211,12 +237,26 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 			grpVar_df = combine(groupby(allVar_df, [:Ts_dis, :R_dis, :scr]), :var => (x -> sum(x)) => :var)
 			techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis, :scr], :left, Dict(:var => AffExpr()))[!,:var]
 		end
+
+
 	end
 
-	return map(x -> sum(x),eachrow(hcat(techVar_arr...)))
+	# check where tech variables are sinks for energy carriers, which means in this case an energy balance will be necessary 
+	if !cInfo_dic[cBal_int].eq 
+		if unique(techVar_arr[1]) != [AffExpr()] # sinks are terms with a negative sign
+			unEtr_arr = map(x -> values(x.terms) |> (y -> isempty(y) ? true : minimum(collect(y)) >= 0.0), techVar_arr[1])
+		else # if all expressions are empty there aren't any sinks
+			unEtr_arr = fill(true, length(techVar_arr[1]))
+		end
+	else # for equality constraints the energy balance is always necessary, so checking for sinks is not required
+		unEtr_arr = fill(false, length(techVar_arr[1]))
+	end
+
+
+	return map(x -> sum(x),eachrow(hcat(techVar_arr...))), unEtr_arr
 end
 
-# XXX create constarints that enforce any type of limit (Up/Low/Fix) on any type of variable
+# ! create constarints that enforce any type of limit (Up/Low/Fix) on any type of variable
 function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 	parLim_arr = String.(collectKeys(keys(partLim.par)))
@@ -245,7 +285,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		end
 
 		allLimit_df = DataFrame(var = AffExpr[])
-		# XXX loop over respective type of limits to obtain data
+		# ! loop over respective type of limits to obtain data
 		for lim in varToPar_dic[va]
 			par_obj = copy(partLim.par[Symbol(va,lim)])
 
@@ -293,7 +333,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr),Dict(:Up => nothing, :Low => nothing, :Fix => nothing)))
 		end
 
-		# XXX check for contradicting values
+		# ! check for contradicting values
 		colSet_dic = Dict(x => Symbol(split(string(x),"_")[1]) for x in intCol(allLimit_df))
 		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))
 		entr_int = size(allLimit_df,1)
@@ -302,7 +342,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 			# upper and lower limit contradicting each other
 			if :Low in limitCol_arr && :Up in limitCol_arr
-				for x in findall(replace(allLimit_df[!,:Low],nothing => 0.0) .> replace(allLimit_df[!,:Up],nothing => Inf))
+				for x in findall(replace(allLimit_df[!,:Low],nothing => 0.0) .- 0.0001 .> replace(allLimit_df[!,:Up],nothing => Inf))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"contradicting values for upper and lower limit detected for: " * dim_str))
@@ -333,7 +373,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			# residual values already violate limits
 			resiVal_arr = getfield.(allLimit_df[!,:var],:constant)
 			if :Up in limitCol_arr
-				for x in findall(resiVal_arr .>  replace(allLimit_df[!,:Up],nothing => Inf))
+				for x in findall(resiVal_arr.>  replace(allLimit_df[!,:Up] ,nothing => Inf))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"residual values already exceed the upper limit for: " * dim_str))
@@ -360,7 +400,6 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			end
 		end
 
-
 		# if installed capacities differ depending on the direction, because residual values were defined and at the same time fixed limits on the installed capacity were provided
 		# an error will occur, because a value cannot be fixed but and the same time differ by direction, this is detected here
 		if :Fix in limitCol_arr && va == :capaExc
@@ -381,7 +420,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			end
 		end
 
-		# XXX check for suspicious entries for capacity where limits are provided for the sum of capacity over several years
+		# ! check for suspicious entries for capacity where limits are provided for the sum of capacity over several years
 		if occursin("capa",string(va))
 			if !(:Ts_disSup in namesSym(allLimit_df))
 				lock(anyM.lock)
@@ -405,11 +444,12 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			end
 		end
 
-		# XXX write constraint containers
+		# ! write constraint containers
 		for lim in limitCol_arr
 			# filter respective limits (low, fix or up) out of the entire dataframe
 			relLim_df = filter(x -> !isnothing(x[lim]),allLimit_df[!,Not(filter(x -> x != lim,limitCol_arr))])
-			relLim_df = filter(x -> x.var != AffExpr() || x.Fix != 0.0, relLim_df)
+			relLim_df = filter(x -> x.var != AffExpr(), relLim_df)
+			#if :Fix in namesSym(relLim_df) && va in (:expConv,:expStIn,:expStOut,:expStSize,:expExc) relLim_df = filter(x -> x.Fix != 0.0, relLim_df) end
             if isempty(relLim_df) continue end
 			rename!(relLim_df,lim => :Lim)
 
@@ -433,11 +473,11 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 	produceMessage(anyM.options,anyM.report, 1," - Created all limiting constraints")
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc= utility functions"
+#region # * utility functions
 
-# XXX connect capacity and expansion variables
+# ! connect capacity and expansion variables
 function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns_dic::Dict{Symbol,cnsCont})
     for capaVar in filter(x -> occursin("capa",string(x)),keys(prepTech_dic))
 
@@ -456,16 +496,16 @@ function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns
     end
 end
 
-# XXX adds column with JuMP variable to dataframe
-function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64,Array{Float64,1}},optModel::Model,lock_::ReentrantLock,sets::Dict{Symbol,Tree}; scaFac::Float64 = 1.0, lowBd::Float64 = 0.0)
+# ! adds column with JuMP variable to dataframe
+function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64,Array{Float64,1}},optModel::Model,lock_::ReentrantLock,sets::Dict{Symbol,Tree}; scaFac::Float64 = 1.0, lowBd::Float64 = 0.0, bi::Bool = false)
 	# adds an upper bound to all variables if provided within the options
 	#if isempty(setData_df) return DataFrame(var = AffExpr[]) end
 	arr_boo = typeof(upBd_fl) <: Array
 	if arr_boo
-		info = VariableInfo.(!isnan(lowBd), lowBd, .!isnan.(upBd_fl), upBd_fl, false, NaN, false, NaN, false, false)
+		info = VariableInfo.(!isnan(lowBd), lowBd, .!isnan.(upBd_fl), upBd_fl, false, NaN, false, NaN, bi, false)
 		var_obj = JuMP.build_variable.(error, info)
 	else
-		info = VariableInfo(!isnan(lowBd), lowBd, !isnan(upBd_fl), upBd_fl, false, NaN, false, NaN, false, false)
+		info = VariableInfo(!isnan(lowBd), lowBd, !isnan(upBd_fl), upBd_fl, false, NaN, false, NaN, bi, false)
 		var_obj = JuMP.build_variable(error, info)
 	end
 
@@ -486,7 +526,7 @@ function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64
 	return setData_df[!,Not(:name)]
 end
 
-# XXX scales expressions in the dataframe to be within the range defined within options
+# ! scales expressions in the dataframe to be within the range defined within options
 function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}},checkRng_fl::Float64)
 
 	if isempty(cnsExpr_df) return end
@@ -508,7 +548,7 @@ function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tup
 	end
 end
 
-# XXX used to perform scaling of expression array based on range of coefficients provided
+# ! used to perform scaling of expression array based on range of coefficients provided
 function scaleRng(expr_arr::Array{AffExpr,1},rng_arr::Array,rng_tup::Tuple{Float64,Float64}, rhs_boo::Bool)
 	scaRel_arr = rhs_boo ? union(findall(rng_arr .< rng_tup[1]), findall(rng_arr .> rng_tup[2])) : union(findall(getindex.(rng_arr,1) .< rng_tup[1]), findall(getindex.(rng_arr,2) .> rng_tup[2]))
 	if !isempty(scaRel_arr)
@@ -517,7 +557,7 @@ function scaleRng(expr_arr::Array{AffExpr,1},rng_arr::Array,rng_tup::Tuple{Float
 	return expr_arr
 end
 
-# XXX check range of coefficients in expressions within input array
+# ! check range of coefficients in expressions within input array
 function checkExprRng(expr_arr::Array{AffExpr,1},rngThres_fl::Float64)
 	# obtains range of coefficients for matrix and rhs
 	matRng_arr = map(x -> abs.(values(x.terms)) |> (y -> isempty(y) ? (0.0,0.0) : (minimum(y),maximum(y))), expr_arr)
@@ -532,7 +572,7 @@ function checkExprRng(expr_arr::Array{AffExpr,1},rngThres_fl::Float64)
 	end
 end
 
-# XXX creates an actual jump constraint based on the constraint container provided
+# ! creates an actual jump constraint based on the constraint container provided
 function createCns(cnsCont_obj::cnsCont,optModel::Model)
 	cns_df = cnsCont_obj.data
 	if cnsCont_obj.sign == :equal
@@ -545,7 +585,7 @@ function createCns(cnsCont_obj::cnsCont,optModel::Model)
 	return select!(cns_df,Not(:cnsExpr))
 end
 
-# XXX adjusts resolution of var_df according to information in first two tuples
+# ! adjusts resolution of var_df according to information in first two tuples
 function checkTechReso!(tRes_tup::Tuple{Int,Int},cBalRes_tup::Tuple{Int,Int},var_df::DataFrame,sets_dic::Dict{Symbol,Tree})
 	# if dispatch regions for technology were disaggregated, replace the disaggregated with the ones relevant for the carrier
 	for (idx,dim) in enumerate([:Ts_dis,:R_dis])
@@ -557,4 +597,4 @@ function checkTechReso!(tRes_tup::Tuple{Int,Int},cBalRes_tup::Tuple{Int,Int},var
 	end
 end
 
-# </editor-fold>
+#endregion

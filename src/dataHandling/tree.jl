@@ -1,4 +1,4 @@
-# XXX finds provided string tuple in tree structure and returns node id (or false), tuple does not need to start at the top level of tree, in that case function can return an array instead of a number
+# ! finds provided string tuple in tree structure and returns node id (or false), tuple does not need to start at the top level of tree, in that case function can return an array instead of a number
 function lookupTupleTree(input_uni::Tuple{Vararg{String,N} where N},tree_obj::Tree, startLvl_int::Int= 1)
 
 	if isempty(tree_obj.nodes) return false end
@@ -31,7 +31,7 @@ function lookupTupleTree(input_uni::Tuple{Vararg{String,N} where N},tree_obj::Tr
 	return found_arr
 end
 
-# XXX sorts inputs nodes according to their tree position
+# ! sorts inputs nodes according to their tree position
 function sortSiblings(nodesIndex_arr::Array{Int,1},tree_obj::Tree)
 	hertiLine_mat = map(x -> getAncestors(x, tree_obj,:tup),nodesIndex_arr)
 
@@ -51,7 +51,7 @@ function sortSiblings(nodesIndex_arr::Array{Int,1},tree_obj::Tree)
     return order_mat[:,1]
 end
 
-# XXX goes up the tree from x for the number of steps defined by steps_int
+# ! goes up the tree from x for the number of steps defined by steps_int
 function goUp(x::Int,up::Dict{Int,Int},steps_int::Int,nodes_dic::Dict{Int,Node})
 	startLvl_int = nodes_dic[x].lvl
 	steps_ctr = 0
@@ -62,10 +62,10 @@ function goUp(x::Int,up::Dict{Int,Int},steps_int::Int,nodes_dic::Dict{Int,Node})
 	return x
 end
 
-# XXX gets all parents (id, level) combination, if node is already on top level returns itself, if limitLvl_int is set only provide parents until that level
+# ! gets all parents (id, level) combination, if node is already on top level returns itself, if limitLvl_int is set only provide parents until that level
 getAncestors(startNode_int::Int,tree_obj::Tree,retType::Symbol,limitLvl_int::Int=0) = getAncestors(startNode_int::Int,tree_obj::Tree,Val{retType}(),limitLvl_int::Int)
 
-# XXX returns an array of tuples with ancestors (idx,level)
+# ! returns an array of tuples with ancestors (idx,level)
 function getAncestors(startNode_int::Int,tree_obj::Tree,retType::Val{:tup},limitLvl_int::Int=0)
 
 	# gets level of start node
@@ -87,7 +87,7 @@ function getAncestors(startNode_int::Int,tree_obj::Tree,retType::Val{:tup},limit
 	return heri_arr
 end
 
-# XXX returns an array of integers with ancestors
+# ! returns an array of integers with ancestors
 function getAncestors(startNode_int::Int,tree_obj::Tree,retType::Val{:int},limitLvl_int::Int=0)
 
 	# gets level of start node
@@ -109,7 +109,7 @@ function getAncestors(startNode_int::Int,tree_obj::Tree,retType::Val{:int},limit
 	return heri_arr
 end
 
-# XXX gets all children of node
+# ! gets all children of node
 function getDescendants(startNode_int::Int,tree_obj::Tree,getAll::Bool = false, limitLvl_int::Int=0)
 
 	# determines starting point
@@ -141,10 +141,10 @@ function getDescendants(startNode_int::Int,tree_obj::Tree,getAll::Bool = false, 
 	return getAll ? allIdx_arr : startIdx_arr
 end
 
-# XXX returns all nodes of tree on the level provided
+# ! returns all nodes of tree on the level provided
 getNodesLvl(tree_obj::Tree, level_int::Int) = filter(r -> r.lvl == level_int, sort(collect(values(tree_obj.nodes)), by = x -> x.idx))
 
-# XXX returns (unique) tuple with strings of node itself and its parents
+# ! returns (unique) tuple with strings of node itself and its parents
 function getUniName(nodeIdx_int::Int, tree_obj::Tree)
 	if nodeIdx_int == 0 return ("none",) end
 	relNodes_arr = tree_obj.nodes[nodeIdx_int].lvl == 1 ? [nodeIdx_int] : vcat(reverse(getAncestors(nodeIdx_int,tree_obj,:tup,1))..., nodeIdx_int)

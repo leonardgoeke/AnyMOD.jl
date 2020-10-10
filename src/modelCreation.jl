@@ -1,5 +1,5 @@
 
-# XXX create optimization model after anyModel has been initialized
+# ! create optimization model after anyModel has been initialized
 """
 ```julia
 createOptModel!(model_object::anyModel)
@@ -9,12 +9,12 @@ Create all elements of the model's underlying optimization problem except for th
 """
 function createOptModel!(anyM::anyModel)
 
-	# <editor-fold desc="create technology related variables and constraints"
+	#region # * create technology related variables and constraints
 
 	techSym_arr = collect(keys(anyM.parts.tech))
     parDef_dic = defineParameter(anyM.options,anyM.report)
 
-    # XXX gets dictionary with dimensions of expansion and capacity variables
+    # ! gets dictionary with dimensions of expansion and capacity variables
     tsYear_dic = Dict(zip(anyM.supTs.step,collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
     prepTech_dic = Dict{Symbol,Dict{Symbol,NamedTuple}}()
     prepareTechs!(techSym_arr,prepTech_dic,tsYear_dic,anyM)
@@ -22,7 +22,7 @@ function createOptModel!(anyM::anyModel)
 	prepExc_dic = Dict{Symbol,NamedTuple}()
 	prepareExc!(prepExc_dic,tsYear_dic,anyM)
 
-	# XXX remove unrequired elements in case of distributed model creation
+	# ! remove unrequired elements in case of distributed model creation
 	if !isempty(anyM.subPro)
 	    distributedMapping!(anyM,prepTech_dic,prepExc_dic)
 	end
@@ -33,7 +33,7 @@ function createOptModel!(anyM::anyModel)
     techSym_arr = collect(keys(prepTech_dic))
     foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),techSym_arr))
 
-    # XXX create all technology related elements
+    # ! create all technology related elements
 
     # creates dictionary that assigns combination of superordinate dispatch timestep and dispatch level to dispatch timesteps
     allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
@@ -61,9 +61,9 @@ function createOptModel!(anyM::anyModel)
     end
     produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all technologies")
 
-	# </editor-fold>
+	#endregion
 
-	# <editor-fold desc="create exchange related variables and constraints"
+	#region # * create exchange related variables and constraints
 
 	if !all(map(x -> isempty(x),values(prepExc_dic[:capaExc])))
 		partExc = anyM.parts.exc
@@ -86,7 +86,7 @@ function createOptModel!(anyM::anyModel)
 		end
 	end
 
-	# </editor-fold>
+	#endregion
 
 	if isempty(anyM.subPro) || anyM.subPro != (0,0)
 		createTradeVarCns!(anyM.parts.trd,ts_dic,anyM)

@@ -1,5 +1,5 @@
 
-# XXX sets the objective function according to the arguments provided in obj_dic
+# ! sets the objective function according to the arguments provided in obj_dic
 """
 Set the objective of the model's underlying optimization problem.
 ```julia
@@ -9,13 +9,13 @@ setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol}, model_object::anyMode
 """
 function setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyModel,minimize::Bool=true)
 
-    # XXX converts input into dictionary, if only a symbol was provided, if :none keyword was provided returns a dummy objective function
+    # ! converts input into dictionary, if only a symbol was provided, if :none keyword was provided returns a dummy objective function
     if typeof(obj_dic) == Symbol
         if obj_dic == :none @objective(anyM.optModel, Min, 1); return, produceMessage(anyM.options,anyM.report, 1," - Set an empty objective function") end
         obj_dic = Dict(obj_dic => 1.0)
     end
 
-    # XXX create empty variables table for objective variables, if already other object defined, these variables and equations are removed from the model
+    # ! create empty variables table for objective variables, if already other object defined, these variables and equations are removed from the model
     partObj = anyM.parts.obj
 
 	if !(:objVar in keys(partObj.var))
@@ -23,23 +23,24 @@ function setObjective!(obj_dic::Union{Dict{Symbol,Float64},Symbol},anyM::anyMode
 		partObj.cns[:objEqn] = DataFrame(name = Symbol[], group = Symbol[], cns = ConstraintRef[])
 	end
 
-    # XXX create variables and equations required for specified objectives
+    # ! create variables and equations required for specified objectives
     for objGrp in setdiff(keys(obj_dic),unique(partObj.var[:objVar][!,:group]))
         createObjective!(objGrp,partObj,anyM)
     end
 
-	# XXX adds alpha variable for benders
+	# ! adds alpha variable for benders
 	if anyM.subPro == (0,0)
 		info = VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)
-		push!(partObj.var[:objVar],(name = :alpha, group = :benders, var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, info),"alpha")))
+		push!(partObj.var[:objVar],(name = :allCut, group = :benders, var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, info),"allCut")))
 		obj_dic[:benders] = 1.0
-		partObj.cns[:bendersCuts] = DataFrame(id=Int[],cns = ConstraintRef[])
+		partObj.cns[:bendersCuts] = DataFrame(id=Int[], Ts_disSup = Int[], scr = Int[], cut = String[], cns = ConstraintRef[])
 	end
 
-    # XXX sets overall objective variable with upper limits and according to weights provided in dictionary
+    # ! sets overall objective variable with upper limits and according to weights provided in dictionary
 	objBd_flt = anyM.options.bound.obj |> (x -> isnan(x) ? NaN : x / anyM.options.scaFac.obj)
 	obj_var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, !isnan(objBd_flt), objBd_flt, false, NaN, false, NaN, false, false)),"obj") * anyM.options.scaFac.obj
 	obj_eqn = @constraint(anyM.optModel, obj_var == sum(map(x -> sum(filter(r -> r.group == x,partObj.var[:objVar])[!,:var])*obj_dic[x], collectKeys(keys(obj_dic)))))
+	partObj.var[:obj] = DataFrame(var = obj_var)
 
     if minimize
         @objective(anyM.optModel, Min, obj_var / anyM.options.scaFac.obj)
@@ -52,7 +53,7 @@ end
 
 createObjective!(objGrp::Symbol, partObj::OthPart,anyM::anyModel) = createObjective!(Val{objGrp}(), partObj::OthPart,anyM::anyModel)
 
-# XXX create variables and equations for cost objective
+# ! create variables and equations for cost objective
 function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
 	parObj_arr = collectKeys(keys(partObj.par))
@@ -62,14 +63,14 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 	# computes discount factors from discount rate provided and saves them as new parameter elements
 	computeDisFac!(partObj,anyM)
 
-	# <editor-fold desc="expansion related costs"
+	#region # * expansion related costs
 
 	if isempty(anyM.subPro) || anyM.subPro == (0,0)
 
-		# XXX add elements for expansion costs of technologies
+		# ! add elements for expansion costs of technologies
 		for va in (:Conv, :StIn, :StOut, :StSize, :Exc)
 
-			# XXX compute expansion costs
+			# ! compute expansion costs
 			var_sym = Symbol(:exp,va)
 			costPar_sym = Symbol(:costExp,va)
 
@@ -97,14 +98,14 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
 			# use technical lifetime where no economic lifetime could be obtained
 			if va != :Exc
-				allPar_arr = filter(w -> !(isempty(w)),map(x -> anyM.parts.tech[x].par[Symbol(:life,va)].data,filter(y -> var_sym in keys(anyM.parts.tech[y].var), techFilt_arr)))
+				allPar_arr = map(w -> isempty(w) ? DataFrame(val = [20.0]) : w,map(x -> anyM.parts.tech[x].par[Symbol(:life,va)].data,filter(y -> var_sym in keys(anyM.parts.tech[y].var), techFilt_arr)))
 				union(intCol.(allPar_arr)...) |> (z -> map(x -> map(y -> insertcols!(x,1,(y => fill(0,size(x,1)))) , setdiff(z,intCol(x)) ) ,allPar_arr))
-				lifePar_obj = copy(anyM.parts.tech[techFilt_arr[1]].par[Symbol(:life,va)],vcat(allPar_arr...))
+				lifePar_obj = copy(anyM.parts.tech[techFilt_arr[1]].par[Symbol(:life,va)],unique(vcat(allPar_arr...)))
 			else
 				lifePar_obj = anyM.parts.exc.par[:lifeExc]
 			end
 			techLife_df = matchSetParameter(filter(x -> isnothing(x.life),allExp_df)[!,Not(:life)],lifePar_obj,anyM.sets,newCol = :life)
-			allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),allExp_df))
+			allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),allExp_df))	
 
 			# gets expansion costs and interest rate to compute annuity
 			allExp_df = matchSetParameter(convertExcCol(allExp_df),partObj.par[costPar_sym],anyM.sets,newCol = :costExp)
@@ -135,13 +136,13 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			# adds discount factor and computes cost expression
 			allExp_df = matchSetParameter(convertExcCol(allExp_df),partObj.par[va != :Exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
 
-			# XXX groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
+			# ! groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
 			allExp_df = rename(combine(x -> (expr = sum(x.disFac .* x.exp .* x.costAnn),) ,groupby(allExp_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C])),:Ts_disSup => :Ts_exp)
 			transferCostEle!(allExp_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng)
 		end
 		produceMessage(anyM.options,anyM.report, 3," - Created expression for expansion costs")
 
-		# XXX add elements for operational costs of technologies
+		# ! add elements for operational costs of technologies
 		for va in (:Conv, :StIn, :StOut, :StSize, :Exc)
 
 			var_sym = Symbol(:capa,va)
@@ -163,7 +164,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
 			if isempty(allCapa_df) continue end
 
-			# XXX groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
+			# ! groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
 			allCapa_df = combine(x -> (expr = sum(x.disFac .* x.capa .* x.costOpr),), groupby(allCapa_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C]))
 			transferCostEle!(allCapa_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng)
 		end
@@ -171,12 +172,12 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 
 	end
 
-	# </editor-fold>
+	#endregion
 
-	# <editor-fold desc="dispatch related costs"
+	#region # * dispatch related costs
 
 	if isempty(anyM.subPro) || anyM.subPro != (0,0)
-		# XXX add elements for variable costs of technologies
+		# ! add elements for variable costs of technologies
 		for va in (:use,:gen,:stIn,:stOut,:exc,:in,:out)
 
 			costPar_sym = string(va) |> (x -> Symbol(:costVar,uppercase(x[1]),x[2:end]))
@@ -231,13 +232,13 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			if va != :exc rename!(allDisp_df,:R_dis => :R_exp) end
 			allDisp_df = matchSetParameter(allDisp_df,partObj.par[va != :exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
 
-			# XXX groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
+			# ! groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
 			allDisp_df = combine(x -> (expr = sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0 .* anyM.options.redStep,) ,groupby(allDisp_df,va != :exc ? [:Ts_disSup,:R_exp,:Te,:scr] : [:Ts_disSup,:C,:scr]))
 			transferCostEle!(allDisp_df, partObj,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng)
 		end
 		produceMessage(anyM.options,anyM.report, 3," - Created expression for variables costs")
 
-		# XXX add elements for curtailment and loss of load costs of energy carriers
+		# ! add elements for curtailment and loss of load costs of energy carriers
 		for varType in [:crt,:lss]
 			if varType in keys(anyM.parts.bal.var)
 				cost_sym = varType == :crt ? :costCrt : :costLss
@@ -252,7 +253,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			end
 		end
 
-		# XXX add elements for trade costs of energy carriers (buy and sell)
+		# ! add elements for trade costs of energy carriers (buy and sell)
 		for va in (:trdBuy, :trdSell)
 			if va in keys(anyM.parts.trd.var)
 				# compute discounted trade costs
@@ -268,9 +269,9 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 		produceMessage(anyM.options,anyM.report, 3," - Created expression for curtailment and trade costs")
 	end
 
-	# </editor-fold>
+	#endregion
 
-	# XXX creates overall costs variable considering scaling parameters
+	# ! creates overall costs variable considering scaling parameters
 	relVar_arr = filter(x -> x != :objVar, collectKeys(keys(partObj.var)))
 	grpVar_arr = fill(:costs,length(relVar_arr))
 	objVar_arr = map(relVar_arr) do varName
@@ -289,7 +290,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 	partObj.var[:objVar] = vcat(partObj.var[:objVar],DataFrame(group = grpVar_arr, name = relVar_arr, var = objVar_arr))
 end
 
-# XXX transfers provided cost dataframe into dataframe of overall objective variables and equations (and scales them)
+# ! transfers provided cost dataframe into dataframe of overall objective variables and equations (and scales them)
 function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symbol,optModel::Model,lock_::ReentrantLock,sets_dic::Dict{Symbol,Tree},
 												coefRng_tup::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}, scaCost_fl::Float64, checkRng_fl::Float64, lowBd::Float64 = 0.0)
 

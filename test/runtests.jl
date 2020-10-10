@@ -5,7 +5,7 @@ using AnyMOD, Cbc, Test
 @testset "run_rest" begin
 
     # create model
-    anyM = anyModel("testModel","testModel", objName = "test", shortExp = 10, checkRng = 1e8)
+    anyM = anyModel("test/testModel","test/testModel", objName = "test", shortExp = 10, checkRng = 1e8)
 
     createOptModel!(anyM)
     setObjective!(:costs,anyM)
@@ -45,3 +45,5 @@ using AnyMOD, Cbc, Test
 
 
 end
+
+3+12

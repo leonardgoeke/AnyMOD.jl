@@ -1,5 +1,5 @@
 
-# XXX iteration over all technologies to create variables and constraints
+# ! iteration over all technologies to create variables and constraints
 function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
 	cns_dic = Dict{Symbol,cnsCont}()
@@ -62,10 +62,10 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
     return cns_dic
 end
 
-# <editor-fold desc= prepare to create expansion and capacity variables"
+#region # * prepare to create expansion and capacity variables
 
-# XXX prepare dictionaries that specifies dimensions for expansion and capacity variables
-function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},tsYear_dic::Dict{Int,Int},anyM::anyModel)
+# ! prepare dictionaries that specifies dimensions for expansion and capacity variables
+function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},tsYear_dic::Dict{Int,Int},anyM::anyModel)  
 
 	for tSym in techSym_arr
 		prepTech_dic = Dict{Symbol,NamedTuple}()
@@ -84,6 +84,26 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dic
 		# check for capacities variables that have to be created, because of residual capacities provided
 		addResidualCapa!(prepTech_dic, part, tInt, anyM)
 
+		# ensure consistency among different storage capacities (to every storage in- or output capacity a corresponding storage size has to exist)
+		stKey_arr = collectKeys(keys(prepTech_dic))
+
+		if !isempty(intersect([:capaStIn,:capaStOut],stKey_arr))
+			# determines all defined storage in- and output capacities
+			allSt_arr = filter(z -> !isempty(z), vcat(map(y -> collect(map(x -> getfield(prepTech_dic[y],x),(:var,:resi))),intersect([:capaStIn,:capaStOut],stKey_arr))...))
+			relSt_df = unique(vcat(map(w -> select(w,intCol(w)), allSt_arr)...))
+
+			if isempty(relSt_df) continue end
+
+			# finds cases where no storage size capacity can be matched to in- or output and adds corresponding entries
+			if :capaStSize in stKey_arr
+				newSize_df = (part.type == :stock ? [:resi,] : [:resi,:var]) |> 
+								(z -> vcat(prepTech_dic[:capaStSize].var,antijoin(relSt_df,unique(vcat(map(u -> getfield(prepTech_dic[:capaStSize],u) |> (k -> select(k,intCol(k))) ,z)...)), on = names(relSt_df))))
+				prepTech_dic[:capaStSize] = (var = newSize_df, resi = prepTech_dic[:capaStSize].resi)
+			else
+				prepTech_dic[:capaStSize]= (var = relSt_df, resi = DataFrame())
+			end
+		end
+
 		# map required capacity constraints
 		createCapaRestrMap!(tSym, anyM)
 
@@ -91,13 +111,14 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dic
 		if part.decomm != :none
 			for capTy in intersect(keys(prepTech_dic),(:capaConv,:capaStIn,:capaStOut,:capaStSize,:capaExc))
 				if part.type != :stock
-					prepTech_dic[Symbol(:ins,makeUp(capTy))] =  (var = prepTech_dic[capTy].var, resi = DataFrame())
+					prepTech_dic[Symbol(:ins,makeUp(capTy))] =  (var = prepTech_dic[capTy].var, resi = prepTech_dic[capTy].resi)
+					prepTech_dic[capTy] =  (var = prepTech_dic[capTy].var, resi = DataFrame())
 				else
-					prepTech_dic[Symbol(:ins,makeUp(capTy))] =  (var = select(prepTech_dic[capTy].resi,Not([:var])), resi = DataFrame())
+					prepTech_dic[Symbol(:ins,makeUp(capTy))] =  (var = prepTech_dic[capTy].resi[[],:], resi = prepTech_dic[capTy].resi)
+					prepTech_dic[capTy] =  (var = select(prepTech_dic[capTy].resi,Not([:var])), resi = DataFrame())
 				end
 			end
 		end
-
 		# if any capacity variables or residuals were prepared, add these to overall dictionary
 		if collect(values(prepTech_dic)) |> (z -> any(map(x -> any(.!isempty.(getfield.(z,x))), (:var,:resi))))
 			prepVar_dic[tSym] = prepTech_dic
@@ -105,7 +126,7 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dic
 	end
 end
 
-# XXX dimensions for expansion variables
+# ! dimensions for expansion variables
 function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},part::AbstractModelPart,tInt::Int,anyM::anyModel)
 
 	# extract tech info
@@ -120,14 +141,16 @@ function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dic
 	allMap_df =  getindex.(expDim_arr,1) |> (x -> DataFrame(Ts_exp = getindex.(x,1), Ts_expSup = getindex.(x,2), R_exp = getindex.(expDim_arr,2), Te = fill(tInt,length(expDim_arr))))
 
 	stCar_arr::Array{Int,1} = unique(vcat(collect.(map(x -> getproperty(carGrp_ntup,x),intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))))...))
+	convCar_arr::Array{Int,1} = unique(vcat(collect.(map(x -> getproperty(carGrp_ntup,x),intersect(keys(carGrp_ntup),(:use,:gen))))...))
+
 
 	# loops over type of capacities to specify dimensions of capacity variables
 	for exp in (:Conv, :StIn, :StOut, :StSize)
 
 		# removes entries where capacities are fixed to zero
-		if exp == :Conv
+		if exp == :Conv && !isempty(convCar_arr)
 			exp_df = removeEntries([filterZero(allMap_df,getLimPar(anyM.parts.lim,:expConvFix, anyM.sets[:Te], tech = tInt),anyM)],allMap_df)
-		elseif !isempty(stCar_arr)
+		elseif exp != :Conv && !isempty(stCar_arr)
 			stMap_df = combine(groupby(allMap_df,namesSym(allMap_df)), :Te => (x -> stCar_arr) => :C)
 			exp_df = removeEntries([filterZero(stMap_df,getLimPar(anyM.parts.lim,Symbol(:exp,exp,:Fix), anyM.sets[:Te], tech = tInt),anyM)],stMap_df)
 		else
@@ -138,10 +161,10 @@ function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dic
 	end
 end
 
-# XXX dimensions for capacity variables
+# ! dimensions for capacity variables
 function prepareCapacity!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple},exp_df::DataFrame,capaVar::Symbol,anyM::anyModel; tech::Int = 0)
 
-	# XXX initialize assignments and data
+	# ! initialize assignments and data
 	defPar_tup = tuple(keys(part.par)...)
 	techType_sym = :type in fieldnames(typeof(part)) ? part.type : :mature
 
@@ -167,10 +190,10 @@ function prepareCapacity!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTup
 	end
 
 	# create entry for capacity
-	prep_dic[capaVar] =  (var = orderDf(capaVar_df), resi = DataFrame())
+	prep_dic[capaVar] =  (var = unique(orderDf(capaVar_df)), resi = DataFrame())
 end
 
-# XXX capacity values for stock technologies
+# ! capacity values for stock technologies
 function addResidualCapa!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,tInt::Int,anyM::anyModel)
 
 	carGrp_ntup = part.carrier
@@ -197,11 +220,11 @@ function addResidualCapa!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,t
 	end
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc= create technology related variables"
+#region # * create technology related variables
 
-# XXX create expansion and capacity variables
+# ! create expansion and capacity variables
 function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple},anyM::anyModel,ratioVar_dic::Dict{Symbol,Pair{String,String}} = Dict{Symbol,Pair{String,String}}())
 	for expVar in sort(collectKeys(keys(prep_dic)))
 		varMap_tup = prep_dic[expVar]
@@ -238,7 +261,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 	end
 end
 
-# XXX create all dispatch variables
+# ! create all dispatch variables
 function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,))
@@ -291,18 +314,25 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 	end
 end
 
-# XXX create constraints regarding operated variables
+# ! create constraints regarding operated variables
 function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 
 	for capaVar in filter(x -> occursin("capa",string(x)),keys(part.var))
 		insVar_sym = string(capaVar) |> (x -> Symbol(:ins,uppercase(x[1]),x[2:end]))
 		var_df = part.var[insVar_sym]
 
-		# XXX create constraint to connect operated and installed capacity
-		var_df[!,:cnsExpr] = map(x -> x[2] - x[1],zip(var_df[!,:var],part.var[capaVar][!,:var]))
+		# ! create constraint to connect operated and installed capacity
+		if :R_from in intCol(var_df)
+			var_df = innerjoin(var_df,rename(select(vcat(part.var[capaVar],rename(part.var[capaVar],:R_from => :R_to, :R_to => :R_from)),Not([:dir])),:var => :var_2),on = intCol(var_df))
+			var_df[!,:cnsExpr] = map(x -> x.var_2 - x.var ,eachrow(var_df))
+			select!(var_df,Not([:var_2]))
+		else
+			var_df[!,:cnsExpr] = map(x -> x[2] - x[1],zip(var_df[!,:var],part.var[capaVar][!,:var]))
+		end
+		
 		cns_dic[insVar_sym] = cnsCont(select(var_df,Not(:var)),:smaller)
 
-		# XXX create constraint to prevent re-commissioning of capacity once decommissioned
+		# ! create constraint to prevent re-commissioning of capacity once decommissioned
 		if part.decomm == :decomm
 			# add previous period and its capacity variable to table
 			prevTs_dic = Dict(x => anyM.supTs.step[findall(x .== anyM.supTs.step)[1]]-1 for x in anyM.supTs.step[2:end])
@@ -337,11 +367,11 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 	end
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc= create technology related constraints"
+#region # * create technology related constraints
 
-# XXX create conversion balance
+# ! create conversion balance
 function createConvBal(part::TechPart,anyM::anyModel)
 
 	cns_df = rename(part.par[:effConv].data,:val => :eff)
@@ -386,10 +416,10 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),:equal)
 end
 
-# XXX create storage balance
+# ! create storage balance
 function createStBal(part::TechPart,anyM::anyModel)
 
-	# XXX get variables for storage level
+	# ! get variables for storage level
 	# get variables for current storage level
 	cns_df = rename(part.var[:stLvl],:var => :stLvl)
 	cnsDim_arr = filter(x -> x != :Ts_disSup, intCol(cns_df))
@@ -423,7 +453,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 			srcRes_ntup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl, M = 1))
 		end
 
-		# XXX join in and out dispatch variables and adds efficiency to them (hence efficiency can be specific for different carriers that are stored in and out)
+		# ! join in and out dispatch variables and adds efficiency to them (hence efficiency can be specific for different carriers that are stored in and out)
 		for typ in (:in,:out)
 			typVar_df = copy(cns_df[!,cnsDim_arr])
 			# create array of all dispatch variables
@@ -447,7 +477,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 			cnsC_df[noM_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[noM_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 0,), anyM.sets)
 		end
 
-		# XXX adds further parameters that depend on the carrier specified in storage level (superordinate or the same as dispatch carriers)
+		# ! adds further parameters that depend on the carrier specified in storage level (superordinate or the same as dispatch carriers)
 		sca_arr = getResize(cnsC_df,anyM.sets[:Ts],anyM.supTs)
 
 		# add discharge parameter, if defined
@@ -471,7 +501,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 			cnsC_df[!,:stInflow] .= 0.0
 		end
 
-		# XXX create final equation
+		# ! create final equation
 		cnsC_df[!,:cnsExpr] = map(x -> x.stLvlPrev * x.stDis + x.stInflow + x.in - x.out - x.stLvl,eachrow(cnsC_df))
 		cCns_arr[idx] = cnsC_df
 	end
@@ -480,7 +510,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 	return cnsCont(orderDf(cns_df[!,[cnsDim_arr...,:cnsExpr]]),:equal)
 end
 
-# XXX create all capacity restrictions for technology
+# ! create all capacity restrictions for technology
 function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 
 	cnstrType_dic = Dict(:out => (dis = (:gen, :stIntIn), capa = :Conv), :in => (dis = (:use,:stIntOut), capa = :Conv),
@@ -509,7 +539,7 @@ function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{I
 	end
 end
 
-# XXX sub-function to create restriction
+# ! sub-function to create restriction
 function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow, type_sym::Symbol, info_ntup::NamedTuple,
 															ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple)
 
@@ -576,7 +606,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	return cns_df
 end
 
-# XXX create ratio constraints (conversion ratios, ratios on storage capacity, and flh etc.)
+# ! create ratio constraints (conversion ratios, ratios on storage capacity, and flh etc.)
 function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
 	# creates dictionary assigning first part of parameter name to the corresponding limits enforced
@@ -702,4 +732,4 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},r_dic::Dic
 	end
 end
 
-# </editor-fold>
+#endregion

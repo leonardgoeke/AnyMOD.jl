@@ -1,5 +1,5 @@
 
-# XXX prints dataframe to csv file
+# ! prints dataframe to csv file
 """
 ```julia
 printObject(print_df::DataFrame, model_object::anyModel)
@@ -45,7 +45,7 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
 	if :csvDf in rtnDf return print_df end
 end
 
-# <editor-fold desc="report results to csv files"
+#region # * report results to csv files
 """
 ```julia
 reportResults(reportType::Symbol, model_object::anyModel; rtnOpt::Tuple = (:csv,))
@@ -55,13 +55,13 @@ Writes results to `.csv` file with content depending on `reportType`. Available 
 """
 reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{reportType}(),anyM::anyModel; kwargs...)
 
-# XXX summary of all capacity and dispatch results
+# ! summary of all capacity and dispatch results
 function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
     techSym_arr = collect(keys(anyM.parts.tech))
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
-	# XXX get demand values
+	# ! get demand values
 	if :dem in keys(anyM.parts.bal.par)
 		dem_df = copy(anyM.parts.bal.par[:dem].data)
 		if !isempty(dem_df)
@@ -99,11 +99,11 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 			dem_df[!,:Te] .= 0
 			dem_df[!,:variable] .= :demand
 			if wrtSgn dem_df[!,:value] = dem_df[!,:value] .* -1 end
-			allData_df = vcat(allData_df,dem_df)
+			allData_df = vcat(allData_df,flatten(dem_df,:R_dis))
 		end
 	end
 
-	# XXX get expansion and capacity variables
+	# ! get expansion and capacity variables
 	for t in techSym_arr
 		part = anyM.parts.tech[t]
 		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
@@ -119,7 +119,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 			# set carrier column to zero for conversion capacities and add a spatial dispatch column
 			if va in (:expConv,:capaConv,:insCapaConv)
 				capa_df[!,:C] .= 0
-				capa_df[!,:R_dis] = map(x -> getAncestors(x,anyM.sets[:R],:int,part.balLvl.ref[2])[end],capa_df[!,:R_exp])
+				capa_df[!,:R_dis] = map(x -> getAncestors(x,anyM.sets[:R],:int,part.balLvl.exp[2])[end],capa_df[!,:R_exp])
 			else
 				capa_df[!,:R_dis] = map(x -> getAncestors(x.R_exp,anyM.sets[:R],:int,anyM.cInfo[x.C].rDis)[end],eachrow(capa_df))
 			end
@@ -136,7 +136,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		allData_df = vcat(allData_df,tech_df)
 	end
 
-	# XXX get dispatch variables
+	# ! get dispatch variables
 	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :crt, :lss, :trdBuy, :trdSell)
 		# get all variables, group them and get respective values
 		allVar_df = getAllVariables(va,anyM)
@@ -160,7 +160,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		allData_df = vcat(allData_df,disp_df)
 	end
 
-	# XXX get exchange variables aggregated by import and export
+	# ! get exchange variables aggregated by import and export
 	allExc_df = getAllVariables(:exc,anyM)
 	if !isempty(allExc_df)
 	    # add losses to all exchange variables
@@ -176,7 +176,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	    allData_df = vcat(allData_df,vcat(excFrom_df,excTo_df))
 	end
 
-	# XXX get full load hours for conversion, storage input and storage output
+	# ! get full load hours for conversion, storage input and storage output
 	flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
 
 	for flhCapa in collect(keys(flh_dic))
@@ -201,7 +201,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		allData_df = vcat(allData_df,capaFlh_df)
 	end
 
-	# XXX comptue storage cycles
+	# ! comptue storage cycles
 	cyc_dic = Dict(:capaStIn => :cycStIn, :capaStOut => :cycStOut)
 
 	for cycCapa in collect(keys(cyc_dic))
@@ -245,7 +245,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	end
 end
 
-# XXX results for costs
+# ! results for costs
 function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 	# prepare empty dataframe
 	allData_df = DataFrame(Ts_disSup = Int[], R = Int[], Te = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
@@ -292,21 +292,25 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{
 	end
 end
 
-# XXX results for exchange
+# ! results for exchange
 function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 	allData_df = DataFrame(Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc.var) error("No exchange data found") end
 
-    # XXX expansion variables
-	exp_df = copy(anyM.parts.exc.var[:expExc]) |> (x -> vcat(x,rename(x,:R_from => :R_to, :R_to => :R_from)))
-	exp_df = flatten(exp_df,:Ts_expSup)
-	select!(exp_df,Not(:Ts_disSup))
-	rename!(exp_df,:Ts_expSup => :Ts_disSup)
+    # ! expansion variables
+	if :expExc in collectKeys(keys(anyM.parts.exc.var))
+		exp_df = copy(anyM.parts.exc.var[:expExc]) |> (x -> vcat(x,rename(x,:R_from => :R_to, :R_to => :R_from)))
+		exp_df = flatten(exp_df,:Ts_expSup)
+		select!(exp_df,Not(:Ts_disSup))
+		rename!(exp_df,:Ts_expSup => :Ts_disSup)
 
-	exp_df = combine(groupby(exp_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
-	exp_df[!,:variable] .= :expExc
+		exp_df = combine(groupby(exp_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
+		exp_df[!,:variable] .= :expExc
+	else
+		exp_df = DataFrame(Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], variable = Symbol[], value = Float64[])
+	end
 
-	# XXX capacity variables
+	# ! capacity variables
 	capa_df = copy(anyM.parts.exc.var[:capaExc])
 	capa_df = vcat(capa_df,rename(filter(x -> x.dir == 0, capa_df),:R_from => :R_to, :R_to => :R_from))
 	capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
@@ -320,12 +324,12 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 		capa_df = vcat(capa_df,insCapa_df)
 	end
 
-	# XXX dispatch variables
+	# ! dispatch variables
 	disp_df = getAllVariables(:exc,anyM)
 	disp_df = combine(groupby(disp_df,[:Ts_disSup,:R_from,:R_to,:C,:scr]), :var => (x -> value.(sum(x)) ./ 1000) => :value)
 	disp_df[!,:variable] .= :exc
 
-	# XXX get full load hours
+	# ! get full load hours
 	capaExt_df = replCarLeafs(copy(capa_df),anyM.sets[:C])
 	capaExt_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaExt_df[!,:Ts_disSup])
 	capaExt_df = flatten(capaExt_df,:scr)
@@ -334,7 +338,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 	flh_df[!,:value] = flh_df[!,:disp] ./ flh_df[!,:capa] .* 1000
 	flh_df[!,:variable] .= :flhExc
 
-	# XXX merge and print all data
+	# ! merge and print all data
 	capa_df = vcat(exp_df,capa_df)
 	capa_df[!,:scr] .= 0
 	allData_df = vcat(capa_df,disp_df,select(flh_df,Not([:capa,:disp])))
@@ -362,7 +366,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 	end
 end
 
-# XXX print time series for in and out into separate tables
+# ! print time series for in and out into separate tables
 """
 ```julia
 reportTimeSeries(car_sym::Symbol, model_object::anyModel)
@@ -372,7 +376,7 @@ Writes elements of energy balance for carrier specified by `car_sym` to `.csv` f
 """
 function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in,:out), minVal::Number = 1e-3, mergeVar::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
-	# XXX converts carrier named provided to index
+	# ! converts carrier named provided to index
 	node_arr = filter(x -> x.val == string(car_sym),collect(values(anyM.sets[:C].nodes)))
 	if length(node_arr) != 1
 		error("no carrier named '$car_sym' defined")
@@ -380,20 +384,20 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	end
 	c_int = node_arr[1].idx
 
-	# XXX initialize dictionary to save data
+	# ! initialize dictionary to save data
 	allData_dic = Dict{Symbol,DataFrame}()
 	for signItr in signVar
 		allData_dic[signItr] = DataFrame(Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], scr = Int[], variable = String[], value = Float64[])
 	end
 
-	# XXX initialize relevant dimensions and carriers
+	# ! initialize relevant dimensions and carriers
 	allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
 	ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
 	relDim_df = filter(filterFunc,createPotDisp([c_int],ts_dic,anyM))
 	relC_arr = unique([c_int,getDescendants(c_int,anyM.sets[:C])...])
 	cRes_tup = anyM.cInfo[c_int] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c_int].lvl))
 
-	# XXX add demand and size it
+	# ! add demand and size it
 	if :out in signVar
 		dem_df = matchSetParameter(relDim_df,anyM.parts.bal.par[:dem],anyM.sets,newCol = :value)
 		dem_df[!,:value] = dem_df[!,:value] .* getResize(dem_df,anyM.sets[:Ts],anyM.supTs) .* -1
@@ -402,7 +406,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		allData_dic[:out] = vcat(allData_dic[:out],select!(dem_df,Not(:C)))
 	end
 
-	# XXX adds all technology related variables
+	# ! adds all technology related variables
 	cBalRes_tup = anyM.cInfo[c_int] |> (x -> (x.tsDis, x.rDis))
 	relType_tup = map(x -> x in signVar ? (x == :in ? (:use, :stExtIn) : (:gen,:stExtOut)) : tuple(),(:in,:out)) |> (x -> tuple(vcat(collect.(x)...)...))
 
@@ -433,7 +437,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		end
 	end
 
-	# XXX add import and export variables
+	# ! add import and export variables
     if :exc in keys(anyM.parts.exc.var)
 		exc_df = filterCarrier(anyM.parts.exc.var[:exc],relC_arr)
 		if :out in signVar
@@ -456,7 +460,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		end
 	end
 
-	# XXX add trade
+	# ! add trade
 	agg_arr = [:Ts_dis, :R_dis, :C, :scr]
 	if !isempty(anyM.parts.trd.var)
 		for trd in intersect(keys(anyM.parts.trd.var),(:trdBuy,:trdSell))
@@ -469,7 +473,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		end
 	end
 
-	# XXX add curtailment
+	# ! add curtailment
 	if :crt in keys(anyM.parts.bal.var)
 		crt_df = copy(relDim_df)
 		crt_df[!,:value] = value.(filterCarrier(anyM.parts.bal.var[:crt],relC_arr) |> (x -> aggUniVar(x,crt_df,agg_arr, cRes_tup,anyM.sets))) .* -1.0
@@ -478,7 +482,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		allData_dic[:out] = vcat(allData_dic[:out],select(crt_df,Not(:C)))
 	end
 
-	# XXX add losted load
+	# ! add losted load
 	if :lss in keys(anyM.parts.bal.var)
 		lss_df = copy(relDim_df)
 		lss_df[!,:value] = value.(filterCarrier(anyM.parts.bal.var[:lss],relC_arr) |> (x -> aggUniVar(x,lss_df,agg_arr, cRes_tup,anyM.sets)))
@@ -487,7 +491,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		allData_dic[:in] = vcat(allData_dic[:in],select(lss_df,Not(:C)))
 	end
 
-	# XXX unstack data and write to csv
+	# ! unstack data and write to csv
 	if mergeVar
 		# merges in and out files and writes to same csv file
 		data_df = vcat(values(allData_dic)...)
@@ -544,7 +548,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	end
 end
 
-# XXX write dual values for constraint dataframe
+# ! write dual values for constraint dataframe
 """
 ```julia
 printDuals(print_df::DataFrame, model_object::anyModel)
@@ -575,11 +579,11 @@ function printDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x ->
 	end
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc="plotting tools"
+#region # * plotting tools
 
-# XXX plots tree graph for input set
+# ! plots tree graph for input set
 """
 ```julia
 plotTree(tree_sym::Symbol, model_object::anyModel)
@@ -594,7 +598,7 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
     plt = pyimport("matplotlib.pyplot")
     PyCall.fixqtpath()
 
-    # <editor-fold desc="initialize variables"
+    #region # * initialize variables
     treeName_dic = Dict(:region => :R,:timestep => :Ts,:carrier => :C,:technology => :Te)
 
     # convert tree object into a data frame
@@ -604,9 +608,9 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
 
     # sets options
     col_dic = Dict(:region => (0.133, 0.545, 0.133),:timestep => (0.251,0.388,0.847),:carrier => (0.584, 0.345, 0.698),:technology => (0.796,0.235,0.2))
-    # </editor-fold>
+    #endregion
 
-    # <editor-fold desc="computes positon of nodes"
+    #region # * computes positon of nodes
     # adds a new dummy top node
     push!(tree_df,(0,"",0,tree_obj.nodes[0].down ,0,1))
     nodes_int = nrow(tree_df)
@@ -642,9 +646,9 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
     # compute dictionary of final node positions
     pos_dic = Dict(x => (locX_arr[x]/maximum(locX_arr),locY_arr[x]/maximum(locY_arr)) for x in 1:nodes_int)
     posIdx_dic = collect(idxPos_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
-    # </editor-fold>
+    #endregion
 
-	# <editor-fold desc="determine node colors and labels"
+	#region # * determine node colors and labels
 	name_dic = anyM.graInfo.names
 
 	label_dic = Dict(x[1] => x[2] == "" ? "" : name_dic[x[2]] for x in enumerate(tree_df[!,:val]))
@@ -655,9 +659,9 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
 		col_arr = getNodeColors(collect(1:nodes_int),label_dic,anyM)
 	end
 
-	# </editor-fold>
+	#endregion
 
-    # <editor-fold desc="draw final tree"
+    #region # * draw final tree
     # draw single nodes
     edges_arr = Array{Tuple{Int,Int},1}()
 
@@ -694,7 +698,7 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
     # size plot and save
     plt.axis("off")
     plt.savefig("$(anyM.options.outDir)/$(tree_sym)_$(anyM.options.outStamp)", dpi = 600, bbox_inches="tight")
-    # </editor-fold>
+    #endregion
 end
 
 """
@@ -707,15 +711,15 @@ Plots the energy flow in a model. Set `plotType` to `:graph` for a qualitative n
 """
 plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
 
-# XXX plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
+# ! plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
 function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false)
 
-    # XXX import python function
+    # ! import python function
     netw = pyimport("networkx")
     plt = pyimport("matplotlib.pyplot")
     PyCall.fixqtpath()
 
-    # <editor-fold desc="create graph and map edges"
+    #region # * create graph and map edges
 
     graph_obj = netw.DiGraph()
     flowGrap_obj = anyM.graInfo.graph
@@ -725,9 +729,9 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
         graph_obj.add_edge(x[1],x[2])
     end
 
-    # </editor-fold>
+    #endregion
 
-    # <editor-fold desc="obtain and order graph properties (colors, names, etc.)"
+    #region # * obtain and order graph properties (colors, names, etc.)
 
 	# get carriers that should be plotted, because they are connected with a technology
 	relNodeC1_arr = filter(x -> x[2] in vcat(getindex.(flowGrap_obj.edgeTe,1),getindex.(flowGrap_obj.edgeTe,2)), collect(flowGrap_obj.nodeC))
@@ -766,9 +770,9 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
     teEdges_arr = filter(x -> x[1] in ordTe_arr || x[2] in ordTe_arr, collect(graph_obj.edges))
     edgeColTe_arr = map(x -> x[1] in ordC_arr ? anyM.graInfo.colors[idToName_dic[x[1]]] : anyM.graInfo.colors[idToName_dic[x[2]]], teEdges_arr)
 
-    # </editor-fold>
+    #endregion
 
-    # <editor-fold desc="draw and save graph with python"
+    #region # * draw and save graph with python
 
     # plot final graph object
     plt.clf()
@@ -804,15 +808,15 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
     # size plot and save
     plt.savefig("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp)", dpi = 600)
 
-    # </editor-fold>
+    #endregion
 end
 
-# XXX plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor = true)
+# ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
+function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = true, netExc::Bool = true, name::String = "")
     plt = pyimport("plotly")
     flowGrap_obj = anyM.graInfo.graph
 
-    # <editor-fold desc="initialize data"
+    #region # * initialize data
 
     if !isempty(setdiff(dropDown,[:region,:timestep,:scenario]))
     error("dropDown only accepts array :region and :timestep as content")
@@ -824,19 +828,42 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 
     # get summarised data and filter dispatch variables
     data_df = reportResults(:summary,anyM,rtnOpt = (:rawDf,))
-    filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
+	filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
+
+	# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
+	c_dic, r_dic = [anyM.sets[x].nodes for x in [:C,:R]]
+	if :scr in namesSym(data_df)
+		data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.scr == x.scr && y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+	else
+		data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+	end
+	
+	# converts export and import quantities into net values
+	if netExc
+		allExc_df = filter(x -> x.variable in (:import,:export),data_df)
+		joinedExc_df = joinMissing(select(rename(filter(x -> x.variable == :export,allExc_df),:value => :export),Not([:variable])),select(rename(filter(x -> x.variable == :import,allExc_df),:value => :import),Not([:variable])),intCol(data_df),:left,Dict(:export => 0.0,:import => 0.0))
+		joinedExc_df[!,:value] = joinedExc_df[!,:export] .+ joinedExc_df[!,:import]
+		select!(joinedExc_df,Not([:export,:import]))
+		joinedExc_df[!,:variable] = map(x -> x > 0.0 ? :netImport : :netExport, joinedExc_df[!,:value])
+		joinedExc_df[!,:value] = abs.(joinedExc_df[!,:value])
+		data_df = vcat(joinedExc_df,filter(x -> !(x.variable in (:export,:import)) ,data_df))
+	end
 
     # filter non relevant entries
     filter!(x -> abs(x.value) > minVal, data_df)
     filter!(filterFunc, data_df)
 
-    # create dictionaries for nodes that are neither technology nor carrier
-    othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])))))
-    othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
+	# create dictionaries for nodes that are neither technology nor carrier
+	oth_df = unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])
+	if netExc && !(:region in dropDown)
+		oth_df[!,:variable] =  map(x -> x == :netExport ? :exchangeLoss : x, oth_df[!,:variable])
+	end	
+    othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(oth_df))))
+	othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
+	 
+	#endregion
 
-    # </editor-fold>
-
-    # <editor-fold desc="prepare labels and colors"
+    #region # * prepare labels and colors
 
     # prepare name and color assignment
     names_dic = anyM.graInfo.names
@@ -861,19 +888,35 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 
     dropData_arr = Array{Dict{Symbol,Any},1}()
 
-    # </editor-fold>
+    #endregion
 
-    # XXX loop over potential buttons in dropdown menue
+    # ! loop over potential buttons in dropdown menue
     for drop in eachrow(unique(data_df[!,intersect(namesSym(data_df),dropDim_arr)]))
 
-	    # <editor-fold desc="filter data and create flow array"
+	    #region # * filter data and create flow array
 
 	    dropData_df = copy(data_df)
 	    if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,anyM.sets[:R],true)...] end
 	    for d in dropDown
 	      filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
-	    end
-
+		end
+		
+		if netExc
+			allExc_df = filter(x -> x.variable in (:netImport,:netExport),dropData_df)
+			if !isempty(allExc_df)
+				allExc_df[!,:value] = map(x -> x.variable == :netExport ? x.value * -1 : x.value, eachrow(allExc_df))
+				aggExc_df = combine(groupby(allExc_df,[:Ts_disSup,:Te,:C]), :value => (x -> sum(x)) => :value)
+				aggExc_df[!,:variable] = map(x -> x.value > 0.0 ? :netImport : :netExport, eachrow(aggExc_df))
+				# renames net-export into storage losses in case regions does not appear in drop dropDown
+				if !(:region in dropDown)
+					aggExc_df[!,:variable] = map(x -> x == :netExport ? :exchangeLoss : x, aggExc_df[!,:variable])
+					aggExc_df[!,:R_dis] .= 0
+				else
+					aggExc_df[!,:R_dis] .= drop.R_dis
+				end
+				dropData_df = vcat(filter(x -> !(x.variable in (:netImport,:netExport)),dropData_df),aggExc_df)
+			end
+		end
 	    flow_arr = Array{Tuple,1}()
 
 	    # write flows reported in data summary
@@ -881,10 +924,10 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	      a = Array{Any,1}(undef,3)
 
 	      # technology related entries
-	      if x.variable in (:demand,:export,:trdSell,:crt)
+	      if x.variable in (:demand,:export,:trdSell,:crt,:netExport,:exchangeLoss)
 	        a[1] = flowGrap_obj.nodeC[x.C]
 	        a[2] = othNode_dic[(x.C,x.variable)]
-	      elseif x.variable in (:import,:trdBuy,:lss)
+	      elseif x.variable in (:import,:trdBuy,:lss,:netImport)
 	        a[1] = othNode_dic[(x.C,x.variable)]
 	        a[2] = flowGrap_obj.nodeC[x.C]
 	      elseif x.variable in (:gen,:stOut)
@@ -925,7 +968,8 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	    flow_arr = map(unique(map(x -> x[1:2],flow_arr))) do fl
 	      allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
 	      return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
-	    end
+		end
+		
 
 	    # removes nodes accoring function input provided
 	    for rmv in rmvNode
@@ -964,9 +1008,9 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	      end
 	    end
 
-	    # </editor-fold>
+	    #endregion
 
-	    # <editor-fold desc="create dictionaries for later plotting"
+	    #region # * create dictionaries for later plotting
 
 	    # collect data for drop in a dictionary
 
@@ -980,22 +1024,24 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	    label_str = string("<b>",join(map(y -> anyM.sets[Symbol(split(String(y),"_")[1])].nodes[drop[y]].val,intersect(namesSym(data_df),dropDim_arr)),", "),"</b>")
 	    push!(dropData_arr,Dict(:args => fullData_arr, :label => label_str, :method => "restyle"))
 
-	    # </editor-fold>
-    end
+	    #endregion
+	
+	end
 
-    # <editor-fold desc="create various dictionaries to define format and create plot"
+    #region # * create various dictionaries to define format and create plot
 
     menues_dic =[Dict(:buttons => dropData_arr, :direction => "down", :pad => Dict(:l => 10, :t => 10), :font => Dict(:size => 16, :family => "Arial"), :showactive => true, :x => 0.01, :xanchor => "center", :y => 1.1, :yanchor => "middle")]
     data_dic = Dict(:type => "sankey", :orientation => "h", :valueformat => ".0f", :textfont => Dict(:family => "Arial"), :node => Dict(:pad => 8, :thickness => 36, :line => Dict(:color => "white",:width => 0.01), :hoverinfo => "skip"))
     layout_dic = Dict(:width => 125*plotSize[1], :height => 125*plotSize[2], :updatemenus => menues_dic, :font => Dict(:size => 32, :family => "Arial"))
 
-    fig = Dict(:data => [data_dic], :layout => layout_dic)
-    plt.offline.plot(fig, filename="$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown),"_"))_$(anyM.options.outStamp).html")
+	fig = Dict(:data => [data_dic], :layout => layout_dic)
+	
+    plt.offline.plot(fig, filename="$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown),"_"))$(name == "" ? "" : "_" * name)_$(anyM.options.outStamp).html")
 
-    # </editor-fold>
+    #endregion
 end
 
-# XXX define postions of nodes in energy flow graph
+# ! define postions of nodes in energy flow graph
 # function is mostly taken from [GraphPlot.jl](https://github.com/JuliaGraphs/GraphPlot.jl), who again reference the following source [IainNZ](https://github.com/IainNZ)'s [GraphLayout.jl](https://github.com/IainNZ/GraphLayout.jl)
 function flowLayout(nodesCnt_int::Int,edges_smat::SparseMatrixCSC{Int64,Int64}, locsX_arr::Array{Float64,1} = 2*rand(nodesCnt_int).-1.0, locsY_arr::Array{Float64,1} = 2*rand(nodesCnt_int).-1.0; scaDist::Number = 0.5, maxIter::Int=5000, initTemp::Number=2.0)
 
@@ -1063,7 +1109,7 @@ function flowLayout(nodesCnt_int::Int,edges_smat::SparseMatrixCSC{Int64,Int64}, 
     return pos_dic
 end
 
-# XXX returns array of colors for input nodes, which labels can be found in label_dic
+# ! returns array of colors for input nodes, which labels can be found in label_dic
 function getNodeColors(node_arr::Array{Int,1}, label_dic::Dict{Int64,String},anyM::anyModel)
 	revName_dic = collect(anyM.graInfo.names) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
 	col_dic = anyM.graInfo.colors
@@ -1085,7 +1131,7 @@ function getNodeColors(node_arr::Array{Int,1}, label_dic::Dict{Int64,String},any
 	return color_arr
 end
 
-# XXX move a node after positions were created within energy flow graph
+# ! move a node after positions were created within energy flow graph
 """
 ```julia
 moveNode!(model_object::anyModel, newPos_arr::Union{Array{Tuple{String,Array{Float64,1}},1},Tuple{String,Array{Float64,1}}})
@@ -1131,9 +1177,9 @@ function moveNode!(anyM::anyModel,newPos_arr::Union{Array{Tuple{String,Array{Flo
     end
 end
 
-# </editor-fold>
+#endregion
 
-# XXX dummy function just do provide a docstring for printIIS (docstring in printIIS wont work, because read-in is conditional)
+# ! dummy function just do provide a docstring for printIIS (docstring in printIIS wont work, because read-in is conditional)
 """
 ```julia
 printIIS(model_object::anyModel)

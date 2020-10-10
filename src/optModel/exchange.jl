@@ -1,7 +1,7 @@
 
-# <editor-fold desc= prepare and create exchange related variables"
+#region # * prepare and create exchange related variables
 
-# XXX prepare dictionary that specifies dimensions for expansion and capacity variables
+# ! prepare dictionary that specifies dimensions for expansion and capacity variables
 function prepareExc!(prepExc_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},anyM::anyModel)
 	partExc = anyM.parts.exc
 	partLim = anyM.parts.lim
@@ -14,14 +14,16 @@ function prepareExc!(prepExc_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,I
 	addResidualCapaExc!(partExc,prepExc_dic,potExc_df,anyM)
 
 	if anyM.options.decommExc != :none && :capaExc in keys(prepExc_dic)
-		prepExc_dic[:insCapaExc] =  (var = prepExc_dic[:capaExc].var, resi = DataFrame())
+		prepExc_dic[:insCapaExc] =  (var = prepExc_dic[:capaExc].var, resi = prepExc_dic[:capaExc].resi)
+		excResi_df = select(prepExc_dic[:capaExc].resi,Not([:var,:Ts_expSup]))
+		prepExc_dic[:capaExc] =  (var = unique(vcat(prepExc_dic[:capaExc].var, filter(x -> x.R_from < x.R_to, vcat(excResi_df,rename(excResi_df,:R_from => :R_to,:R_to => :R_from))))), resi = DataFrame())
 	end
 end
 
-# XXX prepare expansion and capacity variables for exchange
+# ! prepare expansion and capacity variables for exchange
 function prepareExcExpansion!(partExc::ExcPart,partLim::OthPart,prepExc_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},anyM::anyModel)
 
-	# XXX determine dimensions of expansion variables (expansion for exchange capacities is NOT directed!)
+	# ! determine dimensions of expansion variables (expansion for exchange capacities is NOT directed!)
 	# get all possible dimensions of exchange
 	potDim_df = DataFrame(map(x -> (lvlTs = x[2].tsExp, lvlR = x[2].rDis, C = x[1]), collect(anyM.cInfo)))
 	tsLvl_dic = Dict(x => getfield.(getNodesLvl(anyM.sets[:Ts],x),:idx) for x in unique(potDim_df[!,:lvlTs]))
@@ -52,15 +54,15 @@ function prepareExcExpansion!(partExc::ExcPart,partLim::OthPart,prepExc_dic::Dic
 	filter!(x -> x.R_a != x.R_b, allExExp_df)
 
 	# save result to dictionary for variable creation
-	exp_df = addSupTsToExp(allExExp_df,partExc.par,:Exc,tsYear_dic,anyM)
+	exp_df = unique(addSupTsToExp(allExExp_df,partExc.par,:Exc,tsYear_dic,anyM))
 	prepExc_dic[:expExc] = (var = convertExcCol(exp_df), resi = DataFrame())
 
 	return potExc_df
 end
 
-# XXX create exchange variables
+# ! create exchange variables
 function createExcVar!(partExc::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},anyM::anyModel)
-	# XXX extend capacity variables to dispatch variables
+	# ! extend capacity variables to dispatch variables
 	capa_df = partExc.var[:capaExc][!,Not([:var,:dir])] |> (x -> unique(vcat(x,rename(x,replace(namesSym(x),:R_from => :R_to, :R_to => :R_from)))))
 	# replace orginal carrier with leafs
 	capa_df = replCarLeafs(capa_df,anyM.sets[:C])
@@ -88,7 +90,7 @@ function createExcVar!(partExc::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 	partExc.var[:exc] = orderDf(createVar(disp_df,"exc",getUpBound(disp_df,anyM.options.bound.disp / anyM.options.scaFac.dispExc,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispExc))
 end
 
-# XXX add residual capacties for exchange (both symmetric and directed)
+# ! add residual capacties for exchange (both symmetric and directed)
 function addResidualCapaExc!(partExc::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},potExc_df::DataFrame,anyM::anyModel)
 
 	expSup_dic = Dict(x => getDescendants(x,anyM.sets[:Ts],true,anyM.supTs.lvl) for x in unique(potExc_df[!,:Ts_exp]))
@@ -158,14 +160,14 @@ function addResidualCapaExc!(partExc::ExcPart,prepExc_dic::Dict{Symbol,NamedTupl
 	prepExc_dic[:capaExc] = (var = unique(adjVar_df), ratio = DataFrame(), resi = convertExcCol(capaResi_df))
 end
 
-# XXX converts table where exchange regins are given as "R_a" and "R_b" to "R_to" and "R_from" and the other way around
+# ! converts table where exchange regins are given as "R_a" and "R_b" to "R_to" and "R_from" and the other way around
 convertExcCol(in_df::DataFrame) = rename(in_df, namesSym(in_df) |> (x  -> :R_a in x ? replace(x,:R_a => :R_from, :R_b => :R_to) : replace(x,:R_from => :R_a, :R_to => :R_b)))
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc= create exchange related constraints"
+#region # * create exchange related constraints
 
-# XXX connect capacity and expansion constraints for exchange
+# ! connect capacity and expansion constraints for exchange
 function createCapaExcCns!(partExc::ExcPart,anyM::anyModel)
 
 	if partExc.decomm == :none
@@ -198,7 +200,7 @@ function createCapaExcCns!(partExc::ExcPart,anyM::anyModel)
 	end
 end
 
-# XXX create capacity restriction for exchange
+# ! create capacity restriction for exchange
 function createRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc::ExcPart,anyM::anyModel)
 
 	# group exchange capacities by carrier
@@ -218,7 +220,7 @@ function createRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc
 	anyM.parts.exc.cns[:excRestr] = createCns(cnsCont(vcat(restr_arr...),:smaller),anyM.optModel)
 end
 
-# XXX prepare capacity restriction for specific carrier
+# ! prepare capacity restriction for specific carrier
 function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc::ExcPart,anyM::anyModel)
 
 	c_int = cns_df[1,:C]
@@ -257,11 +259,11 @@ function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array
 	return convertExcCol(cns_df) |> (x -> select(x,intCol(x,:cnsExpr)))
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc= utility functions for exchange"
+#region # * utility functions for exchange
 
-# XXX obtain values for exchange losses
+# ! obtain values for exchange losses
 function getExcLosses(exc_df::DataFrame,excPar_dic::Dict{Symbol,ParElement},sets_dic::Dict{Symbol,Tree})
 	lossPar_obj = copy(excPar_dic[:lossExc])
 	if :R_a in namesSym(lossPar_obj.data) && :R_b in namesSym(lossPar_obj.data)
@@ -281,4 +283,4 @@ function getExcLosses(exc_df::DataFrame,excPar_dic::Dict{Symbol,ParElement},sets
 	return excLoss_df
 end
 
-# </editor-fold>
+#endregion

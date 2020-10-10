@@ -1,35 +1,3 @@
-timestep_1,region_1,region_2,technology_1,technology_2,technology_3,carrier_1,parameter,value,comment
-all,East,,,,,,capaConvLow,250,"capacity limits to reduce the solution space of the top-problem, arbitrary limit"
-all,West,,,,,,capaConvLow,100,"capacity limits to reduce the solution space of the top-problem, arbitrary limit"
-2030,West,WestNorth,wind,,,,capaConvLow,20,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,West,WestSouth,wind,,,,capaConvLow,20,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,West,WestSouth,wind,,,,capaConvLow,70,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,East,EastNorth,wind,,,,capaConvLow,10,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,East,EastNorth,wind,,,,capaConvLow,90,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,East,EastSouth,wind,,,,capaConvLow,50,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,East,EastSouth,wind,,,,capaConvLow,50,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,West,,heatpump,,,,capaConvLow,20,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,West,,heatpump,,,,capaConvLow,20,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,East,,heatpump,,,,capaConvLow,30,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,East,,heatpump,,,,capaConvLow,30,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,West,,gasBoiler,,,,capaConvLow,20,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,West,,gasBoiler,,,,capaConvLow,10,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,East,,gasBoiler,,,,capaConvLow,10,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,East,,gasBoiler,,,,capaConvLow,10,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,East,,gasPlant,ccgt,ccgtCHP,,capaConvLow,10,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,East,,gasPlant,ccgt,ccgtCHP,,capaConvLow,10,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,West,,gasPlant,ocgt,,,capaConvLow,130,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,West,,gasPlant,ocgt,,,capaConvLow,130,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,East,,gasPlant,ocgt,,,capaConvLow,110,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,East,,gasPlant,ocgt,,,capaConvLow,110,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,West,WestNorth,solar,openspace,,,capaConvLow,40,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,West,WestNorth,solar,openspace,,,capaConvLow,40,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,West,WestSouth,solar,openspace,,,capaConvLow,30,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,West,WestSouth,solar,openspace,,,capaConvLow,30,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,East,EastNorth,solar,openspace,,,capaConvLow,20,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,East,EastNorth,solar,openspace,,,capaConvLow,20,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2020,East,EastSouth,solar,openspace,,,capaConvLow,40,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,East,EastSouth,solar,openspace,,,capaConvLow,40,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-2030,East,EastNorth,solar,rooftop,photovoltaic,,capaConvLow,10,"capacity limits to reduce the solution space of the top-problem, obtained from conventional solution"
-,,,,,,electricity,costLss,11000,arbitrary value
-,,,,,,heat,costLss,6000,
+carrier_1,parameter,value,comment
+electricity,costLss,11000,arbitrary value
+heat,costLss,6000,

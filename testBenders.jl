@@ -59,7 +59,7 @@ end
 # fixes capacity variable from second dataframe according to value in the first
 function fixCapa!(value_df::DataFrame,variable_df::DataFrame)
 	if !isempty(value_df)
-		capaSub_df = leftjoin(variable_df,value_df,on = intCol(value_df,:dir))
+		capaSub_df = leftjoin(variable_df,value_df,on = intCol(value_df,:dir))|> (y -> y[completecases(y),:])
 		foreach(x -> x.var  |> (y -> fix(collect(keys(y.terms))[1], x.value; force = true)),eachrow(capaSub_df))
 	end
 end
@@ -190,8 +190,9 @@ end
 bendersData_arr = fill(bendersData(), length(sub_tup))
 fullReport_df = DataFrame(timestep_superordinate_dispatch = String[], region_dispatch = String[], technology = String[], carrier = String[], variable = Symbol[], iteration = Int[], value = Float64[])
 
+i = 1
 # XXX run benders
-while true
+while i < 10000
 	# solve top level problem
 	capaData_obj, bounds_tup = runTopLevel!(top_mod,bendersData_arr)
 
@@ -214,4 +215,8 @@ while true
 	global fullReport_df = append!(fullReport_df,append!(select(capa_df,Not([:scr])),cost_df))
 	println(bounds_tup)
 	CSV.write(joinpath("results/test_benders.csv"), fullReport_df)
+	global i = i + 1
 end
+
+
+# set capaData_obj to actual solution

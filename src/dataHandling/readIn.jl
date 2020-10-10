@@ -1,7 +1,7 @@
 
-# <editor-fold desc= top-level and general read-in functions for sets and parameter"
+#region # * top-level and general read-in functions for sets and parameter
 
-# XXX read-in all set files
+# ! read-in all set files
 function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 
 	# creates relevant sets, manually adds :mode and assigns short names
@@ -71,9 +71,9 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 	return setData_dic
 end
 
-# XXX read-in all parameter files, create model parts and assign parameter
+# ! read-in all parameter files, create model parts and assign parameter
 function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Dict{Symbol,DataFrame},anyM::anyModel)
-	# XXX read-in parameters (do not add to parts yet)
+	# ! read-in parameters (do not add to parts yet)
 	paraTemp_dic = Dict{String, Dict{Symbol, DataFrame}}()
 
 	# creates relevant sets, manually adds :mode and assigns short names
@@ -94,13 +94,13 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 	return paraTemp_dic
 end
 
-# XXX read inputs folders for all 'csv' or 'jl' files starting with 'set', 'par', 'var' and 'eqn'
+# ! read inputs folders for all 'csv' or 'jl' files starting with 'set', 'par', 'var' and 'eqn'
 function readInputFolder(inputFolders::Array{String,1},files_dic::Dict{String,Array{String,1}} = Dict(b => String[] for b in ("set","par","var","eqn")))
 	# loops over main folders provides in constructor
     for folder in inputFolders
 	    for file in readdir(folder)
 	        if occursin(".",file) fileType_str = file[findfirst(".",file)[1]+1:end] else fileType_str = "" end
-	        fileGrp_str = file[1:3]
+	        fileGrp_str = file[1:min(3,length(file))]
 	        fileDir_str = string(folder,"/",file)
 	        # loops over subfolders, if any exist
 	        if (fileType_str == "csv" && fileGrp_str in ("set","par","var","eqn"))
@@ -114,7 +114,7 @@ function readInputFolder(inputFolders::Array{String,1},files_dic::Dict{String,Ar
     return files_dic
 end
 
-# XXX filters missing and adjusts data according to "all" statements
+# ! filters missing and adjusts data according to "all" statements
 function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{Symbol},setLngShrt_dic::Dict{Symbol,Symbol},report::Array{Tuple,1},lock_::ReentrantLock,sets::Dict{Symbol,Tree} = Dict{Symbol,Tree}())
 
 	# reports if scenario column exists but no scenarios were defined
@@ -136,7 +136,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 	readInCol_arr = namesSym(readIn_df)
 	valCol_arr = filter(x -> occursin("value",string(x)),readInCol_arr)
 
-	# XXX convert missing values and change array container type for editing later
+	# ! convert missing values and change array container type for editing later
 	for j in 1:size(readIn_df,2)
 		col = collect(readIn_df[!,j])
 
@@ -157,7 +157,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 		end
 	end
 
-	# XXX check types of columns
+	# ! check types of columns
 	if  !isempty(valCol_arr) && any(map(x -> eltype(readIn_df[!,x]),  findall(map(x -> x in valCol_arr, readInCol_arr))) .== String)
 		lock(lock_)
 		push!(report,(3,"parameter read-in",fileName_str,"detected strings in value column, file was not read-in"))
@@ -174,7 +174,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 		end
 	end
 
-    # XXX rewrites rows with all commands into full format
+    # ! rewrites rows with all commands into full format
     for col in setNames_arr[1]
 
 		colVal_arr = readIn_df[!, col]
@@ -230,7 +230,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
         delete!(readIn_df,findall(rowsAll_arr))
     end
 
-	# XXX convert column names if sets are defined for multiple instances (e.g. two regions in case of trade related parameters)
+	# ! convert column names if sets are defined for multiple instances (e.g. two regions in case of trade related parameters)
 	if split(fileName_str,"/")[end][1:3] == "par"
 		# creates a dictionary that assigns everything after the set name separated with a "_" to the respective set
 		splitCol_arr = map(x -> split(String(x),"_"),setdiff(namesSym(readIn_df),oprNames_arr[1]))
@@ -282,11 +282,11 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 	return readIn_df
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc= creation of tree objects for sets"
+#region # * creation of tree objects for sets
 
-# XXX creates tree object for set
+# ! creates tree object for set
 function createTree(readIn_df::DataFrame, setLoad_sym::Symbol, report::Array{Tuple,1})
 
 	setLoad_str = string(setLoad_sym)
@@ -327,7 +327,7 @@ function createTree(readIn_df::DataFrame, setLoad_sym::Symbol, report::Array{Tup
     return tree_obj
 end
 
-# XXX adds nodex on level i to tree object
+# ! adds nodex on level i to tree object
 function createTreeLevel!(readIn_df::DataFrame, tree_obj::Tree, setLoad_str::String, i::Int, report::Array{Tuple,1})
 	colNames_arr = filter(x -> occursin(setLoad_str,string(x)), namesSym(readIn_df))
 	loLvl_Sym = Symbol(setLoad_str,"_",i)
@@ -351,10 +351,10 @@ function createTreeLevel!(readIn_df::DataFrame, tree_obj::Tree, setLoad_str::Str
 		end
 	end
 
-	# XXX assigns the upper nodes by id to strings of corresponding lower nodes
+	# ! assigns the upper nodes by id to strings of corresponding lower nodes
 	startLvl_int = parse(Int,string(grpRel_arr[1])[end])
 	upToLow_dic = Dict(lookupTupleTree(tuple(collect(lowerNode[1,grpRel_arr])...), tree_obj,startLvl_int)[1] =>  lowerNode[!,loLvl_Sym] for lowerNode in lowerNodes_gdf[up_arr])
-	# XXX iterates over dict to write new nodes into tree
+	# ! iterates over dict to write new nodes into tree
 	createNodes!(upToLow_dic,tree_obj,i)
 
 	# adds dictionary for occurrence of single strings
@@ -368,7 +368,7 @@ function createTreeLevel!(readIn_df::DataFrame, tree_obj::Tree, setLoad_str::Str
 	end
 end
 
-# XXX create specific node on branch
+# ! create specific node on branch
 function createNodes!(upToLow_dic::Dict{Int64,SubArray{String,1,Array{String,1},Tuple{Array{Int64,1}},false}},tree_obj::Tree,i::Int)
 	upToLowSort_dic = Dict(map(x -> x => upToLow_dic[x] ,sort(collect(keys(upToLow_dic)))))
 	up_arr =  collect(keys(upToLowSort_dic))
@@ -390,11 +390,11 @@ function createNodes!(upToLow_dic::Dict{Int64,SubArray{String,1,Array{String,1},
 	end
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc= read-in of parameter data"
+#region # * read-in of parameter data
 
-# XXX reads-in parameter data for respective sheet
+# ! reads-in parameter data for respective sheet
 function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLngShrt_dic::Dict{Symbol,Symbol}, fileName_str::String, report::Array{Tuple,1},lock_::ReentrantLock)
 
 	setShrtLng_dic = Dict(value => key for (key, value) in setLngShrt_dic)
@@ -450,13 +450,13 @@ function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLngSh
     return para_dic
 end
 
-# XXX gets idx from set names and orders all data in dataframe for respective parameter
+# ! gets idx from set names and orders all data in dataframe for respective parameter
 function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_arr::Array{parEntry,1},parVal_arr::Array{Array{Symbol,1},1},para_dic::Dict{Symbol,DataFrame},setCol_dic::Dict{Symbol,Array},setLngShrt_dic::Dict{Symbol,Symbol},fileName_str::String,report::Array{Tuple,1},lock_::ReentrantLock)
 	setShrtLng_dic = Dict(value => key for (key, value) in setLngShrt_dic)
 	for row in eachrow(parData_df)
 		setId_dic = Dict{Symbol,Union{Int,Array{Int,1}}}()
 
-		# XXX obtains node ids for row
+		# ! obtains node ids for row
 		# overwrites default values for specific row in setIni_arr
 		for i in setIni_arr, (index,j) in enumerate(i.lvl)
 			i.entry[j+1-i.startLvl] = row[setCol_dic[i.colSet][index]]
@@ -502,7 +502,7 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 
 		for (index,y) in enumerate(keys(setId_dic)) addEntry_df[!,y] = ordAgnNodes_ord[index,:] end
 
-		# XXX loop over parameter/value columns, prepares and writes
+		# ! loop over parameter/value columns, prepares and writes
 		for i in parVal_arr
 
 			# extract parameter type and value
@@ -538,7 +538,7 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 	end
 end
 
-# XXX filters all columns of dataframe that are related to the sets
+# ! filters all columns of dataframe that are related to the sets
 function filterSetColumns(input_df::DataFrame,input_arr::Array{Symbol},outStr_boo::Bool = false)
     colNames_arr = [String(namesSym(input_df)[i]) for i = 1:size(input_df,2)]
 
@@ -555,11 +555,11 @@ function filterSetColumns(input_df::DataFrame,input_arr::Array{Symbol},outStr_bo
     return return_arr
 end
 
-# XXX initializes dictionary that saves lookups in tree
+# ! initializes dictionary that saves lookups in tree
 function initializeLookup(size_int::Int)
     Ini_arr = Array{String}(undef,size_int)
     Ini_arr .= ""
     return Ini_arr
 end
 
-# </editor-fold>
+#endregion

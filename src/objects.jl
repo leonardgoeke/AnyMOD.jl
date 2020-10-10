@@ -1,7 +1,7 @@
 
-# <editor-fold desc="definition and handling of parameters"
+#region # * definition and handling of parameters
 
-# XXX defines struct for handling parameter data
+# ! defines struct for handling parameter data
 """
 ```julia
 mutable struct ParElement
@@ -36,7 +36,7 @@ mutable struct ParElement
         setLongShort_dic = Dict(:Ts => :timestep, :R => :region, :C => :carrier, :Te => :technology, :M => :mode)
 		if isempty(paraData_df) return new(name,paraDef_ntup.problem,paraDef_ntup.dim,paraDef_ntup.defVal,paraDef_ntup.herit,DataFrame()) end
 
-        # XXX check consistency of rows in input dataframe and definition of set and rename columns according to set defintion
+        # ! check consistency of rows in input dataframe and definition of set and rename columns according to set defintion
         # assigns array of used suffixes according to parameter defintion to each set
         splitDim_arr = map(x -> map(y -> Symbol(y), split(String(x),"_")),collect(paraDef_ntup.dim))
         setSuf_dic = Dict(x => map(y -> length(y) == 1 ? Symbol() : y[end],filter(z -> z[1] == x,splitDim_arr)) for x in unique(map(x -> x[1],splitDim_arr)))
@@ -78,7 +78,7 @@ mutable struct ParElement
 	ParElement() = new()
 end
 
-# XXX specific struct for read in process of parameter data
+# ! specific struct for read in process of parameter data
 mutable struct parEntry
 	colSet::Symbol
 	entry::Array{String,1}
@@ -86,11 +86,11 @@ mutable struct parEntry
 	startLvl::Int
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc="import and extensions of base functions"
+#region # * import and extensions of base functions
 
-# XXX functions to copy parameter structs of parameter data
+# ! functions to copy parameter structs of parameter data
 import Base.copy
 function copy(par_obj::ParElement)
 	out = ParElement()
@@ -114,17 +114,17 @@ function copy(par_obj::ParElement,data_df::DataFrame)
 	return out
 end
 
-# XXX usual collect sometimes creates a mysterious error if used on dictionary keys, this command avoids this
+# ! usual collect sometimes creates a mysterious error if used on dictionary keys, this command avoids this
 import Base._collect
 import Base.SizeUnknown
 
 collectKeys(itr) = _collect(Symbol, itr, SizeUnknown())
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc="struct for individual parts of the model"
+#region # * struct for individual parts of the model
 
-# XXX defines parts of the model
+# ! defines parts of the model
 abstract type AbstractModelPart end
 
 """
@@ -219,17 +219,17 @@ mutable struct OthPart <: AbstractModelPart
 	OthPart() = new(Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())
 end
 
-# XXX container to store data defining a constraint (used to separate definition and actual jump creation of constraints)
+# ! container to store data defining a constraint (used to separate definition and actual jump creation of constraints)
 struct cnsCont
     data::DataFrame
     sign::Symbol
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc="structs for nodes that then make up the trees to save set data"
+#region # * structs for nodes that then make up the trees to save set data
 
-# XXX define nodes for set tree and tree itself
+# ! define nodes for set tree and tree itself
 """
 ```julia
 mutable struct Node
@@ -290,15 +290,15 @@ mutable struct Tree
 	Tree() = new(Dict{Int,Node}(),Dict{Tuple,Int}(),Dict{String,Array{Int,1}}(),Dict{Int,Int}(),1)
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc="options for model and model itself"
+#region # * options for model and model itself
 
 # create abstract model object to reference before creation (avoid circular type definiton)
 abstract type AbstractModel end
 
-# XXX defines final model object and its options
-struct modOptions
+# ! defines final model object and its options
+mutable struct modOptions
 	# data in- and output
 	inDir::Array{String,1}
 	outDir::String
@@ -325,7 +325,7 @@ struct modOptions
 	startTime::DateTime
 end
 
-# XXX flow graph object that defines relations between technologies and carriers (and among carriers)
+# ! flow graph object that defines relations between technologies and carriers (and among carriers)
 mutable struct flowGraph
 	nodeC::Dict{Int,Int}
 	nodeTe::Dict{Int,Int}
@@ -394,7 +394,7 @@ mutable struct flowGraph
 	end
 end
 
-# XXX specific information for graphical evaluation
+# ! specific information for graphical evaluation
 """
 ```julia
 mutable struct graInfo
@@ -422,7 +422,7 @@ mutable struct graInfo
 
 		# specify some default names and colors used in visualisations
 		namesDef_arr = ["coalPlant" => "coal plant", "gasPlant" => "gas plant", "districtHeat" => "district heat", "naturalGas" => "natural gas", "synthGas" => "synthetic gas", "fossilGas" => "fossil gas",
-									"demand" => "final demand", "export" => "export", "import" => "import", "crt" => "curtailment", "lss" => "loss of load", "trdSell" => "trade sell", "trdBuy" => "trade buy"]
+									"demand" => "final demand", "export" => "export", "import" => "import", "netImport" => "net import", "netExport" => "net export","crt" => "curtailment", "lss" => "loss of load", "trdSell" => "trade sell", "trdBuy" => "trade buy"]
 
 		# create dictionary assigning internal model names to names used within visualisations
 		allVal_arr = unique(vcat(map(x -> getfield.(values(anyM.sets[x].nodes),:val) ,collect(keys(anyM.sets)))...))
@@ -439,7 +439,7 @@ mutable struct graInfo
 	end
 end
 
-# XXX finally, the model object itself
+# ! finally, the model object itself
 """
 ```julia
 mutable struct anyModel <: AbstractModel
@@ -498,15 +498,15 @@ mutable struct anyModel <: AbstractModel
 																																bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = NaN)
 		anyM = new()
 
-		# <editor-fold desc="initialize report and options"
+		#region # * initialize report and options
 
-		# XXX creates dataframe to which reporting is written
+		# ! creates dataframe to which reporting is written
 		anyM.report = Array{Tuple,1}()
 
 		anyM.optModel = Model()
 		anyM.lock = ReentrantLock()
 
-		# XXX sets whole options object from specified directories TODO arbeite mit kwargs später
+		# ! sets whole options object from specified directories TODO arbeite mit kwargs später
 		outStamp_str = string(objName,"_",Dates.format(now(),"yyyymmddHHMM"))
 		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, decommExc = decommExc, interCapa = interCapa,
 																					supTsLvl = supTsLvl, shortExp = shortExp, redStep = redStep, emissionLoss = emissionLoss, coefRng = coefRng, scaFac = scaFac, bound = bound,
@@ -514,12 +514,12 @@ mutable struct anyModel <: AbstractModel
 
 		anyM.options = modOptions(defOpt_ntup...)
 
-		# </editor-fold>
+		#endregion
 
-		# <editor-fold desc= read in set and parameter data>
+		#region # * read in set and parameter data
 		files_dic = readInputFolder(anyM.options.inDir)
 
-		# XXX read-in sets and parameters
+		# ! read-in sets and parameters
 		setData_dic = readSets!(files_dic,anyM)
 		if !any(map(x -> x[1] == 3, anyM.report))
 			paraTemp_dic = readParameters!(files_dic,setData_dic,anyM)
@@ -527,9 +527,9 @@ mutable struct anyModel <: AbstractModel
 
 		produceMessage(anyM.options,anyM.report, 1," - Read-in all set and parameter files")
 
-		# </editor-fold>
+		#endregion
 
-		# <editor-fold desc="create part objects and general mappings"
+		#region # * create part objects and general mappings
 		# assign actual tech to parents
 		relTech_df = setData_dic[:Te][!,Symbol.(filter(x -> occursin("technology",x) && !isnothing(tryparse(Int16,string(x[end]))), string.(namesSym(setData_dic[:Te]))))]
 		relTech_df = DataFrame(filter(x -> any(collect(x) .!= ""), eachrow(relTech_df)))
@@ -541,26 +541,24 @@ mutable struct anyModel <: AbstractModel
 		createCarrierMapping!(setData_dic,anyM)
 		createTimestepMapping!(anyM)
 
-		# XXX write general info about technologies
+		# ! write general info about technologies
 		for t in techIdx_arr createTechInfo!(techSym(t,anyM.sets[:Te]), setData_dic, anyM) end
 		produceMessage(anyM.options,anyM.report, 2," - Created all mappings among sets")
 
-		# XXX assign parameters to model parts
+		# ! assign parameters to model parts
 		parDef_dic = parameterToParts!(paraTemp_dic, techIdx_arr, anyM)
 		produceMessage(anyM.options,anyM.report, 2," - Assigned parameter data to model parts")
 
-		# XXX create object for data visualization
+		# ! create object for data visualization
 		anyM.graInfo = graInfo(anyM)
 
-		# XXX add scenario mappings
+		# ! add scenario mappings
 		createScenarioMapping!(anyM)
 		produceMessage(anyM.options,anyM.report, 1," - Prepared creation of optimzation model")
-		# </editor-fold>
+		#endregion
 
 		return anyM
 	end
 
 	anyModel() = new()
 end
-
-# </editor-fold>

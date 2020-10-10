@@ -1,16 +1,16 @@
 
-# <editor-fold desc="definition and handling of parameters"
+#region # * definition and handling of parameters
 
-# XXX defines all existing parameters
+# ! defines all existing parameters
 function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic = Dict{Symbol, NamedTuple}()
 
-    # <editor-fold desc="XXX expansion parameters"
+    #region # * expansion parameters
 
-    # XXX general expansion
+    # ! general expansion
     parDef_dic[:rateDisc]  = (dim = (:Ts_disSup, :R_exp), problem = :both, defVal = 0.02, herit = (:Ts_disSup => :up, :R_exp => :up, :R_exp => :avg_any, :Ts_disSup => :avg_any), part = :obj)
 
-    # XXX technology and exchange expansion
+    # ! technology and exchange expansion
 
     parDef_dic[:delConv]   = (dim = (:Ts_expSup, :R_exp, :Te),     problem = :top, defVal = 0, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :techConv)
     parDef_dic[:delStIn]   = (dim = (:Ts_expSup, :R_exp, :C, :Te), problem = :top, defVal = 0, herit = (:Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :techSt)
@@ -48,11 +48,11 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:costOprStSize] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), problem = :top, defVal = nothing, herit = (:Ts_disSup => :up, :Te => :up, :Ts_expSup => :up, :R_exp => :up), part = :obj)
     parDef_dic[:costOprExc]    = (dim = (:Ts_disSup, :R_a, :R_b, :C),              problem = :top, defVal = nothing, herit = (:Ts_disSup => :up, :R_a => :avg_any, :R_b => :avg_any, :R_a => :up, :R_b => :up, :C => :up), part = :obj)
 
-    # </editor-fold>
+    #endregion
 
-    # <editor-fold desc="XXX limit parameters on capacity"
+    #region # * limit parameters on capacity
 
-    # XXX parameters regarding limits on technology and exchange expansion and capacity
+    # ! parameters regarding limits on technology and exchange expansion and capacity
 
     # expansion limits on conversion, storage and exchange
     parDef_dic[:expConvUp]  = (dim = (:Ts_exp, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_exp => :sum_full, :Te => :sum_full), part = :lim)
@@ -96,7 +96,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:capaExcLow] = (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, problem = :top, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_any),                    part = :lim)
     parDef_dic[:capaExcFix] = (dim = (:Ts_disSup, :R_a, :R_b, :C), defVal = nothing, problem = :top, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_any),                    part = :lim)
 
-    # XXX residual capacities
+    # ! residual capacities
     parDef_dic[:capaConvResi]   = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te),     problem = :top, defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :Ts_expSup => :sum_any, :Ts_disSup => :up),                  part = :techConv)
     parDef_dic[:capaStInResi]   = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), problem = :top, defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any, :Ts_disSup => :up), part = :techSt)
     parDef_dic[:capaStOutResi]  = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :C, :Te), problem = :top, defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :C => :sum_any,  :Ts_expSup => :sum_any, :Ts_disSup => :up), part = :techSt)
@@ -105,7 +105,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:capaExcResi]    = (dim = (:Ts_disSup, :R_a, :R_b, :C), problem = :top, defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :Ts_disSup => :up), part = :exc)
     parDef_dic[:capaExcResiDir] = (dim = (:Ts_disSup, :R_a, :R_b, :C), problem = :top, defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :Ts_disSup => :up), part = :exc)
 
-    # XXX capacity ratios
+    # ! capacity ratios
     parDef_dic[:stInToConvUp]  = (dim = (:Ts_exp, :R_exp, :C, :Te), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
     parDef_dic[:stInToConvLow] = (dim = (:Ts_exp, :R_exp, :C, :Te), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
     parDef_dic[:stInToConvFix] = (dim = (:Ts_exp, :R_exp, :C, :Te), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
@@ -139,14 +139,14 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:insCapaExcLow] = (dim = (:Ts_disSup, :R_a, :R_b, :C), problem = :top, defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_any),  part = :lim)
     parDef_dic[:insCapaExcFix] = (dim = (:Ts_disSup, :R_a, :R_b, :C), problem = :top, defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_a => :sum_any,  :R_b => :sum_any, :C => :sum_any),  part = :lim)
 
-    # </editor-fold>
+    #endregion
 
-    # <editor-fold desc="XXX limit parameters on dispatch"
+    #region # * limit parameters on dispatch
 
     upHerit_tup = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_dis => :sum_full, :C => :sum_full, :Te => :sum_full, :M => :sum_full, :scr => :up)
     ofHerit_tup = (:Ts_dis => :sum_any,  :Ts_expSup => :sum_any,  :R_dis => :sum_any,  :C => :sum_any,  :Te => :sum_any,  :M => :sum_any,  :scr => :up)
 
-    # XXX limits on technology dispatch
+    # ! limits on technology dispatch
     parDef_dic[:useUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup, part = :lim)
     parDef_dic[:useLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
     parDef_dic[:useFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
@@ -187,7 +187,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:stInLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
     parDef_dic[:stInFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
 
-    # XXX limits on other dispatch variables
+    # ! limits on other dispatch variables
 
     parDef_dic[:excUp]   =  (dim = (:Ts_dis, :R_from, :R_to, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
     parDef_dic[:excLow]  =  (dim = (:Ts_dis, :R_from, :R_to, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any, :scr => :up),  part = :lim)
@@ -218,11 +218,11 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:emissionFac]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = tuple(:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :M => :up, :scr => :up), part = :lim)
     parDef_dic[:emissionPrc]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = tuple(:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :M => :up, :scr => :up), part = :obj)
 
-    # </editor-fold>
+    #endregion
 
-    # <editor-fold desc="XXX dispatch parameters"
+    #region # * dispatch parameters"
 
-    # XXX technology dispatch properties
+    # ! technology dispatch properties
 
     # availability parameters
     parDef_dic[:avaConv]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :M, :scr),     problem = :sub, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up,            :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :lowest,    mode = (:in, :out)))
@@ -277,8 +277,8 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:cycStOutLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :scr => :up, :C => :up, :Te => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any), part = :techSt)
     parDef_dic[:cycStOutFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :scr => :up, :C => :up, :Te => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any), part = :techSt)
 
-    # XXX further dispatch properties
-    parDef_dic[:dem]     = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = 0.0,     herit = (:Ts_dis => :avg_any, :R_dis  => :sum_any, :scr => :up),                               part = :bal)
+    # ! further dispatch properties
+    parDef_dic[:dem]     = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = 0.0,     herit = (:Ts_dis => :avg_any, :R_dis  => :sum_any, :scr => :up),             					part = :bal)
     parDef_dic[:costCrt] = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
     parDef_dic[:costLss] = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
 
@@ -299,7 +299,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:lossExcDir]    = (dim = (:Ts_dis, :R_a, :R_b, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :scr => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :exc)
     parDef_dic[:costVarExcDir] = (dim = (:Ts_dis, :R_a, :R_b, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :R_a => :up, :R_b => :up, :scr => :up, :R_a => :avg_any, :R_b => :avg_any, :Ts_dis => :avg_any, :C => :up), part = :obj)
 
-    # </editor-fold>
+    #endregion
 
     # check if sets are illdefined with respect to inheritance
     heritRules_tup = (:sum_full, :sum_any, :avg_full, :avg_any, :uni_full, :uni_any, :up)
@@ -317,7 +317,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     return parDef_dic
 end
 
-# XXX assign parameter to model parts
+# ! assign parameter to model parts
 function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, techIdx_arr::Array{Int,1}, anyM::anyModel)
 
     # parameter defined within input data
@@ -344,7 +344,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
     convTechIdx_arr = filter(r -> !isempty(intersect((:gen,:use),keys(anyM.parts.tech[techSym(r,anyM.sets[:Te])].carrier))),techIdx_arr)
     stTechIdx_arr   = filter(r -> !isempty(intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(anyM.parts.tech[techSym(r,anyM.sets[:Te])].carrier))),techIdx_arr)
 
-    # XXX loop over all actual parameters to assign them to parts of the model
+    # ! loop over all actual parameters to assign them to parts of the model
     @threads for parIt in allPar_arr
 
         # ensures all dataframes with data from single files have the same columns so they can be merged
@@ -365,14 +365,14 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
             for (index,col) in enumerate((:R,:R_b)) allParData_df[!,col] = sortR_mat[:,index] end
         end
 
-        # XXX checks for duplicates and removes them in case
+        # ! checks for duplicates and removes them in case
         nonUnique_bool = nonunique(allParData_df)
         if any(nonUnique_bool)
             push!(anyM.report,(1,"parameter read-in","validity check","non-unique entries discovered for '$(string(parIt))'"))
             delete!(allParData_df,nonUnique_bool)
         end
 
-        # XXX checks for contradicting values
+        # ! checks for contradicting values
         rmvVal_df = removeVal(allParData_df)
         if !isempty(rmvVal_df)
             contradic_bool = nonunique(allParData_df[:,rmvVal_df])
@@ -381,7 +381,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
             end
         end
 
-        # XXX assign parameters to parts
+        # ! assign parameters to parts
         parDef_tup = parDef_dic[parIt]
         parPart_sym =parDef_tup.part
 
@@ -413,7 +413,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
         end
     end
 
-    # XXX adds parameter object for parameters where no explicit values where provided, but a default value exists
+    # ! adds parameter object for parameters where no explicit values where provided, but a default value exists
     for parUndef in keys(filter(r -> r[2].defVal != nothing,parDef_dic))
         parPart_sym = parDef_dic[parUndef].part
         if parPart_sym != :techSt && parPart_sym != :techConv
@@ -430,7 +430,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, te
     return parDef_dic
 end
 
-# XXX perform pre-setting of dispatch parameters for all technologies
+# ! perform pre-setting of dispatch parameters for all technologies
 function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},newHerit_dic::Dict{Symbol,Tuple{Pair{Symbol,Symbol},Pair{Symbol,Symbol}}},
                                                                                                 ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
@@ -545,7 +545,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
     return modeDep_dic
 end
 
-# XXX pre-sets specific dispatch parameter
+# ! pre-sets specific dispatch parameter
 function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String, sets::Dict{Symbol,Tree}, options::modOptions, cntM_int::Int = 0, newHerit_tup::Tuple = ())
     # gets dimension of search tables and parameter without mode
     newData_df = select(newData_df,intersect(namesSym(newData_df),par_obj.dim))
@@ -608,10 +608,10 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String
     return par_obj, report
 end
 
-# XXX creates new parameter objects for discount factors from discount rates provided
+# ! creates new parameter objects for discount factors from discount rates provided
 function computeDisFac!(partObj::OthPart,anyM::anyModel)
 
-	# XXX discount factor for technologies
+	# ! discount factor for technologies
 	rExp_arr = union(map(x -> getfield.(getNodesLvl(anyM.sets[:R],x),:idx), unique(getfield.(values(anyM.cInfo),:rExp)))...)
 	discR_df = matchSetParameter(flatten(flatten(DataFrame(Ts_disSup = anyM.supTs.step, R_exp = rExp_arr),:Ts_disSup),:R_exp),partObj.par[:rateDisc],anyM.sets)
 
@@ -624,7 +624,7 @@ function computeDisFac!(partObj::OthPart,anyM::anyModel)
 	discPar_obj.defVal = nothing
 	partObj.par[:disFac] = discPar_obj
 
-	# XXX discount factor for exchange (average of from and to region)
+	# ! discount factor for exchange (average of from and to region)
 	discRExc_df = rename(copy(discR_df),:R_exp => :R_from,:disFac => :disFacFrom)
 	discRExc_df[!,:R_to] .= [unique(discRExc_df[!,:R_from])]
 	discRExc_df = flatten(discRExc_df,:R_to)
@@ -641,7 +641,7 @@ function computeDisFac!(partObj::OthPart,anyM::anyModel)
 	partObj.par[:disFacExc] = discPar_obj
 end
 
-# XXX extract specified limit parameter from the limit part of the model
+# ! extract specified limit parameter from the limit part of the model
 function getLimPar(partLim::OthPart,par_sym::Symbol, tech_tr::Tree; tech::Int = 0)
 
 	if par_sym in keys(partLim.par)
@@ -659,11 +659,11 @@ function getLimPar(partLim::OthPart,par_sym::Symbol, tech_tr::Tree; tech::Int = 
 	return parLim_obj
 end
 
-# </editor-fold>
+#endregion
 
-# <editor-fold desc="perform match between dimension tables and parameter data"
+#region # * dperform match between dimension tables and parameter data
 
-# XXX matches set with input parameters, uses inheritance rules for unmatched cases
+# ! matches set with input parameters, uses inheritance rules for unmatched cases
 function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Dict{Symbol,Tree}; newCol::Symbol =:val, useDef::Bool = true, useNew::Bool = true)
 
      # directly return search dataframes with added empty column if it is empty itself
@@ -749,7 +749,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
     return paraMatch_df
 end
 
-# XXX covers direct inheritance from upper nodes
+# ! covers direct inheritance from upper nodes
 function heritParameter_up(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{Int,1},paraData_df::DataFrame,sets::Dict{Symbol,Tree})
 
     heritSetShort_sym = Symbol(split(String(herit_par[1]),"_")[1])
@@ -775,10 +775,10 @@ function heritParameter_up(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{Int
     return newData_df
 end
 
-# XXX covers all inheritance from nodes below unmatched nodes
+# ! covers all inheritance from nodes below unmatched nodes
 function heritParameter_rest(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{Int,1},paraData_df::DataFrame,sets::Dict{Symbol,Tree})
 
-    # XXX reads out specific inheritance options
+    # ! reads out specific inheritance options
     heritSet_sym = herit_par[1]
     heritSetShort_sym = Symbol(split(String(heritSet_sym),"_")[1])
 
@@ -786,7 +786,7 @@ function heritParameter_rest(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{I
     heritAgg_sym = Symbol(splHerit_arr[1])
     heritFull_boo = Symbol(splHerit_arr[2]) == :full
 
-    # XXX initialize values for loop (removes and add val again to control its position)
+    # ! initialize values for loop (removes and add val again to control its position)
 
     # dimensions not involved in inheritance propcess
     noHeritSet_tup = tuple(setdiff(namesSym(paraData_df),[:val,herit_par[1]])...)
@@ -848,4 +848,4 @@ function heritParameter_rest(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{I
     return newData_df
 end
 
-# </editor-fold>
+#endregion
