@@ -77,44 +77,22 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			if !(costPar_sym in parObj_arr) continue end
 
 			# get all variables
-	        allExp_df = getAllVariables(var_sym,anyM)
+			allExp_df = getAllVariables(var_sym,anyM)
 			if isempty(allExp_df)
 				continue
 			else
 				allExp_df = rename(allExp_df,:var => :exp)
 			end
 
-		# use technical lifetime where no economic lifetime could be obtained
-		if va != :Exc
-			allPar_arr = map(w -> isempty(w) ? DataFrame(val = [20.0]) : w,map(x -> anyM.parts.tech[x].par[Symbol(:life,va)].data,filter(y -> var_sym in keys(anyM.parts.tech[y].var), techFilt_arr)))
-			union(intCol.(allPar_arr)...) |> (z -> map(x -> map(y -> insertcols!(x,1,(y => fill(0,size(x,1)))) , setdiff(z,intCol(x)) ) ,allPar_arr))
-			lifePar_obj = copy(anyM.parts.tech[techFilt_arr[1]].par[Symbol(:life,va)],unique(vcat(allPar_arr...)))
-		else
-			lifePar_obj = anyM.parts.exc.par[:lifeExc]
-		end
-		techLife_df = matchSetParameter(convertExcCol(filter(x -> isnothing(x.life),allExp_df))[!,Not(:life)],lifePar_obj,anyM.sets,newCol = :life)
-		allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),convertExcCol(allExp_df)))
-
-		# gets expansion costs and interest rate to compute annuity
-		allExp_df = matchSetParameter(allExp_df,partObj.par[costPar_sym],anyM.sets,newCol = :costExp)
-		if isempty(allExp_df) continue end
-
-		# uses tech specific discount rate and fall back on general discount rate as default
-		if Symbol(:rateExp,va) in keys(partObj.par)
-			techRate_df = matchSetParameter(allExp_df,partObj.par[Symbol(:rateExp,va)],anyM.sets,newCol = :rate)
-		else
-			techRate_df = filter(x -> false,allExp_df); techRate_df[!,:rate] .= Float64[]
-		end
-		# obtains general discount rate
-		generRate_df = rename(antijoin(allExp_df,techRate_df,on = intCol(techRate_df)),:Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup)
-		if va != :Exc
-			generRate_df = matchSetParameter(generRate_df, partObj.par[:rateDisc],anyM.sets,newCol = :rate)
-		else
-			rateB_arr = matchSetParameter(rename(generRate_df,:R_a => :R_exp), partObj.par[:rateDisc],anyM.sets,newCol = :rateA)[!,:rateA]
-			rateA_arr = matchSetParameter(rename(generRate_df,:R_b => :R_exp), partObj.par[:rateDisc],anyM.sets,newCol = :rateB)[!,:rateB]
-			generRate_df[!,:rate] = 0.5 .* (rateA_arr .+ rateB_arr)
-		end
-		allExp_df = vcat(techRate_df,rename(generRate_df, :Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup))
+			# add economic lifetime to table where it is defined
+			if Symbol(:lifeEco,va) in parObj_arr
+				ecoLife_df = matchSetParameter(allExp_df,partObj.par[Symbol(:lifeEco,va)],anyM.sets,newCol = :life)
+				noEcoLife_df = antijoin(allExp_df,ecoLife_df, on = intCol(allExp_df))
+				noEcoLife_df[!,:life] .= nothing
+				allExp_df = vcat(ecoLife_df,noEcoLife_df)
+			else
+				allExp_df[!,:life] .= nothing
+			end
 
 			techFilt_arr = filter(y -> var_sym in keys(anyM.parts.tech[y].var), techSym_arr)
 
@@ -126,11 +104,11 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			else
 				lifePar_obj = anyM.parts.exc.par[:lifeExc]
 			end
-			techLife_df = matchSetParameter(filter(x -> isnothing(x.life),allExp_df)[!,Not(:life)],lifePar_obj,anyM.sets,newCol = :life)
-			allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),allExp_df))	
+			techLife_df = matchSetParameter(convertExcCol(filter(x -> isnothing(x.life),allExp_df))[!,Not(:life)],lifePar_obj,anyM.sets,newCol = :life)
+			allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),convertExcCol(allExp_df)))
 
 			# gets expansion costs and interest rate to compute annuity
-			allExp_df = matchSetParameter(convertExcCol(allExp_df),partObj.par[costPar_sym],anyM.sets,newCol = :costExp)
+			allExp_df = matchSetParameter(allExp_df,partObj.par[costPar_sym],anyM.sets,newCol = :costExp)
 			if isempty(allExp_df) continue end
 
 			# uses tech specific discount rate and fall back on general discount rate as default
