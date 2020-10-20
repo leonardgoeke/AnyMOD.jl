@@ -2,62 +2,136 @@
 #region # * prepare and create exchange related variables
 
 # ! prepare dictionary that specifies dimensions for expansion and capacity variables
-function prepareExc!(prepExc_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},anyM::anyModel)
-	partExc = anyM.parts.exc
+function prepareExc!(excSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},tsYear_dic::Dict{Int,Int},anyM::anyModel)
+
 	partLim = anyM.parts.lim
 
-	# obtain dimensions of expansion variables for exchange
-	potExc_df = prepareExcExpansion!(partExc,partLim,prepExc_dic,tsYear_dic,anyM)
-
-	# obtain capacity dimensions solely based on expansion variables
-	prepareCapacity!(partExc,prepExc_dic,prepExc_dic[:expExc].var,:capaExc,anyM)
-	addResidualCapaExc!(partExc,prepExc_dic,potExc_df,anyM)
-
-	if anyM.options.decommExc != :none && :capaExc in keys(prepExc_dic)
-		prepExc_dic[:insCapaExc] =  (var = prepExc_dic[:capaExc].var, resi = prepExc_dic[:capaExc].resi)
-		excResi_df = select(prepExc_dic[:capaExc].resi,Not([:var,:Ts_expSup]))
-		prepExc_dic[:capaExc] =  (var = unique(vcat(prepExc_dic[:capaExc].var, filter(x -> x.R_from < x.R_to, vcat(excResi_df,rename(excResi_df,:R_from => :R_to,:R_to => :R_from))))), resi = DataFrame())
-	end
+	for excSym in excSym_arr
+	
+		excInt = sysInt(excSym,anyM.sets[:Exc])
+	
+		partExc = anyM.parts.exc[excSym]
+		prepExc_dic = Dict{Symbol,NamedTuple}()
+	
+		# obtain dimensions of expansion variables for exchange
+		prepareExcExpansion!(excInt,partExc,partLim,prepExc_dic,tsYear_dic,anyM)
+	
+		# obtain capacity dimensions solely based on expansion variables
+		prepareCapacity!(partExc,prepExc_dic,prepExc_dic[:expExc].var,:capaExc,anyM)
+	
+		addResidualCapaExc!(partExc,prepExc_dic,anyM)
+	
+		# add entry for operated capacity
+		if partExc.decomm != :none && :capaExc in keys(prepExc_dic)
+			prepExc_dic[:insCapaExc] =  (var = prepExc_dic[:capaExc].var, resi = prepExc_dic[:capaExc].resi)
+			excResi_df = select(prepExc_dic[:capaExc].resi,Not([:var,:Ts_expSup]))
+			prepExc_dic[:capaExc] =  (var = unique(vcat(prepExc_dic[:capaExc].var, filter(x -> x.R_from < x.R_to, vcat(excResi_df,rename(excResi_df,:R_from => :R_to,:R_to => :R_from))))), resi = DataFrame())
+		end
+	
+		# if any capacity variables or residuals were prepared, add these to overall dictionary
+		if collect(values(prepExc_dic)) |> (z -> any(map(x -> any(.!isempty.(getfield.(z,x))), (:var,:resi))))
+			prepVar_dic[excSym] = prepExc_dic
+		end
+	end	
 end
 
 # ! prepare expansion and capacity variables for exchange
-function prepareExcExpansion!(partExc::ExcPart,partLim::OthPart,prepExc_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},anyM::anyModel)
+function prepareExcExpansion!(excInt::Int,partExc::ExcPart,partLim::OthPart,prepExc_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},anyM::anyModel)
 
 	# ! determine dimensions of expansion variables (expansion for exchange capacities is NOT directed!)
 	# get all possible dimensions of exchange
-	potDim_df = DataFrame(map(x -> (lvlTs = x[2].tsExp, lvlR = x[2].rDis, C = x[1]), collect(anyM.cInfo)))
-	tsLvl_dic = Dict(x => getfield.(getNodesLvl(anyM.sets[:Ts],x),:idx) for x in unique(potDim_df[!,:lvlTs]))
-	rLvl_dic = Dict(x => getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in unique(potDim_df[!,:lvlR]))
-
-	potExc_df = flatten(flatten(flatten(combine(x -> (Ts_exp = map(y -> tsLvl_dic[y],x.lvlTs), R_a = map(y -> rLvl_dic[y],x.lvlR), R_b = map(y -> rLvl_dic[y],x.lvlR)), groupby(potDim_df,:C)),:Ts_exp),:R_a),:R_b)
+	potExc_df = getfield.(getNodesLvl(anyM.sets[:R],partExc.expLvl[2]),:idx)  |> (x  -> DataFrame(R_a = [x], R_b = [x], Exc = excInt))
+	potExc_df = flatten(flatten(potExc_df,:R_a), :R_b)
 
 	# get dimensions where exchange should actually be defined
-	exExp_df = DataFrame(R_a = Int[], R_b = Int[], C = Int[])
+	exExp_df = DataFrame(R_a = Int[], R_b = Int[], Exc = Int[])
 
 	for excPar in intersect((:capaExcResi,:capaExcResiDir),keys(partExc.par))
-		append!(exExp_df,matchSetParameter(potExc_df,partExc.par[excPar],anyM.sets)[!,[:R_a,:R_b,:C]])
+		append!(exExp_df,matchSetParameter(potExc_df,partExc.par[excPar],anyM.sets)[!,[:R_a,:R_b,:Exc]])
 	end
 
 	# ensure expansion entries are not directed
 	exExp_df = unique(exExp_df) |> (x -> filter(y -> y.R_a < y.R_b,vcat(x,rename(x,replace(namesSym(x),:R_a => :R_b, :R_b => :R_a))))) |> (z -> unique(z))
 
 	# add supordiante timesteps of expansion
-	allExExp_df = innerjoin(potExc_df,exExp_df, on = namesSym(exExp_df))
-	allExExp_df[!,:Ts_expSup] = map(x -> getDescendants(x,anyM.sets[:Ts],false,anyM.supTs.lvl) |> (y -> typeof(y) == Array{Int,1} ? y : [y] ), allExExp_df[!,:Ts_exp])
+	exExp_df[!,:Ts_exp] .= partExc.expLvl[1]
+	exExp_df[!,:Ts_expSup] = map(x -> getDescendants(x,anyM.sets[:Ts],false,anyM.supTs.lvl) |> (y -> typeof(y) == Array{Int,1} ? y : [y] ), exExp_df[!,:Ts_exp])
 
 	# filter cases where expansion is fixed to zero
 	if :expExcFix in keys(anyM.parts.lim.par)
-		allExExp_df = removeEntries([filterZero(allExExp_df,getLimPar(anyM.parts.lim,:expExcFix,anyM.sets[:Te]),anyM)],allExExp_df)
+		exExp_df = removeEntries([filterZero(exExp_df,getLimPar(anyM.parts.lim,:expExcFix,anyM.sets[:Te]),anyM)],exExp_df)
+	end
+
+	# save result to dictionary for variable creation
+	exp_df = unique(addSupTsToExp(exExp_df,partExc.par,:Exc,tsYear_dic,anyM))
+	prepExc_dic[:expExc] = (var = orderDf(convertExcCol(exp_df)), resi = DataFrame())
+
+end
+
+# ! add residual capacties for exchange (both symmetric and directed)
+function addResidualCapaExc!(partExc::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
+
+	potExc_df = select(convertExcCol(prepExc_dic[:capaExc].var),Not([:dir])) |> (y -> vcat(y,rename(y,:R_b => :R_a,:R_a => :R_b)))
+
+	# obtain symmetric residual capacites
+	capaResi_df = filter(x -> x.R_a != x.R_b, checkResiCapa(:capaExc,potExc_df, partExc, anyM))
+	sortR_mat = sort(hcat([capaResi_df[!,x] for x in (:R_a,:R_b)]...);dims = 2)
+	for (index,col) in enumerate((:R_a,:R_b)) capaResi_df[!,col] = sortR_mat[:,index] end
+
+	# manipulate entries in case directed residual capacities are defined
+	if :capaExcResiDir in keys(partExc.par)
+
+		directExc_df = matchSetParameter(potExc_df,partExc.par[:capaExcResiDir],anyM.sets)
+		directExc_df[!,:var] = map(x -> AffExpr(x), directExc_df[!,:val]); select!(directExc_df,Not(:val))
+
+		excDim_arr = [:Ts_disSup, :Ts_expSup, :R_a, :R_b, :Exc]
+		excDimP_arr = replace(excDim_arr,:R_a => :R_b, :R_b => :R_a)
+
+		#  entries, where a directed capacity is provided and a symmetric one already exists
+		bothExc_df = vcat(innerjoin(directExc_df, capaResi_df; on = excDim_arr, makeunique = true), innerjoin(directExc_df, capaResi_df; on = Pair.(excDim_arr,excDimP_arr), makeunique = true))
+		bothExc_df = combine(x -> (var = x.var + x.var_1,), groupby(bothExc_df,excDim_arr))
+		if !(:var in namesSym(bothExc_df)) bothExc_df[!,:var] = AffExpr[] end
+		# entries, where only a directed capacity was provided
+		onlyDirExc_df = antijoin(directExc_df, bothExc_df; on = excDim_arr)
+
+		# entries originally symmetric that now become directed, because a directed counterpart was introduced
+		flipSym_df = antijoin(innerjoin(capaResi_df, bothExc_df[!,Not(:var)]; on = excDim_arr),bothExc_df[!,Not(:var)]; on = excDim_arr .=> excDimP_arr)
+		swtExc_df = vcat(bothExc_df,flipSym_df)
+
+		# solely directed entries
+		dirExc_df = vcat(onlyDirExc_df,swtExc_df)
+		dirExc_df[!,:dir] .= true
+
+		# entries who become directed because their counterpart became directed
+		becomDirExc_df = innerjoin(rename(dirExc_df[!,Not([:var,:dir])],:R_a => :R_b, :R_b => :R_a),vcat(capaResi_df,rename(capaResi_df,:R_a => :R_b, :R_b => :R_a)); on = excDim_arr)
+		becomDirExc_df[!,:dir] .= true
+
+		# entries entries originally symmetric that remain symmetric
+		unDirExc_df = antijoin(capaResi_df, vcat(dirExc_df, rename(dirExc_df,:R_a => :R_b, :R_b => :R_a)); on = excDim_arr )
+		unDirExc_df[!,:dir] .= false
+
+		# adjust dataframe of residual capacities according to directed values
+		capaResi_df = vcat(dirExc_df,vcat(unDirExc_df,becomDirExc_df))
+
+		# adjust dataframe of capacities determining where variables will be created to reflect which of these correspond to directed cases now
+		allVar_df = prepExc_dic[:capaExc].var
+		if !isempty(prepExc_dic[:capaExc].var)
+			undirBoth_df = vcat(dirExc_df,rename(dirExc_df,replace(namesSym(dirExc_df),:R_a => :R_b, :R_b => :R_a)))[!,Not(:dir)]
+			dirVar_df = convertExcCol(innerjoin(convertExcCol(allVar_df[!,Not(:dir)]), vcat(undirBoth_df,swtExc_df)[!,Not(:var)],on = excDim_arr))
+			dirVar_df[!,:dir] .= true
+			adjVar_df = vcat(dirVar_df,antijoin(allVar_df,dirVar_df,on = [:Ts_disSup, :Ts_expSup, :R_from, :R_to] ))
+		else
+			adjVar_df = allVar_df
+		end
+	else
+		capaResi_df[!,:dir] .= false
+		adjVar_df = prepExc_dic[:capaExc].var
 	end
 
 	# filter cases where in and out region are the same
-	filter!(x -> x.R_a != x.R_b, allExExp_df)
+	filter!(x -> x.R_a != x.R_b, capaResi_df)
 
-	# save result to dictionary for variable creation
-	exp_df = unique(addSupTsToExp(allExExp_df,partExc.par,:Exc,tsYear_dic,anyM))
-	prepExc_dic[:expExc] = (var = convertExcCol(exp_df), resi = DataFrame())
-
-	return potExc_df
+	prepExc_dic[:capaExc] = (var = unique(adjVar_df), resi = orderDf(convertExcCol(capaResi_df)))
 end
 
 # ! create exchange variables
@@ -88,76 +162,6 @@ function createExcVar!(partExc::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 
 	# computes value to scale up the global limit on dispatch variable that is provied per hour and create variables
 	partExc.var[:exc] = orderDf(createVar(disp_df,"exc",getUpBound(disp_df,anyM.options.bound.disp / anyM.options.scaFac.dispExc,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispExc))
-end
-
-# ! add residual capacties for exchange (both symmetric and directed)
-function addResidualCapaExc!(partExc::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},potExc_df::DataFrame,anyM::anyModel)
-
-	expSup_dic = Dict(x => getDescendants(x,anyM.sets[:Ts],true,anyM.supTs.lvl) for x in unique(potExc_df[!,:Ts_exp]))
-	potExc_df[!,:Ts_disSup] = map(x -> expSup_dic[x],potExc_df[!,:Ts_exp])
-	potExc_df = flatten(potExc_df[!,Not(:Ts_exp)],:Ts_disSup)
-
-	# obtain symmetric residual capacites
-	capaResi_df = filter(x -> x.R_a != x.R_b, checkResiCapa(:capaExc,potExc_df, partExc, anyM))
-	sortR_mat = sort(hcat([capaResi_df[!,x] for x in (:R_a,:R_b)]...);dims = 2)
-	for (index,col) in enumerate((:R_a,:R_b)) capaResi_df[!,col] = sortR_mat[:,index] end
-
-	# manipulate entries in case directed residual capacities are defined
-	if :capaExcResiDir in keys(partExc.par)
-
-		directExc_df = matchSetParameter(potExc_df,partExc.par[:capaExcResiDir],anyM.sets)
-		directExc_df[!,:var] = map(x -> AffExpr(x), directExc_df[!,:val]); select!(directExc_df,Not(:val))
-
-		excDim_arr = [:C, :R_a, :R_b, :Ts_disSup]
-		excDimP_arr = replace(excDim_arr,:R_a => :R_b, :R_b => :R_a)
-
-		#  entries, where a directed capacity is provided and a symmetric one already exists
-		bothExc_df = vcat(innerjoin(directExc_df, capaResi_df; on = excDim_arr, makeunique = true), innerjoin(directExc_df, capaResi_df; on = Pair.(excDim_arr,excDimP_arr), makeunique = true))
-		bothExc_df = combine(x -> (var = x.var + x.var_1,), groupby(bothExc_df,excDim_arr))
-		if !(:var in namesSym(bothExc_df)) bothExc_df[!,:var] = AffExpr[] end
-		 # entries, where only a directed capacity was provided
-		onlyDirExc_df = antijoin(directExc_df, bothExc_df; on = excDim_arr )
-
-		# entries originally symmetric that now become directed, because a directed counterpart was introduced
-		flipSym_df = antijoin(innerjoin(capaResi_df, bothExc_df[!,Not(:var)]; on = excDim_arr),bothExc_df[!,Not(:var)]; on = excDim_arr .=> excDimP_arr)
-		swtExc_df = vcat(bothExc_df,flipSym_df)
-
-		# solely directed entries
-		dirExc_df = vcat(onlyDirExc_df,swtExc_df)
-		dirExc_df[!,:dir] .= true
-
-		# entries who become directed because their counterpart became directed
-		becomDirExc_df = innerjoin(rename(dirExc_df[!,Not([:var,:dir])],:R_a => :R_b, :R_b => :R_a),vcat(capaResi_df,rename(capaResi_df,:R_a => :R_b, :R_b => :R_a)); on = excDim_arr)
-		becomDirExc_df[!,:dir] .= true
-
-		# entries entries originally symmetric that remain symmetric
-		unDirExc_df = antijoin(capaResi_df, vcat(dirExc_df, rename(dirExc_df,:R_a => :R_b, :R_b => :R_a)); on = excDim_arr )
-		unDirExc_df[!,:dir] .= false
-
-		# adjust dataframe of residual capacities according to directed values
-		capaResi_df = vcat(dirExc_df,vcat(unDirExc_df,becomDirExc_df))
-
-		# adjust dataframe of capacities determining where variables will be created to reflect which of these correspond to directed cases now
-		allVar_df = prepExc_dic[:capaExc].var
-		if !isempty(prepExc_dic[:capaExc].var)
-			undirBoth_df = vcat(dirExc_df,rename(dirExc_df,replace(namesSym(dirExc_df),:R_a => :R_b, :R_b => :R_a)))[!,Not(:dir)]
-			dirVar_df = convertExcCol(innerjoin(convertExcCol(allVar_df[!,Not(:dir)]), vcat(undirBoth_df,swtExc_df)[!,Not(:var)],on = excDim_arr))
-			dirVar_df[!,:dir] .= true
-			adjVar_df = vcat(dirVar_df,antijoin(allVar_df,dirVar_df,on = [:C, :R_from, :R_to, :Ts_disSup] ))
-		else
-			adjVar_df = allVar_df
-		end
-	else
-		capaResi_df[!,:dir] .= false
-		adjVar_df = prepExc_dic[:capaExc].var
-	end
-
-	# filter cases where in and out region are the same
-	filter!(x -> x.R_a != x.R_b, capaResi_df)
-
-	# adjust dictionary accordingly
-	capaResi_df[!,:Ts_expSup] .= 0
-	prepExc_dic[:capaExc] = (var = unique(adjVar_df), ratio = DataFrame(), resi = convertExcCol(capaResi_df))
 end
 
 # ! converts table where exchange regins are given as "R_a" and "R_b" to "R_to" and "R_from" and the other way around

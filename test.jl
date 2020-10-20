@@ -23,31 +23,7 @@ include("src/dataHandling/util.jl")
 
 #using Gurobi
 
-   
-
-csvDelim = ","
-decomm = :decomm
-interCapa = :linear
-supTsLvl = 0
-shortExp = 10
-redStep = 1.0
-emissionLoss = true
-eportLvl = 2
-errCheckLvl = 1
-errWrtLvl = 1
-coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2))
-scaFac = (capa = 1e1, oprCapa = 1e2, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0)
-bound = (capa = NaN, disp = NaN, obj = NaN)
-avaMin = 0.01
-checkRng = NaN
-
-
-
-inDir = "examples/demoProblem"
-ourDir = "results"
-
-
-anyM = anyModel("examples/demo","results", objName = "test", bound = (capa = NaN, disp = NaN, obj = 1e6), supTsLvl = 2, shortExp = 5, decomm = :recomm)
+anyM = anyModel("examples/demo","examples/results", objName = "test", bound = (capa = NaN, disp = NaN, obj = 1e6), supTsLvl = 2, shortExp = 5)
 createOptModel!(anyM)
 setObjective!(:costs,anyM)
 
@@ -58,5 +34,31 @@ optimize!(anyM.optModel)
 printObject(anyM.parts.exc.cns[:excCapa], anyM, fileName = "bla2")
 
 
-using AnyMOD
-  
+   
+objName = ""
+csvDelim = ","
+interCapa = :linear
+supTsLvl = 0
+shortExp = 10
+redStep = 1.0
+emissionLoss = true
+reportLvl = 2
+errCheckLvl = 1
+errWrtLvl = 1
+coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2))
+scaFac = (capa = 1e1, insCapa = 1e2, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0)
+bound = (capa = NaN, disp = NaN, obj = NaN)
+avaMin = 0.01
+checkRng = NaN
+
+inDir = "examples/demo"
+outDir = "examples/results"
+
+anyM = anyModel()
+
+
+noExpansion = anyModel(["northAmerica/baseInput","northAmerica/scenarioInput/noExpansion"], "northAmerica/results/noExpansion", reportLvl = 3)
+
+# plotEnergyFlow(:graph,noExpansion)
+createOptModel!(noExpansion)
+setObjective!(:costs,noExpansion)

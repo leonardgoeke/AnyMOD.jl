@@ -33,7 +33,7 @@ mutable struct ParElement
 
 	function ParElement(paraData_df::DataFrame,paraDef_ntup::NamedTuple,name::Symbol,report::Array{Tuple,1})
 
-        setLongShort_dic = Dict(:Ts => :timestep, :R => :region, :C => :carrier, :Te => :technology, :M => :mode)
+        setLongShort_dic = Dict(:Ts => :timestep, :R => :region, :C => :carrier, :Te => :technology, :Exc => :exchange, :M => :mode)
 		if isempty(paraData_df) return new(name,paraDef_ntup.problem,paraDef_ntup.dim,paraDef_ntup.defVal,paraDef_ntup.herit,DataFrame()) end
 
         # ! check consistency of rows in input dataframe and definition of set and rename columns according to set defintion
@@ -186,11 +186,17 @@ mutable struct TechPart <: AbstractModelPart
 end
 
 mutable struct ExcPart <: AbstractModelPart
+	name::Tuple{Vararg{String,N} where N}
 	par::Dict{Symbol,ParElement}
 	var::Dict{Symbol,DataFrame}
 	cns::Dict{Symbol,DataFrame}
+	carrier::Tuple
+	type::Symbol
 	decomm::Symbol
-	ExcPart() = new(Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())
+	expLvl::Tuple{Int,Int}
+
+	ExcPart(name::Tuple{Vararg{String,N} where N}) = new(name,Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())
+	ExcPart() = new()
 end
 
 """
@@ -306,7 +312,6 @@ mutable struct modOptions
 	csvDelim::String
 	outStamp::String
 	# model generation
-	decommExc::Symbol
 	interCapa::Symbol
 	supTsLvl::Int
 	shortExp::Int
@@ -342,11 +347,11 @@ mutable struct flowGraph
 		t_tree = anyM.sets[:Te]
 
 		allTech_arr =  getfield.(collect(values(t_tree.nodes)),:idx)
-		tleaf_dic = Dict(x => unique(filter(y -> techSym(y,anyM.sets[:Te]) in keys(anyM.parts.tech), [x,getDescendants(x,t_tree,true)...])) for x in allTech_arr)
+		tleaf_dic = Dict(x => unique(filter(y -> sysSym(y,anyM.sets[:Te]) in keys(anyM.parts.tech), [x,getDescendants(x,t_tree,true)...])) for x in allTech_arr)
 		relTech_arr = Array{Int,1}()
 
 		for t in keys(tleaf_dic)
-		    subCar_arr = map(y -> anyM.parts.tech[techSym(y,anyM.sets[:Te])].carrier,tleaf_dic[t])
+		    subCar_arr = map(y -> anyM.parts.tech[sysSym(y,anyM.sets[:Te])].carrier,tleaf_dic[t])
 		    if length(unique(subCar_arr)) == 1
 		        push!(relTech_arr,t)
 		    else
@@ -363,14 +368,14 @@ mutable struct flowGraph
 		for t in keys(nodeTe_dic)
 		    gotTech_boo = false; tItr = t
 		    while !gotTech_boo
-		        if techSym(tItr,anyM.sets[:Te]) in keys(anyM.parts.tech)
+		        if sysSym(tItr,anyM.sets[:Te]) in keys(anyM.parts.tech)
 		            gotTech_boo = true
 		        else
-		            tItr = intersect(getDescendants(t,anyM.sets[:Te],true),map(x -> techInt(x,anyM.sets[:Te]),collectKeys(keys(anyM.parts.tech))))[1]
+		            tItr = intersect(getDescendants(t,anyM.sets[:Te],true),map(x -> sysInt(x,anyM.sets[:Te]),collectKeys(keys(anyM.parts.tech))))[1]
 		        end
 		    end
 
-		    car_ntup = anyM.parts.tech[techSym(tItr,anyM.sets[:Te])].carrier
+		    car_ntup = anyM.parts.tech[sysSym(tItr,anyM.sets[:Te])].carrier
 
 		    for cIn in map(x -> getfield(car_ntup,x),intersect(keys(car_ntup),(:use,:stExtIn))) |> (y -> isempty(y) ? y : union(y...))
 		        push!(edgeTe_arr, nodeC_dic[cIn] => nodeTe_dic[t])
@@ -489,13 +494,13 @@ mutable struct anyModel <: AbstractModel
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}}
 
 	sets::Dict{Symbol,Tree}
-	parts::NamedTuple{(:tech,:exc,:trd,:bal,:lim,:obj),Tuple{Dict{Symbol,TechPart},ExcPart,OthPart,OthPart,OthPart,OthPart}}
+	parts::NamedTuple{(:tech,:exc,:trd,:bal,:lim,:obj),Tuple{Dict{Symbol,TechPart},Dict{Symbol,ExcPart},OthPart,OthPart,OthPart,OthPart}}
 
 	graInfo::graInfo
-	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", decommExc = :none, interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, emissionLoss = true,
+	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, emissionLoss = true,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)),
 																											scaFac = (capa = 1e2, insCapa = 1e1, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
-																																bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = NaN)
+																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = NaN)
 		anyM = new()
 
 		#region # * initialize report and options
@@ -508,7 +513,7 @@ mutable struct anyModel <: AbstractModel
 
 		# ! sets whole options object from specified directories TODO arbeite mit kwargs später
 		outStamp_str = string(objName,"_",Dates.format(now(),"yyyymmddHHMM"))
-		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, decommExc = decommExc, interCapa = interCapa,
+		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, interCapa = interCapa,
 																					supTsLvl = supTsLvl, shortExp = shortExp, redStep = redStep, emissionLoss = emissionLoss, coefRng = coefRng, scaFac = scaFac, bound = bound,
 																						avaMin = avaMin, checkRng = checkRng, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
 
@@ -530,23 +535,33 @@ mutable struct anyModel <: AbstractModel
 		#endregion
 
 		#region # * create part objects and general mappings
+		sysArr_dic = Dict{Symbol,Array{Int64,1}}()
 		# assign actual tech to parents
-		relTech_df = setData_dic[:Te][!,Symbol.(filter(x -> occursin("technology",x) && !isnothing(tryparse(Int16,string(x[end]))), string.(namesSym(setData_dic[:Te]))))]
-		relTech_df = DataFrame(filter(x -> any(collect(x) .!= ""), eachrow(relTech_df)))
-		techIdx_arr = filter(z -> isempty(anyM.sets[:Te].nodes[z].down), map(x -> lookupTupleTree(tuple(collect(x)...),anyM.sets[:Te],1)[1], eachrow(relTech_df)))
-
-		anyM.parts = (tech = Dict(techSym(x,anyM.sets[:Te]) => TechPart(getUniName(x,anyM.sets[:Te])) for x in techIdx_arr), exc = ExcPart(), trd = OthPart(), bal = OthPart(), lim = OthPart(), obj = OthPart())
-		anyM.parts.exc.decomm = anyM.options.decommExc
+		for sys in [(:Te,"technology"),(:Exc,"exchange")]
+			if !(sys[1] in keys(setData_dic))
+				sysArr_dic[sys[1]] = Int[]
+			else
+				relSys_df = setData_dic[sys[1]][!,Symbol.(filter(x -> occursin(sys[2],x) && !isnothing(tryparse(Int16,string(x[end]))), string.(namesSym(setData_dic[sys[1]]))))]
+				relSys_df = DataFrame(filter(x -> any(collect(x) .!= ""), eachrow(relSys_df)))
+				sysArr_dic[sys[1]] = filter(z -> isempty(anyM.sets[sys[1]].nodes[z].down), map(x -> lookupTupleTree(tuple(collect(x)...),anyM.sets[sys[1]],1)[1], eachrow(relSys_df)))
+			end
+		end
+		
+		anyM.parts = (tech = Dict(sysSym(x,anyM.sets[:Te]) => TechPart(getUniName(x,anyM.sets[:Te])) for x in sysArr_dic[:Te]), exc = Dict(sysSym(x,anyM.sets[:Exc]) => ExcPart(getUniName(x,anyM.sets[:Exc])) for x in sysArr_dic[:Exc]), trd = OthPart(), bal = OthPart(), lim = OthPart(), obj = OthPart())
 
 		createCarrierMapping!(setData_dic,anyM)
 		createTimestepMapping!(anyM)
 
-		# ! write general info about technologies
-		for t in techIdx_arr createTechInfo!(techSym(t,anyM.sets[:Te]), setData_dic, anyM) end
-		produceMessage(anyM.options,anyM.report, 2," - Created all mappings among sets")
+		# ! write general info about systems (technologies and exchange)
+		if :Exc in keys(setData_dic) && !(:carrier_exchange in namesSym(setData_dic[:Exc])) 
+			push!(anyM.report,(3,"exchange mapping","carrier","column 'carrier_exchange' missing from set file for exchange"))
+		else
+			for sys in keys(sysArr_dic), t in sysArr_dic[sys] createSysInfo!(sys,sysSym(t,anyM.sets[sys]), setData_dic, anyM) end
+		end
+		produceMessage(anyM.options,anyM.report, 2," - Created all mappings among sets", testErr = 3 in getindex.(anyM.report,1))
 
 		# ! assign parameters to model parts
-		parDef_dic = parameterToParts!(paraTemp_dic, techIdx_arr, anyM)
+		parDef_dic = parameterToParts!(paraTemp_dic, sysArr_dic, anyM)
 		produceMessage(anyM.options,anyM.report, 2," - Assigned parameter data to model parts")
 
 		# ! create object for data visualization

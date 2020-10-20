@@ -70,14 +70,14 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dic
 	for tSym in techSym_arr
 		prepTech_dic = Dict{Symbol,NamedTuple}()
 		part = anyM.parts.tech[tSym]
-        tInt = techInt(tSym,anyM.sets[:Te])
+        tInt = sysInt(tSym,anyM.sets[:Te])
 
 	    # dimension of expansion and corresponding capacity variables
 	    if part.type != :stock
 	        prepareExpansion!(prepTech_dic, tsYear_dic, part, tInt, anyM)
 
 			for expan in collectKeys(keys(prepTech_dic))
-				prepareCapacity!(part,prepTech_dic,vcat(map(x -> x[!,removeVal(x)],prepTech_dic[expan])...),Symbol(replace(string(expan),"exp" => "capa")),anyM, tech = tInt)
+				prepareCapacity!(part,prepTech_dic,vcat(map(x -> x[!,removeVal(x)],prepTech_dic[expan])...),Symbol(replace(string(expan),"exp" => "capa")),anyM, sys = tInt)
 			end
 		end
 
@@ -146,13 +146,13 @@ function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dic
 
 	# loops over type of capacities to specify dimensions of capacity variables
 	for exp in (:Conv, :StIn, :StOut, :StSize)
-
+		
 		# removes entries where capacities are fixed to zero
 		if exp == :Conv && !isempty(convCar_arr)
-			exp_df = removeEntries([filterZero(allMap_df,getLimPar(anyM.parts.lim,:expConvFix, anyM.sets[:Te], tech = tInt),anyM)],allMap_df)
+			exp_df = removeEntries([filterZero(allMap_df,getLimPar(anyM.parts.lim,:expConvFix, anyM.sets[:Te], sys = tInt),anyM)],allMap_df)
 		elseif exp != :Conv && !isempty(stCar_arr)
 			stMap_df = combine(groupby(allMap_df,namesSym(allMap_df)), :Te => (x -> stCar_arr) => :C)
-			exp_df = removeEntries([filterZero(stMap_df,getLimPar(anyM.parts.lim,Symbol(:exp,exp,:Fix), anyM.sets[:Te], tech = tInt),anyM)],stMap_df)
+			exp_df = removeEntries([filterZero(stMap_df,getLimPar(anyM.parts.lim,Symbol(:exp,exp,:Fix), anyM.sets[:Te], sys = tInt),anyM)],stMap_df)
 		else
 			continue
 		end
@@ -162,16 +162,17 @@ function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dic
 end
 
 # ! dimensions for capacity variables
-function prepareCapacity!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple},exp_df::DataFrame,capaVar::Symbol,anyM::anyModel; tech::Int = 0)
+function prepareCapacity!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple},exp_df::DataFrame,capaVar::Symbol,anyM::anyModel; sys::Int = 0)
+
+	sym = capaVar == :capaExc ? :Exc : :Te
 
 	# ! initialize assignments and data
 	defPar_tup = tuple(keys(part.par)...)
-	techType_sym = :type in fieldnames(typeof(part)) ? part.type : :mature
 
 	capaVar_df = expandExpToCapa(exp_df)
 
 	# groups by expansion time steps in case of mature technologies
-	if techType_sym == :mature
+	if part.type == :mature
 		select!(capaVar_df,Not(:Ts_expSup))
 		capaVar_df = unique(capaVar_df)
 		capaVar_df[!,:Ts_expSup] .= 0
@@ -181,12 +182,12 @@ function prepareCapacity!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTup
     varFix_sym = Symbol(capaVar,:Fix)
 
 	if varFix_sym in defPar_tup
-		capaVar_df = removeEntries([filterZero(capaVar_df,getLimPar(anyM.parts.lim,Symbol(capaVar,:Fix),anyM.sets[:Te], tech = tech),anyM)],capaVar_df)
+		capaVar_df = removeEntries([filterZero(capaVar_df,getLimPar(anyM.parts.lim,Symbol(capaVar,:Fix),anyM.sets[sym], sys = sys),anyM)],capaVar_df)
 	end
 
 	# for exchange capacities add column to indicate these values are symmetric
-	if capaVar == :capaExc
-		capaVar_df[!,:dir] .= false; select!(capaVar_df,Not(:Ts_expSup))
+	if sym == :Exc
+		capaVar_df[!,:dir] .= false
 	end
 
 	# create entry for capacity

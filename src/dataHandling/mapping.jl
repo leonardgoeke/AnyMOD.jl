@@ -123,12 +123,15 @@ function createTimestepMapping!(anyM::anyModel)
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for time steps")
 end
 
-# ! writes basic information for each technology
-function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
+# ! writes basic information for all systems (technology and exchange)
+function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyModel)
 
-    part = anyM.parts.tech[tSym]
-    t_int = techInt(tSym,anyM.sets[:Te])
-    lvlTech_arr = Symbol.(:technology_,1:anyM.sets[:Te].height)
+	# ! prepares data
+	sysLong = sys == :Te ? :technology : :exchange
+
+    part = getfield(anyM.parts,sys == :Te ? :tech : :exc)[sSym]
+    s_int = sysInt(sSym,anyM.sets[sys])
+    lvlTech_arr = Symbol.(Symbol(sysLong,"_"),1:anyM.sets[sys].height)
 
     # tuple of columns with input, output and stored carriers
 	typeStr_dic = Dict(:carrier_conversion_in => "conversion input", :carrier_conversion_out => "conversion output", :carrier_stored_in => "storage", :carrier_stored_out => "storage")
@@ -141,181 +144,201 @@ function createTechInfo!(tSym::Symbol, setData_dic::Dict,anyM::anyModel)
     typeStringInt_dic = Dict("stock" => 0, "mature" => 1,"emerging" => 2)
 
     # gets datarow for respective technology
-	row_df = anyM.sets[:Te].nodes[t_int].val |> (z -> filter(x -> any(map(y -> z == x[y],lvlTech_arr)) ,setData_dic[:Te])[1,:])
+	row_df = anyM.sets[sys].nodes[s_int].val |> (z -> filter(x -> any(map(y -> z == x[y],lvlTech_arr)) ,setData_dic[sys])[1,:])
 
-    # ! writes carrier info
-    # gets string array of carriers for input, output and stored, looks up respective ids afterwards and writes to mapping file
-    carStrArr_dic = Dict(y => y in namesSym(row_df) ? split(replace(row_df[y]," " => ""),";") |> (z -> filter(x -> !isempty(x),z)) : String[] for y in carCol_tup)
-	carId_dic = Dict(z => tuple(map(x -> getDicEmpty(nameC_dic,x),carStrArr_dic[z])...) for z in keys(carStrArr_dic))
+	# ! writes carrier info
+	if sys == :Te
+		# gets string array of carriers for input, output and stored, looks up respective ids afterwards and writes to mapping file
+		carStrArr_dic = Dict(y => y in namesSym(row_df) ? split(replace(row_df[y]," " => ""),";") |> (z -> filter(x -> !isempty(x),z)) : String[] for y in carCol_tup)
+		carId_dic = Dict(z => tuple(map(x -> getDicEmpty(nameC_dic,x),carStrArr_dic[z])...) for z in keys(carStrArr_dic))
 
-	for x in filter(x -> Int[] in carId_dic[x], collectKeys(keys(carId_dic)))
-		push!(anyM.report,(3,"technology mapping","carrier","$(typeStr_dic[x]) carrier of technology '$(string(tSym))' not entered correctly"))
-		carId_dic[x] = tuple(filter(y -> y != Int[],collect(carId_dic[x]))...)
-	end
+		for x in filter(x -> Int[] in carId_dic[x], collectKeys(keys(carId_dic)))
+			push!(anyM.report,(3,"technology mapping","carrier","$(typeStr_dic[x]) carrier of technology '$(string(sSym))' not entered correctly"))
+			carId_dic[x] = tuple(filter(y -> y != Int[],collect(carId_dic[x]))...)
+		end
 
-	# avoid storage of carriers that are balanced on superordinate dispatch level (e.g. if gas is balanced yearly, there is no need for gas storage)
-	for type in (:carrier_stored_out, :carrier_stored_in)
-		for c in carId_dic[type]
-			if anyM.supTs.lvl == anyM.cInfo[c].tsDis
-				carId_dic[type] = tuple(filter(x -> x != c,collect(carId_dic[type]))...)
-				push!(anyM.report,(2,"technology mapping","carrier","carrier '$(createFullString(c,anyM.sets[:C]))' of technology '$(string(tSym))' cannot be stored, because carrier is balanced on superordinate dispatch level"))
+		# avoid storage of carriers that are balanced on superordinate dispatch level (e.g. if gas is balanced yearly, there is no need for gas storage)
+		for type in (:carrier_stored_out, :carrier_stored_in)
+			for c in carId_dic[type]
+				if anyM.supTs.lvl == anyM.cInfo[c].tsDis
+					carId_dic[type] = tuple(filter(x -> x != c,collect(carId_dic[type]))...)
+					push!(anyM.report,(2,"technology mapping","carrier","carrier '$(createFullString(c,anyM.sets[:C]))' of technology '$(string(sSym))' cannot be stored, because carrier is balanced on superordinate dispatch level"))
+				end
 			end
 		end
-	end
 
-    # writes all relevant type of dispatch variables and respective carrier
-    carGrp_ntup = (use = carId_dic[:carrier_conversion_in], gen = carId_dic[:carrier_conversion_out], stExtIn = carId_dic[:carrier_stored_in], stExtOut = carId_dic[:carrier_stored_out],
-                         stIntIn = tuple(intersect(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])...), stIntOut = tuple(intersect(carId_dic[:carrier_conversion_in],carId_dic[:carrier_stored_in])...))
+		# writes all relevant type of dispatch variables and respective carrier
+		carGrp_ntup = (use = carId_dic[:carrier_conversion_in], gen = carId_dic[:carrier_conversion_out], stExtIn = carId_dic[:carrier_stored_in], stExtOut = carId_dic[:carrier_stored_out],
+							stIntIn = tuple(intersect(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])...), stIntOut = tuple(intersect(carId_dic[:carrier_conversion_in],carId_dic[:carrier_stored_in])...))
 
-	if :carrier_stored_active in namesSym(row_df)
-		actStStr_arr = split(replace(row_df[:carrier_stored_active]," " => ""),";") |> (z -> filter(x -> !isempty(x),z))
-		actSt_tup = tuple(map(x -> getDicEmpty(nameC_dic,x),actStStr_arr)...)
-	else
-		actSt_tup = tuple()
-	end
-	part.actSt = actSt_tup
-
-	# report on suspicious looking carrier constellations
-    if isempty(union(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])) push!(anyM.report,(2,"technology mapping","carrier","technology '$(string(tSym))' has no output")) end
-
-    if !isempty(setdiff(carId_dic[:carrier_stored_in],union(carGrp_ntup.stIntOut,carGrp_ntup.stExtOut))) && !isempty(carId_dic[:carrier_stored_in])
-        push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology '$(string(tSym))' can be charged but not discharged"))
-    end
-
-    if !isempty(setdiff(carId_dic[:carrier_stored_out],union(carGrp_ntup.stIntIn,carGrp_ntup.stExtIn))) && !isempty(carId_dic[:carrier_stored_out])
-        push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology '$(string(tSym))' can be discharged but not charged"))
-    end
-
-	for c in part.actSt
-		if !(c in vcat(map(x -> vcat(getDescendants(x,anyM.sets[:C],true)...,x), union(carGrp_ntup.stExtIn,carGrp_ntup.stExtOut))...))
-			push!(anyM.report,(3,"technology mapping","carrier","'$(createFullString(c,anyM.sets[:C]))' for active storage of technology '$(string(tSym))' is not stored or a descendant of a stored carrier"))
+		if :carrier_stored_active in namesSym(row_df)
+			actStStr_arr = split(replace(row_df[:carrier_stored_active]," " => ""),";") |> (z -> filter(x -> !isempty(x),z))
+			actSt_tup = tuple(map(x -> getDicEmpty(nameC_dic,x),actStStr_arr)...)
+		else
+			actSt_tup = tuple()
 		end
+		part.actSt = actSt_tup
+
+		# report on suspicious looking carrier constellations
+		if isempty(union(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out])) push!(anyM.report,(2,"technology mapping","carrier","technology '$(string(sSym))' has no output")) end
+
+		if !isempty(setdiff(carId_dic[:carrier_stored_in],union(carGrp_ntup.stIntOut,carGrp_ntup.stExtOut))) && !isempty(carId_dic[:carrier_stored_in])
+			push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology '$(string(sSym))' can be charged but not discharged"))
+		end
+
+		if !isempty(setdiff(carId_dic[:carrier_stored_out],union(carGrp_ntup.stIntIn,carGrp_ntup.stExtIn))) && !isempty(carId_dic[:carrier_stored_out])
+			push!(anyM.report,(2,"technology mapping","carrier","some carrier of technology '$(string(sSym))' can be discharged but not charged"))
+		end
+
+		for c in part.actSt
+			if !(c in vcat(map(x -> vcat(getDescendants(x,anyM.sets[:C],true)...,x), union(carGrp_ntup.stExtIn,carGrp_ntup.stExtOut))...))
+				push!(anyM.report,(3,"technology mapping","carrier","'$(createFullString(c,anyM.sets[:C]))' for active storage of technology '$(string(sSym))' is not stored or a descendant of a stored carrier"))
+			end
+		end
+
+		part.carrier = filter(x -> getfield(carGrp_ntup,x) != tuple(),collectKeys(keys(carGrp_ntup))) |> (y -> NamedTuple{Tuple(y)}(map(x -> getfield(carGrp_ntup,x), y)) )
+
+		# detects if any in or out carrier is a parent of another in or out carrier, removes carrier in these cases and reports on it
+		for type in (:carrier_conversion_in, :carrier_conversion_out)
+			relCar_tup = carId_dic[type]
+			inherCar_tup = relCar_tup[findall(map(x -> !(isempty(filter(z -> z != x,intersect(getDescendants(x,anyM.sets[:C],true),relCar_tup)))),relCar_tup))]
+			if !isempty(inherCar_tup)
+				for inher in inherCar_tup
+					push!(anyM.report,(3,"technology mapping","carrier","for technology '$(string(sSym))' the $(typeStr_dic[type]) carrier '$(createFullString(inher,anyM.sets[:C]))' is a parent of another $(typeStr_dic[type]) carrier, this is not supported"))
+				end
+			end
+		end
+	elseif sys == :Exc
+		carId_arr = map(x -> getDicEmpty(nameC_dic,x),split(replace(row_df[:carrier_exchange]," " => ""),";") |> (z -> filter(x -> !isempty(x),z)))
+		if isempty(carId_arr) 
+			push!(anyM.report,(3,"exchange mapping","carrier","no exchange carrier provided for '$(string(sSym))'"))
+			return
+		elseif any(isempty.(carId_arr))
+			push!(anyM.report,(3,"exchange mapping","carrier","carrier of exchange '$(string(sSym))' not entered correctly"))
+			filter!(x -> !isempty(x), carId_arr)
+			return
+		end
+		part.carrier = tuple(carId_arr...)
 	end
 
-    part.carrier = filter(x -> getfield(carGrp_ntup,x) != tuple(),collectKeys(keys(carGrp_ntup))) |> (y -> NamedTuple{Tuple(y)}(map(x -> getfield(carGrp_ntup,x), y)) )
-
-    # detects if any in or out carrier is a parent of another in or out carrier, removes carrier in these cases and reports on it
-    for type in (:carrier_conversion_in, :carrier_conversion_out)
-        relCar_tup = carId_dic[type]
-        inherCar_tup = relCar_tup[findall(map(x -> !(isempty(filter(z -> z != x,intersect(getDescendants(x,anyM.sets[:C],true),relCar_tup)))),relCar_tup))]
-        if !isempty(inherCar_tup)
-            for inher in inherCar_tup
-                push!(anyM.report,(3,"technology mapping","carrier","for technology '$(string(tSym))' the $(typeStr_dic[type]) carrier '$(createFullString(inher,anyM.sets[:C]))' is a parent of another $(typeStr_dic[type]) carrier, this is not supported"))
-            end
-        end
-    end
-
-    # ! writes technology type
+    # ! writes system type
     # finds technology type and tries to convert to an integer
-	if :technology_type in namesSym(row_df)
-    	type_str = row_df[:technology_type]
+	if Symbol(sysLong,"_type") in namesSym(row_df)
+    	type_str = row_df[Symbol(sysLong,"_type")]
 	else
 		type_str = "mature"
 	end
     if !haskey(typeStringInt_dic,String(type_str))
-        push!(anyM.report,(3,"technology mapping","type","unknown technology type '$type_str' used, allowed are: $(join(keys(typeStringInt_dic),"', '"))"))
+        push!(anyM.report,(3,string(sysLong) * " mapping","type","unknown type '$type_str' used, allowed are: $(join(keys(typeStringInt_dic),"', '"))"))
         return
     end
     part.type = Symbol(type_str)
 
-	# ! writes decommissioning option for technology
-	if :technology_decomm in namesSym(row_df)
-		type_str = row_df[:technology_decomm]
+	# ! writes decommissioning option for system
+	if Symbol(sysLong,"_decomm") in namesSym(row_df)
+		type_str = row_df[Symbol(sysLong,"_decomm")]
 	else
 		type_str = "none"
 	end
 	if !(type_str in ("none","decomm","recomm"))
-		push!(anyM.report,(3,"technology mapping","decomm","unknown decommissioning type '$type_str' used, allowed are: 'none','decomm', and 'recomm'"))
+		push!(anyM.report,(3,string(sysLong) * " mapping","decomm","unknown decommissioning type '$type_str' used, allowed are: 'none','decomm', and 'recomm'"))
 		return
 	end
 	part.decomm = Symbol(type_str)
 
 
-    # ! writes modes of technology
-    if :mode in namesSym(row_df) && length(anyM.sets[:M].nodes) > 1
-        part.modes = tuple(collect(lookupTupleTree(tuple(string(x),),anyM.sets[:M],1)[1] for x in filter(x -> x != "",split(replace(row_df[:mode]," " => ""),";")))...)
-    else
-        part.modes = tuple()
-    end
-
-    # ! determines resolution of expansion
-    # determines carrier based expansion resolutions
-	cEx_boo = true
-    if isempty(vcat(collect.(values(carGrp_ntup))...))
-		push!(anyM.report,(2,"technology mapping","carrier","for technology '$(string(tSym))' no carriers were provided"))
-		cEx_boo = false
-	end
-
-	tsExp_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:tsExp), vcat(collect.(values(carGrp_ntup))...))) : 0
-	rExp_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:rExp), vcat(collect.(values(carGrp_ntup))...))) : 0
-
-	# check if carrier based temporal resolution is overwritten by a technology specifc value
-	if cEx_boo && :timestep_expansion in namesSym(row_df)
-		tsExpSpc_int = tryparse(Int,row_df[:timestep_expansion])
-
-		if !isnothing(tsExpSpc_int)
-			if tsExpSpc_int > anyM.supTs.lvl
-				push!(anyM.report,(2,"technology mapping","expansion level","specific temporal expansion level provided for technology '$(string(tSym))' is below superordinate dispatch level and therefore could not be used"))
-			else
-				push!(anyM.report,(1,"technology mapping","expansion level","specific temporal expansion level provided for technology '$(string(tSym))' was used instead of a carrier based value"))
-				tsExp_int = tsExpSpc_int
-			end
+	# ! writes modes for technologies
+	if sys == :Te
+		if :mode in namesSym(row_df) && length(anyM.sets[:M].nodes) > 1
+			part.modes = tuple(collect(lookupTupleTree(tuple(string(x),),anyM.sets[:M],1)[1] for x in filter(x -> x != "",split(replace(row_df[:mode]," " => ""),";")))...)
+		else
+			part.modes = tuple()
 		end
 	end
 
-	# check if carrier based spatial resolution is overwritten by a technology specifc value
-	if cEx_boo && :region_expansion in namesSym(row_df)
-		rExpSpc_int = tryparse(Int,row_df[:region_expansion])
+	# ! determines relevant resolutions for systen
+	if sys == :Te
+		# ! determines resolution of expansion
+		# determines carrier based expansion resolutions
+		cEx_boo = true
+		if isempty(vcat(collect.(values(carGrp_ntup))...))
+			push!(anyM.report,(2,"technology mapping","carrier","for technology '$(string(sSym))' no carriers were provided"))
+			cEx_boo = false
+		end
 
-		if !isnothing(rExpSpc_int)
-			if rExpSpc_int < rExp_int
-				push!(anyM.report,(2,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(tSym))' is less detailed than default value obtained from carriers and therefore could not be used"))
-			elseif rExpSpc_int == rExp_int
-				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(tSym))' is equal to default value obtained from carriers"))
-			else
-				push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(tSym))' was used instead of a carrier based value"))
-				rExp_int = rExpSpc_int
+		tsExp_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:tsExp), vcat(collect.(values(carGrp_ntup))...))) : 0
+		rExp_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:rExp), vcat(collect.(values(carGrp_ntup))...))) : 0
+
+		# check if carrier based temporal resolution is overwritten by a technology specifc value
+		if cEx_boo && :timestep_expansion in namesSym(row_df)
+			tsExpSpc_int = tryparse(Int,row_df[:timestep_expansion])
+
+			if !isnothing(tsExpSpc_int)
+				if tsExpSpc_int > anyM.supTs.lvl
+					push!(anyM.report,(2,"technology mapping","expansion level","specific temporal expansion level provided for technology '$(string(sSym))' is below superordinate dispatch level and therefore could not be used"))
+				else
+					push!(anyM.report,(1,"technology mapping","expansion level","specific temporal expansion level provided for technology '$(string(sSym))' was used instead of a carrier based value"))
+					tsExp_int = tsExpSpc_int
+				end
 			end
 		end
-	end
 
-    expLvl_tup = (tsExp_int,rExp_int)
+		# check if carrier based spatial resolution is overwritten by a technology specifc value
+		if cEx_boo && :region_expansion in namesSym(row_df)
+			rExpSpc_int = tryparse(Int,row_df[:region_expansion])
 
-	# ! checks if dispatch variables should be disaggregated by expansion regions
-	rExpOrg_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:rDis), vcat(collect.(values(carGrp_ntup))...))) : 0
+			if !isnothing(rExpSpc_int)
+				if rExpSpc_int < rExp_int
+					push!(anyM.report,(2,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(sSym))' is less detailed than default value obtained from carriers and therefore could not be used"))
+				elseif rExpSpc_int == rExp_int
+					push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(sSym))' is equal to default value obtained from carriers"))
+				else
+					push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(sSym))' was used instead of a carrier based value"))
+					rExp_int = rExpSpc_int
+				end
+			end
+		end
 
-	if :region_disaggregate in namesSym(row_df) && rExp_int > rExpOrg_int # relies on information in explicit column, if disaggregation is possible and column exists
-		daggR_str = row_df[:region_disaggregate]
-		if daggR_str == "yes"
+		expLvl_tup = (tsExp_int,rExp_int)
+
+		# ! checks if dispatch variables should be disaggregated by expansion regions
+		rExpOrg_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:rDis), vcat(collect.(values(carGrp_ntup))...))) : 0
+
+		if :region_disaggregate in namesSym(row_df) && rExp_int > rExpOrg_int # relies on information in explicit column, if disaggregation is possible and column exists
+			daggR_str = row_df[:region_disaggregate]
+			if daggR_str == "yes"
+				disAgg_boo = true
+			elseif daggR_str == "no"
+				disAgg_boo = false
+			else
+				push!(anyM.report,(3,"technology mapping","spatial aggregation","unknown keyword '$type_str' used to control spatial aggregation, please use 'yes' or 'no'"))
+				return
+			end
+		elseif rExp_int > rExpOrg_int # disaggregate by default, if it makes sense
 			disAgg_boo = true
-		elseif daggR_str == "no"
+		else
 			disAgg_boo = false
-		else
-			push!(anyM.report,(3,"technology mapping","spatial aggregation","unknown keyword '$type_str' used to control spatial aggregation, please use 'yes' or 'no'"))
-			return
 		end
-	elseif rExp_int > rExpOrg_int # disaggregate by default, if it makes sense
-		disAgg_boo = true
-	else
-		disAgg_boo = false
-	end
-	part.disAgg = disAgg_boo
+		part.disAgg = disAgg_boo
 
-    # ! determines reference resolution for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
-	if !isempty(part.carrier)
-		if !isempty(union(carGrp_ntup.use,carGrp_ntup.gen))
-			refTs_int = minimum([minimum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
-			refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
-			refLvl_tup = (refTs_int, refR_int)
-		else
-			refTs_int = minimum([minimum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:stExtIn, :stExtOut))])
-			refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:stExtIn, :stExtOut))])
-			refLvl_tup = (refTs_int, refR_int)
+		# ! determines reference resolution for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
+		if !isempty(part.carrier)
+			if !isempty(union(carGrp_ntup.use,carGrp_ntup.gen))
+				refTs_int = minimum([minimum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
+				refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:gen, :use))])
+				refLvl_tup = (refTs_int, refR_int)
+			else
+				refTs_int = minimum([minimum([getproperty(anyM.cInfo[x],:tsDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:stExtIn, :stExtOut))])
+				refR_int = disAgg_boo ? rExp_int : minimum([minimum([getproperty(anyM.cInfo[x],:rDis) for x in getproperty(carGrp_ntup,z)]) for z in intersect(keys(part.carrier),(:stExtIn, :stExtOut))])
+				refLvl_tup = (refTs_int, refR_int)
+			end
+			part.balLvl = (exp = expLvl_tup, ref = refLvl_tup)
 		end
-		part.balLvl = (exp = expLvl_tup, ref = refLvl_tup)
+	elseif sys == :Exc
+		part.expLvl = (maximum(map(y -> getfield(anyM.cInfo[y],:tsExp), carId_arr)),maximum(map(y -> getfield(anyM.cInfo[y],:rExp), carId_arr)))
 	end
 
-	produceMessage(anyM.options,anyM.report, 3," - Created mapping for technology $(string(tSym))")
+	produceMessage(anyM.options,anyM.report, 3," - Created mapping for technology $(string(sSym))")
 end
 
 # ! maps capacity constraints to technology

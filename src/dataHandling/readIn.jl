@@ -6,7 +6,7 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 
 	# creates relevant sets, manually adds :mode and assigns short names
 	set_arr = append!(map(x ->  Symbol(x[findfirst("set_",x)[1]+4:end-4]),files_dic["set"]), [:mode, :id])
-	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id, :scenario => :scr)
+	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :exchange => :Exc, :mode => :M, :id => :id, :scenario => :scr)
 
 	setData_dic = Dict{Symbol,DataFrame}()
 	anyM.sets = Dict{Symbol,Tree}()
@@ -55,10 +55,10 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 	end
 
 	# reports, if a required set was not defined or if non-unique carrier names were defined
-	for set in filter(x -> !(x in (:mode, :id, :scenario)), collectKeys(keys(setLngShrt_dic)))
+	for set in filter(x -> !(x in (:mode, :id, :scenario, :exchange)), collectKeys(keys(setLngShrt_dic)))
 		if !(setLngShrt_dic[set] in keys(setData_dic))
 			push!(anyM.report,(3,"set read-in",string(set),"no file provided to define set"))
-		elseif set == :carrier || set == :technology
+		elseif set == :carrier || set == :technology || set == :exchange
 			# reports error if carrier names are non-unique
 			strSet_arr = getfield.(values(anyM.sets[setLngShrt_dic[set]].nodes),:val)
 			if length(strSet_arr) != length(unique(strSet_arr))
@@ -78,7 +78,7 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 
 	# creates relevant sets, manually adds :mode and assigns short names
 	set_arr = append!(map(x ->  Symbol(x[findfirst("set_",x)[1]+4:end-4]),files_dic["set"]), [:mode, :id])
-	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id, :scenario => :scr)
+	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :exchange => :Exc, :mode => :M, :id => :id, :scenario => :scr)
 
 	# read-in parameter files and convert their content
 	@threads for parFile in files_dic["par"]

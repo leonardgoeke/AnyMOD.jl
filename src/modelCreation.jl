@@ -10,17 +10,15 @@ Create all elements of the model's underlying optimization problem except for th
 function createOptModel!(anyM::anyModel)
 
 	#region # * create technology related variables and constraints
-
-	techSym_arr = collect(keys(anyM.parts.tech))
-    parDef_dic = defineParameter(anyM.options,anyM.report)
+	parDef_dic = defineParameter(anyM.options,anyM.report)
 
     # ! gets dictionary with dimensions of expansion and capacity variables
     tsYear_dic = Dict(zip(anyM.supTs.step,collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
-    prepTech_dic = Dict{Symbol,Dict{Symbol,NamedTuple}}()
-    prepareTechs!(techSym_arr,prepTech_dic,tsYear_dic,anyM)
+    prepSys_dic = Dict(sys => Dict{Symbol,Dict{Symbol,NamedTuple}}() for sys in (:Te,:Exc))
+	prepareTechs!(collect(keys(anyM.parts.tech)),prepSys_dic[:Te],tsYear_dic,anyM)
+	prepareExc!(collect(keys(anyM.parts.exc)),prepSys_dic[:Exc],tsYear_dic,anyM)
 
-	prepExc_dic = Dict{Symbol,NamedTuple}()
-	prepareExc!(prepExc_dic,tsYear_dic,anyM)
+	# TODO genau hier weiter machen
 
 	# ! remove unrequired elements in case of distributed model creation
 	if !isempty(anyM.subPro)
@@ -52,7 +50,7 @@ function createOptModel!(anyM::anyModel)
 	tech_itr = collect(enumerate(techSym_arr))
 
 	@threads for (idx,tSym) in tech_itr
-		techCnsDic_arr[idx] = createTech!(techInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepTech_dic[tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
+		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepTech_dic[tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
 	end
 
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
@@ -64,6 +62,7 @@ function createOptModel!(anyM::anyModel)
 	#endregion
 
 	#region # * create exchange related variables and constraints
+
 
 	if !all(map(x -> isempty(x),values(prepExc_dic[:capaExc])))
 		partExc = anyM.parts.exc
@@ -96,3 +95,33 @@ function createOptModel!(anyM::anyModel)
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")
 end
+
+
+
+#=
+
+
+# gather all existing capacity variables
+blaConv_df = unique(vcat(filter(w -> !isempty(w), vcat(map(x -> :capaConv in keys(x) ? map(y -> getfield(x[:capaConv],y) |> (z -> select(z,intCol(z))),[:var,:resi]) : DataFrame[],values(prepSys_dic[:Te]))...))...))
+blaConv_df = rename(blaConv_df,:Ts_expSup => :Ts_expSup_a,:Te => :Te_a,:R_exp => :R_exp_a)
+
+# TODO was, wenn kapazitäten nur auf grund des umrüstens erst bestehen könnten? (gilt sowohl oben als auch unten, ich kann ja von a nach b nach c rüsten, also input für umrüstung ist selbst ein produkt der umrüstung)
+
+tSym = :ccgtCHP
+
+prepTech_dic = prepSys_dic[:Te][tSym]
+
+part = anyM.parts.tech[tSym]
+tInt = sysInt(tSym,anyM.sets[:Te])
+
+# creata dataframe for potential retrofits
+blub = rename(filter(x -> x.Te_a == tInt,blaConv_df),:Ts_expSup_a => :Ts_expSup_b, :Te_a => :Te_b, :R_exp_a => :R_exp_b)
+bra = orderDf(rename(innerjoin(blub,blaConv_df,on = [:Ts_disSup]),:Ts_disSup => :Ts_expSup))
+# filter all rows where regions dont match
+relR_dic = Dict(x =>  vcat(getAncestors(x,anyM.sets[:R],:int)...,getDescendants(x,anyM.sets[:R])...) for x in unique(bra[!,:R_exp_b]))
+filter!(x -> x.R_exp_a in relR_dic[x.R_exp_b],bra)
+
+allRetro_df = matchSetParameter(bra,anyM.parts.obj.par[:costRetroConv],anyM.sets)
+
+# TODO passe format an, sodass expansion enstpricht => :Ts_expSup um :Ts_exp erweitern und gruppieren
+=#

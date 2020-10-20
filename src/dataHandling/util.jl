@@ -33,18 +33,18 @@ function errorTest(report::Array{Tuple,1},options::modOptions;write::Bool = fals
 end
 
 # ! produces a output message and tests for errors accordingly to globally set reporting values
-function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::Int64,fixedString::String,dynamicString::Any="";testErr::Bool = true)
+function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::Int64,fixedString::String,dynamicString::Any="";testErr::Bool = false)
 	sty_dic = Dict(1 => :bold, 2 => :normal, 3 => :light_black)
 
 	sty_dic[currentLvl]
     if options.reportLvl >= currentLvl
-		if options.errCheckLvl >= currentLvl && testErr
+		if options.errCheckLvl >= currentLvl || testErr
 			printstyled(options.objName; color = :underline); printstyled(" ", getElapsed(options.startTime), fixedString, dynamicString; color = sty_dic[currentLvl])
 		else
 			printstyled(options.objName; color = :underline); printstyled(" ",getElapsed(options.startTime), fixedString, dynamicString, "\n"; color = sty_dic[currentLvl])
 		end
 	end
-    if options.errCheckLvl >= currentLvl && testErr errorTest(report,options,write = options.errWrtLvl >= currentLvl) end
+    if options.errCheckLvl >= currentLvl || testErr errorTest(report,options,write = options.errWrtLvl >= currentLvl) end
 end
 
 #endregion
@@ -75,8 +75,8 @@ intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, collect(pa
 intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(namesSym(in_df),[add_sym]))
 
 # ! puts relevant dimensions in consistent order and adds remaining entries at the end
-orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :C, :Te, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
-orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_disSup, :Ts_dis, :R_exp, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to, :C, :Te, :Te_a, :Te_b, :Exc, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te, :Te_a, :Te_b, :Exc, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
 
 # ! puts dataframes columns in consistent order
 orderDf(in_df::DataFrame) = select(in_df,orderDim(namesSym(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
@@ -117,9 +117,9 @@ function createPotDisp(c_arr::Array{Int,1},ts_dic::Dict{Tuple{Int64,Int64},Array
 	return var_df
 end
 
-# ! gets technology name as symbol from id and the other way around
-techSym(tInt::Int,tech_tree::Tree) = Symbol(getUniName(tInt,tech_tree)[end])
-techInt(tSym::Symbol,tech_tree::Tree) = filter(x -> x.val == string(tSym),collect(values(tech_tree.nodes)))[1].idx
+# ! gets system (technology or exchange) name as symbol from id and the other way around
+sysSym(sInt::Int,sym_tree::Tree) = Symbol(getUniName(sInt,sym_tree)[end])
+sysInt(sSym::Symbol,sym_tree::Tree) = filter(x -> x.val == string(sSym),collect(values(sym_tree.nodes)))[1].idx
 
 #endregion
 
@@ -429,7 +429,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 					# loop over relevant storage technologies to obtain loss vallues
 					tSt_arr = unique(stLvl_df[!,:Te])
 					for tInt in tSt_arr
-						part = anyM.parts.tech[techSym(tInt,anyM.sets[:Te])]
+						part = anyM.parts.tech[sysSym(tInt,anyM.sets[:Te])]
 						# add expression quantifying storage losses for storage in- and and output
 						for st in keys(stVar_dic)
 							stVar_df = stVar_dic[st]
