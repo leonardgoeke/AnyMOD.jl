@@ -203,6 +203,7 @@ end
 # XXX create expansion and capacity variables
 function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple},anyM::anyModel,ratioVar_dic::Dict{Symbol,Pair{String,String}} = Dict{Symbol,Pair{String,String}}())
 	for expVar in sort(collectKeys(keys(prep_dic)))
+
 		varMap_tup = prep_dic[expVar]
 		# create dataframe of capacity or expansion variables by creating the required capacity variables and join them with pure residual values
 		var_df = createVar(varMap_tup.var,string(expVar),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
@@ -239,16 +240,16 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 					return hcat(rem_df,ext_df)
 				end
 				preRatio_df = vcat(ratio_arr...)
-				join_arr = intCol(ratio_arr[1])
 			else # ratios controlling stock capacities
 				preRatio_df = varMap_tup.ratio
-				join_arr = intCol(preRatio_df)
 			end
 
+			join_arr = intCol(part.var[ratioVar_sym])
 			# join ratios and corresponding
-			ratio_df = innerjoin(preRatio_df,part.var[ratioVar_sym]; on = join_arr)
+			ratio_df = select(innerjoin(preRatio_df,part.var[ratioVar_sym]; on = join_arr),unique(vcat(join_arr,[:var,:ratio,:Ts_disSup])))
 			ratio_df[!,:var] = ratio_df[!,:var] .* ratio_df[!,:ratio]
-			var_df = ratio_df[!,Not(:ratio)] |> (x -> vcat(x,antijoin(var_df,x, on = join_arr)))
+	
+			var_df = ratio_df[!,Not(:ratio)] |> (x -> isempty(var_df) ? x : vcat(x,antijoin(var_df,x, on = join_arr)))
 		end
 
 		if !isempty(var_df)	part.var[expVar] = orderDf(var_df) end
@@ -332,7 +333,7 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 			cns_df = rename(innerjoin(cns_df,var_df; on = intCol(var_df,:dir) |> (x -> Pair.(replace(x,:Ts_disSup => :Ts_disSupPrev),x))),:var => :oprPrev)
 
 			# add expansion variable to dataframe
-			if !(:type in fieldnames(typeof(part))) || part.type != :stock
+			if (!(:type in fieldnames(typeof(part))) || part.type != :stock) && Symbol(replace(string(capaVar),"capa" => "exp")) in keys(part.var)
 				exp_df = part.var[Symbol(replace(string(capaVar),"capa" => "exp"))][!,Not(:Ts_disSup)]
 				join_arr = filter(x -> x != :Ts_expSup,intCol(var_df))
 

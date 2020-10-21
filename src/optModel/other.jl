@@ -439,7 +439,6 @@ end
 # XXX connect capacity and expansion variables
 function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns_dic::Dict{Symbol,cnsCont})
     for capaVar in filter(x -> occursin("capa",string(x)),keys(prepTech_dic))
-
         index_arr = intCol(part.var[capaVar])
         join_arr = part.type != :mature ? index_arr : filter(x -> x != :Ts_expSup,collect(index_arr))
 
