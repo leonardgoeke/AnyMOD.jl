@@ -454,7 +454,7 @@ The core model object containing all related data and subordinate objects.
 - `lock`: lock used for multi-threading
 - `supTs`: information and mappings for superordinate time-steps
 - `cInfo`: information on resolution of energy carriers
-- `sets`: sets organized as [Tree](@ref) objects (see [Sets and mappings](@ref))
+- `sets`: sets organized as [Tree](@ref) objects (see [Sets and Mappings](@ref))
 - `parts::NamedTuple`: all part objects of the model (see [Parts](@ref))
 - `graInfo::graInfo`: properties for creation of plots and graphics, can be used to adjust colors and labels (see [Styling](@ref))
 
@@ -465,7 +465,7 @@ The core model object containing all related data and subordinate objects.
 anyModel(inDir::Union{String,Array{String,1}},outDir::String; kwargs)
 ```
 
-See [Model Object](@ref) for a detailed list of arguments.
+See [Model object](@ref) for a detailed list of arguments.
 """
 mutable struct anyModel <: AbstractModel
 
