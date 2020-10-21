@@ -21,5 +21,5 @@ makedocs(sitename="AnyMOD.jl",
 
 deploydocs(
     repo = "github.com/leonardgoeke/AnyMOD.jl.git",
-    devbranch = "dev"
+    devbranch = "master"
 )
