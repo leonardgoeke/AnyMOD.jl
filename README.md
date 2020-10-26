@@ -17,4 +17,6 @@ Any questions, suggestions, feature requests, or contributions are welcome. To g
 
 ## Acknowledgement
 
-The development of AnyMOD is receiving funding from the European Union’s Horizon 2020 research and innovation programme under grant agreement No 773406.
+The development of AnyMOD is receiving funding from the European Union’s Horizon 2020 research and innovation programme within the [OSMOSE](https://www.osmose-h2020.eu/) project under grant agreement No 773406.
+
+
