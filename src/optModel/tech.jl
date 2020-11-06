@@ -147,7 +147,7 @@ function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dic
 	# loops over type of capacities to specify dimensions of capacity variables
 	for exp in (:Conv, :StIn, :StOut, :StSize)
 		
-		# removes entries where capacities are fixed to zero
+		# removes entries where expansion is fixed to zero
 		if exp == :Conv && !isempty(convCar_arr)
 			exp_df = removeEntries([filterZero(allMap_df,getLimPar(anyM.parts.lim,:expConvFix, anyM.sets[:Te], sys = tInt),anyM)],allMap_df)
 		elseif exp != :Conv && !isempty(stCar_arr)

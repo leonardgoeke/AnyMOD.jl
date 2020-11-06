@@ -98,30 +98,100 @@ end
 
 
 
+# ensures regions are on the level of the start or target system
+function adjustRetroRegion(sys::Symbol,retro_df::DataFrame,start::Bool=true)
+	
+	# check if start or target region should be overwritten
+	if start 
+		keep_sym = :i; drop_sym = :j
+	else
+		keep_sym = :j; drop_sym = :i
+	end
+	# adjusts respective regions
+	if sys != :Exc
+		retro_df[!,Symbol(:R_exp_,drop_sym)] = retro_df[!,Symbol(:R_exp_,keep_sym)] 
+	else
+		retro_df[!,Symbol(:R_a_,drop_sym)] = retro_df[!,Symbol(:R_a_,keep_sym)]; 
+		retro_df[!,Symbol(:R_b_,drop_sym)] = retro_df[!,Symbol(:R_b_,keep_sym)]
+	end
+	return unique(retro_df)
+end
+
 #=
+# ! gather all existing capacity entries that could be relevant for retrofitting
+allCapaDf_dic = Dict{Symbol,DataFrame}()
+retroPotSym_arr = Symbol.(replace.(string.(filter(x -> occursin("costRetro",string(x)), collect(keys(anyM.parts.obj.par)))),"costRetro" => ""))
+
+for retroSym in intersect(retroPotSym_arr,(:Conv,:StIn,:StOut,:StSize))
+	capaSym = Symbol(:capa,retroSym)
+	allCapaDf_dic[capaSym] = unique(vcat(filter(w -> !isempty(w), vcat(map(x -> capaSym in keys(x) ? map(y -> getfield(x[capaSym],y) |> (z -> select(z,intCol(z))),[:var,:resi]) : DataFrame[],values(prepSys_dic[:Te]))...))...))
+end
+
+if :Exc in retroPotSym_arr
+	allCapaDf_dic[:capaExc] = filter(x -> x.R_from < x.R_to,unique(vcat(filter(w -> !isempty(w), vcat(map(x -> :capaExc in keys(x) ? map(y -> getfield(x[:capaExc],y) |> (z -> select(z,intCol(z))),[:var,:resi]) : DataFrame[],values(prepSys_dic[:Exc]))...))...)))
+end
 
 
-# gather all existing capacity variables
-blaConv_df = unique(vcat(filter(w -> !isempty(w), vcat(map(x -> :capaConv in keys(x) ? map(y -> getfield(x[:capaConv],y) |> (z -> select(z,intCol(z))),[:var,:resi]) : DataFrame[],values(prepSys_dic[:Te]))...))...))
-blaConv_df = rename(blaConv_df,:Ts_expSup => :Ts_expSup_a,:Te => :Te_a,:R_exp => :R_exp_a)
+# ! create actual entries for retrofitting by matching existing capacities with case where costs data was defined
+for sys in (:Te, :Exc)
+	sysSym_arr = collect(keys(prepSys_dic[sys]))
 
-# TODO was, wenn kapazitäten nur auf grund des umrüstens erst bestehen könnten? (gilt sowohl oben als auch unten, ich kann ja von a nach b nach c rüsten, also input für umrüstung ist selbst ein produkt der umrüstung)
+	for sSym in sysSym_arr, capaSym in filter(x -> occursin("capa",string(x)), intersect(collect(keys(allCapaDf_dic)),collect(keys(prepSys_dic[sys][sSym]))))
 
-tSym = :ccgtCHP
+		part = sys == :Te ? anyM.parts.tech[sSym] : anyM.parts.exc[sSym]
+		retroName_sym = Symbol(replace(string(capaSym),"capa" => "retro"))
 
-prepTech_dic = prepSys_dic[:Te][tSym]
+		# ! creata dataframe for potential retrofits by filtering for target system
+		# filter capacities for relevant system from all system capacities
+		relSys_df = filter(x -> x[sys] == sysInt(sSym,anyM.sets[sys]),allCapaDf_dic[capaSym])
+		
+		# rename columns so they refer to target system, joins with all other capacity entries as starting points and renames them as well
+		if capaSym == :capaConv
+			relSys_df  = innerjoin(rename(relSys_df, :Ts_expSup => :Ts_expSup_j, sys => Symbol(sys,"_j"), :R_exp => :R_exp_j),allCapaDf_dic[capaSym],on = [:Ts_disSup])
+			rename!(relSys_df,:Ts_expSup => :Ts_expSup_i, sys => Symbol(sys,"_i"), :R_exp => :R_exp_i, :Ts_disSup => :Ts_expSup)
+		elseif capaSym in (:capaStIn, :capaStOut, :capaStSize)
+			relSys_df  = innerjoin(rename(relSys_df, :Ts_expSup => :Ts_expSup_j, sys => Symbol(sys,"_j"), :R_exp => :R_exp_j, :C => :C_j),allCapaDf_dic[capaSym],on = [:Ts_disSup])
+			rename!(relSys_df,:Ts_expSup => :Ts_expSup_i, sys => Symbol(sys,"_i"), :R_exp => :R_exp_i, :C => :C_i, :Ts_disSup => :Ts_expSup)
+		else
+			relSys_df = innerjoin(rename(relSys_df, :Ts_expSup => :Ts_expSup_j, sys => Symbol(sys,"_j"), :R_from => :R_a_j, :R_to => :R_b_j),allCapaDf_dic[capaSym],on = [:Ts_disSup])
+			rename!(relSys_df,:Ts_expSup => :Ts_expSup_i, sys => Symbol(sys,"_i"), :R_from => :R_a_i, :R_to => :R_b_i, :Ts_disSup => :Ts_expSup)
+		end
 
-part = anyM.parts.tech[tSym]
-tInt = sysInt(tSym,anyM.sets[:Te])
+		# filter all rows where regions are not related
+		relR_dic = Dict(x =>  vcat([x],getAncestors(x,anyM.sets[:R],:int)...,getDescendants(x,anyM.sets[:R])...) for x in (sys != :Exc ? unique(relSys_df[!,:R_exp_j]) : unique(vcat(map(z -> relSys_df[!,z],[:R_a_i,:R_a_j,:R_b_i,:R_b_j])...))))
+		filter!(x -> capaSym != :capaExc ? x.R_exp_i in relR_dic[x.R_exp_j] : (x.R_a_i in relR_dic[x.R_a_j] && x.R_b_i in relR_dic[x.R_b_j]),relSys_df)
 
-# creata dataframe for potential retrofits
-blub = rename(filter(x -> x.Te_a == tInt,blaConv_df),:Ts_expSup_a => :Ts_expSup_b, :Te_a => :Te_b, :R_exp_a => :R_exp_b)
-bra = orderDf(rename(innerjoin(blub,blaConv_df,on = [:Ts_disSup]),:Ts_disSup => :Ts_expSup))
-# filter all rows where regions dont match
-relR_dic = Dict(x =>  vcat(getAncestors(x,anyM.sets[:R],:int)...,getDescendants(x,anyM.sets[:R])...) for x in unique(bra[!,:R_exp_b]))
-filter!(x -> x.R_exp_a in relR_dic[x.R_exp_b],bra)
+		# ! match with cost data to see where actual retrofitting is possible
+		allRetro_df = select(orderDf(matchSetParameter(relSys_df,anyM.parts.obj.par[Symbol(:costRetro,replace(String(capaSym),"capa" => ""))],anyM.sets)),Not([:val]))
 
-allRetro_df = matchSetParameter(bra,anyM.parts.obj.par[:costRetroConv],anyM.sets)
+		# expand table with actual expansion time-steps
+		supExp_dic = Dict(x => getAncestors(x,anyM.sets[:Ts],:int,(sys != :Exc ? part.balLvl.exp[1] : part.expLvl[1]))[end] for x in allRetro_df[!,:Ts_expSup])
+		allRetro_df[!,:Ts_exp] = map(x -> supExp_dic[x], allRetro_df[!,:Ts_expSup])
 
-# TODO passe format an, sodass expansion enstpricht => :Ts_expSup um :Ts_exp erweitern und gruppieren
+		# group data analogously to entries for expansion
+		expMap_df = combine(groupby(allRetro_df,filter(x -> x != :Ts_expSup, namesSym(allRetro_df))), :Ts_expSup => (x -> [x]) => :Ts_expSup)
+		retro_df = orderDf(addSupTsToExp(expMap_df,part.par,makeUp(retroName_sym),tsYear_dic,anyM))
+
+		# add entries for target technology as entry for retrofitting
+		prepSys_dic[sys][sSym][retroName_sym] = (var = adjustRetroRegion(sys,retro_df), resi = DataFrame())
+
+		# add entries for start technology
+		for t in unique(retro_df[!,Symbol(sys,"_i")])
+			prepSys_dic[sys][sysSym(t,anyM.sets[sys])][retroName_sym] = (var = adjustRetroRegion(sys,filter(x -> x[Symbol(sys,"_i")] == t, retro_df),false), resi = DataFrame())
+		end
+	end
+end
+
+
+
+
+# TODO Umrüstung hinzu tech verhindenr dass stock ist (capa eintrag würde ja existieren)
+# TODO move alles removeEntries aus loops und schiebe hinter den teil zum retrofitting (d.h. expansion wo 0 entfernen, resultierende capacities entfernen, capacity wo 0 entfernen)
+# filters cases where capacity is fixed to zero
+varFix_sym = Symbol(capaVar,:Fix)
+
+if varFix_sym in defPar_tup
+	capaVar_df = removeEntries([filterZero(capaVar_df,getLimPar(anyM.parts.lim,Symbol(capaVar,:Fix),anyM.sets[sym], sys = sys),anyM)],capaVar_df)
+end
+
 =#

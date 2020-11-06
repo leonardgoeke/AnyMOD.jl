@@ -1,2 +1,3 @@
-technology_1,technology_1,technology_2,technology_3,parameter,value
-coalPlant,gasPlant,ccgt,ccgtCHP,costRetroConv,200
+technology_1,technology_1,technology_2,technology_3,exchange_2,exchange_2,parameter,value
+coalPlant,gasPlant,ccgt,ccgtCHP,,,costRetroConv,200
+,,,,hvac,hvdc,costRetroExc,100
