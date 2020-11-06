@@ -138,7 +138,7 @@ Additionally, the constructor accepts a list of optional arguments listed in the
 <td><code>interCapa</code></td>
 <td>
 <ul class="liste">
-<li>capacity expansion can be modelled at a resolution less detailed than yearly, this option <br> determines how capacities are distributed among the subsequent years in this case</li>
+<li>capacity expansion can be modeled at a resolution less detailed than yearly, this option <br> determines how capacities are distributed among the subsequent years in this case</li>
 <li>available options are:
 <ul style="margin-top:0px">
 <li style="margin-top:0px"><code>linear</code>:  expansion is equally distributed among years resulting in a linear increase</li>

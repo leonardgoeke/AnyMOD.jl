@@ -255,7 +255,7 @@ The table above corresponds to the following tree:
 
 **Carrier resolution**
 
-In addition to defining carriers, the `set_carrier.csv` file also maps them to regions and time-steps to specify the resolution there are modelled at. This is done separately for dispatch and expansion in the columns `timestep_dispatch`,`timestep_expansion`,`region_dispatch`, and `region_expansion`. The numbers in these columns correspond to levels of the respective trees. In the example displayed below, `4` in the `timestep_dispatch` column for `electricity` means, dispatch for electricity is modelled for each time-step on level 4. Going back to the definition of time-steps above, this corresponds to an hourly resolution.
+In addition to defining carriers, the `set_carrier.csv` file also maps them to regions and time-steps to specify the resolution there are modeled at. This is done separately for dispatch and expansion in the columns `timestep_dispatch`,`timestep_expansion`,`region_dispatch`, and `region_expansion`. The numbers in these columns correspond to levels of the respective trees. In the example displayed below, `4` in the `timestep_dispatch` column for `electricity` means, dispatch for electricity is modeled for each time-step on level 4. Going back to the definition of time-steps above, this corresponds to an hourly resolution.
 
 !!! tip "Less detailed resolution for debugging"
     Creating and especially solving a model is much faster if the temporal resolution of dispatch is decreased. Therefore, it is advisable to first test new models at a less detailed temporal resolution. In the example this would be achieved by replacing the `4` for electricity with `2` to switch to a daily resolution. This will help you to spot and fix mistakes or unintended effects more efficiently.
@@ -450,7 +450,7 @@ Assigning carriers as a storage output (or input) means they can be discharged t
 ```
 Such a technology is created by assigning the same carrier to `conversion_output` and `storage_output`, but not to `storage_output`. In the example, this is the case for the technology `photovoltaic`. It is intended to represent a residental photovoltaic panel combined with a home battery that cannot be charged from the gird, but from the panel.
 
-Also the opposite case can be modelled: A carrier charged from outside, but only discharged within the technology. This only makes sense if the carrier is being used within the technology's conversion process. The corresponding diagram is given below and could represent a gas power plant with an onside gas storage.
+Also the opposite case can be modeled: A carrier charged from outside, but only discharged within the technology. This only makes sense if the carrier is being used within the technology's conversion process. The corresponding diagram is given below and could represent a gas power plant with an onside gas storage.
 ```@raw html
 <p style="text-align:center;"><img src="../assets/mixTech2.svg" width="100%"/>
 ```
@@ -473,7 +473,7 @@ An important option to point out is <code>technology_type</code>. Three differen
 <td style="border-right:none"><strong>default</strong></td>
 </tr>
 <tr>
-<td><code>modes</code></td>
+<td><code>mode</code></td>
 <td>
 <ul class="liste">
 <li>different operational modes separated by a semicolon and a space</li>

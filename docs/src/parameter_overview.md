@@ -135,7 +135,7 @@ Accordingly, in table below the first column relates to $Ts_{dis}$ and the secon
 </tbody>
 </table>
 <p class="norm">
-This concept equally applies if one of the sets is defined by more then one column. In the table below, the first and the second column are attributed to specify $Ts_{dis}$. Since the third column goes back up to the first level, AnyMOD realizes it refers to a different dimension and attributes it to $Ts_{exp}$. As a result, both efficiencies apply to <code>heatpumps</code> constructed <code>2020</code>, but one row relates to the first hour of <code>2020</code> and the other to the first hour of <code>2030</code>. So, this example also shows how the aging process of technologies can be modelled.
+This concept equally applies if one of the sets is defined by more then one column. In the table below, the first and the second column are attributed to specify $Ts_{dis}$. Since the third column goes back up to the first level, AnyMOD realizes it refers to a different dimension and attributes it to $Ts_{exp}$. As a result, both efficiencies apply to <code>heatpumps</code> constructed <code>2020</code>, but one row relates to the first hour of <code>2020</code> and the other to the first hour of <code>2030</code>. So, this example also shows how the aging process of technologies can be modeled.
 </p>
 <table class="tabelle2">
 <tbody>

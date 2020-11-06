@@ -269,7 +269,7 @@ Optional arguments for plotting a Sankey diagram are:
 <td>
 <ul class="liste">
 <li>for each relevant set of the dimensions specified here separate diagrams are created, sets <br> then appear in the dropdown menu within the html output</li>
-<li>for example <code>dropDown = (:timestep)</code> will create diagrams aggregating values <br> across all regions, instead of creating a separate diagram for each region</li>
+<li>for example <code>dropDown = (:timestep,)</code> will create diagrams aggregating values <br> across all regions, instead of creating a separate diagram for each region</li>
 </ul>
 </td>
 <td style="border-right:none"><code>(:region,:timestep)</code></td>

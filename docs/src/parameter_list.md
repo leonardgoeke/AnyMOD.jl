@@ -44,7 +44,7 @@ In the following all parameters available in AnyMOD are listed. Information incl
 
 The parameters listed here describe the conversion and storage of energy carriers by technologies. As a result, each of these parameters can vary by operational mode. If any mode specific values are provided, these replace mode unspecific data.
 
-The following two diagrams serve as a remainder on how conversion and storage are generally modelled in AnyMOD.
+The following two diagrams serve as a remainder on how conversion and storage are generally modeled in AnyMOD.
 
 ```@raw html
 <p style="text-align:center;"><img src="../assets/convTech.svg" width="64%"/>
@@ -780,7 +780,7 @@ By assigning the same <code>id</code> to a <a href="../parameter_list/#Trade-pri
 </p>
 
 <p class="norm">
-For example, the table below enables the import of <code>hydrogen</code> to the region <code>West</code> at 100 €/MWh, but limits the import capacity to 20 GW. When imposing this limit, the capacity is scaled according to the temporal resolution hydrogen is modelled at. So, at a yearly resolution 20 GW would translate to 175.2 TWh (= 20 GW	&times; 8760 h).
+For example, the table below enables the import of <code>hydrogen</code> to the region <code>West</code> at 100 €/MWh, but limits the import capacity to 20 GW. When imposing this limit, the capacity is scaled according to the temporal resolution hydrogen is modeled at. So, at a yearly resolution 20 GW would translate to 175.2 TWh (= 20 GW	&times; 8760 h).
 </p>
 
 <table class="tabelle2">
