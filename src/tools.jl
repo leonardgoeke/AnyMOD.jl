@@ -97,6 +97,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	end
 
 	# XXX get expansion and capacity variables
+	
 	for t in techSym_arr
 		part = anyM.parts.tech[t]
 		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], variable = Symbol[], value = Float64[])
@@ -175,48 +176,59 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		flh_dic = Dict(:oprCapaConv => :flhConv, :oprCapaStIn => :flhStIn, :oprCapaStOut => :flhStOut)
 	end
 
-	for flhCapa in collect(keys(flh_dic))
-		capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
-		# get relevant dispatch variables for respective group
-		vlh_arr = map(eachrow(capaFlh_df)) do row
-			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te,allData_df)
-			if flhCapa in (:capaConv,:oprCapaConv)
-				var_arr = unique(relRow_df[!,:variable]) |> (i -> (i,intersect(i,(:use,:stIntOut)))) |> (j -> isempty(j[2]) ? intersect(j[1],(:gen,:stIntIn)) : j[2])
-			elseif flhCapa in (:oprCapaStIn,:capaStIn)
-				var_arr = [:stIntIn,:stExtIn]
-			elseif flhCapa in (:oprCapaStOut,:capaStOut)
-				var_arr = [:stIntOut,:stExtOut]
-			end
-			return sum(abs.(filter(y -> y.variable in var_arr,relRow_df)[!,:value]))/row.value*1000
-		end
-		capaFlh_df[!,:value] = vlh_arr
-		capaFlh_df[!,:variable] .= flh_dic[flhCapa]
+	flhAss_dic = Dict(:capaConv => [:use,:stIntOut,:gen,:stIntIn],:oprCapaConv => [:use,:stIntOut,:gen,:stIntIn], :capaStIn => [:stIntIn,:stExtIn],:oprCapaStIn => [:stIntIn,:stExtIn], :capaStOut => [:stIntOut,:stExtOut],:oprCapaStOut => [:stIntOut,:stExtOut])
 
-		allData_df = vcat(allData_df,capaFlh_df)
+	for flhCapa in collect(keys(flh_dic))
+		# gets relevant capacity variables
+		capaFlh_df = rename(filter(x -> x.variable == flhCapa && x.value > 0.0, allData_df),:variable => :varCapa, :value => :valCapa)
+		if isempty(capaFlh_df) continue end
+		
+		# expand with relevant dispatch variables
+		capaFlh_df[!,:varDisp] = map(x -> flhAss_dic[x.varCapa],eachrow(capaFlh_df))
+		capaFlh_df = flatten(capaFlh_df,:varDisp)
+		intCol(capaFlh_df,:varDisp)
+		# omit carrier in case of conversion capacity
+		if flhCapa in (:capaConv,:oprCapaConv) select!(capaFlh_df,Not([:C])) end
+
+		# joins capacity and with relevant dispatch variables
+		allFLH_df = innerjoin(capaFlh_df,rename(allData_df,:variable => :varDisp), on = intCol(capaFlh_df,:varDisp))
+
+		# remove row for gen variables in case gen exists as well and compute full load hours for conversion
+		allFLH_df = combine(combine(y -> filter(x -> :use in y[!,:varDisp] ? x.varDisp != :gen : true,y), groupby(allFLH_df, intCol(capaFlh_df,:varCapa)), ungroup = false), AsTable([:value,:valCapa]) => (x -> 1000*abs(sum(x.value)/x.valCapa[1])) => :value)
+		allFLH_df[!,:variable] = map(x -> flh_dic[x], allFLH_df[!,:varCapa])
+		# adds carrier again in case of conversion capacity
+		allFLH_df[!,:C] .= 0
+
+		allData_df = vcat(allData_df, select(allFLH_df,Not([:varCapa])))
 	end
 
 	# XXX comptue storage cycles
+
 	if anyM.options.decomm == :none
 		cyc_dic = Dict(:capaStIn => :cycStIn, :capaStOut => :cycStOut)
 	else
 		cyc_dic = Dict(:oprCapaStIn => :cycStIn, :oprCapaStOut => :cycStOut)
 	end
 
+	cycAss_dic = Dict(:oprCapaStIn => [:stIntIn,:stExtIn], :capaStIn => [:stIntIn,:stExtIn], :oprCapaStOut => [:stIntOut,:stExtOut], :capaStOut => [:stIntOut,:stExtOut])
+	
 	for cycCapa in collect(keys(cyc_dic))
-		capaCyc_df = filter(x -> x.variable == :capaStSize, allData_df)
-		# get relevant dispatch variables for respective group
-		cyc_arr = map(eachrow(capaCyc_df)) do row
-			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te,allData_df)
-			if cycCapa in (:oprCapaStIn,:capaStIn)
-				var_arr = [:stIntIn,:stExtIn]
-			elseif cycCapa in (:oprCapaStOut,:capaStOut)
-				var_arr = [:stIntOut,:stExtOut]
-			end
-			return sum(abs.(filter(y -> y.variable in var_arr,relRow_df)[!,:value]))/row.value*1000
-		end
-		capaCyc_df[!,:value] = cyc_arr
-		capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
-		allData_df = vcat(allData_df,capaCyc_df)
+		capaCyc_df = rename(filter(x -> x.variable == :capaStSize && x.value > 0.0, allData_df),:variable => :varCapa, :value => :valCapa)
+		if isempty(capaCyc_df) continue end
+
+		# expand with relevant dispatch variables
+		capaCyc_df[!,:varDisp] = map(x -> cycAss_dic[cycCapa],eachrow(capaCyc_df))
+		capaCyc_df = flatten(capaCyc_df,:varDisp)
+		
+		# joins capacity and with relevant dispatch variables
+		capaCyc_df = innerjoin(capaCyc_df,rename(allData_df,:variable => :varDisp), on = intCol(capaCyc_df,:varDisp))
+		
+		# compute cycling value and add to overall
+		capaCyc_df = combine(groupby(capaCyc_df, intCol(capaCyc_df,:varCapa)), AsTable([:value,:valCapa]) => (x -> 1000*abs(sum(x.value)/x.valCapa[1])) => :value)
+		capaCyc_df[!,:variable] = map(x -> cyc_dic[cycCapa], capaCyc_df[!,:varCapa])
+		
+
+		allData_df = vcat(allData_df,select(capaCyc_df,Not([:varCapa])))
 	end
 
 	# return dataframes and write csv files based on specified inputs
