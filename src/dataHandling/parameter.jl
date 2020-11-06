@@ -376,7 +376,8 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
     typeVar_dic = Dict(:out => [:gen, :stIntIn], :in => [:use,:stIntOut], :stIn => [:stExtIn, :stOut], :stOut => [:stExtOut, :stIntOut], :stLvl => [:stLvl])
     modeDep_dic = Dict(x => DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[]) for x in union(values(typeVar_dic)...))
 
-	for preType in preType_arr
+    for preType in preType_arr
+     
 		# get all relevant carriers
 		specMode_boo = !isempty(part.modes) && !isempty(filter(y -> :M in namesSym(part.par[y].data), keys(filter(x -> x[2] == preType,parPre_dic))))
 
@@ -433,9 +434,17 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
         # loops over all parameters of specific pre-setting type
 		for parItr in keys(filter(x -> x[2] == preType,parPre_dic))
             parPef_ntup = parDef_dic[parItr]
-			newPar_obj, report = resetParameter(:M in namesSym(part.par[parItr].data) ? dispResoM_df : dispReso_df, part.par[parItr], part.name[end], anyM.sets, anyM.options, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
 
-            if :M in namesSym(newPar_obj.data)
+            # drops mode related parameter data, that does not match the modes of the technology
+            if :M in namesSym(part.par[parItr].data)
+                filter!(x -> x.M in part.modes,part.par[parItr].data)
+                if isempty(part.par[parItr].data) select!(part.par[parItr].data, Not(:M)) end
+            end
+
+			newPar_obj, report = resetParameter(:M in namesSym(part.par[parItr].data)  ? dispResoM_df : dispReso_df, part.par[parItr], part.name[end], anyM.sets, anyM.options, anyM.report, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
+
+            # saves mode dependant cases
+            if :M in namesSym(newPar_obj.data) && !isempty(newPar_obj.data)
                 mode_df = unique(filter(x -> x.M != 0, newPar_obj.data)[!,Not([:val,:M])])
 
                 # loops over all types of relevant variables (:gen, :use etc.) that have to be mode specific
@@ -473,7 +482,11 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
                 newPar_obj.data[lowVal_arr,:val] .= 0.0
             end
 
-            part.par[parItr] = newPar_obj
+            if isempty(newPar_obj.data)
+                delete!(part.par,parItr)
+            else
+                part.par[parItr] = newPar_obj
+            end
         end
 	end
 
@@ -481,11 +494,10 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 end
 
 # XXX pre-sets specific dispatch parameter
-function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String, sets::Dict{Symbol,Tree}, options::modOptions, cntM_int::Int = 0, newHerit_tup::Tuple = ())
+function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String, sets::Dict{Symbol,Tree}, options::modOptions, report::Array{Tuple,1},cntM_int::Int = 0, newHerit_tup::Tuple = ())
     # gets dimension of search tables and parameter without mode
     newData_df = select(newData_df,intersect(namesSym(newData_df),par_obj.dim))
     # creates empty report, that entries are written to within subprocess
-    report = Array{Tuple,1}()
 
     if !(:M in namesSym(newData_df))
         # in case modes are not being searched for just directly set data
@@ -505,7 +517,7 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String
 
             # filteres entries were there is not one value for each mode
             modeGrp_gdf = groupby(mode_df, resDim_arr)
-            modeGrpDef_arr = filter(r -> cntM_int == size(r,1), collect(modeGrp_gdf))
+            modeGrpDef_arr = filter(r -> cntM_int == size(r,1), collect(modeGrp_gdf)) 
 
             if length(modeGrp_gdf.ends) > length(modeGrpDef_arr)
                 push!(report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was not specified for all modes in some cases for $tStr, existing values were ignored"))
@@ -519,7 +531,7 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String
             end
 
             # filters data where distinct mode data is provided for all modes and expends resulting table again
-            finalMode_df =  vcat(disMode_arr...)
+            finalMode_df =  isempty(disMode_arr) ? filter(x -> false ,collect(modeGrp_gdf)[1])  : vcat(disMode_arr...)
         else
             finalMode_df = mode_df
         end
@@ -612,6 +624,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
     if isempty(par_obj.data) || length(namesSym(par_obj.data)) == 1
         paraMatch_df = copy(srcSetIn_df)
         paraMatch_df[!,newCol] = fill(isempty(par_obj.data) ? par_obj.defVal : par_obj.data[1,:val],size(paraMatch_df,1))
+        filter!(x -> x[newCol] != nothing, paraMatch_df)
         return paraMatch_df
     end
 

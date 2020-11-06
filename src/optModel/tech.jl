@@ -655,7 +655,7 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyM
 			srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_dis = x[1], R_dis = x[2]))
 		end
 
-		if :M in namesSym(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated separately
+		if :M in namesSym(cns_df) # aggregates dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated separately
 			# find cases where ratio constraint is mode dependant
 			srcResM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(1,values(srcRes_ntup)...))...)
 			srcResNoM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(0,values(srcRes_ntup)...))...)
@@ -684,8 +684,11 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyM
 		end
 
 		cns_df[!,:cnsExpr] = map(x -> x.ratioVar - x.allVar * x.ratio, eachrow(cns_df))
+
+
 		cns_dic[ratioName_sym] = cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),sign_sym)
 	end
 end
 
 # </editor-fold>
+

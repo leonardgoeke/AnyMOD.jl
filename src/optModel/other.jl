@@ -489,6 +489,9 @@ function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tup
 
 	if isempty(cnsExpr_df) return end
 
+	# filters variables with factor zero, because they will lead to scaling errors
+	foreach(z -> foreach(y ->  delete!(z.terms,y), filter(x -> z.terms[x] == 0.0 ,collect(keys(z.terms)))), cnsExpr_df[!,:cnsExpr]) 
+
 	if !all(isnan.(coefRng.rhs))
 		# scale expression defining constraint so rhs coefficients are within desired range
 		rhs_arr = abs.(getfield.(cnsExpr_df[!,:cnsExpr],:constant))
