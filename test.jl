@@ -53,12 +53,3 @@ checkRng = NaN
 
 inDir = "examples/demo"
 outDir = "examples/results"
-
-anyM = anyModel()
-
-
-noExpansion = anyModel(["northAmerica/baseInput","northAmerica/scenarioInput/noExpansion"], "northAmerica/results/noExpansion", reportLvl = 3)
-
-# plotEnergyFlow(:graph,noExpansion)
-createOptModel!(noExpansion)
-setObjective!(:costs,noExpansion)
