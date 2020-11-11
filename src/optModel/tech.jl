@@ -342,7 +342,7 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 			cns_df = rename(innerjoin(cns_df,var_df; on = intCol(var_df,:dir) |> (x -> Pair.(replace(x,:Ts_disSup => :Ts_disSupPrev),x))),:var => :oprPrev)
 
 			# add expansion variable to dataframe
-			if !(:type in fieldnames(typeof(part))) || part.type != :stock
+			if Symbol(replace(string(capaVar),"capa" => "exp")) in collect(keys(part.var))
 				exp_df = part.var[Symbol(replace(string(capaVar),"capa" => "exp"))][!,Not(:Ts_disSup)]
 				join_arr = filter(x -> x != :Ts_expSup,intCol(var_df))
 
