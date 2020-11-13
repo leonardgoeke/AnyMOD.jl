@@ -203,8 +203,14 @@ end
 # ! create capacity restriction for exchange
 function createRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},partExc::ExcPart,anyM::anyModel)
 
+	# create entries in both directions where exchange is directed
+	if partExc.decomm != :none
+		capaVar_df = filter(r -> r.dir,partExc.var[:capaExc]) |> (x -> vcat(filter(r -> !r.dir,partExc.var[:capaExc]),vcat(x,rename(x,replace(namesSym(x),:R_to => :R_from, :R_from => :R_to)))))
+	else
+		capaVar_df = partExc.var[:capaExc]
+	end
 	# group exchange capacities by carrier
-	grpCapa_df = groupby(rename(partExc.var[:capaExc],:var => :capa),:C)
+	grpCapa_df = groupby(rename(capaVar_df,:var => :capa),:C)
 
 	# pre-allocate array of dataframes for restrictions
 	restr_arr = Array{DataFrame}(undef,length(grpCapa_df))
