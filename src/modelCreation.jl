@@ -12,26 +12,28 @@ function createOptModel!(anyM::anyModel)
 	#region # * create technology related variables and constraints
 	parDef_dic = defineParameter(anyM.options,anyM.report)
 
-    # ! gets dictionary with dimensions of expansion and capacity variables
+    # ! gets dictionary with dimensions of expansion, retrofitting, and capacity variables
     tsYear_dic = Dict(zip(anyM.supTs.step,collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
     prepSys_dic = Dict(sys => Dict{Symbol,Dict{Symbol,NamedTuple}}() for sys in (:Te,:Exc))
 	prepareTechs!(collect(keys(anyM.parts.tech)),prepSys_dic[:Te],tsYear_dic,anyM)
 	prepareExc!(collect(keys(anyM.parts.exc)),prepSys_dic[:Exc],tsYear_dic,anyM)
 
-	# TODO genau hier weiter machen
+	allCapaDf_dic = addRetrofitting!(prepSys_dic,anyM)
+	removeFixed!(prepSys_dic,allCapaDf_dic,anyM) # remove entries were capacities is fixed to zero
+	addInsCapa!(prepSys_dic,anyM) # add entries for installed capacities
 
 	# ! remove unrequired elements in case of distributed model creation
 	if !isempty(anyM.subPro)
-	    distributedMapping!(anyM,prepTech_dic,prepExc_dic)
+	    distributedMapping!(anyM,prepSys_dic)
 	end
 	# abort if there is already an error
     if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
 
-    # remove technologies without any potential capacity variables
-    techSym_arr = collect(keys(prepTech_dic))
-    foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),techSym_arr))
+    # remove systems without any potential capacity variables
+	foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),collect(keys(prepSys_dic[:Te]))))
+	foreach(x -> delete!(anyM.parts.exc, x),setdiff(collect(keys(anyM.parts.exc)),collect(keys(prepSys_dic[:Exc]))))
 
-    # ! create all technology related elements
+	# ! create all technology related elements
 
     # creates dictionary that assigns combination of superordinate dispatch timestep and dispatch level to dispatch timesteps
     allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
@@ -46,11 +48,12 @@ function createOptModel!(anyM::anyModel)
     produceMessage(anyM.options,anyM.report, 3," - Determined dimension of expansion and capacity variables for technologies")
 
     # constraints for technologies are prepared in threaded loop and stored in an array of dictionaries
+	techSym_arr = collect(keys(anyM.parts.tech))	
 	techCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(techSym_arr))
 	tech_itr = collect(enumerate(techSym_arr))
-
+	# TODO hier debuggen
 	@threads for (idx,tSym) in tech_itr
-		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepTech_dic[tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
+		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
 	end
 
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
@@ -98,142 +101,11 @@ end
 
 
 
-# ensures regions are on the level of the start or target system
-function adjustRetroRegion(sys::Symbol,retro_df::DataFrame,start::Bool=true)
-	
-	# check if start or target region should be overwritten
-	if start 
-		keep_sym = :i; drop_sym = :j
-	else
-		keep_sym = :j; drop_sym = :i
-	end
-	# adjusts respective regions
-	if sys != :Exc
-		retro_df[!,Symbol(:R_exp_,drop_sym)] = retro_df[!,Symbol(:R_exp_,keep_sym)] 
-	else
-		retro_df[!,Symbol(:R_a_,drop_sym)] = retro_df[!,Symbol(:R_a_,keep_sym)]; 
-		retro_df[!,Symbol(:R_b_,drop_sym)] = retro_df[!,Symbol(:R_b_,keep_sym)]
-	end
-	return unique(retro_df)
-end
-
-#=
-# ! gather all existing capacity entries that could be relevant for retrofitting
-allCapaDf_dic = Dict{Symbol,DataFrame}()
-retroPotSym_arr = Symbol.(replace.(string.(filter(x -> occursin("costRetro",string(x)), collect(keys(anyM.parts.obj.par)))),"costRetro" => ""))
-
-for retroSym in intersect(retroPotSym_arr,(:Conv,:StIn,:StOut,:StSize))
-	capaSym = Symbol(:capa,retroSym)
-	allCapaDf_dic[capaSym] = unique(vcat(filter(w -> !isempty(w), vcat(map(x -> capaSym in keys(x) ? map(y -> getfield(x[capaSym],y) |> (z -> select(z,intCol(z))),[:var,:resi]) : DataFrame[],values(prepSys_dic[:Te]))...))...))
-end
-
-if :Exc in retroPotSym_arr
-	allCapaDf_dic[:capaExc] = filter(x -> x.R_from < x.R_to,unique(vcat(filter(w -> !isempty(w), vcat(map(x -> :capaExc in keys(x) ? map(y -> getfield(x[:capaExc],y) |> (z -> select(z,intCol(z))),[:var,:resi]) : DataFrame[],values(prepSys_dic[:Exc]))...))...)))
-end
 
 
 
-# ! create actual entries for retrofitting by matching existing capacities with case where costs data was defined
-for sys in (:Te, :Exc)
-	sysSym_arr = filter(x -> getfield(anyM.parts, sys == :Te ? :tech : :exc)[x].type != :stock, collect(keys(prepSys_dic[sys])))
-
-	for sSym in sysSym_arr, capaSym in filter(x -> occursin("capa",string(x)), intersect(collect(keys(allCapaDf_dic)),collect(keys(prepSys_dic[sys][sSym]))))
-
-		part = sys == :Te ? anyM.parts.tech[sSym] : anyM.parts.exc[sSym]
-		retroName_sym = Symbol(replace(string(capaSym),"capa" => "retro"))
-
-		# ! creata dataframe for potential retrofits by filtering for target system
-		# filter capacities for relevant system from all system capacities
-		relSys_df = filter(x -> x[sys] == sysInt(sSym,anyM.sets[sys]),allCapaDf_dic[capaSym])
-		
-		# rename columns so they refer to target system, joins with all other capacity entries as starting points and renames them as well
-		if capaSym == :capaConv
-			relSys_df  = innerjoin(rename(relSys_df, :Ts_expSup => :Ts_expSup_j, sys => Symbol(sys,"_j"), :R_exp => :R_exp_j),allCapaDf_dic[capaSym],on = [:Ts_disSup])
-			rename!(relSys_df,:Ts_expSup => :Ts_expSup_i, sys => Symbol(sys,"_i"), :R_exp => :R_exp_i, :Ts_disSup => :Ts_expSup)
-		elseif capaSym in (:capaStIn, :capaStOut, :capaStSize)
-			relSys_df  = innerjoin(rename(relSys_df, :Ts_expSup => :Ts_expSup_j, sys => Symbol(sys,"_j"), :R_exp => :R_exp_j, :C => :C_j),allCapaDf_dic[capaSym],on = [:Ts_disSup])
-			rename!(relSys_df,:Ts_expSup => :Ts_expSup_i, sys => Symbol(sys,"_i"), :R_exp => :R_exp_i, :C => :C_i, :Ts_disSup => :Ts_expSup)
-		else
-			relSys_df = innerjoin(rename(relSys_df, :Ts_expSup => :Ts_expSup_j, sys => Symbol(sys,"_j"), :R_from => :R_a_j, :R_to => :R_b_j),allCapaDf_dic[capaSym],on = [:Ts_disSup])
-			rename!(relSys_df,:Ts_expSup => :Ts_expSup_i, sys => Symbol(sys,"_i"), :R_from => :R_a_i, :R_to => :R_b_i, :Ts_disSup => :Ts_expSup)
-		end
-
-		# filter all rows where regions are not related
-		relR_dic = Dict(x =>  vcat([x],getAncestors(x,anyM.sets[:R],:int)...,getDescendants(x,anyM.sets[:R])...) for x in (sys != :Exc ? unique(relSys_df[!,:R_exp_j]) : unique(vcat(map(z -> relSys_df[!,z],[:R_a_i,:R_a_j,:R_b_i,:R_b_j])...))))
-		filter!(x -> capaSym != :capaExc ? x.R_exp_i in relR_dic[x.R_exp_j] : (x.R_a_i in relR_dic[x.R_a_j] && x.R_b_i in relR_dic[x.R_b_j]),relSys_df)
-
-		# ! match with cost data to see where actual retrofitting is possible
-		allRetro_df = select(orderDf(matchSetParameter(relSys_df,anyM.parts.obj.par[Symbol(:costRetro,replace(String(capaSym),"capa" => ""))],anyM.sets)),Not([:val]))
-		if isempty(allRetro_df) continue end
-
-		# expand table with actual expansion time-steps
-		supExp_dic = Dict(x => getAncestors(x,anyM.sets[:Ts],:int,(sys != :Exc ? part.balLvl.exp[1] : part.expLvl[1]))[end] for x in allRetro_df[!,:Ts_expSup])
-		allRetro_df[!,:Ts_exp] = map(x -> supExp_dic[x], allRetro_df[!,:Ts_expSup])
-
-		# group data analogously to entries for expansion
-		expMap_df = combine(groupby(allRetro_df,filter(x -> x != :Ts_expSup, namesSym(allRetro_df))), :Ts_expSup => (x -> [x]) => :Ts_expSup)
-		retro_df = orderDf(addSupTsToExp(expMap_df,part.par,makeUp(retroName_sym),tsYear_dic,anyM))
-
-		# add entries for target technology as entry for retrofitting
-		prepSys_dic[sys][sSym][retroName_sym] = (var = adjustRetroRegion(sys,retro_df), resi = DataFrame())
-
-		# add entries for start technology
-		for t in unique(retro_df[!,Symbol(sys,"_i")])
-			prepSys_dic[sys][sysSym(t,anyM.sets[sys])][retroName_sym] = (var = adjustRetroRegion(sys,filter(x -> x[Symbol(sys,"_i")] == t, retro_df),false), resi = DataFrame())
-		end
-	end
-end
 
 
-# ! remove entries where expansion or capacity is fixed zero and no capacity can be created via retrofitting
-# TODO tatsächlich testen
-# TODO entsprechende abschnitte noch aus jetztigem code entfernen, den code hier dann einbetten
 
-# start with expansion wo auf 0 gefixed, mache analog für retrofitting
-for sys in (:Te,:Exc)
-	sysSym_arr = filter(x -> getfield(anyM.parts, sys == :Te ? :tech : :exc)[x].type != :stock, collect(keys(prepSys_dic[sys])))
 
-	for sSym in sysSym_arr
 
-		# find entries of existing preparation dictionary where variables are already fixed to zero and remove them
-		for prepSym in collect(keys(prepSys_dic[sys][sSym]))
-			# get relevant parameter data
-			limPar_obj = getLimPar(anyM.parts.lim,Symbol(prepSym,:Fix),anyM.sets[sys], sys = sysInt(sSym,anyM.sets[sys]))
-				
-			remainCapa_df = sys == :Te ? filterZero(prepSys_dic[sys][sSym][prepSym].var,limPar_obj,anyM) : convertExcCol(filterZero(convertExcCol(prepSys_dic[sys][sSym][prepSym].var),limPar_obj,anyM))
-
-			prepSys_dic[sys][sSym][prepSym] = prepSys_dic[sys][sSym][prepSym] |> (x -> (var = removeEntries([remainCapa_df],x.var),resi = x.resi))
-		end
-
-		# filter enries of preparation dictionary where capacity variable cannot exist, because there is no corresponding expansion or retrofitting variable 
-		for capaSym in filter(x -> occursin("capa",string(x)), intersect(collect(keys(allCapaDf_dic)),collect(keys(prepSys_dic[sys][sSym]))))
-
-			# get and expand related entries for expansion
-			potCapa_df = expandExpToCapa(prepSys_dic[sys][sSym][Symbol(replace(string(capaSym),"capa" => "exp"))].var)
-			
-			# get and expand related entries for retrofitting
-			retro_sym = Symbol(replace(string(capaSym),"capa" => "retro"))
-			if retro_sym in keys(prepSys_dic[sys][sSym])
-				if sys == :Te
-					retro_df = rename(select(prepSys_dic[sys][sSym][retro_sym].var,Not([:Ts_exp,:Ts_expSup_i, :R_exp_i, :Te_i])),:Te_j => :Te, :R_exp_j => :R_exp, :Ts_expSup_j => :Ts_exp)
-				else
-					retro_df = rename(select(prepSys_dic[sys][sSym][retro_sym].var,Not([:Ts_exp,:Ts_expSup_i, :R_a_i, :R_b_i, :Exc_i])),:Exc_j => :Exc, :R_a_j => :R_from, :R_b_j => :R_to, :Ts_expSup_j => :Ts_exp)
-				end
-				potCapa_df = unique(vcat(potCapa_df,expandExpToCapa(retro_df)))
-			end
-
-			# groups by expansion time steps in case of mature technologies
-			if getfield(anyM.parts, sys == :Te ? :tech : :exc)[sSym].type == :mature
-				potCapa_df[!,:Ts_expSup] .= 0
-				potCapa_df = unique(potCapa_df)
-			end
-
-			# only preserve capacity entries that could be created based on expansion and retrofitting
-			prepSys_dic[sys][sSym][capaSym] = prepSys_dic[sys][sSym][capaSym] |> (x -> (var = innerjoin(x.var, potCapa_df, on = intCol(x.var)), resi = x.resi))
-
-		end
-
-	end
-
-end
-=#

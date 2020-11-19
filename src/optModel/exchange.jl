@@ -18,15 +18,7 @@ function prepareExc!(excSym_arr::Array{Symbol,1},prepVar_dic::Dict{Symbol,Dict{S
 	
 		# obtain capacity dimensions solely based on expansion variables
 		prepareCapacity!(partExc,prepExc_dic,prepExc_dic[:expExc].var,:capaExc,anyM)
-	
 		addResidualCapaExc!(partExc,prepExc_dic,anyM)
-	
-		# add entry for operated capacity
-		if partExc.decomm != :none && :capaExc in keys(prepExc_dic)
-			prepExc_dic[:insCapaExc] =  (var = prepExc_dic[:capaExc].var, resi = prepExc_dic[:capaExc].resi)
-			excResi_df = select(prepExc_dic[:capaExc].resi,Not([:var,:Ts_expSup]))
-			prepExc_dic[:capaExc] =  (var = unique(vcat(prepExc_dic[:capaExc].var, filter(x -> x.R_from < x.R_to, vcat(excResi_df,rename(excResi_df,:R_from => :R_to,:R_to => :R_from))))), resi = DataFrame())
-		end
 	
 		# if any capacity variables or residuals were prepared, add these to overall dictionary
 		if collect(values(prepExc_dic)) |> (z -> any(map(x -> any(.!isempty.(getfield.(z,x))), (:var,:resi))))

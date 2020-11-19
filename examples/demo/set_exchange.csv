@@ -1,4 +1,4 @@
 exchange_1,exchange_2,carrier_exchange,exchange_type
-power,hvac,electricity,mature
+power,hvac,electricity,stock
 power,hvdc,electricity,mature
 gas,,gas,mature

@@ -463,7 +463,7 @@ function createScenarioMapping!(anyM::anyModel)
 end
 
 # ! adjusts model object according to distributed generation
-function distributedMapping!(anyM::anyModel,prepTech_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},prepExc_dic::Dict{Symbol,NamedTuple})
+function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple}}})
 
 	subPro = anyM.subPro
 
@@ -483,41 +483,35 @@ function distributedMapping!(anyM::anyModel,prepTech_dic::Dict{Symbol,Dict{Symbo
 
 		# ! adjust dictionaries for expansion preparation
 
-		# technology dictionaries
-		for tSym in collect(keys(prepTech_dic))
+		# only keep capacity entries from 
+		for sys in collect(keys(prepSys_dic)), sSym in collect(keys(prepSys_dic[sys]))
 			# delete all fields from preparation except for capa
-			foreach(y -> delete!(prepTech_dic[tSym],y), filter(x -> string(x)[1:4] != "capa",collectKeys(keys(prepTech_dic[tSym]))))
+			foreach(y -> delete!(prepSys_dic[sys][sSym],y), filter(x -> string(x)[1:4] != "capa",collectKeys(keys(prepSys_dic[sys][sSym]))))
 			# remove other superordinate dispatch timesteps from field for capacity variables
-			for etr in collectKeys(keys(prepTech_dic[tSym]))
-				var_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepTech_dic[tSym][etr].var)
-				resi_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepTech_dic[tSym][etr].resi)
-				prepTech_dic[tSym][etr] = (var = var_df,resi = resi_df)
+			for etr in collectKeys(keys(prepSys_dic[sys][sSym]))
+				var_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepSys_dic[sys][sSym][etr].var)
+				resi_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepSys_dic[sys][sSym][etr].resi)
+				prepSys_dic[sys][sSym][etr] = (var = var_df,resi = resi_df)
 			end
 		end
 
-		# exchange dictionary
-		foreach(y -> delete!(prepExc_dic,y), filter(x -> x != :capaExc,collectKeys(keys(prepExc_dic))))
-		var_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepExc_dic[:capaExc].var)
-		resi_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepExc_dic[:capaExc].resi)
-		prepExc_dic[:capaExc] = (var = var_df,resi = resi_df)
-
 		# ! remove parameter data
-		# remove unrequired parameter data from technology parts
-		for pName in collectKeys(keys(anyM.parts.tech)), parName in collectKeys(keys(getfield(anyM.parts.tech[pName],:par)))
-			if anyM.parts.tech[pName].par[parName].problem == :top # completely delete parameters not relating to subproblems
-				delete!(anyM.parts.tech[pName].par,parName)
+		# remove unrequired parameter data from technology and exchange parts
+		for sys in (:exc,:tech), pName in collectKeys(keys(getfield(anyM.parts,sys))), parName in collectKeys(keys(getfield(getfield(anyM.parts,sys)[pName],:par)))
+			if getfield(anyM.parts,sys)[pName].par[parName].problem == :top # completely delete parameters not relating to subproblems
+				delete!(getfield(anyM.parts,sys)[pName].par,parName)
 			else # remove unrequired data, but keep the parameter itself
-				parData_df = anyM.parts.tech[pName].par[parName].data
+				parData_df = getfield(anyM.parts,sys)[pName].par[parName].data
 				rmv_arr = intersect(namesSym(parData_df),[:Ts_dis,:scr])
 				if isempty(rmv_arr)
 					continue
 				else
-					anyM.parts.tech[pName].par[parName].data  = filter(x -> !any(map(y -> x[y] in getfield(rmvId_tup,y),rmv_arr)),parData_df)
+					getfield(anyM.parts,sys)[pName].par[parName].data  = filter(x -> !any(map(y -> x[y] in getfield(rmvId_tup,y),rmv_arr)),parData_df)
 				end
 			end
 		end
 		# remove unrequired parameter data from all other objects
-		for pName in (:trd,:exc,:bal,:lim,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
+		for pName in (:trd,:bal,:lim,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
 			if getfield(anyM.parts,pName).par[parName].problem == :top
 				delete!(getfield(anyM.parts,pName).par,parName)
 			else
@@ -536,13 +530,13 @@ function distributedMapping!(anyM::anyModel,prepTech_dic::Dict{Symbol,Dict{Symbo
 
 		# ! remove parameter data
 		# remove unrequired parameter data from technology parts
-		for pName in collectKeys(keys(anyM.parts.tech)), parName in collectKeys(keys(getfield(anyM.parts.tech[pName],:par)))
-			if anyM.parts.tech[pName].par[parName].problem == :sub # completely delete parameters not relating to subproblems
-				delete!(anyM.parts.tech[pName].par,parName)
+		for sys in (:exc,:tech), pName in collectKeys(keys(getfield(anyM.parts,sys))), parName in collectKeys(keys(getfield(getfield(anyM.parts,sys)[pName],:par)))
+			if getfield(anyM.parts,sys)[pName].par[parName].problem == :sub # completely delete parameters not relating to subproblems
+				delete!(getfield(anyM.parts,sys)[pName].par,parName)
 			end
 		end
 		# remove unrequired parameter data from all other objects
-		for pName in (:trd,:exc,:bal,:lim,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
+		for pName in (:trd,:bal,:lim,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
 			if getfield(anyM.parts,pName).par[parName].problem == :sub
 				delete!(getfield(anyM.parts,pName).par,parName)
 			end

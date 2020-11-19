@@ -10,10 +10,12 @@ include("src/objects.jl")
 include("src/tools.jl")
 include("src/modelCreation.jl")
 
+include("src/optModel/systems.jl")
+include("src/optModel/tech.jl")
 include("src/optModel/exchange.jl")
 include("src/optModel/objective.jl")
 include("src/optModel/other.jl")
-include("src/optModel/tech.jl")
+
 
 include("src/dataHandling/mapping.jl")
 include("src/dataHandling/parameter.jl")
@@ -22,6 +24,8 @@ include("src/dataHandling/tree.jl")
 include("src/dataHandling/util.jl")
 
 #using Gurobi
+
+# TODO brauche bei stock technologien, da wo input für retrofitting doch echte variablen
 
 anyM = anyModel("examples/demo","examples/results", objName = "test", bound = (capa = NaN, disp = NaN, obj = 1e6), supTsLvl = 2, shortExp = 5)
 createOptModel!(anyM)

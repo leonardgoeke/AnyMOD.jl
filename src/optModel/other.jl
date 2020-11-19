@@ -477,25 +477,6 @@ end
 
 #region # * utility functions
 
-# ! connect capacity and expansion variables
-function createCapaCns!(part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},cns_dic::Dict{Symbol,cnsCont})
-    for capaVar in filter(x -> occursin("capa",string(x)),keys(prepTech_dic))
-
-        index_arr = intCol(part.var[capaVar])
-        join_arr = part.type != :mature ? index_arr : filter(x -> x != :Ts_expSup,collect(index_arr))
-
-        # joins corresponding capacity and expansion variables together
-		expVar_sym = Symbol(replace(string(capaVar),(part.decomm == :none ? "capa" : "insCapa") => "exp"))
-		if !(expVar_sym in keys(part.var)) continue end
-        expVar_df = flatten(part.var[expVar_sym],:Ts_disSup)
-        cns_df = rename(innerjoin(part.var[capaVar],combine(groupby(expVar_df,join_arr), :var => (x -> sum(x)) => :exp); on = join_arr),:var => :capa)
-
-        # creates final constraint object
-		cns_df[!,:cnsExpr] = map(x -> x.capa - x.capa.constant - x.exp,eachrow(cns_df))
-		cns_dic[Symbol(capaVar)] = cnsCont(select(cns_df,Not([:capa,:exp])),:equal)
-    end
-end
-
 # ! adds column with JuMP variable to dataframe
 function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64,Array{Float64,1}},optModel::Model,lock_::ReentrantLock,sets::Dict{Symbol,Tree}; scaFac::Float64 = 1.0, lowBd::Float64 = 0.0, bi::Bool = false)
 	# adds an upper bound to all variables if provided within the options
