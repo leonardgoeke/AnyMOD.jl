@@ -9,7 +9,7 @@ Create all elements of the model's underlying optimization problem except for th
 """
 function createOptModel!(anyM::anyModel)
 
-	#region # * create technology related variables and constraints
+	#region # * prepare dimensions of investment related variables
 	parDef_dic = defineParameter(anyM.options,anyM.report)
 
     # ! gets dictionary with dimensions of expansion, retrofitting, and capacity variables
@@ -33,7 +33,9 @@ function createOptModel!(anyM::anyModel)
 	foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),collect(keys(prepSys_dic[:Te]))))
 	foreach(x -> delete!(anyM.parts.exc, x),setdiff(collect(keys(anyM.parts.exc)),collect(keys(prepSys_dic[:Exc]))))
 
-	# ! create all technology related elements
+	#endregion
+
+	#region # * create technology related variables and constraints
 
     # creates dictionary that assigns combination of superordinate dispatch timestep and dispatch level to dispatch timesteps
     allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
@@ -51,20 +53,57 @@ function createOptModel!(anyM::anyModel)
 	techSym_arr = collect(keys(anyM.parts.tech))	
 	techCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(techSym_arr))
 	tech_itr = collect(enumerate(techSym_arr))
-	# TODO hier debuggen
+
 	@threads for (idx,tSym) in tech_itr
 		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
 	end
 
+	# connect retrofitting variables from the different technologies (and therefore different parts)
+	# TODO mache auch für exc später, überlege wie in allgemeine funktion überführbar
+	for capaSym in (:Conv, :StIn, :StOut, :StSize)
+	
+		retro_df = getAllVariables(Symbol(:retro,capaSym),anyM)
+		
+		if isempty(retro_df) continue end
+
+		# correct variables with retrofitting factor
+		retro_df = matchSetParameter(retro_df,anyM.parts.obj.par[:facRetroConv],anyM.sets)
+		retro_df[!,:var] = map(x -> x.start ? x.var * x.val : x.var,eachrow(retro_df))
+
+		# aggregate retrofitting variables
+		retro_df = combine(groupby(retro_df,intCol(retro_df)),:var => (x -> sum(x)) => :cnsExpr)
+		
+		# add to different cnsDic for target technology
+		for t in unique(retro_df[!,:Te_j])
+			techCnsDic_arr[filter(x -> x[2] == sysSym(t,anyM.sets[:Te]),tech_itr)[1][1]][:retroConv] = cnsCont(select(filter(x -> x.Te_j == t,retro_df),intCol(retro_df,:cnsExpr)),:equal)
+		end
+
+	end
+	
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
     for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
         anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
-    end
+	end
+	
+
+
+
     produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all technologies")
 
 	#endregion
 
 	#region # * create exchange related variables and constraints
+
+	# constraints for exchange are prepared in threaded loop and stored in an array of dictionaries
+	excSym_arr = collect(keys(anyM.parts.exc))
+	excCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(excSym_arr))
+	exc_itr = collect(enumerate(excSym_arr))
+
+	#@threads for (idx,excSym) in exc_itr
+	#	excCnsDic_arr[idx] = 
+	#end
+
+	# TODO connecte retro für exc, beachte gerichtet/ungerichtet
 
 
 	if !all(map(x -> isempty(x),values(prepExc_dic[:capaExc])))
@@ -98,14 +137,3 @@ function createOptModel!(anyM::anyModel)
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")
 end
-
-
-
-
-
-
-
-
-
-
-

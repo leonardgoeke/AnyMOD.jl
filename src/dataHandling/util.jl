@@ -73,10 +73,11 @@ getDicEmpty(dic::Dict,key::Any) = key in keys(dic) ? dic[key] : Int[]
 # ! get names of column of type integer
 intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, collect(pairs(eachcol(in_df)))),1)
 intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(namesSym(in_df),[add_sym]))
+intCol(in_df::DataFrame,add_sym::Array) = union(intCol(in_df),intersect(namesSym(in_df),add_sym))
 
 # ! puts relevant dimensions in consistent order and adds remaining entries at the end
-orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to, :C, :Te, :Te_a, :Te_b, :Exc, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
-orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te, :Te_a, :Te_b, :Exc, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
 
 # ! puts dataframes columns in consistent order
 orderDf(in_df::DataFrame) = select(in_df,orderDim(namesSym(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
@@ -90,7 +91,6 @@ filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in namesSym(var_df) ? 
 # ! makes first letter of string or symbol capital
 makeUp(in::String) = isempty(in) ? "" : string(uppercase(in[1]),in[2:end])
 makeUp(in::Symbol) = Symbol(uppercase(string(in)[1]),string(in)[2:end])
-
 
 # ! create dataframe with all potential dimensions for carrier provided
 function createPotDisp(c_arr::Array{Int,1},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
@@ -120,6 +120,14 @@ end
 # ! gets system (technology or exchange) name as symbol from id and the other way around
 sysSym(sInt::Int,sym_tree::Tree) = Symbol(getUniName(sInt,sym_tree)[end])
 sysInt(sSym::Symbol,sym_tree::Tree) = filter(x -> x.val == string(sSym),collect(values(sym_tree.nodes)))[1].idx
+
+# ! specifc utilities for exchange 
+# converts dataframe where exchange regions are given as "R_a" and "R_b" to "R_to" and "R_from" and the other way around
+convertExcCol(in_df::DataFrame) = rename(in_df, namesSym(in_df) |> (x  -> :R_a in x ? replace(x,:R_a => :R_from, :R_b => :R_to) : replace(x,:R_from => :R_a, :R_to => :R_b)))
+# converts dataframe where exchange regions are given as "a -> b" or "from -> to" to other way round
+switchExcCol(in_df::DataFrame) = rename(in_df, namesSym(in_df) |> (x  -> :R_a in x ? replace(x,:R_a => :R_b, :R_b => :R_a) : replace(x,:R_from => :R_to, :R_to => :R_from)))
+#  appends input dataframe to switches version of itself
+flipExc(in_df) = vcat(in_df,switchExcCol(in_df))
 
 #endregion
 
@@ -358,18 +366,17 @@ end
 
 # ! obtains residual capacities for technologies
 function checkResiCapa(var_sym::Symbol, stockCapa_df::DataFrame, part::AbstractModelPart, anyM::anyModel, addSym::Symbol = Symbol())
-  resiPar_sym = Symbol(var_sym,:Resi,addSym)
-   if resiPar_sym in tuple(keys(part.par)...)
-	   # search for defined residual values
-	  stock_df = filter(r -> r.val != 0.0, matchSetParameter(stockCapa_df, part.par[resiPar_sym], anyM.sets))
-   else
-	   stock_df = filter(x -> false,stockCapa_df)
-	   stock_df[!,:val] = Float64[]
-   end
+	resiPar_sym = Symbol(var_sym,:Resi,addSym)
+	if resiPar_sym in tuple(keys(part.par)...)
+		# search for defined residual values
+		stock_df = matchSetParameter(stockCapa_df, part.par[resiPar_sym], anyM.sets)
+	else
+		stock_df = filter(x -> false,stockCapa_df); stock_df[!,:val] = Float64[]
+	end
 
 	# convers returned value to affine expression
-   stock_df[!,:var] =  AffExpr.(stock_df[!,:val])
-   select!(stock_df,Not(:val))
+	stock_df[!,:var] =  AffExpr.(stock_df[!,:val])
+	select!(stock_df,Not(:val))
 
    return stock_df
 end

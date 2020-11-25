@@ -198,7 +198,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 
 		part.carrier = filter(x -> getfield(carGrp_ntup,x) != tuple(),collectKeys(keys(carGrp_ntup))) |> (y -> NamedTuple{Tuple(y)}(map(x -> getfield(carGrp_ntup,x), y)) )
 
-		# detects if any in or out carrier is a parent of another in or out carrier, removes carrier in these cases and reports on it
+		# detects if any in or out carrier is a parent of another in or out carrier and reports on it
 		for type in (:carrier_conversion_in, :carrier_conversion_out)
 			relCar_tup = carId_dic[type]
 			inherCar_tup = relCar_tup[findall(map(x -> !(isempty(filter(z -> z != x,intersect(getDescendants(x,anyM.sets[:C],true),relCar_tup)))),relCar_tup))]
@@ -218,7 +218,30 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 			filter!(x -> !isempty(x), carId_arr)
 			return
 		end
+
 		part.carrier = tuple(carId_arr...)
+
+		# detects if any exchanged carrier is a parent of another exchanged carrier and reports on it
+		inherCar_arr = carId_arr[findall(map(x -> !(isempty(filter(z -> z != x,intersect(getDescendants(x,anyM.sets[:C],true),carId_arr)))),carId_arr))]
+		if !isempty(inherCar_arr)
+			for inher in inherCar_arr
+				push!(anyM.report,(3,"technology mapping","carrier","for exchange '$(string(sSym))' the carrier '$(createFullString(inher,anyM.sets[:C]))' is a parent of another exchanged carrier, this is not supported"))
+			end
+		end
+
+		# ! writes exchange symmetry
+		# finds technology type and tries to convert to an integer
+		if Symbol(sysLong,"_symmetry") in namesSym(row_df)
+			dir_str = row_df[Symbol(sysLong,"_symmetry")]
+		else
+			dir_str = "undirected"
+		end
+		if !(dir_str in ("directed","undirected"))
+			push!(anyM.report,(3,string(sysLong) * " mapping","symmetry","unknown symmetry specification '$type_str' used, allowed are undirected and directed"))
+			return
+		end
+		part.dir = dir_str == "directed"
+
 	end
 
     # ! writes system type
@@ -342,9 +365,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 end
 
 # ! maps capacity constraints to technology
-function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
-
-    part = anyM.parts.tech[tSym]
+function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 
     capaDispRestr_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
     # extract tech info
@@ -353,46 +374,19 @@ function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
     disAgg_boo  = part.disAgg
 
     # ! writes dimension of capacity restrictions for conversion part (even if there are no inputs)
-    for side in intersect((:use,:gen),keys(carGrp_ntup))
-        # get respective carrier and their reference level
-        carDis_tup = map(getfield(carGrp_ntup,side)) do x
-                carRow_ntup = anyM.cInfo[x]
-                return x, carRow_ntup.tsDis, disAgg_boo ? balLvl_ntup.exp[2] : carRow_ntup.rDis
-        end
+	for side in intersect((:use,:gen),keys(carGrp_ntup))
 
-        carConstr_arr = Tuple{Array{Int,1},Int,Int}[]
-
-        # writes all relevant combinations by going from finest resolution up, separately for temporal and spatial (2 and 3)
-        for j = [2,3]
-            # sorts descinding by j-th column and ascending by other column
-            carDisSort_arr = sort(collect(carDis_tup), by = x -> x[j], rev=true)
-            carIt_arr =	map(1:length(carDis_tup)) do x
-                if j == 2 (sort([carDisSort_arr[y][1] for y in 1:x]), carDisSort_arr[x][2], minimum([carDisSort_arr[y][3] for y in 1:x]))
-                else (sort([carDisSort_arr[y][1] for y in 1:x]), minimum([carDisSort_arr[y][2] for y in 1:x]), carDisSort_arr[x][3]) end
-            end
-            # filters entries that exceed the reference level or are not below the reference level, if already a constraint on the reference level exists from the previous iteration
-			if side == :use && isempty(setdiff((:use,:gen),keys(carGrp_ntup)))
-				carIt_arr = carIt_arr[findall(x -> j == 2 ? x[2] > balLvl_ntup.ref[1] : x[3] > balLvl_ntup.ref[2],carIt_arr)]
-			else
-            	carIt_arr = carIt_arr[findall(x -> j == 2 ? x[2] >= balLvl_ntup.ref[1] : x[3] >= balLvl_ntup.ref[2],carIt_arr)]
-			end
-            push!(carConstr_arr, carIt_arr...)
-        end
-        carConstrUni_arr = unique(carConstr_arr)
-
-        # filter redundant and "dominated" combinations (less or the same carriers, but not more temporal or spatial detail)
-        carConstrUni_arr2 = map(i -> map(x -> x[i],carConstrUni_arr),1:3)
-        carConFilt_arr = filter(carConstrUni_arr) do x
-                        !(any((BitArray(issubset(x[1],y) for y in carConstrUni_arr2[1]) 		.&
-                        (((x[2] .<= carConstrUni_arr2[2]) .& (x[3] .< carConstrUni_arr2[3]))	.|
-                        ((x[2] .< carConstrUni_arr2[2]) .& (x[3] .<= carConstrUni_arr2[3])) 	.|
-                        ((x[2] .<= carConstrUni_arr2[2]) .& (x[3] .<= carConstrUni_arr2[3]))))	.& BitArray(map(y -> y != x,carConstrUni_arr)))) end
-
-        carConFilt_arr2 = map(i -> map(x -> x[i],carConFilt_arr),1:3)
-		typeCapa_sym = side == :use ? "in" : "out"
+		# get respective carrier and their reference level
+		carDis_arr = map(collect(getfield(carGrp_ntup,side))) do x
+			carRow_ntup = anyM.cInfo[x]
+			return x, carRow_ntup.tsDis, disAgg_boo ? balLvl_ntup.exp[2] : carRow_ntup.rDis
+		end
+		
+		restrInfo_arr = mapCapaRestr(carDis_arr,side,anyM,carGrp_ntup,balLvl_ntup)
+		typeCapa_str = side == :use ? "in" : "out"
 
         # adds necessary capacity restrictions below reference level
-        map(x -> push!(capaDispRestr_arr,(typeCapa_sym, carConFilt_arr[x][1], carConFilt_arr[x][2], carConFilt_arr[x][3])),1:length(carConFilt_arr))
+        map(x -> push!(capaDispRestr_arr,(typeCapa_str, restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])),1:length(restrInfo_arr))
     end
 
     # ! writes dimension of capacity restrictions for storage
@@ -543,4 +537,39 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 		end
 		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be the top-problem")
 	end
+end
+
+# ! maps single capacity restriction for generation, use, or exchange
+function mapCapaRestr(carDis_arr::Array,type::Symbol, anyM::anyModel, carGrp_ntup::NamedTuple = NamedTuple(), balLvl_ntup::NamedTuple = (exp = (0, 0), ref = (0, 0)))
+
+	carConstr_arr = Tuple{Array{Int,1},Int,Int}[]
+
+	# writes all relevant combinations by going from finest resolution up, separately for temporal and spatial (2 and 3)
+	for j = [2,3]
+		# sorts descinding by j-th column and ascending by other column
+		carDisSort_arr = sort(carDis_arr, by = x -> x[j], rev=true)
+		carIt_arr =	map(1:length(carDis_arr)) do x
+			if j == 2 (sort([carDisSort_arr[y][1] for y in 1:x]), carDisSort_arr[x][2], minimum([carDisSort_arr[y][3] for y in 1:x]))
+			else (sort([carDisSort_arr[y][1] for y in 1:x]), minimum([carDisSort_arr[y][2] for y in 1:x]), carDisSort_arr[x][3]) end
+		end
+		# filters entries that exceed the reference level or are not below the reference level, if already a constraint on the reference level exists from the previous iteration
+		if type == :use && isempty(setdiff((:use,:gen),keys(carGrp_ntup)))
+			carIt_arr = carIt_arr[findall(x -> j == 2 ? x[2] > balLvl_ntup.ref[1] : x[3] > balLvl_ntup.ref[2],carIt_arr)]
+		elseif type != :exc
+			carIt_arr = carIt_arr[findall(x -> j == 2 ? x[2] >= balLvl_ntup.ref[1] : x[3] >= balLvl_ntup.ref[2],carIt_arr)]
+		end
+		push!(carConstr_arr, carIt_arr...)
+	end
+	carConstrUni_arr = unique(carConstr_arr)
+
+	# filter redundant and "dominated" combinations (less or the same carriers, but not more temporal or spatial detail)
+	carConstrUni_arr2 = map(i -> map(x -> x[i],carConstrUni_arr),1:3)
+	restrInfo_arr = filter(carConstrUni_arr) do x
+					!(any((BitArray(issubset(x[1],y) for y in carConstrUni_arr2[1]) 		.&
+					(((x[2] .<= carConstrUni_arr2[2]) .& (x[3] .< carConstrUni_arr2[3]))	.|
+					((x[2] .< carConstrUni_arr2[2]) .& (x[3] .<= carConstrUni_arr2[3])) 	.|
+					((x[2] .<= carConstrUni_arr2[2]) .& (x[3] .<= carConstrUni_arr2[3]))))	.& BitArray(map(y -> y != x,carConstrUni_arr)))) end
+					
+	return restrInfo_arr
+
 end

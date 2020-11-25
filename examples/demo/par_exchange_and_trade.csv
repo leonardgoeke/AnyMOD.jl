@@ -8,22 +8,24 @@ all,power,hvac,,,West,WestNorth,East,EastNorth,capaExcUp,3,sets an upper limit f
 all,power,hvac,,,West,WestNorth,West,WestSouth,capaExcResi,1,defining a residucal capacity enables the building of exchange capacities for this regions in general (even if the residual value is zero)
 all,power,hvac,,,East,EastNorth,East,EastSouth,capaExcResi,2,defining a residucal capacity enables the building of exchange capacities for this regions in general (even if the residual value is zero)
 all,power,hvac,,,West,WestNorth,East,EastNorth,capaExcResi,3,defining a residucal capacity enables the building of exchange capacities for this regions in general (even if the residual value is zero)
-,gas,,,,West,WestNorth,West,WestSouth,capaExcResi,8,sets capacities for gas exchange between regions existing without any investment
-,gas,,,,East,EastNorth,East,EastSouth,capaExcResi,6,sets capacities for gas exchange between regions existing without any investment
-,gas,,,,West,WestNorth,East,EastSouth,capaExcResi,8,sets capacities for gas exchange between regions existing without any investment
-,gas,,,,West,WestNorth,West,WestSouth,expExcFix,0,prevents the additional expension of gas exchange capacities
-,gas,,,,East,EastNorth,East,EastSouth,expExcFix,0,prevents the additional expension of gas exchange capacities
-,gas,,,,West,WestNorth,East,EastSouth,expExcFix,0,prevents the additional expension of gas exchange capacities
+,gas1,,,,West,WestNorth,West,WestSouth,capaExcResi,8,sets capacities for gas exchange between regions existing without any investment
+,gas1,,,,East,EastNorth,East,EastSouth,capaExcResi,6,sets capacities for gas exchange between regions existing without any investment
+,gas1,,,,West,WestNorth,East,EastSouth,capaExcResi,8,sets capacities for gas exchange between regions existing without any investment
+,gas1,,,,West,WestNorth,West,WestSouth,expExcFix,0,prevents the additional expension of gas exchange capacities
+,gas1,,,,East,EastNorth,East,EastSouth,expExcFix,0,prevents the additional expension of gas exchange capacities
+,gas1,,,,West,WestNorth,East,EastSouth,expExcFix,0,prevents the additional expension of gas exchange capacities
 ,power,hvac,,,West,WestNorth,West,WestSouth,lossExc,0.02,define losses when exchanging electricty between WestNorth and WestSouth
 ,power,hvac,,,East,EastNorth,East,EastSouth,lossExc,0.02,define losses when exchanging electricty between EastNorth and EastSouth
 ,power,hvac,,,West,WestNorth,East,EastSouth,lossExc,0.04,define losses when exchanging electricty between WestNorth and EastSouth
-,gas,,,,,,,,lossExc,0.01,defines losses when exchanging gas
+,gas1,,,,,,,,lossExc,0.01,defines losses when exchanging gas
 ,power,hvac,,,West,WestSouth,East,EastSouth,capaExcResiDir,2,adds pre-existing directed exchange capacity from West to East
 ,,,,,,,,,costCrt,-2,"introduces negative costs (= revenues) for curtailing electricity, otherwise production surpluses might be ""destroyed"" via storage losses distorting results "
 ,power,hvac,,,West,WestNorth,East,EastSouth,lossExcDir,0.02,
 ,power,hvac,,,,,,,costExpExc,1000,
-,gas,,,,,,,,costOprExc,2,
+,gas1,,,,,,,,costOprExc,2,
 all,power,hvdc,,,West,WestNorth,West,WestSouth,capaExcResi,0,
 all,power,hvdc,,,East,EastNorth,East,EastSouth,capaExcResi,0,
 all,power,hvdc,,,West,WestNorth,East,EastNorth,capaExcResi,0,
-,power,hvdc,,,West,WestSouth,East,EastSouth,capaExcResiDir,0,
+,power,hvdc,,,West,WestSouth,East,EastSouth,capaExcResiDir,1,
+,gas2,,,,West,,East,,capaExcResi,5,
+,gas2,,,,West,,East,,capaExcResiDir,2,

@@ -191,7 +191,9 @@ mutable struct ExcPart <: AbstractModelPart
 	var::Dict{Symbol,DataFrame}
 	cns::Dict{Symbol,DataFrame}
 	carrier::Tuple
+	capaRestr::DataFrame
 	type::Symbol
+	dir::Bool
 	decomm::Symbol
 	expLvl::Tuple{Int,Int}
 

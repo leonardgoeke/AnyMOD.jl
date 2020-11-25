@@ -74,11 +74,17 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:costRetroStSize] = (dim = (:Ts_expSup, :R_exp, :C_i, :Ts_expSup_i, :Te_i, :C_j, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = stRetro_tup, part = :obj)
     parDef_dic[:costRetroExc]    = (dim = (:Ts_expSup, :R_a, :R_b, :Ts_expSup_i, :Exc_i, :Ts_expSup_j, :Exc_j),       problem = :top, defVal = nothing, herit = excRetro_tup, part = :obj)
 
-    parDef_dic[:facRetroConv]   = (dim = (:Ts_expSup, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j),             problem = :top, defVal = 1.0, herit = convRetro_tup, part = :techConv)
-    parDef_dic[:facRetroStIn]   = (dim = (:Ts_expSup, :R_exp, :C_i, :Ts_expSup_i, :Te_i, :C_j, :Ts_expSup_j, :Te_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :techSt)
-    parDef_dic[:facRetroStOut]  = (dim = (:Ts_expSup, :R_exp, :C_i, :Ts_expSup_i, :Te_i, :C_j, :Ts_expSup_j, :Te_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :techSt)
-    parDef_dic[:facRetroStSize] = (dim = (:Ts_expSup, :R_exp, :C_i, :Ts_expSup_i, :Te_i, :C_j, :Ts_expSup_j, :Te_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :techSt)
-    parDef_dic[:facRetroExc]    = (dim = (:Ts_expSup, :R_a, :R_b, :Ts_expSup_i, :Exc_i, :Ts_expSup_j, :Exc_j),       problem = :top, defVal = 1.0, herit = excRetro_tup, part = :exc)
+    parDef_dic[:rateRetroConv]   = (dim = (:Ts_expSup, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j),             problem = :top, defVal = nothing, herit = convRetro_tup, part = :obj)
+    parDef_dic[:rateRetroStIn]   = (dim = (:Ts_expSup, :R_exp, :C_i, :Ts_expSup_i, :Te_i, :C_j, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = stRetro_tup, part = :obj)
+    parDef_dic[:rateRetroStOut]  = (dim = (:Ts_expSup, :R_exp, :C_i, :Ts_expSup_i, :Te_i, :C_j, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = stRetro_tup, part = :obj)
+    parDef_dic[:rateRetroStSize] = (dim = (:Ts_expSup, :R_exp, :C_i, :Ts_expSup_i, :Te_i, :C_j, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = stRetro_tup, part = :obj)
+    parDef_dic[:rateRetroExc]    = (dim = (:Ts_expSup, :R_a, :R_b, :Ts_expSup_i, :Exc_i, :Ts_expSup_j, :Exc_j),       problem = :top, defVal = nothing, herit = excRetro_tup, part = :obj)
+
+    parDef_dic[:facRetroConv]   = (dim = (:Ts_expSup, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j),             problem = :top, defVal = 1.0, herit = convRetro_tup, part = :obj)
+    parDef_dic[:facRetroStIn]   = (dim = (:Ts_expSup, :R_exp, :C_i, :Ts_expSup_i, :Te_i, :C_j, :Ts_expSup_j, :Te_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :obj)
+    parDef_dic[:facRetroStOut]  = (dim = (:Ts_expSup, :R_exp, :C_i, :Ts_expSup_i, :Te_i, :C_j, :Ts_expSup_j, :Te_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :obj)
+    parDef_dic[:facRetroStSize] = (dim = (:Ts_expSup, :R_exp, :C_i, :Ts_expSup_i, :Te_i, :C_j, :Ts_expSup_j, :Te_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :obj)
+    parDef_dic[:facRetroExc]    = (dim = (:Ts_expSup, :R_a, :R_b, :Ts_expSup_i, :Exc_i, :Ts_expSup_j, :Exc_j),       problem = :top, defVal = 1.0, herit = excRetro_tup, part = :obj)
 
     #endregion
 
@@ -487,6 +493,9 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, sy
         end
     end
 
+    # ! plausibility checks of provided input data
+    checkPlaus!(anyM)
+
     return parDef_dic
 end
 
@@ -720,9 +729,32 @@ function getLimPar(partLim::OthPart,par_sym::Symbol, sys_tr::Tree; sys::Int = 0)
 	return parLim_obj
 end
 
+# ! check plausibility of several input parameters
+function checkPlaus!(anyM::anyModel)
+
+    # get array of all stock systems for storage and exchange
+    stock_dic = Dict(x => map(z -> sysInt(Symbol(z[end]),anyM.sets[x]),getfield.(filter(y -> y.type == :stock,collect(values(getfield(anyM.parts,x == :Te ? :tech : :exc)))),:name)) for x in (:Te,:Exc))
+    
+    # report on retrofitting
+    for retroPar in filter(x -> occursin("costRetro",String(x)),collect(keys(anyM.parts.obj.par)))
+        exc_boo = retroPar == :costRetroExc
+        parData_df = anyM.parts.obj.par[retroPar].data
+
+        if (exc_boo ? :Exc_j : :Te_j) in namesSym(parData_df) # reports on retrofitting costs defined for stock technologies
+            for s in intersect(parData_df[!,exc_boo ? :Exc_j : :Te_j],stock_dic[exc_boo ? :Exc : :Te])
+                push!(anyM.report,(2,"parameter data",String(retroPar),"retrofitting costs were defined with stock $(exc_boo ? :exchange : :technology) $(sysSym(s,anyM.sets[exc_boo ? :Exc : :Te])) as a target, entries are ignored"))
+            end
+        else
+            # reports on retrofitting without a specific targert technology
+            push!(anyM.report,(2,"parameter data",String(retroPar),"retrofitting costs were defined without a specific target $(exc_boo ? :exchange : :technology), this implies any system could be build by retrofitting"))
+        end
+    end
+
+end
+
 #endregion
 
-#region # * dperform match between dimension tables and parameter data
+#region # * perform match between dimension tables and parameter data
 
 # ! matches set with input parameters, uses inheritance rules for unmatched cases
 function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Dict{Symbol,Tree}; newCol::Symbol =:val, useDef::Bool = true, useNew::Bool = true)
