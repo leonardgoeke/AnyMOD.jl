@@ -226,7 +226,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
                 push!(readIn_df, [addRow_df[col] for col in readInCol_arr])
             end
         end
-        #remove inital rows with all#
+        # remove inital rows with all
         delete!(readIn_df,findall(rowsAll_arr))
     end
 

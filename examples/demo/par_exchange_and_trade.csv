@@ -26,6 +26,6 @@ all,power,hvac,,,West,WestNorth,East,EastNorth,capaExcResi,3,defining a residuca
 all,power,hvdc,,,West,WestNorth,West,WestSouth,capaExcResi,0,
 all,power,hvdc,,,East,EastNorth,East,EastSouth,capaExcResi,0,
 all,power,hvdc,,,West,WestNorth,East,EastNorth,capaExcResi,0,
-,power,hvdc,,,West,WestSouth,East,EastSouth,capaExcResiDir,1,
+,power,hvdc,,,East,EastSouth,West,WestSouth,capaExcResiDir,1,
 ,gas2,,,,West,,East,,capaExcResi,5,
-,gas2,,,,West,,East,,capaExcResiDir,2,
+,gas2,,,,East,,West,,capaExcResiDir,2,

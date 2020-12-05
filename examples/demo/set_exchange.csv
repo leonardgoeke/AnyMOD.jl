@@ -1,5 +1,5 @@
 exchange_1,exchange_2,carrier_exchange,exchange_type,exchange_decomm,exchange_symmetry
 power,hvac,electricity,stock,decomm,directed
 power,hvdc,electricity,mature,decomm,undirected
-gas1,,hydrogen; electricity,emerging,none,undirected
+gas1,,hydrogen; electricity,emerging,decomm,undirected
 gas2,,gas,emerging,decomm,directed

@@ -1,5 +1,5 @@
 
-
+#=
 eSym = :hvac
 
 excDir_arr = map(x -> sysInt(x,anyM.sets[:Exc]), filter(z -> anyM.parts.exc[z].dir, excSym_arr))
@@ -33,8 +33,8 @@ if isempty(anyM.subPro) || anyM.subPro != (0,0)
 	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for exchange")
 end
 
-
 lower_bound(collect(keys(part.var[:insCapaExc][1,:var].terms))[1])
+=#
 
 #region # * prepare and create exchange related variables
 
@@ -120,8 +120,7 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 
 	if part.dir # for directed exchange undirected residuals are applied in both directions
 		capaResi_df = flipExc(checkResiCapa(:capaExc,potExc_df, part, anyM))
-		adjVar_df = prepExc_dic[:capaExc].var
-
+		
 		if :capaExcResiDir in keys(part.par)
 			capaDirResi_df = matchSetParameter(potExc_df,part.par[:capaExcResiDir],anyM.sets)
 			capaResi_df = joinMissing(capaResi_df,capaDirResi_df,intCol(capaResi_df),:outer,Dict(:var => AffExpr(),:val => 0.0))
@@ -129,6 +128,12 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 			select!(capaResi_df,Not([:val]))
 		end
 		capaResi_df[!,:dir] .= true
+
+		if part.type != :stock
+			adjVar_df = prepExc_dic[:capaExc].var
+		else
+			adjVar_df = convertExcCol(filter(x -> x.R_a != x.R_b,select(capaResi_df,Not([:var]))))
+		end
 	else # for undirected exchange directed residuals are added to directed values
 		# obtain symmetric residual capacites
 		capaResi_df = filter(x -> x.R_a != x.R_b, checkResiCapa(:capaExc,potExc_df, part, anyM))
@@ -185,9 +190,17 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 			adjVar_df = prepExc_dic[:capaExc].var
 		end
 	end
-
+	
 	# filter cases where in and out region are the same
-	filter!(x -> x.R_a != x.R_b, capaResi_df)
+	capaResi_df = filter(x -> x.R_a != x.R_b, combine(groupby(capaResi_df,intCol(capaResi_df,:dir)),:var => (x -> sum(x)) => :var))
+
+	# operated capacity for undirected exchange will always be symmetric, therefore only the installed capacities in the direction that has smaller residuals are needed 
+	if !part.dir && part.decomm != :none
+		# adds a new temporary column where regions are is ascending order for grouping
+		capaResi_df[!,:R_sort] = map(x -> (min(x.R_a,x.R_b),max(x.R_a,x.R_b)) ,eachrow(capaResi_df))
+		# filter all rows where the other direction has a smaller residual value
+		capaResi_df = select(vcat(map(z -> minimum(getfield.(z.var,:constant)) |> (y -> filter(x -> y == x.var.constant,z)), collect(groupby(capaResi_df,[:Ts_expSup,:Ts_disSup,:Exc,:R_sort])))...),Not([:R_sort]))
+	end
 
 	prepExc_dic[:capaExc] = (var = unique(adjVar_df), resi = orderDf(convertExcCol(capaResi_df)))
 end

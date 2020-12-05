@@ -24,11 +24,11 @@ include("src/dataHandling/util.jl")
 
 #using Gurobi
 
-# TODO debuge retrotting mit verschiedenen kombis gerichtet/ungerichtet
-# TODO vermeide überflüssige constraints, bei deInsCapaExc und hvac 
+# TODO mache Storage gut:
+# TODO          Aufbau => (bla, blub); (bli) | (bla); (bli)
+# TODO          mache carrier mit mehreren gleichviel tuplen für jedes storage feld
+# TODO          ersetzte C spalte durch St => schreibe entsprechend um 
 
-
-# TODO erweitere createRestr auf exc
 anyM = anyModel("examples/demo","examples/results", objName = "test")
 createOptModel!(anyM)
 setObjective!(:costs,anyM)

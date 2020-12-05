@@ -76,8 +76,8 @@ intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(namesSy
 intCol(in_df::DataFrame,add_sym::Array) = union(intCol(in_df),intersect(namesSym(in_df),add_sym))
 
 # ! puts relevant dimensions in consistent order and adds remaining entries at the end
-orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
-orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_expSup, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to, :R_a, :R_b, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_i, :R_exp_j, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to,  :R_a, :R_b, :R_a_i, :R_b_i, :R_a_j, :R_b_j, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_i, :R_exp_j, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to, :R_a, :R_b, :R_a_i, :R_b_i, :R_a_j, :R_b_j, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
 
 # ! puts dataframes columns in consistent order
 orderDf(in_df::DataFrame) = select(in_df,orderDim(namesSym(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
