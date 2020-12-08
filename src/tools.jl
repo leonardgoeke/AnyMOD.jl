@@ -164,13 +164,13 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	allExc_df = getAllVariables(:exc,anyM)
 	if !isempty(allExc_df)
 	    # add losses to all exchange variables
-	    allExc_df = getExcLosses(convertExcCol(allExc_df),anyM.parts.exc.par,anyM.sets)
+	    allExc_df = getExcLosses(allExc_df,anyM.parts.exc.par,anyM.sets)
 	    # compute export and import of each region, losses are considered at import
-	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:R_a,:C,:scr]),:var => ( x -> value(sum(x))/1000) => :value),:R_a => :R_dis)
+	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:R_from,:C,:scr]),:var => ( x -> value(sum(x))/1000) => :value),:R_from => :R_dis)
 	    excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
 		if wrtSgn excFrom_df[!,:value] = excFrom_df[!,:value] .* -1 end
 
-	    excTo_df = rename(combine(x -> (value = value(dot(x.var,(1 .- x.loss)))/1000,),groupby(allExc_df,[:Ts_disSup,:R_b,:C,:scr])),:R_b => :R_dis)
+	    excTo_df = rename(combine(x -> (value = value(dot(x.var,(1 .- x.loss)))/1000,),groupby(allExc_df,[:Ts_disSup,:R_to,:C,:scr])),:R_to => :R_dis)
 	    excTo_df[!,:variable] .= :import; excTo_df[!,:Te] .= 0
 
 	    allData_df = vcat(allData_df,vcat(excFrom_df,excTo_df))
@@ -450,7 +450,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		end
 
 		if :in in signVar
-			addLoss_df = rename(getExcLosses(convertExcCol(exc_df),anyM.parts.exc.par,anyM.sets),:R_b => :R_dis)
+			addLoss_df = rename(getExcLosses(exc_df,anyM.parts.exc.par,anyM.sets),:R_to => :R_dis)
 			excTo_df = combine(x -> (value = value(dot(x.var,(1 .- x.loss))),),groupby(filter(filterFunc,addLoss_df), [:Ts_disSup,:Ts_dis,:R_dis,:scr]))
 			excTo_df[!,:variable] .= :import
 			filter!(x -> abs(x.value) > minVal, excTo_df)

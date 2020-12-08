@@ -115,7 +115,7 @@ end
 function addResidualCapaTech!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,tInt::Int,anyM::anyModel)
 
 	carGrp_ntup = part.carrier
-	stCar_arr = unique(vcat(collect.(map(x -> getproperty(carGrp_ntup,x),intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))))...))
+	stCar_arr = union(union(map(x -> getproperty(carGrp_ntup,x),intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut)))...)...)
 
 	for resi in (:Conv, :StIn, :StOut, :StSize)
 		# cretes dataframe of potential entries for residual capacities
@@ -123,17 +123,17 @@ function addResidualCapaTech!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPa
 			permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step))...),i) for i in (1,2)]
 			potCapa_df = DataFrame(Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], Te = fill(tInt,length(permutDim_arr[1])))
 		elseif !isempty(stCar_arr)
-			permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step,stCar_arr))...),i) for i in (1,2,3)]
-			potCapa_df = DataFrame(Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], C = permutDim_arr[3], Te = fill(tInt,length(permutDim_arr[1])))
+			permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step,collect(1:length(part.carrier[:stExtIn]))))...),i) for i in (1,2,3)]
+			potCapa_df = DataFrame(Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], Te = fill(tInt,length(permutDim_arr[1])), id = permutDim_arr[3])
 		else
 			continue
 		end
-
+		
 		potCapa_df[!,:Ts_expSup] = map(x -> part.type != :emerging ? [0] : filter(y -> y <= x,collect(anyM.supTs.step)), potCapa_df[!,:Ts_disSup])
 		potCapa_df = flatten(potCapa_df,:Ts_expSup)
 
 		# tries to obtain residual capacities and adds them to preparation dictionary
-		capaResi_df = checkResiCapa(Symbol(:capa,resi),potCapa_df, part, anyM)
+		capaResi_df = orderDf(checkResiCapa(Symbol(:capa,resi),potCapa_df, part, anyM))
 
 		if !isempty(capaResi_df)
 			mergePrepDic!(Symbol(:capa,resi),prepTech_dic,capaResi_df)
@@ -369,7 +369,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 															ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple)
 
 	conv_boo = type_sym in (:out,:in)
-	dim_arr = conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:C,:Te,:scr]
+	dim_arr = conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:Te,:id,:scr]
 	agg_arr = [:Ts_expSup,:Ts_dis,:R_dis,:scr] |> (x -> filter(x -> part.type == :emerging || x != :Ts_expSup,x))
 
 	# get relevant carriers for conversion and storage variables

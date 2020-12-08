@@ -176,7 +176,6 @@ mutable struct TechPart <: AbstractModelPart
 	carrier::NamedTuple
 	balLvl::NamedTuple{(:exp,:ref),Tuple{Tuple{Int,Int},Union{Nothing,Tuple{Int,Int}}}}
 	capaRestr::DataFrame
-	actSt::Tuple
 	type::Symbol
 	disAgg::Bool
 	modes::Tuple{Vararg{Int,N} where N}
@@ -377,13 +376,13 @@ mutable struct flowGraph
 		        end
 		    end
 
-		    car_ntup = anyM.parts.tech[sysSym(tItr,anyM.sets[:Te])].carrier
+			car_ntup = anyM.parts.tech[sysSym(tItr,anyM.sets[:Te])].carrier	
 
-		    for cIn in map(x -> getfield(car_ntup,x),intersect(keys(car_ntup),(:use,:stExtIn))) |> (y -> isempty(y) ? y : union(y...))
+		    for cIn in map(x -> x == :use ? getfield(car_ntup,x) : union(getfield(car_ntup,x)...),intersect(keys(car_ntup),(:use,:stExtIn))) |> (y -> isempty(y) ? y : union(y...))
 		        push!(edgeTe_arr, nodeC_dic[cIn] => nodeTe_dic[t])
 		    end
 
-		    for cOut in map(x -> getfield(car_ntup,x),intersect(keys(car_ntup),(:gen,:stExtOut))) |> (y -> isempty(y) ? y : union(y...))
+		    for cOut in map(x -> x == :gen ? getfield(car_ntup,x) : union(getfield(car_ntup,x)...),intersect(keys(car_ntup),(:gen,:stExtOut))) |> (y -> isempty(y) ? y : union(y...))
 		        push!(edgeTe_arr, nodeTe_dic[t] => nodeC_dic[cOut])
 		    end
 		end
@@ -558,7 +557,9 @@ mutable struct anyModel <: AbstractModel
 		if :Exc in keys(setData_dic) && !(:carrier_exchange in namesSym(setData_dic[:Exc])) 
 			push!(anyM.report,(3,"exchange mapping","carrier","column 'carrier_exchange' missing from set file for exchange"))
 		else
-			for sys in keys(sysArr_dic), t in sysArr_dic[sys] createSysInfo!(sys,sysSym(t,anyM.sets[sys]), setData_dic, anyM) end
+			for sys in keys(sysArr_dic), s in sysArr_dic[sys] 
+				createSysInfo!(sys,sysSym(s,anyM.sets[sys]), setData_dic, anyM) 
+			end
 		end
 		produceMessage(anyM.options,anyM.report, 2," - Created all mappings among sets", testErr = 3 in getindex.(anyM.report,1))
 

@@ -141,7 +141,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		# add exchange variables
 		if !isempty(anyM.parts.exc.var)
 			excVarTo_df = filterCarrier(anyM.parts.exc.var[:exc],subC_arr)
-			excVarFrom_df = convertExcCol(copy(excVarTo_df))
+			excVarFrom_df = copy(excVarTo_df)
 
 			# get loss values and apply them to variables
 			excVarFrom_df = getExcLosses(excVarFrom_df,anyM.parts.exc.par,anyM.sets)
@@ -149,7 +149,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 			select!(excVarFrom_df,Not(:loss))
 
 			# aggregate import (from) and export (to) variables
-			excFrom_arr = aggUniVar(convertExcCol(excVarFrom_df),rename(src_df,:R_dis => :R_to),[:Ts_dis,:R_to,:C,:scr],(Ts_dis = cRes_tup[1], R_to = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
+			excFrom_arr = aggUniVar(excVarFrom_df,rename(src_df,:R_dis => :R_to),[:Ts_dis,:R_to,:C,:scr],(Ts_dis = cRes_tup[1], R_to = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
 			excToMain_arr  = aggUniVar(filter(x -> x.C == c, excVarTo_df),rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C,:scr],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
 			excToDesc_arr  = aggUniVar(filter(x -> x.C != c, excVarTo_df),rename(src_df,:R_dis => :R_from),[:Ts_dis,:R_from,:C,:scr],(Ts_dis = cRes_tup[1], R_from = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
 
@@ -289,8 +289,8 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		for lim in varToPar_dic[va]
 			par_obj = copy(partLim.par[Symbol(va,lim)])
 
-			if va in (:capaExc,:insCapaExc) && :R_a in namesSym(par_obj.data) && :R_b in namesSym(par_obj.data)
-				par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_a => :R_b,:R_b => :R_a))
+			if va in (:capaExc,:insCapaExc) && :R_from in namesSym(par_obj.data) && :R_to in namesSym(par_obj.data)
+				par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_from => :R_to,:R_to => :R_from))
 			end
 			agg_tup = tuple(intCol(par_obj.data)...)
 
@@ -298,7 +298,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			if isempty(agg_tup)
 				grpVar_df = allVar_df
 			else
-				grpVar_df = combine(groupby(convertExcCol(allVar_df),collect(agg_tup)), :var => (x -> sum(x)) => :var)
+				grpVar_df = combine(groupby(allVar_df,collect(agg_tup)), :var => (x -> sum(x)) => :var)
 			end
 
 			# try to aggregate variables to limits directly provided via inputs
@@ -327,7 +327,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			end
 
 			# merge limit constraint to other limits for the same variables
-			limit_df = convertExcCol(rename(limit_df,:val => lim))
+			limit_df = rename(limit_df,:val => lim)
 			join_arr = [intersect(intCol(allLimit_df),intCol(limit_df))...,:var]
 			miss_arr = [intCol(allLimit_df),intCol(limit_df)] |> (y -> union(setdiff(y[1],y[2]), setdiff(y[2],y[1])))
 			allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr),Dict(:Up => nothing, :Low => nothing, :Fix => nothing)))

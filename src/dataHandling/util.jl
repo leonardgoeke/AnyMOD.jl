@@ -56,6 +56,9 @@ plus(a::Int,b::Int) = a + b
 plus(a::Int,b::Nothing) = a
 plus(a::Nothing,b::Int) = b
 
+# ! creates array of string from typical input of array
+makeC(in::String) = split(replace(in," " => ""),";")
+
 # ! provides names of columns as array of symbols ('names' function itself was changed from strings to symbols)
 namesSym(df::DataFrame) = map(x -> Symbol(x),names(df))
 namesSym(df::DataFrameRow) = map(x -> Symbol(x),names(df))
@@ -76,8 +79,8 @@ intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(namesSy
 intCol(in_df::DataFrame,add_sym::Array) = union(intCol(in_df),intersect(namesSym(in_df),add_sym))
 
 # ! puts relevant dimensions in consistent order and adds remaining entries at the end
-orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_i, :R_exp_j, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to,  :R_a, :R_b, :R_a_i, :R_b_i, :R_a_j, :R_b_j, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
-orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_i, :R_exp_j, :R_exp_a, :R_exp_b, :R_dis, :R_from, :R_to, :R_a, :R_b, :R_a_i, :R_b_i, :R_a_j, :R_b_j, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
 
 # ! puts dataframes columns in consistent order
 orderDf(in_df::DataFrame) = select(in_df,orderDim(namesSym(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
@@ -122,10 +125,8 @@ sysSym(sInt::Int,sym_tree::Tree) = Symbol(getUniName(sInt,sym_tree)[end])
 sysInt(sSym::Symbol,sym_tree::Tree) = filter(x -> x.val == string(sSym),collect(values(sym_tree.nodes)))[1].idx
 
 # ! specifc utilities for exchange 
-# converts dataframe where exchange regions are given as "R_a" and "R_b" to "R_to" and "R_from" and the other way around
-convertExcCol(in_df::DataFrame) = rename(in_df, namesSym(in_df) |> (x  -> :R_a in x ? replace(x,:R_a => :R_from, :R_b => :R_to) : replace(x,:R_from => :R_a, :R_to => :R_b)))
 # converts dataframe where exchange regions are given as "a -> b" or "from -> to" to other way round
-switchExcCol(in_df::DataFrame) = rename(in_df, namesSym(in_df) |> (x  -> :R_a in x ? replace(x,:R_a => :R_b, :R_b => :R_a) : replace(x,:R_from => :R_to, :R_to => :R_from)))
+switchExcCol(in_df::DataFrame) = rename(in_df, replace(namesSym(in_df),:R_from => :R_to, :R_to => :R_from))
 #  appends input dataframe to switches version of itself
 flipExc(in_df) = vcat(in_df,switchExcCol(in_df))
 
@@ -464,12 +465,12 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 				# add expressions for exchange losses
                 if :exc in keys(anyM.parts.exc.var)
 					exc_df = getAllVariables(:exc,anyM, filterFunc = x -> x.C in emC_arr)
-					exc_df = getExcLosses(convertExcCol(exc_df),anyM.parts.exc.par,anyM.sets)
+					exc_df = getExcLosses(exc_df,anyM.parts.exc.par,anyM.sets)
 					# exchange losses are equally split between import and export region
 					filter!(x -> x.loss != 0.0,exc_df)
 					if !isempty(exc_df)
 		                exc_df[!,:var] = exc_df[!,:var] .* exc_df[!,:loss] .* 0.5
-						exc_df = rename(combine(groupby(vcat(exc_df,rename(exc_df,:R_a => :R_b,:R_b => :R_a)),filter(x -> x != :R_b,intCol(exc_df))),:var => (x -> sum(x)) => :var),:R_a => :R_dis)
+						exc_df = rename(combine(groupby(vcat(exc_df,rename(exc_df,:R_from => :R_to,:R_to => :R_from)),filter(x -> x != :R_to,intCol(exc_df))),:var => (x -> sum(x)) => :var),:R_from => :R_dis)
 						# dimensions not relevant for exchange are set to 0
 						exc_df[!,:Te] .= 0; exc_df[!,:Ts_expSup] .= 0; exc_df[!,:M] .= 0
 						allVar_df = vcat(allVar_df,exc_df)

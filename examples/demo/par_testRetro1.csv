@@ -1,6 +1,6 @@
-technology_1,technology_1,technology_2,technology_3,exchange_2,exchange_2,parameter,value
-coalPlant,gasPlant,ccgt,ccgtCHP,,,costRetroConv,200
-wind,solar,openspace,,,,costRetroConv,200
-,,,,hvac,hvdc,costRetroExc,100
-coalPlant,gasPlant,ccgt,ccgtCHP,,,facRetroConv,0.7
-gasStorage,hydro,,,,,costRetroStIn,20
+technology_1,technology_1,technology_2,technology_3,exchange_2,exchange_2,timestep_1,parameter,value
+coalPlant,gasPlant,ccgt,ccgtCHP,,,2030,costRetroConv,200
+wind,solar,openspace,,,,,costRetroConv,200
+,,,,hvac,hvdc,,costRetroExc,100
+coalPlant,gasPlant,ccgt,ccgtCHP,,,,facRetroConv,0.7
+gasStorage,hydro,,,,,,costRetroStIn,20

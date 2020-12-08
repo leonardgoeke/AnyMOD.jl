@@ -78,22 +78,18 @@ function prepareExcExpansion!(excInt::Int,part::ExcPart,partLim::OthPart,prepExc
 
 	# ! determine dimensions of expansion variables (expansion for exchange capacities is NOT directed!)
 	# get all possible dimensions of exchange
-	potExc_df = getfield.(getNodesLvl(anyM.sets[:R],part.expLvl[2]),:idx)  |> (x  -> DataFrame(R_a = [x], R_b = [x], Exc = excInt))
-	potExc_df = flatten(flatten(potExc_df,:R_a), :R_b)
+	potExc_df = getfield.(getNodesLvl(anyM.sets[:R],part.expLvl[2]),:idx)  |> (x  -> DataFrame(R_from = [x], R_to = [x], Exc = excInt))
+	potExc_df = flatten(flatten(potExc_df,:R_from), :R_to)
 
 	# get dimensions where exchange should actually be defined
-	exExp_df = DataFrame(R_a = Int[], R_b = Int[], Exc = Int[])
+	exExp_df = DataFrame(R_from = Int[], R_to = Int[], Exc = Int[])
 
 	for excPar in intersect((:capaExcResi,:capaExcResiDir),keys(part.par))
-		append!(exExp_df,matchSetParameter(potExc_df,part.par[excPar],anyM.sets)[!,[:R_a,:R_b,:Exc]])
+		append!(exExp_df,matchSetParameter(potExc_df,part.par[excPar],anyM.sets)[!,[:R_from,:R_to,:Exc]])
 	end
 
 	# creates directed or undirected expansion entries
-	if part.dir
-		exExp_df = filter(y -> y.R_a != y.R_b,flipExc(unique(exExp_df)))
-	else
-		exExp_df = filter(y -> y.R_a < y.R_b,flipExc(unique(exExp_df))) |> (z -> unique(z))
-	end
+	exExp_df = unique(filter(y ->  (part.dir ? y.R_from != y.R_to : y.R_from < y.R_to),flipExc(unique(exExp_df))))
 	
 	if !isempty(exExp_df)
 		# add supordiante timesteps of expansion
@@ -103,7 +99,8 @@ function prepareExcExpansion!(excInt::Int,part::ExcPart,partLim::OthPart,prepExc
 
 		# save result to dictionary for variable creation
 		exp_df = unique(addSupTsToExp(exExp_df,part.par,:Exc,tsYear_dic,anyM))
-		prepExc_dic[:expExc] = (var = orderDf(convertExcCol(exp_df)), resi = DataFrame())
+		exp_df[!,:dir] = map(x -> part.dir,eachrow(exp_df))
+		prepExc_dic[:expExc] = (var = orderDf(exp_df), resi = DataFrame())
 	end
 end
 
@@ -114,7 +111,7 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 
 	# create dataframe of all potential exchange capacities
 	rCombi_arr = getfield.(getNodesLvl(anyM.sets[:R], part.expLvl[2]),:idx) |> (z -> [getindex.(vcat(collect(Iterators.product(z,z))...),i) for i in (1,2)])
-	potExc_df = flatten(DataFrame(Ts_disSup = fill(collect(anyM.supTs.step),length(rCombi_arr[1])), R_a = rCombi_arr[1], R_b = rCombi_arr[2], Exc = fill(eInt,length(rCombi_arr[1]))),:Ts_disSup)
+	potExc_df = flatten(DataFrame(Ts_disSup = fill(collect(anyM.supTs.step),length(rCombi_arr[1])), R_from = rCombi_arr[1], R_to = rCombi_arr[2], Exc = fill(eInt,length(rCombi_arr[1]))),:Ts_disSup)
 	potExc_df[!,:Ts_expSup] = map(x -> part.type != :emerging ? [0] : filter(y -> y <= x,collect(anyM.supTs.step)), potExc_df[!,:Ts_disSup])
 	potExc_df = flatten(potExc_df,:Ts_expSup)
 
@@ -132,13 +129,13 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 		if part.type != :stock
 			adjVar_df = prepExc_dic[:capaExc].var
 		else
-			adjVar_df = convertExcCol(filter(x -> x.R_a != x.R_b,select(capaResi_df,Not([:var]))))
+			adjVar_df = filter(x -> x.R_from != x.R_to,select(capaResi_df,Not([:var])))
 		end
 	else # for undirected exchange directed residuals are added to directed values
 		# obtain symmetric residual capacites
-		capaResi_df = filter(x -> x.R_a != x.R_b, checkResiCapa(:capaExc,potExc_df, part, anyM))
-		sortR_mat = sort(hcat([capaResi_df[!,x] for x in (:R_a,:R_b)]...);dims = 2)
-		for (index,col) in enumerate((:R_a,:R_b)) capaResi_df[!,col] = sortR_mat[:,index] end
+		capaResi_df = filter(x -> x.R_from != x.R_to, checkResiCapa(:capaExc,potExc_df, part, anyM))
+		sortR_mat = sort(hcat([capaResi_df[!,x] for x in (:R_from,:R_to)]...);dims = 2)
+		for (index,col) in enumerate((:R_from,:R_to)) capaResi_df[!,col] = sortR_mat[:,index] end
 
 		# manipulate entries in case directed residual capacities are defined
 		if :capaExcResiDir in keys(part.par)
@@ -146,8 +143,8 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 			directExc_df = matchSetParameter(potExc_df,part.par[:capaExcResiDir],anyM.sets)
 			directExc_df[!,:var] = map(x -> AffExpr(x), directExc_df[!,:val]); select!(directExc_df,Not(:val))
 
-			excDim_arr = [:Ts_disSup, :Ts_expSup, :R_a, :R_b, :Exc]
-			excDimP_arr = replace(excDim_arr,:R_a => :R_b, :R_b => :R_a)
+			excDim_arr = [:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc]
+			excDimP_arr = replace(excDim_arr,:R_from => :R_to, :R_to => :R_from)
 
 			#  entries, where a directed capacity is provided and a symmetric one already exists
 			bothExc_df = vcat(innerjoin(directExc_df, capaResi_df; on = excDim_arr, makeunique = true), innerjoin(directExc_df, capaResi_df; on = Pair.(excDim_arr,excDimP_arr), makeunique = true))
@@ -179,7 +176,7 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 			allVar_df = prepExc_dic[:capaExc].var
 			if !isempty(prepExc_dic[:capaExc].var)
 				undirBoth_df = flipExc(dirExc_df)[!,Not(:dir)]
-				dirVar_df = convertExcCol(innerjoin(convertExcCol(allVar_df[!,Not(:dir)]), vcat(undirBoth_df,swtExc_df)[!,Not(:var)],on = excDim_arr))
+				dirVar_df = innerjoin(allVar_df[!,Not(:dir)], vcat(undirBoth_df,swtExc_df)[!,Not(:var)],on = excDim_arr)
 				dirVar_df[!,:dir] .= true
 				adjVar_df = vcat(dirVar_df,antijoin(allVar_df,dirVar_df,on = [:Ts_disSup, :Ts_expSup, :R_from, :R_to] ))
 			else
@@ -192,17 +189,19 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 	end
 	
 	# filter cases where in and out region are the same
-	capaResi_df = filter(x -> x.R_a != x.R_b, combine(groupby(capaResi_df,intCol(capaResi_df,:dir)),:var => (x -> sum(x)) => :var))
+	capaResi_df = filter(x -> x.R_from != x.R_to, combine(groupby(capaResi_df,intCol(capaResi_df,:dir)),:var => (x -> sum(x)) => :var))
 
 	# operated capacity for undirected exchange will always be symmetric, therefore only the installed capacities in the direction that has smaller residuals are needed 
 	if !part.dir && part.decomm != :none
 		# adds a new temporary column where regions are is ascending order for grouping
-		capaResi_df[!,:R_sort] = map(x -> (min(x.R_a,x.R_b),max(x.R_a,x.R_b)) ,eachrow(capaResi_df))
+		capaResi_df[!,:R_sort] = map(x -> (min(x.R_from,x.R_to),max(x.R_from,x.R_to)) ,eachrow(capaResi_df))
 		# filter all rows where the other direction has a smaller residual value
 		capaResi_df = select(vcat(map(z -> minimum(getfield.(z.var,:constant)) |> (y -> filter(x -> y == x.var.constant,z)), collect(groupby(capaResi_df,[:Ts_expSup,:Ts_disSup,:Exc,:R_sort])))...),Not([:R_sort]))
+		# since residuals for directins were set to value of smaller direction are variables are not directed anymore
+		adjVar_df[!,:dir] .= false; capaResi_df[!,:dir] .= false
 	end
 
-	prepExc_dic[:capaExc] = (var = unique(adjVar_df), resi = orderDf(convertExcCol(capaResi_df)))
+	prepExc_dic[:capaExc] = (var = unique(adjVar_df), resi = orderDf(capaResi_df))
 end
 
 # ! create exchange variables
@@ -324,11 +323,11 @@ function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array
 	cns_df[dir_arr,:disp] = cns_df[dir_arr,:disp] .+ aggUniVar(switchExcCol(relDisp_df),cns_df[dir_arr,:],[:Ts_dis,:R_from,:R_to,:scr],cRes_tup,anyM.sets)
 
 	# add availablities to dataframe
-	cns_df = matchSetParameter(convertExcCol(cns_df),part.par[:avaExc],anyM.sets, newCol = :avaSym)
+	cns_df = matchSetParameter(cns_df,part.par[:avaExc],anyM.sets, newCol = :avaSym)
 
 	if :avaExcDir in keys(part.par)
 		dirAva_df = matchSetParameter(cns_df[!,intCol(cns_df,:dir)],part.par[:avaExcDir],anyM.sets, newCol = :avaDir)
-		cns_df = joinMissing(cns_df,dirAva_df,[:Ts_disSup,:Ts_dis,:R_a,:R_b,:C,:dir],:left, Dict(:avaDir => nothing))
+		cns_df = joinMissing(cns_df,dirAva_df,[:Ts_disSup,:Ts_dis,:R_from,:R_to,:C,:dir],:left, Dict(:avaDir => nothing))
 	else
 		cns_df[!,:avaDir] .= nothing
 	end
@@ -337,7 +336,7 @@ function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array
 	cns_df[!,:cnsExpr] = map(x -> x.disp  - x.capa * (isnothing(x.avaDir) ? x.avaSym : x.avaDir), eachrow(cns_df))
 	scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 
-	return convertExcCol(cns_df) |> (x -> select(x,intCol(x,:cnsExpr)))
+	return select(cns_df,intCol(cns_df,:cnsExpr))
 end
 
 #endregion
@@ -347,7 +346,7 @@ end
 # ! obtain values for exchange losses
 function getExcLosses(exc_df::DataFrame,excPar_dic::Dict{Symbol,ParElement},sets_dic::Dict{Symbol,Tree})
 	lossPar_obj = copy(excPar_dic[:lossExc])
-	if :R_a in namesSym(lossPar_obj.data) && :R_b in namesSym(lossPar_obj.data)
+	if :R_from in namesSym(lossPar_obj.data) && :R_to in namesSym(lossPar_obj.data)
 		lossPar_obj.data = flipExc(lossPar_obj.data)
 	end
 	excLoss_df = matchSetParameter(exc_df,lossPar_obj,sets_dic,newCol = :loss)

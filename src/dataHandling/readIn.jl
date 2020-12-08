@@ -54,15 +54,19 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 		anyM.sets[:scr] = createTree(DataFrame(scenario_1 = String[]),:scenario,anyM.report)
 	end
 
-	# reports, if a required set was not defined or if non-unique carrier names were defined
+	# reports, if reserved chars were used in set names, if a required set was not defined, or if a non-unique carrier or technology names was defined
 	for set in filter(x -> !(x in (:mode, :id, :scenario, :exchange)), collectKeys(keys(setLngShrt_dic)))
+		strSet_arr = getfield.(values(anyM.sets[setLngShrt_dic[set]].nodes),:val)
+		if any(occursin.(")",strSet_arr)) push!(anyM.report,(3,"set read-in",string(set),"reserved character ')' in set name detected")) end
+		if any(occursin.("(",strSet_arr)) push!(anyM.report,(3,"set read-in",string(set),"reserved character '(' in set name detected")) end
+		if any(occursin.(";",strSet_arr)) push!(anyM.report,(3,"set read-in",string(set),"reserved character ';' in set name detected")) end
+		
 		if !(setLngShrt_dic[set] in keys(setData_dic))
 			push!(anyM.report,(3,"set read-in",string(set),"no file provided to define set"))
 		elseif set == :carrier || set == :technology || set == :exchange
 			# reports error if carrier names are non-unique
-			strSet_arr = getfield.(values(anyM.sets[setLngShrt_dic[set]].nodes),:val)
 			if length(strSet_arr) != length(unique(strSet_arr))
-				push!(anyM.report,(3,"set read-in",set,"non-unique $set names detected"))
+				push!(anyM.report,(3,"set read-in",string(set),"non-unique $set names detected"))
 			end
 		end
 	end
@@ -123,7 +127,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 	end
 
 	setNames_arr = filterSetColumns(readIn_df,set_arr)
-    oprNames_arr = filterSetColumns(readIn_df,[:parameter,:variable,:value, :id])
+    oprNames_arr = filterSetColumns(readIn_df,[:parameter,:variable,:value,:id])
 	readInColAll_tup = tuple(namesSym(readIn_df)...)
 
 	# drop irrelevant column that do not relate to a set or an operator or are completely empty

@@ -104,8 +104,8 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			else
 				lifePar_obj = anyM.parts.exc.par[:lifeExc]
 			end
-			techLife_df = matchSetParameter(convertExcCol(filter(x -> isnothing(x.life),allExp_df))[!,Not(:life)],lifePar_obj,anyM.sets,newCol = :life)
-			allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),convertExcCol(allExp_df)))
+			techLife_df = matchSetParameter(filter(x -> isnothing(x.life),allExp_df)[!,Not(:life)],lifePar_obj,anyM.sets,newCol = :life)
+			allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),allExp_df))
 
 			# gets expansion costs and interest rate to compute annuity
 			allExp_df = matchSetParameter(allExp_df,partObj.par[costPar_sym],anyM.sets,newCol = :costExp)
@@ -122,8 +122,8 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			if va != :Exc
 				generRate_df = matchSetParameter(generRate_df, partObj.par[:rateDisc],anyM.sets,newCol = :rate)
 			else
-				rateB_arr = matchSetParameter(rename(generRate_df,:R_a => :R_exp), partObj.par[:rateDisc],anyM.sets,newCol = :rateA)[!,:rateA]
-				rateA_arr = matchSetParameter(rename(generRate_df,:R_b => :R_exp), partObj.par[:rateDisc],anyM.sets,newCol = :rateB)[!,:rateB]
+				rateB_arr = matchSetParameter(rename(generRate_df,:R_from => :R_exp), partObj.par[:rateDisc],anyM.sets,newCol = :rateA)[!,:rateA]
+				rateA_arr = matchSetParameter(rename(generRate_df,:R_to => :R_exp), partObj.par[:rateDisc],anyM.sets,newCol = :rateB)[!,:rateB]
 				generRate_df[!,:rate] = 0.5 .* (rateA_arr .+ rateB_arr)
 			end
 			allExp_df = vcat(techRate_df,rename(generRate_df, :Ts_expSup => :Ts_disSup, :Ts_disSup => :Ts_expSup))
@@ -134,7 +134,7 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			allExp_df = flatten(allExp_df,:Ts_disSup)
 
 			# adds discount factor and computes cost expression
-			allExp_df = matchSetParameter(convertExcCol(allExp_df),partObj.par[va != :Exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
+			allExp_df = matchSetParameter(allExp_df,partObj.par[va != :Exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
 
 			# ! groups cost expressions by technology, scales groups expression and creates a variables for each grouped entry
 			allExp_df = rename(combine(x -> (expr = sum(x.disFac .* x.exp .* x.costAnn),) ,groupby(allExp_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:C])),:Ts_disSup => :Ts_exp)
@@ -159,8 +159,8 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 	        end
 
 			# joins costs and discount factors to create cost expression
-			allCapa_df = matchSetParameter(convertExcCol(allCapa_df),partObj.par[costPar_sym],anyM.sets,newCol = :costOpr)
-			allCapa_df = matchSetParameter(convertExcCol(allCapa_df),partObj.par[va != :Exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
+			allCapa_df = matchSetParameter(allCapa_df,partObj.par[costPar_sym],anyM.sets,newCol = :costOpr)
+			allCapa_df = matchSetParameter(allCapa_df,partObj.par[va != :Exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
 
 			if isempty(allCapa_df) continue end
 
@@ -195,13 +195,13 @@ function createObjective!(objGrp::Val{:costs},partObj::OthPart,anyM::anyModel)
 			# special case for variable costs of exchange (direct and symmetric values need to be considered both) and of use (emission price needs to be considered)
 			if va == :exc
 				if :costVarExcDir in parObj_arr
-					dirCost_df = matchSetParameter(convertExcCol(allDisp_df),anyM.parts.obj.par[:costVarExcDir],anyM.sets,newCol = :costVar)
+					dirCost_df = matchSetParameter(allDisp_df,anyM.parts.obj.par[:costVarExcDir],anyM.sets,newCol = :costVar)
 				else
-					dirCost_df = convertExcCol(allDisp_df[[],:])
+					dirCost_df = allDisp_df[[],:]
 				end
-				noDirCost_df = matchSetParameter(antijoin(convertExcCol(allDisp_df),dirCost_df, on = intCol(dirCost_df)),anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
+				noDirCost_df = matchSetParameter(antijoin(allDisp_df,dirCost_df, on = intCol(dirCost_df)),anyM.parts.obj.par[costPar_sym],anyM.sets,newCol = :costVar)
 
-				allDisp_df = rename(convertExcCol(vcat(dirCost_df,noDirCost_df)),:var => :disp)
+				allDisp_df = rename(vcat(dirCost_df,noDirCost_df),:var => :disp)
 			elseif va == :use && :emissionPrc in parObj_arr && :emissionFac in keys(anyM.parts.lim.par)
 				# get emission prices as a costs entry
 				emPrc_df = matchSetParameter(select(allDisp_df,Not(:disp)),partObj.par[:emissionPrc],anyM.sets, newCol = :prc)
