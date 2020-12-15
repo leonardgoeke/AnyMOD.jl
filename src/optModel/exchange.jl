@@ -53,7 +53,7 @@ function prepareExc!(excSym_arr::Array{Symbol,1},prepAllExc_dic::Dict{Symbol,Dic
 			# obtain dimensions of expansion variables for exchange
 			prepareExcExpansion!(excInt,part,partLim,prepExc_dic,tsYear_dic,anyM)
 			# obtain capacity dimensions solely based on expansion variables
-			prepareCapacity!(part,prepExc_dic,prepExc_dic[:expExc].var,:capaExc,anyM)
+			if !isempty(prepExc_dic) prepareCapacity!(part,prepExc_dic,prepExc_dic[:expExc].var,:capaExc,anyM) end
 		else
 			prepExc_dic[:capaExc] = (var = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], Exc = Int[], dir = Bool[]), resi = DataFrame())
 		end
@@ -114,6 +114,7 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 	potExc_df = flatten(DataFrame(Ts_disSup = fill(collect(anyM.supTs.step),length(rCombi_arr[1])), R_from = rCombi_arr[1], R_to = rCombi_arr[2], Exc = fill(eInt,length(rCombi_arr[1]))),:Ts_disSup)
 	potExc_df[!,:Ts_expSup] = map(x -> part.type != :emerging ? [0] : filter(y -> y <= x,collect(anyM.supTs.step)), potExc_df[!,:Ts_disSup])
 	potExc_df = flatten(potExc_df,:Ts_expSup)
+	filter!(x -> x.R_from != x.R_to,potExc_df)
 
 	if part.dir # for directed exchange undirected residuals are applied in both directions
 		capaResi_df = flipExc(checkResiCapa(:capaExc,potExc_df, part, anyM))
@@ -126,10 +127,10 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 		end
 		capaResi_df[!,:dir] .= true
 
-		if part.type != :stock
+		if part.type != :stock && !isempty(prepExc_dic)
 			adjVar_df = prepExc_dic[:capaExc].var
 		else
-			adjVar_df = filter(x -> x.R_from != x.R_to,select(capaResi_df,Not([:var])))
+			adjVar_df = select(capaResi_df,Not([:var]))
 		end
 	else # for undirected exchange directed residuals are added to directed values
 		# obtain symmetric residual capacites

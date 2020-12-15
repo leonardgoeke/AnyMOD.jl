@@ -78,6 +78,9 @@ intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, collect(pa
 intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(namesSym(in_df),[add_sym]))
 intCol(in_df::DataFrame,add_sym::Array) = union(intCol(in_df),intersect(namesSym(in_df),add_sym))
 
+# ! returns the number of different capacity groups of storage from named tuple of carriers
+countStGrp(carGrp_ntup::NamedTuple) = intersect((:stExtIn,:stsExtOut,:stIntIn,:stsIntOut),collect(keys(carGrp_ntup))) |> (z ->  isempty(z) ? 0 : maximum(map(x -> length(getfield(carGrp_ntup,x)),z)))
+
 # ! puts relevant dimensions in consistent order and adds remaining entries at the end
 orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
 orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc_i, :Exc_j, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
@@ -91,7 +94,7 @@ mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  
 # ! check if dataframe should be considered, if energy balance is created for carriers in array
 filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in namesSym(var_df) ? filter(r -> r.C in c_arr,var_df) : var_df
 
-# ! makes first letter of string or symbol capital
+# ! makes first letter of string or symbol capital or non-capital
 makeUp(in::String) = isempty(in) ? "" : string(uppercase(in[1]),in[2:end])
 makeUp(in::Symbol) = Symbol(uppercase(string(in)[1]),string(in)[2:end])
 
@@ -256,7 +259,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 
 	# ! filter entries from srcEtr_df, that based on isolated anlysis of columns will not have any values aggregated to
 	idxRel_set = BitSet(1:size(srcEtr_df,1))
-	for dim in agg_tup
+	for dim in filter(x -> x != :id, collect(agg_tup))
 		set_sym = Symbol(split(string(dim),"_")[1])
 		allAgg_set = unique(aggEtr_df[!,dim]) |> (z -> union(BitSet(z),map(y -> BitSet(getAncestors(y,sets_dic[set_sym],:int,0)), z)...))
 		idxRel_set = intersect(idxRel_set,BitSet(findall(map(x -> x in allAgg_set, srcEtr_df[!,dim]))))
@@ -277,7 +280,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 
 		# to every unique value in column the value itself and its children are assigned
 		set_sym = Symbol(split(string(col),"_")[1])
-		idxChild_dic = Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set)
+		idxChild_dic = col != :id ? Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set) : Dict(x => x for x in searchVal_set)
 
 		# for each unique value in column the rows with children are assigned
 		grp_df = groupby(DataFrame(val = findCol_arr, id = 1:length(findCol_arr)),:val)
@@ -494,7 +497,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 	return filter(filterFunc,allVar_df)
 end
 
-# ! replaces orginal carriers in var_df with all leafes connected to respective carrier (and itself) and flattens it
+# ! replaces original carriers in var_df with all leafes connected to respective carrier (and itself) and flattens it
 function replCarLeafs(var_df::DataFrame,c_tree::Tree;cCol::Symbol=:C,noLeaf::Array{Int,1} = Int[])
 
 	cToLeafs_dic = Dict(x => filter(y -> isempty(c_tree.nodes[y].down) || y in noLeaf,[x,getDescendants(x,c_tree,true)...]) for x in unique(var_df[!,cCol]))

@@ -492,9 +492,9 @@ function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64
 
 	# writes full name for each variable
 	setData_df = orderDf(setData_df)
-	dim_arr = map(x -> Symbol(split(String(x),"_")[1]), filter(r -> r != :id,intCol(setData_df)))
-	dim_int = length(dim_arr)
-	setData_df[!,:name] = string.(name_str,"[",map(x -> join(map(y -> sets[dim_arr[y]].nodes[x[y]].val,1:dim_int),", "),eachrow(setData_df)),"]")
+	dim_int = length(intCol(setData_df))
+	col_dic = Dict(x => Symbol(split(String(intCol(setData_df)[x]),"_")[1]) for x in 1:dim_int)
+	setData_df[!,:name] = string.(name_str,"[",map(x -> join(map(y -> col_dic[y] != :id ? sets[col_dic[y]].nodes[x[y]].val : x[y],1:dim_int),", "),eachrow(setData_df)),"]")
 
 	lock(lock_)
 	if arr_boo

@@ -177,14 +177,13 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 				end
 			end
 		end
-
+		
 		# writes all relevant type of dispatch variables and respective carrier
 		grpSt_int = length(carId_dic[:carrier_stored_out])
 		carGrp_ntup = (use = carId_dic[:carrier_conversion_in], gen = carId_dic[:carrier_conversion_out], 
 							stExtIn = carId_dic[:carrier_stored_in], stExtOut = carId_dic[:carrier_stored_out],
 								stIntIn = tuple(map(x -> tuple(intersect(carId_dic[:carrier_conversion_out],carId_dic[:carrier_stored_out][x])...),1:grpSt_int)...), 
 									stIntOut = tuple(map(x -> tuple(intersect(carId_dic[:carrier_conversion_in],carId_dic[:carrier_stored_in][x])...),1:grpSt_int)...))
-		
 		
 		# report on suspicious looking carrier constellations
 		if isempty(union(carId_dic[:carrier_conversion_out],union(carId_dic[:carrier_stored_out]...))) push!(anyM.report,(2,"technology mapping","carrier","technology '$(string(sSym))' has no output")) end
@@ -199,7 +198,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 			end
 		end
 		
-		part.carrier = filter(x -> getfield(carGrp_ntup,x) != tuple(),collectKeys(keys(carGrp_ntup))) |> (y -> NamedTuple{Tuple(y)}(map(x -> getfield(carGrp_ntup,x), y)) )
+		part.carrier = filter(x -> !(typeof(getfield(carGrp_ntup,x)) <: Tuple{Vararg{<:Tuple{}}}),collectKeys(keys(carGrp_ntup))) |> (y -> NamedTuple{Tuple(y)}(map(x -> getfield(carGrp_ntup,x), y)) )
 
 		# detects if any in or out carrier is a parent of another in or out carrier and reports on it
 		for type in (:carrier_conversion_in, :carrier_conversion_out, :carrier_stored_out, :carrier_stored_in)
@@ -369,7 +368,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for technology $(string(sSym))")
 end
 
-# ! maps capacity constraints to technology
+# ! maps capacity constraints to technology or exchange
 function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 
     capaDispRestr_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
@@ -395,8 +394,7 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
     end
 
 	# ! writes dimension of capacity restrictions for storage
-	grpSt_int = length(carGrp_ntup.stExtIn)
-	for g in 1:grpSt_int
+	for g in 1:countStGrp(carGrp_ntup)
 		stInVar_arr, stOutVar_arr = [intersect(x,keys(carGrp_ntup)) for x in ((:stExtIn,:stIntIn),(:stExtOut,:stIntOut))]
 		if isempty(stInVar_arr) && !isempty(stOutVar_arr) continue end
 		for st in (:stIn,:stOut,:stSize)
@@ -406,7 +404,6 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 			restrInfo_arr = mapCapaRestr(carDis_arr,:exc,anyM,carGrp_ntup,balLvl_ntup)
 			map(x -> push!(capaDispRestr_arr,(string(st,"_",g), restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])),1:length(restrInfo_arr))
 		end
-
 	end
 
     part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : categorical(rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR))

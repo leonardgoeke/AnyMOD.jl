@@ -115,7 +115,7 @@ end
 function addResidualCapaTech!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,tInt::Int,anyM::anyModel)
 
 	carGrp_ntup = part.carrier
-	stCar_arr = union(union(map(x -> getproperty(carGrp_ntup,x),intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut)))...)...)
+	stCar_arr = intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut)) |> (z -> isempty(z) ? Int[] : unique(union(union(map(x -> getproperty(carGrp_ntup,x),z)...)...)))
 
 	for resi in (:Conv, :StIn, :StOut, :StSize)
 		# cretes dataframe of potential entries for residual capacities
@@ -123,7 +123,8 @@ function addResidualCapaTech!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPa
 			permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step))...),i) for i in (1,2)]
 			potCapa_df = DataFrame(Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], Te = fill(tInt,length(permutDim_arr[1])))
 		elseif !isempty(stCar_arr)
-			permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step,collect(1:length(part.carrier[:stExtIn]))))...),i) for i in (1,2,3)]
+
+			permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step,collect(1:countStGrp(carGrp_ntup))))...),i) for i in (1,2,3)]
 			potCapa_df = DataFrame(Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], Te = fill(tInt,length(permutDim_arr[1])), id = permutDim_arr[3])
 		else
 			continue
@@ -156,14 +157,13 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
 		else
-            lock(anyM.lock)
 			basis_df = orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
-			unlock(anyM.lock)
-			# filter carriers that are can be actively stored, although they got descendants
-			intC_arr = union(collect(part.actSt),map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...)))
-			basis_df = replCarLeafs(basis_df,anyM.sets[:C],noLeaf = intC_arr)
-			# filter entries that are already descendants of carrier being actively stored
-			unique(vcat(map(x -> filter(y -> x != y,getDescendants(x,anyM.sets[:C],true)),unique(basis_df[!,:C]))...)) |> (z -> filter!(x -> !(x.C in z) || x.C in intC_arr,basis_df))
+			# gets array of carriers defined for each group of storage
+			subField_arr = intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(part.carrier))
+			idC_dic = Dict(y => union(map(x -> getfield(part.carrier,x)[y],subField_arr)...) for y in 1:length(part.carrier[subField_arr[1]]))
+			# expands capacities according to carriers
+			basis_df[!,:C] .= map(x -> idC_dic[x],basis_df[!,:id])
+			basis_df = orderDf(flatten(basis_df,:C))
 		end
 
 		# adds temporal and spatial level to dataframe
@@ -261,21 +261,21 @@ function createStBal(part::TechPart,anyM::anyModel)
 	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), cnsDim_arr)
 
 	# obtain all different carriers of level variable and create array to store the respective level constraint data
-	uniC_arr = unique(cns_df[!,:C])
-	cCns_arr = Array{DataFrame}(undef,length(uniC_arr))
+	uniId_arr = map(x -> (x.C,x.id),eachrow(unique(cns_df[!,[:C,:id]])))
+	cCns_arr = Array{DataFrame}(undef,length(uniId_arr))
 
-	for (idx,c) in enumerate(uniC_arr)
+	for (idx,bal) in enumerate(uniId_arr)
 
 		# get constraints relevant for carrier and find rows where mode is specified
-		cnsC_df = filter(x -> x.C == c,cns_df)
+		cnsC_df = filter(x -> x.C == bal[1] && x.id == bal[2],cns_df)
 
 		m_arr = findall(0 .!= cnsC_df[!,:M])
 		noM_arr = setdiff(1:size(cnsC_df,1),m_arr)
 
 		if part.type == :emerging
-			srcRes_ntup = anyM.cInfo[c] |> (x -> (Ts_expSup = anyM.supTs.lvl, Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl, M = 1))
+			srcRes_ntup = anyM.cInfo[bal[1]] |> (x -> (Ts_expSup = anyM.supTs.lvl, Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[bal[1]].lvl, M = 1))
 		else
-			srcRes_ntup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl, M = 1))
+			srcRes_ntup = anyM.cInfo[bal[1]] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[bal[1]].lvl, M = 1))
 		end
 
 		# ! join in and out dispatch variables and adds efficiency to them (hence efficiency can be specific for different carriers that are stored in and out)
@@ -286,7 +286,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 			effPar_sym = typ == :in ? :effStIn : :effStOut
 			# adds dispatch variables
 			typExpr_arr = map(allType_arr) do va
-				typVar_df = filter(x -> x.C == c,part.par[effPar_sym].data) |> (x -> innerjoin(part.var[va],x; on = intCol(x)))
+				typVar_df = filter(x -> x.C == bal[1],part.par[effPar_sym].data) |> (x -> innerjoin(part.var[va],x; on = intCol(x)))
 				if typ == :in
 					typVar_df[!,:var] = typVar_df[!,:var] .* typVar_df[!,:val]
 				else
@@ -346,14 +346,15 @@ function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{I
 	# loop over groups of capacity restrictions (like out, stIn, ...)
 	for restrGrp in capaRestr_gdf
 		# relevant capacity variables
-		type_sym = Symbol(restrGrp.cnstrType[1])
+		type_sym = Symbol(split(String(restrGrp.cnstrType[1]),"_")[1])
 		info_ntup = cnstrType_dic[type_sym]
 
 		allCns_arr = Array{DataFrame}(undef,size(restrGrp,1))
 
 		# loop over indiviudal constraints
 		for (idx,restr) in enumerate(eachrow(restrGrp))
-			allCns_arr[idx] = createRestr(part,copy(part.var[Symbol(:capa,info_ntup.capa)]),restr,type_sym,info_ntup,ts_dic,r_dic,anyM.sets,anyM.supTs)
+			capaVar_df = copy(part.var[Symbol(:capa,info_ntup.capa)]) |> (z -> type_sym in (:stIn,:stOut,:stSize) ? filter(x -> x.id == parse(Int,split(String(restrGrp.cnstrType[1]),"_")[2]),z) : z)
+			allCns_arr[idx] = createRestr(part,capaVar_df,restr,type_sym,info_ntup,ts_dic,r_dic,anyM.sets,anyM.supTs)
 		end
 
 		allCns_df = vcat(allCns_arr...)
@@ -371,11 +372,6 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	conv_boo = type_sym in (:out,:in)
 	dim_arr = conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:Te,:id,:scr]
 	agg_arr = [:Ts_expSup,:Ts_dis,:R_dis,:scr] |> (x -> filter(x -> part.type == :emerging || x != :Ts_expSup,x))
-
-	# get relevant carriers for conversion and storage variables
-	relConv_arr = restr.car
-	intC_arr = union(collect(part.actSt),map(y -> part.carrier[y],filter(x -> x in keys(part.carrier),[:stIntIn,:stIntOut])) |> (y -> isempty(y) ? Int[] : union(y...)))
-	relSt_arr = filter(y -> isempty(sets_dic[:C].nodes[y].down) || y in intC_arr, [restr.car[1],getDescendants(restr.car[1],sets_dic[:C],true)...])
 
 	# determines dimensions for aggregating dispatch variables
 	capaVar_df[!,:lvlTs] .= restr.lvlTs
@@ -404,12 +400,7 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
 	for va in dispVar_arr
 		# filter dispatch variables not belonging to relevant carrier
-		if va in (:gen,:use)
-			relC_arr = relConv_arr
-		else
-			relC_arr = relSt_arr
-		end
-		allVar_df = filter(r -> r.C in relC_arr, part.var[va])[!,Not(:Ts_disSup)]
+		allVar_df = filter(r -> r.C in restr.car, part.var[va])[!,Not(:Ts_disSup)]
 
 		# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
 		ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:ava,info_ntup.capa)],sets_dic, newCol = :ava)[!,:ava]
@@ -449,11 +440,11 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},r_dic::Dic
 	signLim_dic = Dict(:Up => :greater, :Low => :smaller, :Fix => :equal)
 
 	# loop over parameters for conversion ratios
-	for par in filter(x -> occursin("ratioEner",string(x)),collectKeys(keys(parToLim_dic)))
+	for par in filter(x -> occursin("ratio",string(x)),collectKeys(keys(parToLim_dic)))
 
 		for lim in parToLim_dic[par]
 
-			ratioType_sym = par == :ratioEnerOut ? :out : :in
+			ratioType_sym = par == :ratioOut ? :out : :in
 
 			# obtain variable name and parameter data
 			cns_df = rename(copy(part.par[Symbol(par,lim)].data),:val => :ratio)
@@ -496,7 +487,7 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},r_dic::Dic
 	end
 
 	# loops over all other parameters (ratios on storage capacity, flh, cycling)
-	for par in filter(x -> !occursin("ratioEner",string(x)),collectKeys(keys(parToLim_dic)))
+	for par in filter(x -> !occursin("ratio",string(x)),collectKeys(keys(parToLim_dic)))
 
 		capaRatio_boo = par in (:stInToConv, :stOutToStIn, :sizeToStIn)
 
