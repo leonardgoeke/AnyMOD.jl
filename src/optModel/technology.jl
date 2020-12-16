@@ -32,7 +32,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 	    produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
 
 	    # create conversion balance for conversion technologies
-	    if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn))))
+	    if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && :capaConv in keys(part.var)
 	        cns_dic[:convBal] = createConvBal(part,anyM)
 	        produceMessage(anyM.options,anyM.report, 3," - Prepared conversion balance for technology $(tech_str)")
 	    end
@@ -150,13 +150,13 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,))
 
 	for va in collectKeys(keys(part.carrier)) |> (x -> :capaStIn in keys(part.var) ? [:stLvl,x...]  : x) # loop over all relevant kind of variables
-		conv_boo = va in (:gen,:use)
+		conv_boo = va in (:gen,:use) && :capaConv in keys(part.var)
 		# obtains relevant capacity variable
 		if conv_boo
-			basis_df = copy(part.var[:capaConv ])[!,Not(:var)]
+			basis_df = copy(part.var[:capaConv])[!,Not(:var)]
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
-		else
+		elseif :capaConv in keys(part.var)
 			basis_df = orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
 			# gets array of carriers defined for each group of storage
 			subField_arr = intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(part.carrier))
@@ -351,10 +351,16 @@ function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{I
 
 		allCns_arr = Array{DataFrame}(undef,size(restrGrp,1))
 
+		# obtains corresponding capacity if any exists
+		if Symbol(:capa,info_ntup.capa) in keys(part.var)
+			capaVar_df = part.var[Symbol(:capa,info_ntup.capa)] |> (z -> type_sym in (:stIn,:stOut,:stSize) ? filter(x -> x.id == parse(Int,split(String(restrGrp.cnstrType[1]),"_")[2]),z) : z)
+		else
+			continue
+		end
+
 		# loop over indiviudal constraints
 		for (idx,restr) in enumerate(eachrow(restrGrp))
-			capaVar_df = copy(part.var[Symbol(:capa,info_ntup.capa)]) |> (z -> type_sym in (:stIn,:stOut,:stSize) ? filter(x -> x.id == parse(Int,split(String(restrGrp.cnstrType[1]),"_")[2]),z) : z)
-			allCns_arr[idx] = createRestr(part,capaVar_df,restr,type_sym,info_ntup,ts_dic,r_dic,anyM.sets,anyM.supTs)
+			allCns_arr[idx] = createRestr(part,copy(capaVar_df),restr,type_sym,info_ntup,ts_dic,r_dic,anyM.sets,anyM.supTs)
 		end
 
 		allCns_df = vcat(allCns_arr...)
@@ -448,6 +454,7 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},r_dic::Dic
 
 			# obtain variable name and parameter data
 			cns_df = rename(copy(part.par[Symbol(par,lim)].data),:val => :ratio)
+			if isempty(cns_df) continue end
 
 			# joins parameter data with ratio controlled variable and all variables
 			agg_arr = filter(r -> r != :Te && (part.type == :emerging || r != :Ts_expSup), intCol(cns_df))
@@ -459,7 +466,7 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},r_dic::Dic
 			end
 
 			# collect relevant dispatch variables
-			relVar_df = vcat(map(x -> part.var[x],intersect(keys(part.carrier),va_dic[ratioType_sym]))...)
+			relVar_df = vcat(map(x -> select(part.var[x],vcat(intCol(cns_df),[:var])),intersect(keys(part.carrier),va_dic[ratioType_sym]))...)
 
 			if :M in namesSym(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
 				# find cases where ratio constraint is mode dependant

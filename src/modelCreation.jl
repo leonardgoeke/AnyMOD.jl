@@ -55,7 +55,6 @@ function createOptModel!(anyM::anyModel)
 	tech_itr = collect(enumerate(techSym_arr))
 
 	@threads for (idx,tSym) in tech_itr
-		println(tSym)
 		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
 	end
 
@@ -68,15 +67,27 @@ function createOptModel!(anyM::anyModel)
 		if isempty(retro_df) continue end
 
 		# correct variables with retrofitting factor
-		retro_df = matchSetParameter(retro_df,anyM.parts.obj.par[:facRetroConv],anyM.sets)
+		retro_df = matchSetParameter(select(retro_df,Not([:Ts_disSup])),anyM.parts.obj.par[:facRetroConv],anyM.sets)
 		retro_df[!,:var] = map(x -> x.start ? x.var * x.val : x.var,eachrow(retro_df))
 
-		# aggregate retrofitting variables
-		retro_df = combine(groupby(retro_df,intCol(retro_df)),:var => (x -> sum(x)) => :cnsExpr)
+		# aggregate retrofitting variables (first try to aggregate starting entries to target entries => works if start is not less detailed than target, afterwards aggregate remaining cases)
+		start_df, target_df = [select(filter(x -> x.start == y, retro_df),Not([:start,:val])) for y in [1,0]]
+		target_df[!,:var2] = aggDivVar(start_df,target_df,tuple(intCol(retro_df)...),anyM.sets)
+		
+		more_df = select(filter(x -> x.var2 == AffExpr(),target_df),Not([:var2]))
+		if !isempty(more_df)	
+			start_df[!,:var2] = aggDivVar(more_df,start_df,tuple(intCol(retro_df)...),anyM.sets)
+			retro_df = vcat(filter(x -> x.var2 != AffExpr(),start_df),filter(x -> x.var2 != AffExpr(),target_df))	
+		else
+			retro_df = target_df
+		end
+
+		# create final constraint expression by summing up variables
+		retro_df = combine(groupby(retro_df,intCol(retro_df)),[:var,:var2] => ((x,y) -> x + y) => :cnsExpr)
 		
 		# add to different cnsDic for target technology
-		for t in unique(retro_df[!,:Te_j])
-			techCnsDic_arr[filter(x -> x[2] == sysSym(t,anyM.sets[:Te]),tech_itr)[1][1]][:retroConv] = cnsCont(select(filter(x -> x.Te_j == t,retro_df),intCol(retro_df,:cnsExpr)),:equal)
+		for t in unique(retro_df[!,:Te_i])
+			techCnsDic_arr[filter(x -> x[2] == sysSym(t,anyM.sets[:Te]),tech_itr)[1][1]][:retroConv] = cnsCont(select(filter(x -> x.Te_i == t,retro_df),intCol(retro_df,:cnsExpr)),:equal)
 		end
 
 	end
@@ -86,7 +97,6 @@ function createOptModel!(anyM::anyModel)
         anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
 	end
 	
-
 
 
     produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all technologies")

@@ -149,7 +149,8 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 			allRetro_df = orderDf(select!(allRetro_df,Not([:lifeStart,:credit,:lifeRetroSys,:lifeRetro])))
 
 			# add entries for start technology for retrofitting
-			prepSys_dic[sys][sSym][retroName_sym] = (var = adjustRetroRegion(sys,allRetro_df), resi = DataFrame()) 
+			allRetroStart_df = adjustRetroRegion(sys,copy(allRetro_df))
+			prepSys_dic[sys][sSym][retroName_sym] = (var = allRetroStart_df, resi = DataFrame()) 
 
 			# ! adjusts capacities for start
 
@@ -157,7 +158,7 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 			if part.type == :stock
 				# filter cases where retrofitting necessitates an explict variable for installed capacities 
 				select_arr = sys == :Te ? capaSym != :capaConv ? [:Te_j,:Ts_expSup_j,:R_exp_j,:id_j] : [:Te_j,:Ts_expSup_j,:R_exp_j] : [:Ts_expSup_j,:R_from_j,:R_to_j,:Exc_j]
-				startCapa_df = unique(select(flatten(allRetro_df,:Ts_disSup),Not(vcat([:Ts_retro,:Ts_disSup_last],select_arr))))
+				startCapa_df = unique(select(flatten(allRetroStart_df,:Ts_disSup),Not(vcat([:Ts_retro,:Ts_disSup_last],select_arr))))
 				# find matches with provided resiudal capacities
 				join1_arr = vcat([:Ts_disSup,:Ts_expSup], sys == :Te ? (capaSym != :capaConv ? [:R_exp,:Te,:id] : [:R_exp,:Te]) : [:R_from,:R_to,:Exc])
 				join2_arr = vcat([:Ts_disSup], sys == :Te ? (capaSym != :capaConv ? [:Ts_expSup_i, :R_exp_i, :Te_i, :id_i] : [:Ts_expSup_i, :R_exp_i, :Te_i]) : [:Ts_expSup_i,:R_from_i,:R_to_i,:Exc_i])
@@ -168,7 +169,7 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 
 			# filters cases where capacity is affected by retrofitting
 			joinOn_arr = sys == :Te ? capaSym != :capaConv ? [:Ts_expSup_i,:Ts_disSup,:R_exp_i,:Te_i,:id_i] : [:Ts_expSup_i,:Ts_disSup,:R_exp_i,:Te_i] : [:Ts_expSup_i,:Ts_disSup,:R_from_i,:R_to_i,:Exc_i]
-			capaGrp_df = (part.type == :stock ? select(prepSys_dic[sys][sSym][capaSym].resi,Not([:var])) : prepSys_dic[sys][sSym][capaSym].var) |> (z -> semijoin(z,flatten(allRetro_df,:Ts_disSup),on = intCol(z) .=> joinOn_arr))
+			capaGrp_df = (part.type == :stock ? select(prepSys_dic[sys][sSym][capaSym].resi,Not([:var])) : prepSys_dic[sys][sSym][capaSym].var) |> (z -> semijoin(z,flatten(allRetroStart_df,:Ts_disSup),on = intCol(z) .=> joinOn_arr))
 			
 			# ! create new entries for start grouped by operating year
 			# add column for last superordinate dispatch timesteps capacity would be operating, analogously to above 	
@@ -209,11 +210,10 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 			# write entries for grouped capacity variables
 			resi_df = isempty(allGrp_arr) ? prepSys_dic[sys][sSym][capaSym].resi : orderDf(vcat(allGrp_arr...))
 			prepSys_dic[sys][sSym][Symbol(:grp,makeUp(capaSym))] = (var = orderDf(capaGrp_df), resi = orderDf(resi_df))
-			
-			# ! add entries for target technology
-			st_boo = sys == :Te && capaSym != capaSym
+
+			# ! replace entries for target technology
 			for s in unique(allRetro_df[!,Symbol(sys,"_j")])
-				prepSys_dic[sys][sysSym(s,anyM.sets[sys])][retroName_sym] = (var = orderDf(adjustRetroRegion(sys,filter(x -> x[Symbol(sys,"_j")] == s, allRetro_df),false)), resi = filter(x -> false,resi_df))
+				prepSys_dic[sys][sysSym(s,anyM.sets[sys])][Symbol(:retro,type_sym)] = (var = orderDf(adjustRetroRegion(sys,filter(x -> x[Symbol(sys,"_j")] == s, allRetro_df),false)), resi = DataFrame())
 			end
 		end
 	end
@@ -257,8 +257,8 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 				prepSys_dic[sys][sSym][prepSym] = prepSys_dic[sys][sSym][prepSym] |> (x -> (var = removeEntries([remainCapa_df],x.var),resi = x.resi))
 			end
 
-			# ! filter enries of preparation dictionary where capacity variable cannot exist, because there is no corresponding expansion or retrofitting variable 
-			for capaSym in filter(x -> occursin("capa",string(x)), intersect(collect(keys(allCapaDf_dic)),collect(keys(prepSys_dic[sys][sSym]))))
+			# ! filter enries of preparation dictionary where capacity variable cannot exist, because there is no corresponding expansion variable 
+			for capaSym in filter(x -> occursin("capa",string(x)), collect(keys(prepSys_dic[sys][sSym])))
 
 				# get and expand related entries for expansion
 				potCapa_df = expandExpToCapa(prepSys_dic[sys][sSym][Symbol(replace(string(capaSym),"capa" => "exp"))].var)
@@ -286,7 +286,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 				prepSys_dic[sys][sSym][capaSym] = prepSys_dic[sys][sSym][capaSym] |> (x -> (var = innerjoin(x.var, potCapa_df, on = intCol(x.var)), resi = x.resi))
 			end
 
-			# ! removes variables for retrofitting and grouped capacity for cases where no capacity can exist
+			# ! removes variables for retrofitting and grouped capacity for cases where no start capacity can exist
 			for grpSym in filter(x -> occursin("grp",lowercase(string(x))),collect(keys(prepSys_dic[sys][sSym])))
 
 				type_sym = Symbol(replace(string(grpSym), "grpCapa" => ""))
@@ -327,7 +327,13 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 				allRetro_df[!,:Ts_disSup] = map(x -> collect(x),allRetro_df[!,:Ts_disSup])
 				# remove retrofitting entries
 				prepSys_dic[sys][sSym][Symbol(:retro,type_sym)] = (var = allRetro_df, resi = DataFrame())
+
+				# ! replace entries for target technology
+				for s in unique(allRetro_df[!,Symbol(sys,"_j")])
+					prepSys_dic[sys][sysSym(s,anyM.sets[sys])][Symbol(:retro,type_sym)] = (var = orderDf(adjustRetroRegion(sys,filter(x -> x[Symbol(sys,"_j")] == s, allRetro_df),false)), resi = DataFrame())
+				end
 			end
+			
 		end
 	end
 end
@@ -527,7 +533,7 @@ function createCapaCns!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple
 		end
 
 		# create constraint
-		cns_df[!,:cnsExpr] = map(x -> x.capa - x.retro  + (Symbol(:exp,type_sym) in keys(part.var) ? - x.exp : 0.0),eachrow(cns_df))
+		cns_df[!,:cnsExpr] = map(x -> x.capa - - x.capa.constant + x.retro  + (Symbol(:exp,type_sym) in keys(part.var) ? - x.exp : 0.0),eachrow(cns_df))
 		cns_dic[Symbol(capaVar,:_b)] = cnsCont(select(cns_df,intCol(cns_df,:cnsExpr)),:equal)
 	end
 end
@@ -573,13 +579,15 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 			end
 
 			# add retrofitting variable to dataframe
-			if Symbol(replace(string(capaVar),"capa" => "retro")) in collect(keys(part.var))
+			if Symbol(replace(string(capaVar),"capa" => "retro")) in collect(keys(part.var)) && !isempty(cns_df)
 				sInt = unique(cns_df[!,exc_boo ? :Exc : :Te])[1]
 				retro_df = filter(x -> x[exc_boo ? :Exc_j : :Te_j] == sInt, part.var[Symbol(replace(string(capaVar),"capa" => "retro"))][!,Not(:Ts_disSup)])
-		
-				rename_arr = vcat([:Ts_expSup => :Ts_disSup, :Ts_expSup_j => :Ts_expSup],exc_boo ? [:R_from_j => :R_from, :R_to_j => :R_to,:Exc_j => :Exc] : [:R_exp_j => :R_exp,:Te_j => :Te])
-				cns_df[!,:retroNow] = aggDivVar(rename(retro_df,rename_arr),cns_df,tuple(filter(x -> x != :Ts_disSupPrev,intCol(cns_df))...),anyM.sets)
-		
+				if !isempty(retro_df)
+					rename_arr = vcat([:Ts_expSup => :Ts_disSup, :Ts_expSup_j => :Ts_expSup],exc_boo ? [:R_from_j => :R_from, :R_to_j => :R_to,:Exc_j => :Exc] : [:R_exp_j => :R_exp,:Te_j => :Te])
+					cns_df[!,:retroNow] = aggDivVar(rename(retro_df,rename_arr),cns_df,tuple(filter(x -> x != :Ts_disSupPrev,intCol(cns_df))...),anyM.sets)
+				else
+					cns_df[!,:retroNow] .= AffExpr()
+				end
 			else
 				cns_df[!,:retroNow] .= AffExpr()
 			end
@@ -599,4 +607,4 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 	end
 end
 
-#endregion
+#endregionfilter(x -> occursin("capa",string(x)),keys(part.var))

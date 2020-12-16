@@ -24,14 +24,17 @@ include("src/dataHandling/util.jl")
 
 #using Gurobi
 
-# TODO dir in exc heißt nicht mehr, dass im erzeugungsprozess variables automatisch geflippt werden => flip schon vorher, muss angepasst werden (beispiel hvac)
-# TODO musst part bei installed nicht analog zu tech noch angepasst werden?
+# TODO dann endlich bei exc weiter =)
 
-# TODO funktioniert vererbung mit id bei storage? 
 
 anyM = anyModel("examples/demo","examples/results", objName = "test")
 createOptModel!(anyM)
 setObjective!(:costs,anyM)
+
+tSym = :ccgtCHP
+tInt = sysInt(tSym,anyM.sets[:Te])
+part = anyM.parts.tech[tSym]
+prepTech_dic = prepSys_dic[:Te][tSym]
 
 
 anyM = anyModel()

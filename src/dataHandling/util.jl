@@ -259,7 +259,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 
 	# ! filter entries from srcEtr_df, that based on isolated anlysis of columns will not have any values aggregated to
 	idxRel_set = BitSet(1:size(srcEtr_df,1))
-	for dim in filter(x -> x != :id, collect(agg_tup))
+	for dim in filter(x -> !(x in (:id,:id_i,:id_j)), collect(agg_tup))
 		set_sym = Symbol(split(string(dim),"_")[1])
 		allAgg_set = unique(aggEtr_df[!,dim]) |> (z -> union(BitSet(z),map(y -> BitSet(getAncestors(y,sets_dic[set_sym],:int,0)), z)...))
 		idxRel_set = intersect(idxRel_set,BitSet(findall(map(x -> x in allAgg_set, srcEtr_df[!,dim]))))
@@ -280,7 +280,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 
 		# to every unique value in column the value itself and its children are assigned
 		set_sym = Symbol(split(string(col),"_")[1])
-		idxChild_dic = col != :id ? Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set) : Dict(x => x for x in searchVal_set)
+		idxChild_dic = !(col in (:id,:id_i,:id_j)) ? Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set) : Dict(x => x for x in searchVal_set)
 
 		# for each unique value in column the rows with children are assigned
 		grp_df = groupby(DataFrame(val = findCol_arr, id = 1:length(findCol_arr)),:val)
