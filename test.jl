@@ -24,14 +24,15 @@ include("src/dataHandling/util.jl")
 
 #using Gurobi
 
-# TODO dann endlich bei exc weiter =)
 
+# TODO mit exc weiter capacity restrictions
+# 1) checke ava an a -> b und b -> a, checke dir einzeln => mache daraus eine allgemeine funktion, suche nach vorlagen bei residual capacities 
 
 anyM = anyModel("examples/demo","examples/results", objName = "test")
 createOptModel!(anyM)
 setObjective!(:costs,anyM)
 
-tSym = :ccgtCHP
+tSym = :wind
 tInt = sysInt(tSym,anyM.sets[:Te])
 part = anyM.parts.tech[tSym]
 prepTech_dic = prepSys_dic[:Te][tSym]

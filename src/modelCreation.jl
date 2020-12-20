@@ -55,7 +55,6 @@ function createOptModel!(anyM::anyModel)
 	tech_itr = collect(enumerate(techSym_arr))
 
 	@threads for (idx,tSym) in tech_itr
-		println(tSym)
 		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
 	end
 
@@ -73,6 +72,7 @@ function createOptModel!(anyM::anyModel)
 
 		# aggregate retrofitting variables (first try to aggregate starting entries to target entries => works if start is not less detailed than target, afterwards aggregate remaining cases)
 		start_df, target_df = [select(filter(x -> x.start == y, retro_df),Not([:start,:val])) for y in [1,0]]
+		start_df[!,:var] = -1 .* start_df[!,:var]
 		target_df[!,:var2] = aggDivVar(start_df,target_df,tuple(intCol(retro_df)...),anyM.sets)
 		
 		more_df = select(filter(x -> x.var2 == AffExpr(),target_df),Not([:var2]))

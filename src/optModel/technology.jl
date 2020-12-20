@@ -335,7 +335,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 	return cnsCont(orderDf(cns_df[!,[cnsDim_arr...,:cnsExpr]]),:equal)
 end
 
-# ! create all capacity restrictions for technology
+# ! create all capacity restrictions for technology and exchange
 function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 
 	cnstrType_dic = Dict(:exc => (dis = (:exc,), capa = :Exc), :out => (dis = (:gen, :stIntIn), capa = :Conv), :in => (dis = (:use,:stIntOut), capa = :Conv),
@@ -375,9 +375,9 @@ end
 function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow, type_sym::Symbol, info_ntup::NamedTuple,
 															ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple)
 
-	conv_boo = type_sym in (:out,:in)
-	dim_arr = conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:Te,:id,:scr]
-	agg_arr = [:Ts_expSup,:Ts_dis,:R_dis,:scr] |> (x -> filter(x -> part.type == :emerging || x != :Ts_expSup,x))
+	conv_boo = type_sym in (:out,:in) && type_sym != :exc
+	dim_arr = type_sym == :exc ? [:Ts_expSup,:Ts_dis,:R_from,:R_to,:Exc,:scr] : (conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:Te,:id,:scr])
+	agg_arr = type_sym == :exc ? [:Ts_expSup,:Ts_dis,:R_from,:R_to,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:scr] |> (x -> filter(x -> part.type == :emerging || x != :Ts_expSup,x))
 
 	# determines dimensions for aggregating dispatch variables
 	capaVar_df[!,:lvlTs] .= restr.lvlTs
@@ -393,17 +393,24 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	end
 
 	# replaces expansion with dispatch regions and aggregates capacity variables accordingy if required
-	grpCapaVar_df = copy(select(capaVar_df,Not(:var))) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
-	resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
-	grpCapaVar_df[!,:var] = aggUniVar(rename(capaVar_df,:R_exp => :R_dis),grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
+	if type_sym != :exc
+		grpCapaVar_df = copy(select(capaVar_df,Not(:var))) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
+		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
+		grpCapaVar_df[!,:var] = aggUniVar(rename(capaVar_df,:R_exp => :R_dis),grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
+	else
+		grpCapaVar_df = copy(select(capaVar_df,Not(:var))) |> (y -> unique(combine(x -> (R_from = r_dic[(x.R_from[1],x.lvlR[1])],R_to = r_dic[(x.R_to[1],x.lvlR[1])]),groupby(y,namesSym(y)))[!,Not([:lvlR])]))
+		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.expLvl[1], Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
+		grpCapaVar_df[!,:var] = aggUniVar(capaVar_df,grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
+	end
 
 	# expand capacity to dimension of dispatch
 	capaDim_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(grpCapaVar_df[!,Not(:var)],namesSym(grpCapaVar_df[!,Not(:var)])))[!,Not(:lvlTs)]
 	select!(grpCapaVar_df,Not(:lvlTs))
 
 	# obtain all relevant dispatch variables
-	dispVar_arr = type_sym != :stSize ? intersect(keys(part.carrier),info_ntup.dis) : collect(info_ntup.dis)
-	resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
+	dispVar_arr = type_sym != :exc ? (type_sym != :stSize ? intersect(keys(part.carrier),info_ntup.dis) : collect(info_ntup.dis)) : [:exc]
+	resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = type_sym != :exc ? part.balLvl.exp[1] : part.expLvl[1], Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
+	
 	for va in dispVar_arr
 		# filter dispatch variables not belonging to relevant carrier
 		allVar_df = filter(r -> r.C in restr.car, part.var[va])[!,Not(:Ts_disSup)]

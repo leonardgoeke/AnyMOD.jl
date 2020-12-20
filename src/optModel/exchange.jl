@@ -1,6 +1,6 @@
 
-#=
-eSym = :hvac
+
+eSym = :gas2
 
 excDir_arr = map(x -> sysInt(x,anyM.sets[:Exc]), filter(z -> anyM.parts.exc[z].dir, excSym_arr))
 
@@ -34,7 +34,6 @@ if isempty(anyM.subPro) || anyM.subPro != (0,0)
 end
 
 lower_bound(collect(keys(part.var[:insCapaExc][1,:var].terms))[1])
-=#
 
 #region # * prepare and create exchange related variables
 
