@@ -156,7 +156,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			basis_df = copy(part.var[:capaConv])[!,Not(:var)]
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
-		elseif :capaConv in keys(part.var)
+		elseif :capaStIn in keys(part.var)
 			basis_df = orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
 			# gets array of carriers defined for each group of storage
 			subField_arr = intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(part.carrier))

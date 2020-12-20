@@ -755,13 +755,18 @@ function checkPlaus!(anyM::anyModel)
         exc_boo = retroPar == :costRetroExc
         parData_df = anyM.parts.obj.par[retroPar].data
 
-        if (exc_boo ? :Exc_j : :Te_j) in namesSym(parData_df) # reports on retrofitting costs defined for stock technologies
+        if all([(exc_boo ? Symbol(:Exc_,b) : Symbol(:Te_,b)) in namesSym(parData_df) for b in (:j,:i)]) # reports on retrofitting costs defined for stock technologies
             for s in intersect(parData_df[!,exc_boo ? :Exc_j : :Te_j],stock_dic[exc_boo ? :Exc : :Te])
                 push!(anyM.report,(2,"parameter data",String(retroPar),"retrofitting costs were defined with stock $(exc_boo ? :exchange : :technology) $(sysSym(s,anyM.sets[exc_boo ? :Exc : :Te])) as a target, entries are ignored"))
             end
+
+            # reports on retrofitting without a specific target technology
+            if any([0 in parData_df[!,exc_boo ? Symbol(:Exc_,b) : Symbol(:Te_,b)] for b in (:j,:i)])  
+                push!(anyM.report,(2,"parameter data",String(retroPar),"some retrofitting costs were defined without a specific start or target $(exc_boo ? :exchange : :technology), this implies any capacity could be used for or build by retrofitting")) 
+            end
         else
             # reports on retrofitting without a specific target technology
-            push!(anyM.report,(2,"parameter data",String(retroPar),"retrofitting costs were defined without a specific target $(exc_boo ? :exchange : :technology), this implies any system could be build by retrofitting"))
+            push!(anyM.report,(2,"parameter data",String(retroPar),"some retrofitting costs were defined without a specific start or target $(exc_boo ? :exchange : :technology), this implies any capacity could be used for or build by retrofitting"))
         end
     end
 

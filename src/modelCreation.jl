@@ -55,6 +55,7 @@ function createOptModel!(anyM::anyModel)
 	tech_itr = collect(enumerate(techSym_arr))
 
 	@threads for (idx,tSym) in tech_itr
+		println(tSym)
 		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
 	end
 
@@ -96,8 +97,6 @@ function createOptModel!(anyM::anyModel)
     for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
         anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
 	end
-	
-
 
     produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all technologies")
 
@@ -105,7 +104,7 @@ function createOptModel!(anyM::anyModel)
 
 	#region # * create exchange related variables and constraints
 
-	# constraints for exchange are prepared in threaded loop and stored in an array of dictionaries
+	# constraints for exchange are prepared in threaded loop and stored in an array of dictionaries as well
 	excSym_arr = collect(keys(anyM.parts.exc))
 	excCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(excSym_arr))
 	exc_itr = collect(enumerate(excSym_arr))
@@ -114,8 +113,7 @@ function createOptModel!(anyM::anyModel)
 	#	excCnsDic_arr[idx] = 
 	#end
 
-	# TODO connecte retro für exc, beachte gerichtet/ungerichtet
-
+	# TODO connecte retro für exc, beachte gerichtet/ungerichtet, etc. 
 
 	if !all(map(x -> isempty(x),values(prepExc_dic[:capaExc])))
 		partExc = anyM.parts.exc
