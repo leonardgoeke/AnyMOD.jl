@@ -1,6 +1,5 @@
 
-
-eSym = :gas2
+eSym = :hvdc
 
 excDir_arr = map(x -> sysInt(x,anyM.sets[:Exc]), filter(z -> anyM.parts.exc[z].dir, excSym_arr))
 
@@ -28,12 +27,42 @@ if isempty(anyM.subPro) || anyM.subPro != (0,0)
 	createExcVar!(part,ts_dic,anyM) 
 	produceMessage(anyM.options,anyM.report, 2," - Created all dispatch variables for exchange")
 	# create capacity restrictions
-	createRestrExc!(ts_dic,part,anyM) # TODO hier weiter
+	createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM)
 	produceMessage(anyM.options,anyM.report, 2," - Created all capacity restrictions for exchange")
 	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for exchange")
 end
 
 lower_bound(collect(keys(part.var[:insCapaExc][1,:var].terms))[1])
+
+# matches exchange variables with directed and undirected parameters
+function matchExcPar(par_sym::Symbol,var_df::DataFrame,part::ExcPart,sets_dic::Dict{Symbol,Tree})
+
+	if part.dir
+		var_df = flipExc(var_df)
+		# obtain directed values first, if a corresponding parameter is defined
+		if Symbol(par_sym,:Dir) in keys(part.par)
+			dirMatch_df = matchSetParameter(var_df,part.par[Symbol(par_sym,:Dir)],sets_dic)
+		else
+			dirMatch_df = DataFrame()
+			foreach(x -> dirMatch_df[!,x] = [],vcat(intCol(var_df),[:val]))
+		end
+
+		if Symbol(par_sym) in keys(part.par)
+			# obtain entries where no directed entries could be matched
+			noMatch_df = antijoin(var_df,select(dirMatch_df,Not([:val])),on = intCol(var_df))
+			# match undirected entries to remaining and merge with directed
+			undirMatch_df = matchSetParameter(noMatch_df,part.par[Symbol(par_sym)],sets_dic)
+			var_df = vcat(dirMatch_df,undirMatch_df)
+		else
+			var_df = dirMatch_df
+		end
+	else
+		var_df = matchSetParameter(var_df,part.par[par_sym],sets_dic)
+	end
+
+	return var_df
+end
+
 
 #region # * prepare and create exchange related variables
 
@@ -235,108 +264,6 @@ function createExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},a
 
 	# computes value to scale up the global limit on dispatch variable that is provied per hour and create variables
 	part.var[:exc] = orderDf(createVar(disp_df,"exc",getUpBound(disp_df,anyM.options.bound.disp / anyM.options.scaFac.dispExc,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispExc))
-end
-
-#endregion
-
-#region # * create exchange related constraints
-
-# ! connect capacity and expansion constraints for exchange
-function createCapaExcCns!(part::ExcPart,anyM::anyModel)
-
-	if part.decomm == :none
-		capaVar_df = rename(part.var[:capaExc],:var => :capaVar)
-	else
-		capaVar_df = rename(part.var[:insCapaExc],:var => :capaVar)
-	end
-
-	if :expExc in keys(part.var)
-		expVar_df = flatten(part.var[:expExc],:Ts_disSup)[!,Not(:Ts_exp)]
-
-		cns_df = innerjoin(capaVar_df, combine(groupby(expVar_df,[:Ts_disSup, :R_from, :R_to, :C]), :var => (x -> sum(x)) => :expVar); on = [:Ts_disSup, :R_from, :R_to, :C])
-
-		# prepare, scale and create constraints
-		cns_df[!,:cnsExpr] = map(x -> x.capaVar - x.capaVar.constant - x.expVar, eachrow(cns_df))
-		cns_df = intCol(cns_df,:dir) |> (x -> orderDf(cns_df[!,[x...,:cnsExpr]]))
-		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
-		part.cns[:excCapa] = createCns(cnsCont(cns_df,:equal),anyM.optModel)
-	end
-
-	# create and control operated capacity variables
-	if anyM.options.decommExc != :none && :capaExc in keys(part.var)
-		# constraints for operated capacities are saved into a dictionary of containers and then actually created
-		cns_dic = Dict{Symbol,cnsCont}()
-		createOprVarCns!(part,cns_dic,anyM)
-		for cnsSym in keys(cns_dic)
-			scaleCnsExpr!(cns_dic[cnsSym].data,anyM.options.coefRng,anyM.options.checkRng)
-			part.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
-		end
-	end
-end
-
-# ! create capacity restriction for exchange
-function createRestrExc!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},part::ExcPart,anyM::anyModel)
-
-	# create entries in both directions where exchange is directed
-	if part.decomm != :none
-		capaVar_df = vcat(filter(r -> !r.dir,part.var[:capaExc]),flipExc(filter(r -> r.dir,part.var[:capaExc])))
-	else
-		capaVar_df = part.var[:capaExc]
-	end
-	# group exchange capacities by carrier
-	grpCapa_df = groupby(rename(capaVar_df,:var => :capa),:C)
-
-	# pre-allocate array of dataframes for restrictions
-	restr_arr = Array{DataFrame}(undef,length(grpCapa_df))
-	itrRestr = collect(enumerate(grpCapa_df))
-
-	# create restrictions
-	@threads for x in itrRestr
-		cns_df = copy(x[2])
-		cns_df[!,:scr] = map(x -> anyM.supTs.scr[x], cns_df[!,:Ts_disSup])
-		restr_arr[x[1]] = prepareRestrExc(flatten(cns_df,:scr),ts_dic,part,anyM)
-	end
-
-	anyM.parts.exc.cns[:excRestr] = createCns(cnsCont(vcat(restr_arr...),:smaller),anyM.optModel)
-end
-
-# ! prepare capacity restriction for specific carrier
-function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},part::ExcPart,anyM::anyModel)
-
-	c_int = cns_df[1,:C]
-	leafes_arr = filter(y -> isempty(anyM.sets[:C].nodes[y].down), [c_int,getDescendants(c_int,anyM.sets[:C],true)...])
-	cRes_tup = anyM.cInfo[c_int] |> (x -> (Ts_dis = x.tsDis, R_from = x.rDis, R_to = x.rDis))
-
-	# extend constraint dataframe to dispatch levels
-	cns_df[!,:Ts_dis] .= map(x -> ts_dic[x,cRes_tup.Ts_dis],cns_df[!,:Ts_disSup])
-	cns_df = flatten(cns_df,:Ts_dis)
-
-	# resize capacity variables
-	cns_df[!,:capa]  = cns_df[!,:capa] .* map(x -> anyM.supTs.sca[(x,cRes_tup.Ts_dis)], cns_df[!,:Ts_disSup])
-
-	# filter relevant dispatch variables
-	relDisp_df = filter(x -> x.C in leafes_arr, part.var[:exc])
-
-	# first aggregate symmetric and directed entries in one direction, then directed entries in the other direction
-	cns_df[!,:disp] = aggUniVar(relDisp_df,cns_df,[:Ts_dis,:R_from,:R_to,:scr],cRes_tup,anyM.sets)
-	dir_arr = findall(.!cns_df[!,:dir])
-	cns_df[dir_arr,:disp] = cns_df[dir_arr,:disp] .+ aggUniVar(switchExcCol(relDisp_df),cns_df[dir_arr,:],[:Ts_dis,:R_from,:R_to,:scr],cRes_tup,anyM.sets)
-
-	# add availablities to dataframe
-	cns_df = matchSetParameter(cns_df,part.par[:avaExc],anyM.sets, newCol = :avaSym)
-
-	if :avaExcDir in keys(part.par)
-		dirAva_df = matchSetParameter(cns_df[!,intCol(cns_df,:dir)],part.par[:avaExcDir],anyM.sets, newCol = :avaDir)
-		cns_df = joinMissing(cns_df,dirAva_df,[:Ts_disSup,:Ts_dis,:R_from,:R_to,:C,:dir],:left, Dict(:avaDir => nothing))
-	else
-		cns_df[!,:avaDir] .= nothing
-	end
-
-	# prepare, scale and create constraints
-	cns_df[!,:cnsExpr] = map(x -> x.disp  - x.capa * (isnothing(x.avaDir) ? x.avaSym : x.avaDir), eachrow(cns_df))
-	scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
-
-	return select(cns_df,intCol(cns_df,:cnsExpr))
 end
 
 #endregion

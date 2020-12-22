@@ -497,16 +497,6 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 	return filter(filterFunc,allVar_df)
 end
 
-# ! replaces original carriers in var_df with all leafes connected to respective carrier (and itself) and flattens it
-function replCarLeafs(var_df::DataFrame,c_tree::Tree;cCol::Symbol=:C,noLeaf::Array{Int,1} = Int[])
-
-	cToLeafs_dic = Dict(x => filter(y -> isempty(c_tree.nodes[y].down) || y in noLeaf,[x,getDescendants(x,c_tree,true)...]) for x in unique(var_df[!,cCol]))
-	var_df[!,:C] = map(x -> cToLeafs_dic[x],var_df[!,cCol])
-	var_df = flatten(var_df,:C)
-
-	return var_df
-end
-
 # ! returns array of technologies and respective dispatch variables relevant for input carrier
 function getRelTech(c::Int,tech_dic::Dict{Symbol,TechPart},c_tree::Tree)
 
