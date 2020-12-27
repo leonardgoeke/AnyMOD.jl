@@ -358,13 +358,27 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:trdSellCap] = (dim = (:Ts_dis, :R_dis, :C, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :scr => :up, :R_dis => :avg_any, :Ts_dis => :avg_any), part = :trd)
 
     # exchange (=exchange between explicit regions) parameters
-    parDef_dic[:avaExc]     = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = 1.0,     herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_from => :up, :R_to => :up, :scr => :up, :R_from => :avg_any, :R_to => :avg_any, :Exc => :up, :Ts_dis => :avg_any, :C => :up), part = :exc)
-    parDef_dic[:lossExc]    = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = 0.0,     herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_from => :up, :R_to => :up, :scr => :up, :R_from => :avg_any, :R_to => :avg_any, :Exc => :up, :Ts_dis => :avg_any, :C => :up), part = :exc)
-    parDef_dic[:costVarExc] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_from => :up, :R_to => :up, :scr => :up, :R_from => :avg_any, :R_to => :avg_any, :Exc => :up, :Ts_dis => :avg_any, :C => :up), part = :obj)
+    excHerit_tup = (:Ts_expSup => :up, :Ts_dis => :up, :R_from => :up, :R_to => :up, :scr => :up, :R_from => :avg_any, :R_to => :avg_any, :Exc => :up, :Ts_dis => :avg_any, :C => :up)
+    
+    parDef_dic[:avaExc]     = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = 1.0,     herit = excHerit_tup, part = :exc)
+    parDef_dic[:lossExc]    = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = 0.0,     herit = excHerit_tup, part = :exc)
+    parDef_dic[:costVarExc] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :obj)
 
-    parDef_dic[:avaExcDir]     = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_from => :up, :R_to => :up, :scr => :up, :R_from => :avg_any, :R_to => :avg_any, :Exc => :up, :Ts_dis => :avg_any, :C => :up), part = :exc)
-    parDef_dic[:lossExcDir]    = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_from => :up, :R_to => :up, :scr => :up, :R_from => :avg_any, :R_to => :avg_any, :Exc => :up, :Ts_dis => :avg_any, :C => :up), part = :exc)
-    parDef_dic[:costVarExcDir] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_from => :up, :R_to => :up, :scr => :up, :R_from => :avg_any, :R_to => :avg_any, :Exc => :up, :Ts_dis => :avg_any, :C => :up), part = :obj)
+    parDef_dic[:avaExcDir]     = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
+    parDef_dic[:lossExcDir]    = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
+    parDef_dic[:costVarExcDir] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :obj)
+
+    parDef_dic[:ratioExcUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
+    parDef_dic[:ratioExcLow] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
+    parDef_dic[:ratioExcFix] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
+
+    parDef_dic[:ratioExcUpDir]  = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
+    parDef_dic[:ratioExcLowDir] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
+    parDef_dic[:ratioExcFixDir] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
+
+    parDef_dic[:flhExcUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
+    parDef_dic[:flhExcLow] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
+    parDef_dic[:flhExcFix] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
 
     #endregion
 
@@ -430,9 +444,9 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, sy
         allParData_df = vcat(map(x -> paraTemp_dic[x][parIt],relFiles_arr)...)
 
         # order regions in ascending order so regions are not ambivalent anymore and duplicates can be identified
-        if :R_to in namesSym(allParData_df) && !(occursin("Dir",string(parIt)))
-            sortR_mat = sort(hcat([allParData_df[!,x] for x in (:R,:R_to)]...);dims = 2)
-            for (index,col) in enumerate((:R,:R_to)) allParData_df[!,col] = sortR_mat[:,index] end
+        if :R_b in namesSym(allParData_df) && !(occursin("Dir",string(parIt)))
+            sortR_mat = sort(hcat([allParData_df[!,x] for x in (:R,:R_b)]...);dims = 2)
+            for (index,col) in enumerate((:R,:R_b)) allParData_df[!,col] = sortR_mat[:,index] end
         end
 
         # ! checks for duplicates and removes them in case

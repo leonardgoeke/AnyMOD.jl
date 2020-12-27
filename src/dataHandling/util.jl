@@ -127,12 +127,6 @@ end
 sysSym(sInt::Int,sym_tree::Tree) = Symbol(getUniName(sInt,sym_tree)[end])
 sysInt(sSym::Symbol,sym_tree::Tree) = filter(x -> x.val == string(sSym),collect(values(sym_tree.nodes)))[1].idx
 
-# ! specifc utilities for exchange 
-# converts dataframe where exchange regions are given as "a -> b" or "from -> to" to other way round
-switchExcCol(in_df::DataFrame) = rename(in_df, replace(namesSym(in_df),:R_from => :R_to, :R_to => :R_from))
-#  appends input dataframe to switches version of itself
-flipExc(in_df) = vcat(in_df,switchExcCol(in_df))
-
 #endregion
 
 #region # * data frame based manipulations
@@ -388,15 +382,18 @@ end
 # ! get a dataframe with all variable of the specified type
 function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, filterFunc::Function = x -> true)
 
-	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :insCapaExc => :exc, :expExc => :exc, :crt => :bal, :lss => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
-	techSym_arr = collect(keys(anyM.parts.tech))
+	varToPart_dic = Dict(:crt => :bal, :lss => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
+	exc_boo = occursin("exc",lowercase(string(va)))
+	sys_dic = getfield(anyM.parts,exc_boo ? :exc : :tech)
+	sysSym_arr = collect(keys(sys_dic))
+	
 
-	if !(va in keys(varToPart_dic)) # get all variables for technologies
+	if !(va in keys(varToPart_dic)) # get all variables for systems
 		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :in => (:use,:stIntOut), :out => (:gen,:stIntIn))
-		techType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(anyM.parts.tech[y].var), techSym_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
+		sysType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(sys_dic[y].var), sysSym_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
 
-		if !isempty(techType_arr)
-			allVar_df = vcat(map(x -> anyM.parts.tech[x[2]].var[x[1]], vcat(map(x -> collect(zip(fill(x[1],length(x[2])),x[2])),techType_arr)...))...)
+		if !isempty(sysType_arr)
+			allVar_df = vcat(map(x -> sys_dic[x[2]].var[x[1]], vcat(map(x -> collect(zip(fill(x[1],length(x[2])),x[2])),sysType_arr)...))...)
 		else
 			allVar_df = DataFrame()
 		end

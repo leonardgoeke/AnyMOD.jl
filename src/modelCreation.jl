@@ -29,7 +29,11 @@ function createOptModel!(anyM::anyModel)
 	# abort if there is already an error
     if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
 
-    # remove systems without any potential capacity variables
+	# remove systems without any potential capacity variables and reports this for exchange
+	for excSym in setdiff(collect(keys(anyM.parts.exc)),collect(keys(prepSys_dic[:Exc])))
+		push!(anyM.report,(2,"exchange mapping","","for exchange '$(string(excSym))' no potential lines were defined, consequently no capacity can exist"))
+	end
+
 	foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),collect(keys(prepSys_dic[:Te]))))
 	foreach(x -> delete!(anyM.parts.exc, x),setdiff(collect(keys(anyM.parts.exc)),collect(keys(prepSys_dic[:Exc]))))
 
@@ -58,40 +62,9 @@ function createOptModel!(anyM::anyModel)
 		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
 	end
 
-	# connect retrofitting variables from the different technologies (and therefore different parts)
-	# TODO mache auch für exc später, überlege wie in allgemeine funktion überführbar
-	for capaSym in (:Conv, :StIn, :StOut, :StSize)
-	
-		retro_df = getAllVariables(Symbol(:retro,capaSym),anyM)
-		
-		if isempty(retro_df) continue end
+	# connect retrofitting variables from the different technologies
+	foreach(x -> createRetroConst!(x,techCnsDic_arr,tech_itr,anyM),[:Conv, :StIn, :StOut, :StSize])
 
-		# correct variables with retrofitting factor
-		retro_df = matchSetParameter(select(retro_df,Not([:Ts_disSup])),anyM.parts.obj.par[:facRetroConv],anyM.sets)
-		retro_df[!,:var] = map(x -> x.start ? x.var * x.val : x.var,eachrow(retro_df))
-
-		# aggregate retrofitting variables (first try to aggregate starting entries to target entries => works if start is not less detailed than target, afterwards aggregate remaining cases)
-		start_df, target_df = [select(filter(x -> x.start == y, retro_df),Not([:start,:val])) for y in [1,0]]
-		start_df[!,:var] = -1 .* start_df[!,:var]
-		target_df[!,:var2] = aggDivVar(start_df,target_df,tuple(intCol(retro_df)...),anyM.sets)
-		
-		more_df = select(filter(x -> x.var2 == AffExpr(),target_df),Not([:var2]))
-		if !isempty(more_df)	
-			start_df[!,:var2] = aggDivVar(more_df,start_df,tuple(intCol(retro_df)...),anyM.sets)
-			retro_df = vcat(filter(x -> x.var2 != AffExpr(),start_df),filter(x -> x.var2 != AffExpr(),target_df))	
-		else
-			retro_df = target_df
-		end
-
-		# create final constraint expression by summing up variables
-		retro_df = combine(groupby(retro_df,intCol(retro_df)),[:var,:var2] => ((x,y) -> x + y) => :cnsExpr)
-		
-		# add to different cnsDic for target technology
-		for t in unique(retro_df[!,:Te_i])
-			techCnsDic_arr[filter(x -> x[2] == sysSym(t,anyM.sets[:Te]),tech_itr)[1][1]][:retroConv] = cnsCont(select(filter(x -> x.Te_i == t,retro_df),intCol(retro_df,:cnsExpr)),:equal)
-		end
-
-	end
 	
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
     for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
@@ -107,34 +80,22 @@ function createOptModel!(anyM::anyModel)
 	# constraints for exchange are prepared in threaded loop and stored in an array of dictionaries as well
 	excSym_arr = collect(keys(anyM.parts.exc))
 	excCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(excSym_arr))
+	excDir_arr = map(x -> sysInt(x,anyM.sets[:Exc]), filter(z -> anyM.parts.exc[z].dir, excSym_arr))
 	exc_itr = collect(enumerate(excSym_arr))
 
-	#@threads for (idx,excSym) in exc_itr
-	#	excCnsDic_arr[idx] = 
-	#end
-
-	# TODO connecte retro für exc, beachte gerichtet/ungerichtet, etc. 
-
-	if !all(map(x -> isempty(x),values(prepExc_dic[:capaExc])))
-		partExc = anyM.parts.exc
-		# create expansion and capacity variables
-		createExpCap!(partExc,prepExc_dic,anyM)
-		# create capacity constraint
-		if isempty(anyM.subPro) || anyM.subPro == (0,0)
-			createCapaExcCns!(partExc,anyM)
-		end
-		produceMessage(anyM.options,anyM.report, 2," - Created all variables and constraints related to expansion and capacity for exchange")
-		# create dispatch related exchange elements
-		if isempty(anyM.subPro) || anyM.subPro != (0,0)
-			# create dispatch variables
-			createExcVar!(partExc,ts_dic,anyM)
-			produceMessage(anyM.options,anyM.report, 2," - Created all dispatch variables for exchange")
-			# create capacity restrictions
-			createRestrExc!(ts_dic,partExc,anyM)
-			produceMessage(anyM.options,anyM.report, 2," - Created all capacity restrictions for exchange")
-			produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for exchange")
-		end
+	@threads for (idx,eSym) in exc_itr
+		excCnsDic_arr[idx] = createExc!(sysInt(eSym,anyM.sets[:Exc]),anyM.parts.exc[eSym],prepSys_dic[:Exc][eSym],parDef_dic,ts_dic,r_dic,excDir_arr,anyM)
 	end
+
+	# connect retrofitting variables from the different exchange
+	createRetroConst!(:Exc,excCnsDic_arr,exc_itr,anyM,excDir_arr)
+
+	# loops over array of dictionary with constraint container for each exchange to create actual jump constraints
+	for (idx,cnsDic) in enumerate(excCnsDic_arr), cnsSym in keys(cnsDic)
+		anyM.parts.exc[excSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
+	end
+
+	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all exchange")
 
 	#endregion
 

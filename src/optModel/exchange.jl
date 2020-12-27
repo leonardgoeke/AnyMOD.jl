@@ -1,67 +1,46 @@
+# ! iteration over all exchange to create variables and constraints
+function createExc!(eInt::Int,part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},excDir_arr::Array{Int64,1},anyM::anyModel)
 
-eSym = :hvdc
+	cns_dic = Dict{Symbol,cnsCont}()
+	exc_str = createFullString(eInt,anyM.sets[:Exc])
 
-excDir_arr = map(x -> sysInt(x,anyM.sets[:Exc]), filter(z -> anyM.parts.exc[z].dir, excSym_arr))
+	# creates capacity, expansion, and retrofitting variables
+	createExpCap!(part,prepExc_dic,anyM)
 
-part = anyM.parts.exc[eSym]
-prepExc_dic = prepSys_dic[:Exc][eSym]
+	# create expansion constraints
+	if isempty(anyM.subPro) || anyM.subPro == (0,0)
+		# connect capacity and expansion variables
+		createCapaCns!(part,prepExc_dic,cns_dic,excDir_arr)
 
-cns_dic = Dict{Symbol,cnsCont}()
-
-# creates capacity, expansion, and retrofitting variables
-createExpCap!(part,prepExc_dic,anyM)
-
-# create expansion constraints
-if isempty(anyM.subPro) || anyM.subPro == (0,0)
-	# connect capacity and expansion variables
-	createCapaCns!(part,prepExc_dic,cns_dic,excDir_arr)
-
-	# control operated capacity variables
-	if part.decomm != :none
-		createOprVarCns!(part,cns_dic,anyM)
-	end
-end
-
-if isempty(anyM.subPro) || anyM.subPro != (0,0)
-	# create dispatch variables
-	createExcVar!(part,ts_dic,anyM) 
-	produceMessage(anyM.options,anyM.report, 2," - Created all dispatch variables for exchange")
-	# create capacity restrictions
-	createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM)
-	produceMessage(anyM.options,anyM.report, 2," - Created all capacity restrictions for exchange")
-	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for exchange")
-end
-
-lower_bound(collect(keys(part.var[:insCapaExc][1,:var].terms))[1])
-
-# matches exchange variables with directed and undirected parameters
-function matchExcPar(par_sym::Symbol,var_df::DataFrame,part::ExcPart,sets_dic::Dict{Symbol,Tree})
-
-	if part.dir
-		var_df = flipExc(var_df)
-		# obtain directed values first, if a corresponding parameter is defined
-		if Symbol(par_sym,:Dir) in keys(part.par)
-			dirMatch_df = matchSetParameter(var_df,part.par[Symbol(par_sym,:Dir)],sets_dic)
-		else
-			dirMatch_df = DataFrame()
-			foreach(x -> dirMatch_df[!,x] = [],vcat(intCol(var_df),[:val]))
+		# control operated capacity variables
+		if part.decomm != :none
+			createOprVarCns!(part,cns_dic,anyM)
 		end
-
-		if Symbol(par_sym) in keys(part.par)
-			# obtain entries where no directed entries could be matched
-			noMatch_df = antijoin(var_df,select(dirMatch_df,Not([:val])),on = intCol(var_df))
-			# match undirected entries to remaining and merge with directed
-			undirMatch_df = matchSetParameter(noMatch_df,part.par[Symbol(par_sym)],sets_dic)
-			var_df = vcat(dirMatch_df,undirMatch_df)
-		else
-			var_df = dirMatch_df
-		end
-	else
-		var_df = matchSetParameter(var_df,part.par[par_sym],sets_dic)
 	end
 
-	return var_df
+	produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for exchange $(exc_str)")
+
+	if isempty(anyM.subPro) || anyM.subPro != (0,0)
+		# create dispatch variables
+		createExcVar!(part,ts_dic,r_dic,anyM) 
+		produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for exchange $(exc_str)")
+		# create capacity restrictions
+		createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM)
+		produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for exchange $(exc_str)")
+	end
+
+	produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for exchange $(exc_str)")
+	
+	return cns_dic
 end
+
+# TODO problem wenn hier nur b -> einträge reingehen, allgemein wann flippen wann nicht? (grundsätzlich überdenken)
+
+var_df = filter(x -> x.R_from > x.R_to, anyM.parts.exc[:gas2].var[:exc])
+par_sym = :avaExc
+part = anyM.parts.exc[:gas2]
+sets_dic = anyM.sets
+
 
 
 #region # * prepare and create exchange related variables
@@ -234,7 +213,7 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 end
 
 # ! create exchange variables
-function createExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},anyM::anyModel)
+function createExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 	# ! extend capacity variables to dispatch variables
 	capa_df = unique(flipExc(part.var[:capaExc][!,Not([:var,:dir])]))
 	
@@ -246,10 +225,8 @@ function createExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},a
 	cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, anyM.cInfo[x].rDis) for x in unique(capa_df[!,:C]))
 	capa_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],capa_df[!,:C])
 	capa_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],capa_df[!,:C])
-	rExc_dic = Dict(x => anyM.sets[:R].nodes[x[1]].lvl != x[2] ? getDescendants(x[1],anyM.sets[:R],false,x[2]) : [x[1]]
-																							for x in union([map(x -> (x[y],x.lvlR), eachrow(unique(capa_df[!,[y,:lvlR]]))) for y in (:R_from,:R_to)]...))
-	capa_df[!,:R_from] = map(x -> rExc_dic[x.R_from,x.lvlR],eachrow(capa_df[!,[:R_from,:lvlR]]))
-	capa_df[!,:R_to] = map(x -> rExc_dic[x.R_to,x.lvlR],eachrow(capa_df[!,[:R_to,:lvlR]]))
+	capa_df[!,:R_from] = map(x -> r_dic[x.R_from,x.lvlR],eachrow(capa_df[!,[:R_from,:lvlR]]))
+	capa_df[!,:R_to] = map(x -> r_dic[x.R_to,x.lvlR],eachrow(capa_df[!,[:R_to,:lvlR]]))
 	capa_df = flatten(select(capa_df,Not(:lvlR)),:R_from); capa_df = unique(flatten(capa_df,:R_to))
 
 	capa_df[!,:scr] = map(x -> anyM.supTs.scr[x],capa_df[!,:Ts_disSup])
@@ -270,6 +247,42 @@ end
 
 #region # * utility functions for exchange
 
+# matches exchange variables with directed and undirected parameters
+function matchExcPar(par_sym::Symbol,var_df::DataFrame,part::ExcPart,sets_dic::Dict{Symbol,Tree})
+
+	if part.dir
+		# obtain directed values first, if a corresponding parameter is defined
+		if Symbol(par_sym,:Dir) in keys(part.par)
+			dirMatch_df = matchSetParameter(var_df,part.par[Symbol(par_sym,:Dir)],sets_dic)
+		else
+			dirMatch_df = DataFrame()
+			foreach(x -> dirMatch_df[!,x] = Int[],vcat(namesSym(var_df),[:val,]))
+		end
+
+		if Symbol(par_sym) in keys(part.par)
+			# obtain entries where no directed entries could be matched
+			noMatch_df = antijoin(var_df,select(dirMatch_df,Not([:val])),on = intCol(var_df))
+			# ensures entries exist in both directions in the parameter data
+			if !isempty(intersect(namesSym(part.par[Symbol(par_sym)].data),(:R_from,:R_to)))
+				par_obj = copy(part.par[Symbol(par_sym)])
+				par_obj.data = flipExc(par_obj.data)
+			else
+				par_obj = part.par[Symbol(par_sym)]
+			end
+			# match undirected entries to remaining and merge with directed
+			undirMatch_df = matchSetParameter(noMatch_df,par_obj,sets_dic)
+			var_df = vcat(dirMatch_df,antijoin(undirMatch_df,select(dirMatch_df,Not([:val])),on = intCol(var_df)))
+		else
+			var_df = dirMatch_df
+		end
+	else
+		var_df = matchSetParameter(var_df,part.par[par_sym],sets_dic)
+	end
+
+	return var_df
+end
+
+# TODO noch notwendig oder redundant durch oben => gucke, wenn eb gemacht wird, betrachte auch vor hintergrund loss update
 # ! obtain values for exchange losses
 function getExcLosses(exc_df::DataFrame,excPar_dic::Dict{Symbol,ParElement},sets_dic::Dict{Symbol,Tree})
 	lossPar_obj = copy(excPar_dic[:lossExc])
@@ -288,6 +301,25 @@ function getExcLosses(exc_df::DataFrame,excPar_dic::Dict{Symbol,ParElement},sets
 	end
 
 	return excLoss_df
+end
+
+# converts dataframe where exchange regions are given as "a -> b" or "from -> to" to other way round
+switchExcCol(in_df::DataFrame) = rename(in_df, replace(namesSym(in_df),:R_from => :R_to, :R_to => :R_from))
+
+# appends input dataframe to version of itself with from and to column exchanged
+function flipExc(in_df::DataFrame)
+	sw_df = switchExcCol(in_df)
+
+	# if input dataframe had only a to or from column respective other column is added
+	if !(:R_to in namesSym(in_df))
+		in_df[!,:R_to] .= 0
+		sw_df[!,:R_from] .= 0
+	elseif !(:R_from in namesSym(in_df))
+		in_df[!,:R_from] .= 0
+		sw_df[!,:R_to] .= 0
+	end
+
+	return orderDf(vcat(in_df,sw_df))
 end
 
 #endregion

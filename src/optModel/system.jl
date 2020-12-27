@@ -231,7 +231,6 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 		sysSym_arr = filter(x -> getfield(anyM.parts, sys == :Te ? :tech : :exc)[x].type != :stock, collect(keys(prepSys_dic[sys])))
 
 		for sSym in sysSym_arr
-			
 			sys_int = sysInt(sSym,anyM.sets[sys]) 
 
 			# ! find entries where variables are already fixed to zero and remove them
@@ -278,9 +277,8 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 				type_sym = Symbol(replace(string(grpSym), "grpCapa" => ""))
 				# obtain original grouped capacity variables
 				grpCapa_tup = prepSys_dic[sys][sSym][grpSym]
-				
 				potResi_df = filter(x -> x.var != AffExpr(),grpCapa_tup.resi)
-				potCapa_df = select(potResi_df,Not([:var]))
+				potCapa_df = potResi_df |> (x -> select(x,filter(x -> !(x in (:var,:dir)),namesSym(potResi_df))))
 
 				# ! determine which combinations of disSup and disSup_last are possible
 
@@ -307,8 +305,6 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 					end
 					potCapa_df = unique(select(exp_df,Not([:Ts_exp]))) |> (x -> isempty(potCapa_df) ? x : joinMissing(potCapa_df,x,intCol(potCapa_df),:outer,Dict()))
 				end
-
-				if type_sym == :Exc select!(potCapa_df,Not([:dir])) end
 
 				# check retrofitting variables with tech as a target
 				retro_sym = Symbol(replace(string(grpSym),"grpCapa" => "retro"))
@@ -344,7 +340,6 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 					prepSys_dic[sys][sysSym(s,anyM.sets[sys])][Symbol(:retro,type_sym)] = (var = orderDf(vcat(nonRel_df,filter(x -> x[Symbol(sys,"_j")] == s, allRetro_df))), resi = DataFrame())
 				end
 			end
-			
 		end
 	end
 end
@@ -492,7 +487,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 				else
 					resi_df = rename(varMap_tup.resi,:var => :val)
 				end
-				setLow_df = joinMissing(var_df,resi_df,intCol(var_df),:left,Dict(:val => AffExpr()))
+				setLow_df = joinMissing(var_df,resi_df,intersect(intCol(var_df,:dir),intCol(resi_df,:dir)),:left,Dict(:val => AffExpr()))
 				foreach(x -> set_lower_bound(collect(keys(x.var.terms))[1], -x.val.constant/collect(values(x.var.terms))[1]) ,eachrow(setLow_df))
 			end
 
@@ -675,6 +670,48 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 	end
 end
 
+# ! connect retrofitting variables from different systems
+function createRetroConst!(capaSym::Symbol,cnsDic_arr::Array{Dict{Symbol,cnsCont},1},sys_itr::Array{Tuple{Int64,Symbol},1},anyM::anyModel,excDir_arr::Array{Int64,1}=Int[])
+
+	exc_boo = capaSym == :Exc
+	sys_sym = exc_boo ? :Exc : :Te
+
+	retro_df = getAllVariables(Symbol(:retro,capaSym),anyM)
+
+	# filters rows for duplicate rows where retrofitting connects directed and undirected exchanged
+	if exc_boo
+		filter!(x -> !((x.Exc_i in excDir_arr) != (x.Exc_j in excDir_arr)  && ((x.R_from_i > x.R_to_i) || (x.R_from_j > x.R_to_j)) ),retro_df)
+	end
+
+	if isempty(retro_df) return end
+
+	# correct variables with retrofitting factor
+	retro_df = matchSetParameter(select(retro_df,Not([:Ts_disSup])),anyM.parts.obj.par[Symbol(:facRetro,capaSym)],anyM.sets)
+	retro_df[!,:var] = map(x -> x.start ? x.var * x.val : x.var,eachrow(retro_df))
+
+	# aggregate retrofitting variables (first try to aggregate starting entries to target entries => works if start is not less detailed than target, afterwards aggregate remaining cases)
+	start_df, target_df = [select(filter(x -> x.start == y, retro_df),Not([:start,:val])) for y in [1,0]]
+	start_df[!,:var] = -1 .* start_df[!,:var]
+	target_df[!,:var2] = aggDivVar(start_df,target_df,tuple(intCol(retro_df)...),anyM.sets)
+
+	more_df = select(filter(x -> x.var2 == AffExpr(),target_df),Not([:var2]))
+	if !isempty(more_df)	
+		start_df[!,:var2] = aggDivVar(more_df,start_df,tuple(intCol(retro_df)...),anyM.sets)
+		retro_df = vcat(filter(x -> x.var2 != AffExpr(),start_df),filter(x -> x.var2 != AffExpr(),target_df))	
+	else
+		retro_df = target_df
+	end
+
+	# create final constraint expression by summing up variables
+	retro_df = combine(groupby(retro_df,intCol(retro_df)),[:var,:var2] => ((x,y) -> x + y) => :cnsExpr)
+
+	# add to different cnsDic for target technology or exchange
+	for t in unique(retro_df[!,Symbol(sys_sym,:_i)])
+		cnsDic_arr[filter(x -> x[2] == sysSym(t,anyM.sets[sys_sym]),sys_itr)[1][1]][Symbol(:retro,capaSym)] = cnsCont(select(filter(x -> x[Symbol(sys_sym,:_i)] == t,retro_df),intCol(retro_df,:cnsExpr)),:equal)
+	end
+
+end
+
 #endregion
 
 #region # * create capacity restrictions
@@ -738,12 +775,12 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 
 	# replaces expansion with dispatch regions and aggregates capacity variables accordingy if required
 	if type_sym != :exc
-		grpCapaVar_df = copy(select(capaVar_df,Not(:var))) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
+		grpCapaVar_df = copy(select(capaVar_df,Not([:var]))) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
 		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
 		grpCapaVar_df[!,:var] = aggUniVar(rename(capaVar_df,:R_exp => :R_dis),grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 	else
-		grpCapaVar_df = copy(select(capaVar_df,Not(:var))) |> (y -> unique(combine(x -> (R_from = r_dic[(x.R_from[1],x.lvlR[1])],R_to = r_dic[(x.R_to[1],x.lvlR[1])]),groupby(y,namesSym(y)))[!,Not([:lvlR])]))
-		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.expLvl[1], Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
+		grpCapaVar_df = rename(copy(select(capaVar_df,Not([:var]))),:R_from => :R_a,:R_to => :R_b) |> (y -> unique(combine(x -> (R_from = r_dic[(x.R_a[1],x.lvlR[1])],R_to = r_dic[(x.R_b[1],x.lvlR[1])]),groupby(y,namesSym(y)))[!,Not([:lvlR,:R_a,:R_b])]))
+		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.expLvl[1], Ts_disSup = supTs_ntup.lvl, R_from = restr.lvlR, R_to = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
 		grpCapaVar_df[!,:var] = aggUniVar(capaVar_df,grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 	end
 
@@ -753,15 +790,18 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 
 	# obtain all relevant dispatch variables
 	dispVar_arr = type_sym != :exc ? (type_sym != :stSize ? intersect(keys(part.carrier),info_ntup.dis) : collect(info_ntup.dis)) : [:exc]
-	resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = type_sym != :exc ? part.balLvl.exp[1] : part.expLvl[1], Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
-	
+	if type_sym != :exc
+		resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = type_sym != :exc ? part.balLvl.exp[1] : part.expLvl[1], Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
+	else
+		resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = type_sym != :exc ? part.balLvl.exp[1] : part.expLvl[1], Ts_dis = restr.lvlTs, R_from = restr.lvlR, R_to = restr.lvlR) : (Ts_dis = restr.lvlTs,  R_from = restr.lvlR, R_to = restr.lvlR)
+	end
+
 	for va in dispVar_arr
 		# filter dispatch variables not belonging to relevant carrier
 		allVar_df = filter(r -> r.C in restr.car, part.var[va])[!,Not(:Ts_disSup)]
 
-
 		# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
-		if va != :Exc
+		if va != :exc
 			ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:ava,info_ntup.capa)],sets_dic, newCol = :ava)[!,:ava]
 
 			if type_sym in (:out,:stOut)
@@ -771,7 +811,7 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 		else
 			allVar_df = matchExcPar(:avaExc,allVar_df,part,sets_dic)
 			allVar_df[!,:var] = allVar_df[!,:var] .* 1 ./ allVar_df[!,:val]
-			select(allVar_df,Not([:val]))
+			select!(allVar_df,Not([:val]))
 		end
 
 		# aggregate dispatch variables

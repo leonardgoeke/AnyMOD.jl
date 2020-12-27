@@ -23,10 +23,11 @@ include("src/dataHandling/tree.jl")
 include("src/dataHandling/util.jl")
 
 #using Gurobi
+# ratio und exc: 1) vorgelagert: funktionierne ratios überhaupt noch bei conversion (und bei anderen sachen)? wenn ja wie? => 2 loops! beachten!
+# 2) mache ratio tatsächlich 2x für exc
 
-
-# TODO mit exc weiter capacity restrictions
-# 1) checke ava an a -> b und b -> a, checke dir einzeln => mache daraus eine allgemeine funktion, suche nach vorlagen bei residual capacities 
+# gucke exc losses an, auch bei allVariables mit emissions
+# andere teile des modells: gucke energy balance und limits/ratios an, move costs into main part, make costs for: retrofitting, new exchange, update reporting
 
 anyM = anyModel("examples/demo","examples/results", objName = "test")
 createOptModel!(anyM)
@@ -36,6 +37,12 @@ tSym = :wind
 tInt = sysInt(tSym,anyM.sets[:Te])
 part = anyM.parts.tech[tSym]
 prepTech_dic = prepSys_dic[:Te][tSym]
+
+eSym = :gas2
+eInt = sysInt(eSym,anyM.sets[:Exc])
+part = anyM.parts.exc[eSym]
+prepExc_dic = prepSys_dic[:Exc][eSym]
+
 
 
 anyM = anyModel()

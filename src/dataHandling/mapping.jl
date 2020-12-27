@@ -221,13 +221,18 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 			return
 		end
 
+		rDis_arr = map(x -> anyM.cInfo[x].rDis,carId_arr)
+		if length(unique(rDis_arr)) > 1
+			push!(anyM.report,(1,"exchange mapping","carrier","carriers that can be exchanged by '$(string(sSym))' have different spatial resolutions"))
+		end
+
 		part.carrier = tuple(carId_arr...)
 
 		# detects if any exchanged carrier is a parent of another exchanged carrier and reports on it
 		inherCar_arr = carId_arr[findall(map(x -> !(isempty(filter(z -> z != x, intersect(getDescendants(x,anyM.sets[:C],true),carId_arr)))),carId_arr))]
 		if !isempty(inherCar_arr)
 			for inher in inherCar_arr
-				push!(anyM.report,(3,"technology mapping","carrier","for exchange '$(string(sSym))' the carrier '$(createFullString(inher,anyM.sets[:C]))' is a parent of another exchanged carrier, this is not supported"))
+				push!(anyM.report,(3,"exchange mapping","carrier","for exchange '$(string(sSym))' the carrier '$(createFullString(inher,anyM.sets[:C]))' is a parent of another exchanged carrier, this is not supported"))
 			end
 		end
 
