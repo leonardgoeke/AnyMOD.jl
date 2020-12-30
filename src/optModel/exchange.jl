@@ -29,19 +29,13 @@ function createExc!(eInt::Int,part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple}
 		produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for exchange $(exc_str)")
 	end
 
+	# create ratio constraints
+	createRatioCns!(part,cns_dic,r_dic,anyM)
+
 	produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for exchange $(exc_str)")
 	
 	return cns_dic
 end
-
-# TODO problem wenn hier nur b -> einträge reingehen, allgemein wann flippen wann nicht? (grundsätzlich überdenken)
-
-var_df = filter(x -> x.R_from > x.R_to, anyM.parts.exc[:gas2].var[:exc])
-par_sym = :avaExc
-part = anyM.parts.exc[:gas2]
-sets_dic = anyM.sets
-
-
 
 #region # * prepare and create exchange related variables
 
@@ -236,7 +230,7 @@ function createExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r
 
 	# filter entries where availability is zero
 	if !isempty(part.par[:avaExc].data) && 0.0 in part.par[:avaExc].data[!,:val]
-		disp_df = filter(x -> x.val != 0.0, matchSetParameter(disp_df,part.par[:avaExc],anyM.sets))[!,Not(:val)]
+		disp_df = filter(x -> x.val != 0.0, matchExcParameter(:avaExc,disp_df,part,anyM.sets))[!,Not(:val)]
 	end
 
 	# computes value to scale up the global limit on dispatch variable that is provied per hour and create variables
@@ -248,7 +242,7 @@ end
 #region # * utility functions for exchange
 
 # matches exchange variables with directed and undirected parameters
-function matchExcPar(par_sym::Symbol,var_df::DataFrame,part::ExcPart,sets_dic::Dict{Symbol,Tree})
+function matchExcParameter(par_sym::Symbol,var_df::DataFrame,part::ExcPart,sets_dic::Dict{Symbol,Tree})
 
 	if part.dir
 		# obtain directed values first, if a corresponding parameter is defined
@@ -282,25 +276,21 @@ function matchExcPar(par_sym::Symbol,var_df::DataFrame,part::ExcPart,sets_dic::D
 	return var_df
 end
 
-# TODO noch notwendig oder redundant durch oben => gucke, wenn eb gemacht wird, betrachte auch vor hintergrund loss update
-# ! obtain values for exchange losses
-function getExcLosses(exc_df::DataFrame,excPar_dic::Dict{Symbol,ParElement},sets_dic::Dict{Symbol,Tree})
-	lossPar_obj = copy(excPar_dic[:lossExc])
-	if :R_from in namesSym(lossPar_obj.data) && :R_to in namesSym(lossPar_obj.data)
-		lossPar_obj.data = flipExc(lossPar_obj.data)
-	end
-	excLoss_df = matchSetParameter(exc_df,lossPar_obj,sets_dic,newCol = :loss)
-
-	# overwrite symmetric losses with any directed losses provided
-	if :lossExcDir in keys(excPar_dic)
-		oprCol_arr = intCol(excLoss_df)
-		dirLoss_df = matchSetParameter(excLoss_df[!,oprCol_arr],excPar_dic[:lossExcDir],sets_dic,newCol = :lossDir)
-		excLoss_df = joinMissing(excLoss_df,dirLoss_df,oprCol_arr,:left,Dict(:lossDir => nothing))
-		excLoss_df[!,:loss] = map(x -> isnothing(x.lossDir) ? x.loss : x.lossDir,eachrow(excLoss_df[!,[:loss,:lossDir]]))
-		select!(excLoss_df,Not(:lossDir))
+# ! extend exchange variables with exchange losses
+function addLossesExc(exc_df::DataFrame,partExc::ExcPart,sets_dic::Dict{Symbol,Tree},onlyLoss_boo::Bool=false)
+	
+	# get loss parameters
+	exc_df = matchExcPar(:lossExc,exc_df,partExc,sets_dic)
+	
+	# corrects input dataframe for losses or return only the loss itself
+	if onlyLoss_boo
+		exc_df[!,:var] = exc_df[!,:var] .*  exc_df[!,:val]
+		filter!(x -> x.var != AffExpr(),exc_df)
+	else
+		exc_df[!,:var] = exc_df[!,:var] .* (1.0 .- exc_df[!,:val])
 	end
 
-	return excLoss_df
+	return select(exc_df,Not([:val]))
 end
 
 # converts dataframe where exchange regions are given as "a -> b" or "from -> to" to other way round

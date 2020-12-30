@@ -99,11 +99,15 @@ function createOptModel!(anyM::anyModel)
 
 	#endregion
 
+	#region # * create variables and constraints for trade, the energy balance and costs
+	
 	if isempty(anyM.subPro) || anyM.subPro != (0,0)
-		createTradeVarCns!(anyM.parts.trd,ts_dic,anyM)
+		createTradeVarCns!(anyM.parts.bal,ts_dic,anyM)
 		createEnergyBal!(techSym_arr,ts_dic,anyM)
 	end
 	createLimitCns!(anyM.parts.lim,anyM)
+
+	#endregion
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")
 end

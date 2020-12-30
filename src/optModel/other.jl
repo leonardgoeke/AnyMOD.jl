@@ -2,37 +2,37 @@
 #region # * create other elements of model
 
 # ! create variables and capacity constraints for trade variables
-function createTradeVarCns!(partTrd::OthPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
+function createTradeVarCns!(partBal::OthPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 	for type in (:Buy, :Sell)
 		trdPrc_sym = Symbol(:trd,type,:Prc)
 		trd_sym = Symbol(:trd,type)
-		if trdPrc_sym in keys(partTrd.par) && :C in namesSym(partTrd.par[trdPrc_sym].data)
+		if trdPrc_sym in keys(partBal.par) && :C in namesSym(partBal.par[trdPrc_sym].data)
 
 			#region # * create trade variables
-			c_arr = unique(partTrd.par[trdPrc_sym].data[!,:C])
+			c_arr = unique(partBal.par[trdPrc_sym].data[!,:C])
 
 			# create dataframe with all potential entries for trade/sell variable
 			var_df = createPotDisp(c_arr,ts_dic,anyM)
 
 			# match all potential variables with defined prices
-			var_df = matchSetParameter(var_df,partTrd.par[trdPrc_sym],anyM.sets)[!,Not(:val)]
+			var_df = matchSetParameter(var_df,partBal.par[trdPrc_sym],anyM.sets)[!,Not(:val)]
 
 			var_df = createVar(var_df,string(:trd,type),getUpBound(var_df,anyM.options.bound.disp / anyM.options.scaFac.dispTrd,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispTrd)
-			partTrd.var[trd_sym] = orderDf(var_df)
+			partBal.var[trd_sym] = orderDf(var_df)
 			produceMessage(anyM.options,anyM.report, 3," - Created variables for $(type == :Buy ? "buying" : "selling") carriers")
 			#endregion
 
 			#region # * create capacity constraint on variable
 			trdCap_sym = Symbol(trd_sym,:Cap)
-			if trdCap_sym in keys(partTrd.par)
-				cns_df = matchSetParameter(var_df,partTrd.par[trdCap_sym],anyM.sets,newCol = :cap)
+			if trdCap_sym in keys(partBal.par)
+				cns_df = matchSetParameter(var_df,partBal.par[trdCap_sym],anyM.sets,newCol = :cap)
 				sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
 				cns_df[!,:cap] = cns_df[!,:cap] .* sca_arr
 
 				# prepare, scale and create constraints
 				cns_df[!,:cnsExpr] = map(x -> x.var - x.cap, eachrow(cns_df))
 				scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
-				partTrd.cns[trdCap_sym] = createCns(cnsCont(cns_df,:smaller),anyM.optModel)
+				partBal.cns[trdCap_sym] = createCns(cnsCont(cns_df,:smaller),anyM.optModel)
 
 				produceMessage(anyM.options,anyM.report, 3," - Created capacity restrictions for $(type == :Buy ? "buying" : "selling") carriers")
 			end
@@ -83,10 +83,9 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		end
 	end
 
-	if :crt in keys(anyM.parts.bal.var) append!(relC_arr,unique(anyM.parts.bal.var[:crt][!,:C])) end
-	if :lss in keys(anyM.parts.bal.var) append!(relC_arr,unique(anyM.parts.bal.var[:lss][!,:C])) end
-	if :trdSell in keys(anyM.parts.trd.var) append!(relC_arr,unique(anyM.parts.trd.var[:trdSell][!,:C])) end
-	if :trdBuy in keys(anyM.parts.trd.var) append!(relC_arr,unique(anyM.parts.trd.var[:trdBuy][!,:C])) end
+	for relVar in intersect([:crt,:lss,:trdSell,:trdBuy],collect(keys(anyM.parts.bal.var)))
+		append!(relC_arr,unique(anyM.parts.bal.var[relVar][!,:C]))
+	end
 
 	# add carriers beings generated or used
 	append!(relC_arr,union(union(map(x -> anyM.parts.tech[x].carrier |> (y -> map(z -> getfield(y,z),intersect(keys(y),(:gen,:use)))),techSym_arr)...)...))
@@ -115,38 +114,21 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		unEtr_arr = map(x -> x == 0.0 ,cns_df[!,:dem]) .* unEtr_arr
 
 		# add curtailment variables
-		for varType in (:crt,:lss)
+		for varType in (:crt,:lss,:trdSell,:trdBuy)
 			if varType in keys(partBal.var)
 				cns_df[!,Symbol(varType,:Var)] = filterCarrier(partBal.var[varType],subC_arr) |> (x -> aggUniVar(x,src_df,agg_arr, cRes_tup,anyM.sets))
 				# determine where an energy balance is required because a curtailment variable was defined
-				if varType == :crt
+				if varType in (:crt,:trdSell)
 					unEtr_arr = map(x -> x == AffExpr(),cns_df[!,Symbol(varType,:Var)]) .* unEtr_arr
 				end
-			else
-				cns_df[!,Symbol(varType,:Var)] .= AffExpr()
 			end
 		end
 
-		# add trade variables
-		if !isempty(anyM.parts.trd.var)
-			cns_df[!,:trdVar] = sum([filterCarrier(anyM.parts.trd.var[trd],subC_arr) |> (x -> aggUniVar(x,src_df,agg_arr,cRes_tup,anyM.sets) |> (y -> trd != :trdSell ? y : -1.0 * y)) for trd in keys(anyM.parts.trd.var)])
-			# determine where an energy balance is required because a trade sell variable was defined 
-			if :trdSell in keys(anyM.parts.trd.var)
-				unEtr_arr = map(x -> x == AffExpr(), aggUniVar(filterCarrier(anyM.parts.trd.var[:trdSell],[c]),src_df,agg_arr,cRes_tup,anyM.sets)) .* unEtr_arr
-			end
-		else
-			cns_df[!,:trdVar] .= AffExpr()
-		end
-
-		# add exchange variables
-		if !isempty(anyM.parts.exc.var)
-			excVarTo_df = filterCarrier(anyM.parts.exc.var[:exc],subC_arr)
-			excVarFrom_df = copy(excVarTo_df)
-
-			# get loss values and apply them to variables
-			excVarFrom_df = getExcLosses(excVarFrom_df,anyM.parts.exc.par,anyM.sets)
-			excVarFrom_df[!,:var] = excVarFrom_df[!,:var] .* (1.0 .- excVarFrom_df[!,:loss])
-			select!(excVarFrom_df,Not(:loss))
+		# ! add exchange variables
+		# get all relevant exchange variables and add losses 
+		relExc_arr = collect(filter(x -> !isempty(intersect(subC_arr,anyM.parts.exc[x].carrier)) && :exc in keys(anyM.parts.exc[x].var), keys(anyM.parts.exc)))
+		if !isempty(relExc_arr)
+			excVarTo_df, excVarFrom_df = map(z -> anyM.parts.exc[z] |> (u -> filter(x -> x.C in subC_arr,u.var[:exc]) |> (v -> [v, addLossesExc(v,u,anyM.sets)])),relExc_arr) |> (w -> [vcat(getindex.(w,x)...) for x in [1,2]])
 
 			# aggregate import (from) and export (to) variables
 			excFrom_arr = aggUniVar(excVarFrom_df,rename(src_df,:R_dis => :R_to),[:Ts_dis,:R_to,:C,:scr],(Ts_dis = cRes_tup[1], R_to = cRes_tup[2], C = cRes_tup[3]),anyM.sets)
@@ -159,11 +141,8 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 			
 			# create final column with import and export variables
 			cns_df[!,:excVar] =  excFrom_arr[.!unEtr_arr] .- excToMain_arr[.!unEtr_arr] .- excToDesc_arr[.!unEtr_arr]
-		else
-			delete!(cns_df, unEtr_arr) # remove rows for unrequired energy balances	
-			cns_df[!,:excVar] .= AffExpr()
 		end
-
+		
 		# ! add demand from descendant carriers
 		for cSub in filter(x -> x != c, getDescendants(c,anyM.sets[:C],false)) # demand for descendant carriers that has to be aggregated
 			demSub_df = filter(x -> x.val != 0.0, matchSetParameter(filter(x -> x.C == cSub,allDim_df),partBal.par[:dem],anyM.sets))
@@ -176,7 +155,11 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 
 		# ! prepare, scale and save constraints to dictionary
 		c_str = Symbol(anyM.sets[:C].nodes[c].val)
-		cns_df[!,:cnsExpr] = map(x -> x.techVar + x.excVar + x.trdVar + x.lssVar - x.dem - x.crtVar, eachrow(cns_df))
+
+		negVar_arr = intersect([:crtVar,:trdSellVar],namesSym(cns_df))
+		posVar_arr = intersect([:techVar,:excVar,:lssVar,:trdBuyVar],namesSym(cns_df))
+
+		cns_df[!,:cnsExpr] = map(x -> sum(getindex(x,posVar_arr)) - sum(getindex(x,negVar_arr)), eachrow(cns_df))
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		filter!(x -> x.cnsExpr != AffExpr(),cns_df)
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
@@ -237,8 +220,6 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 			grpVar_df = combine(groupby(allVar_df, [:Ts_dis, :R_dis, :scr]), :var => (x -> sum(x)) => :var)
 			techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis, :scr], :left, Dict(:var => AffExpr()))[!,:var]
 		end
-
-
 	end
 
 	# check where tech variables are sinks for energy carriers, which means in this case an energy balance will be necessary 
@@ -260,18 +241,16 @@ end
 function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 	parLim_arr = String.(collectKeys(keys(partLim.par)))
-	techLim_arr = filter(x ->  any(map(y -> occursin(y,x),["Up","Low","Fix"])),parLim_arr)
-	limVar_arr = map(x -> map(k -> Symbol(k[1]) => Symbol(k[2][1]), filter(z -> length(z[2]) == 2,map(y -> y => split(x,y),["Up","Low","Fix"])))[1], techLim_arr)
+	techLim_arr = filter(x ->  any(map(y -> occursin(y,x),["Up","Low","Fix","UpDir","LowDir","FixDir"])),parLim_arr)
+	limVar_arr = union(map(x -> map(k -> Symbol(k[1]) => Symbol(k[2][1]), filter(z -> length(z[2]) == 2,map(y -> y => split(x,y),["Up","Low","Fix","UpDir","LowDir","FixDir"]))), techLim_arr)...)
 	varToPar_dic = Dict(y => getindex.(filter(z -> z[2] == y,limVar_arr),1) for y in unique(getindex.(limVar_arr,2)))
 
 	# loop over all variables that are subject to any type of limit (except emissions)
 	allKeys_arr = collect(keys(varToPar_dic))
 	cns_dic = Dict{Symbol,cnsCont}()
-	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal)
+	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal, :UpDir => :smaller, :LowDir => :greater, :FixDir => :equal)
 
 	@threads for va in allKeys_arr
-
-		varToPart_dic = Dict(:exc => :exc, :crt => :bal,:trdSell => :trd, :trdBuy => :trd)
 
 		# obtain all variables relevant for limits
 		allVar_df = getAllVariables(va,anyM)
@@ -289,7 +268,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		for lim in varToPar_dic[va]
 			par_obj = copy(partLim.par[Symbol(va,lim)])
 
-			if va in (:capaExc,:insCapaExc) && :R_from in namesSym(par_obj.data) && :R_to in namesSym(par_obj.data)
+			if occursin("exc",lowercase(string(va))) && !occursin("Dir",string(lim)) && :R_from in namesSym(par_obj.data) && :R_to in namesSym(par_obj.data)
 				par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_from => :R_to,:R_to => :R_from))
 			end
 			agg_tup = tuple(intCol(par_obj.data)...)
@@ -330,12 +309,13 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			limit_df = rename(limit_df,:val => lim)
 			join_arr = [intersect(intCol(allLimit_df),intCol(limit_df))...,:var]
 			miss_arr = [intCol(allLimit_df),intCol(limit_df)] |> (y -> union(setdiff(y[1],y[2]), setdiff(y[2],y[1])))
-			allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr),Dict(:Up => nothing, :Low => nothing, :Fix => nothing)))
+			allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr),Dict(:Up => nothing, :Low => nothing, :Fix => nothing,:UpDir => nothing, :LowDir => nothing, :FixDir=> nothing)))
 		end
 
+		# TODO übearbeiten 1) nervige fehler meldungen raus, 2) muss auch mit FixDir eetc funktionieren
 		# ! check for contradicting values
 		colSet_dic = Dict(x => Symbol(split(string(x),"_")[1]) for x in intCol(allLimit_df))
-		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))
+		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low,:FixDir,:UpDir,:LowDir))
 		entr_int = size(allLimit_df,1)
 		if :Low in limitCol_arr || :Up in limitCol_arr
 			# ! errors
@@ -449,7 +429,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			# filter respective limits (low, fix or up) out of the entire dataframe
 			relLim_df = filter(x -> !isnothing(x[lim]),allLimit_df[!,Not(filter(x -> x != lim,limitCol_arr))])
 			relLim_df = filter(x -> x.var != AffExpr(), relLim_df)
-			#if :Fix in namesSym(relLim_df) && va in (:expConv,:expStIn,:expStOut,:expStSize,:expExc) relLim_df = filter(x -> x.Fix != 0.0, relLim_df) end
+			
             if isempty(relLim_df) continue end
 			rename!(relLim_df,lim => :Lim)
 
@@ -459,7 +439,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			scaleCnsExpr!(relLim_df,anyM.options.coefRng,anyM.options.checkRng)
 			cns_dic[Symbol(va,lim)] = cnsCont(relLim_df,signLim_dic[lim])
 
-			produceMessage(anyM.options,anyM.report, 3," - Created constraints for $(lim == :Up ? "upper" : (lim == :Low ? "lower" : "fixed")) limit of variable $va")
+			produceMessage(anyM.options,anyM.report, 3," - Created constraints for $(lim in (:Up,:UpDir) ? "upper" : (lim in (:Low,:LowDir) ? "lower" : "fixed")) limit of variable $va")
 		end
 		typeLim_sym = va in (:emission,) ? "term" : "variable"
 		produceMessage(anyM.options,anyM.report, 2," - Prepared constraints to limit $typeLim_sym $va")

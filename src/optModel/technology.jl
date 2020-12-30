@@ -50,7 +50,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 	end
 
 	# create ratio constraints
-	createRatioCns!(part,cns_dic,r_dic,tech_str,anyM)
+	createRatioCns!(part,cns_dic,r_dic,anyM)
 
     # all constraints are scaled and then written into their respective array position
     foreach(x -> scaleCnsExpr!(x[2].data,anyM.options.coefRng,anyM.options.checkRng), collect(cns_dic))
@@ -155,7 +155,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			basis_df = copy(part.var[:capaConv])[!,Not(:var)]
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
-		elseif :capaStIn in keys(part.var)
+		elseif :capaStIn in keys(part.var) && !(va in (:gen,:use))
 			basis_df = orderDf(copy(part.var[:capaStIn])[!,Not(:var)])
 			# gets array of carriers defined for each group of storage
 			subField_arr = intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(part.carrier))
@@ -163,6 +163,8 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			# expands capacities according to carriers
 			basis_df[!,:C] .= map(x -> idC_dic[x],basis_df[!,:id])
 			basis_df = orderDf(flatten(basis_df,:C))
+		else
+			continue
 		end
 
 		# adds temporal and spatial level to dataframe
@@ -463,148 +465,4 @@ end
 
 #endregion
 
-#=
-function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},tech_str::String,anyM::anyModel)
 
-	sysLow_sym = :exc
-	sysUp_sym = :Exc
-
-	# creates dictionary assigning first part of parameter name to the corresponding limits enforced
-	par_arr = filter(x -> any(map(y -> occursin(y,x),["Up","Low","Fix"])),String.(collectKeys(keys(part.par))))
-	ratioLim_arr = map(x -> map(k -> Symbol(k[1]) => Symbol(k[2][1]), filter(z -> length(z[2]) == 2, map(y -> y => split(x,y),["Up","Low","Fix"])))[1], par_arr)
-	parToLim_dic = Dict(y => getindex.(filter(z -> z[2] == y,ratioLim_arr),1) for y in unique(getindex.(ratioLim_arr,2)))
-
-	ratioVar_dic = Dict(:stInToConv => ((:capaConv, :capaStIn),(:expConv, :expStIn)), :stOutToStIn => ((:capaStIn, :capaStOut),(:expStIn, :expStOut)),
-												:sizeToStIn => ((:capaStSize, :capaStIn),(:expStSize, :expStIn)), :flhConv => ((:capaConv,:in),), :flhStIn => ((:capaStIn,:stIn),), :flhExc => ((:exc,:Exc),),
-																				:flhStOut => ((:capaStOut,:stOut),), :cycStIn => ((:capaStSize,:stIn),), :cycStOut => ((:capaStSize,:stOut),))
-
-	va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :in => (:use,:stIntOut), :out => (:gen,:stIntIn))
-
-	# loop over all variables that are subject to any type of limit (except emissions)
-	signLim_dic = Dict(:Up => :greater, :Low => :smaller, :Fix => :equal)
-
-	# loop over parameters for conversion ratios
-	for par in filter(x -> occursin("ratio",string(x)),collectKeys(keys(parToLim_dic)))
-
-		for lim in parToLim_dic[par]
-
-			ratioType_sym = par == :ratioOut ? :out : :in
-
-			# obtain variable name and parameter data
-			if false
-				cns_df = rename(copy(part.par[Symbol(par,lim)].data),:val => :ratio)
-			else
-				cns_df = matchSetParameter(part.var[:exc],part.par[Symbol(par,lim)],anyM.sets,newCol = :ratio)
-			end
-
-			if isempty(cns_df) continue end
-
-			# joins parameter data with ratio controlled variable and all variables
-			agg_arr = filter(r -> r != sysUp_sym && (part.type == :emerging || r != :Ts_expSup), intCol(cns_df))
-
-			if false
-				if part.type == :emerging
-					srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_expSup = anyM.supTs.lvl, Ts_dis = x[1], R_dis = x[2]))
-				else
-					srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_dis = x[1], R_dis = x[2]))
-				end
-			else
-				if part.type == :emerging
-					srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_expSup = anyM.supTs.lvl, Ts_dis = x[1], R_dis = x[2]))
-				else
-					srcRes_ntup = (anyM.sets[:Ts].nodes[cns_df[1,:Ts_dis]].lvl, anyM.sets[:R].nodes[cns_df[1,:R_dis]].lvl) |> (x -> (Ts_dis = x[1], R_dis = x[2]))
-				end
-
-			end
-
-			# collect relevant dispatch variables
-			relVar_df = vcat(map(x -> select(part.var[x],vcat(intCol(cns_df),[:var])),intersect(keys(part.carrier),va_dic[ratioType_sym]))...)
-
-			if :M in namesSym(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
-				# find cases where ratio constraint is mode dependant
-				srcResM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(1,values(srcRes_ntup)...))...)
-				srcResNoM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(0,values(srcRes_ntup)...))...)
-				m_arr = findall(0 .!= cns_df[!,:M])
-				noM_arr = setdiff(1:size(cns_df,1),m_arr)
-				# aggregate variables with defined ratio
-				cns_df[!,:ratioVar] .= AffExpr()
-				cns_df[m_arr,:ratioVar] = aggUniVar(relVar_df, select(cns_df[m_arr,:],intCol(cns_df)), agg_arr, srcResM_ntup, anyM.sets)
-				cns_df[noM_arr,:ratioVar] = aggUniVar(relVar_df, select(cns_df[noM_arr,:],intCol(cns_df)), agg_arr, srcResNoM_ntup, anyM.sets)
-				# aggregate all variables
-				cns_df[!,:allVar] .= AffExpr()
-				cns_df[m_arr,:allVar] =	aggUniVar(relVar_df, select(cns_df[m_arr,:],intCol(cns_df)), filter(x -> x != :C,agg_arr), srcResM_ntup, anyM.sets)
-				cns_df[noM_arr,:allVar] =	aggUniVar(relVar_df, select(cns_df[noM_arr,:],intCol(cns_df)), filter(x -> x != :C,agg_arr), srcResNoM_ntup, anyM.sets)
-			else
-				cns_df[!,:ratioVar] = aggUniVar(relVar_df, select(cns_df,intCol(cns_df)), agg_arr, srcRes_ntup, anyM.sets)
-				cns_df[!,:allVar] =	aggUniVar(relVar_df, select(cns_df,intCol(cns_df)), filter(x -> x != :C,agg_arr), srcRes_ntup, anyM.sets)
-			end
-
-			# create corresponding constraint
-			cns_df[!,:cnsExpr] = map(x -> x.allVar * x.ratio - x.ratioVar, eachrow(cns_df))
-			cns_dic[Symbol(par,lim)] = cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),signLim_dic[lim])
-		end
-	end
-
-	# loops over all other parameters (ratios on storage capacity, flh, cycling)
-	for par in filter(x -> !occursin("ratio",string(x)),collectKeys(keys(parToLim_dic)))
-
-		capaRatio_boo = par in (:stInToConv, :stOutToStIn, :sizeToStIn)
-
-		# controls variables ratio is applied
-		if capaRatio_boo && (part.type == :stock || (!isempty(anyM.subPro) && anyM.subPro != (0,0))) # removes expansion for stock technologies or for subproblem
-			limVa_arr = (ratioVar_dic[par][1],)
-		elseif capaRatio_boo && part.decomm == :none  # removes capacity in case without decomm
-			limVa_arr = (ratioVar_dic[par][2],)
-		else
-			limVa_arr = ratioVar_dic[par]
-		end
-
-		# loops over variables limits are enforced on
-		for limVa in limVa_arr, lim in parToLim_dic[par]
-
-			# get variables for denominator
-			cns_df = copy(part.var[limVa[1]])
-
-			# adjustments for flh and cycling restrictions
-			if !capaRatio_boo
-				# aggregate to dispatch regions
-				cns_df[!,:R_dis] = map(x -> r_dic[x,part.balLvl.ref[2]][1],cns_df[!,:R_exp])
-				select!(cns_df,Not([:R_exp]))
-				cns_df = combine(groupby(cns_df,intCol(cns_df)), :var => (x -> sum(x)) => :var)
-				# extend to scenarios
-				cns_df[!,:scr] = map(x -> anyM.supTs.scr[x], cns_df[!,:Ts_disSup])
-				cns_df = flatten(cns_df,:scr)
-			end
-
-			# matches variables with parameters denominator
-			cns_df = rename(matchSetParameter(cns_df,part.par[Symbol(par,lim)],anyM.sets),:var => :denom)
-
-			# get variables for nominator
-			rlvTop_arr =  limVa[2] in keys(va_dic) ? intersect(keys(part.carrier),va_dic[limVa[2]]) : (limVa[2],)
-
-			# use out instead of in for flh of conversion technologies, if technology has no conversion input
-			if isempty(rlvTop_arr) && rat == :flhConv
-				rlvTop_arr = intersect(keys(part.carrier),(:stIntIn))
-			end
-
-			top_df = vcat(map(x -> part.var[x],rlvTop_arr)...)
-
-			# rename column for aggregation
-			if !capaRatio_boo cns_df = rename(cns_df,:Ts_disSup => :Ts_dis) end
-
-			# connect denominator and nominator
-			cns_df[!,:nom] =  aggDivVar(top_df, cns_df, tuple(intCol(cns_df)...), anyM.sets)
-
-			# name column back again
-			if !capaRatio_boo cns_df = rename(cns_df,:Ts_dis => :Ts_disSup) end
-
-			# create constraint
-			cns_df[!,:cnsExpr] = map(x -> x.val * x.denom - x.nom, eachrow(cns_df))
-
-			va_str = capaRatio_boo ? (string(limVa)[1:4] == "capa" ? "capa" : "exp") : ""
-			cns_dic[Symbol(par,lim,makeUp(va_str))] = cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),signLim_dic[lim])
-		end
-	end
-	produceMessage(anyM.options,anyM.report, 3," - Prepared constraints controlling energy ratios for technology $(tech_str)")
-end
-=#

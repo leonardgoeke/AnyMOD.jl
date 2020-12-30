@@ -382,13 +382,11 @@ end
 # ! get a dataframe with all variable of the specified type
 function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, filterFunc::Function = x -> true)
 
-	varToPart_dic = Dict(:crt => :bal, :lss => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
 	exc_boo = occursin("exc",lowercase(string(va)))
 	sys_dic = getfield(anyM.parts,exc_boo ? :exc : :tech)
 	sysSym_arr = collect(keys(sys_dic))
 	
-
-	if !(va in keys(varToPart_dic)) # get all variables for systems
+	if !(va in (:crt,:lss,:trdBuy,:trdSell,:emission)) # get all variables for systems
 		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :in => (:use,:stIntOut), :out => (:gen,:stIntIn))
 		sysType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(sys_dic[y].var), sysSym_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
 
@@ -403,8 +401,8 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			allVar_df = combine(groupby(allVar_df, intCol(allVar_df)), :var => (x -> sum(x)) => :var)
 		end
 	elseif va != :emission # get variables from other parts
-		if va in keys(getfield(anyM.parts,varToPart_dic[va]).var)
-			allVar_df = getfield(anyM.parts,varToPart_dic[va]).var[va]
+		if va in keys(anyM.parts.bal.va)
+			allVar_df = anyM.parts.bal.var[va]
 		else
 			allVar_df = DataFrame()
 		end
@@ -431,9 +429,9 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			# get expressions for storage and exchange losses, if this is enabled
 			if anyM.options.emissionLoss
 
-				# get all carriers being stored
-				allSt_arr = unique(vcat(vcat(map(x -> map(y -> collect(x.carrier[y]),intersect(keys(x.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))),values(anyM.parts.tech))...)...))
-				if !isempty(intersect(emC_arr,vcat(map(x -> [x,getDescendants(x,anyM.sets[:C],true)...],allSt_arr)...)))
+				# add expressions for storage losses
+				allSt_arr = union(union(union(map(x -> map(y -> collect(x.carrier[y]),intersect(keys(x.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))),values(anyM.parts.tech))...)...)...)
+				if !isempty(intersect(emC_arr,allSt_arr))
 					# get all storage variables where storage losses can lead to emissions
 					stVar_dic = Dict((string(st) |> (y -> Symbol(uppercase(y[1]),y[2:end]))) => getAllVariables(st,anyM, filterFunc = x -> x.C in emC_arr || x.Te in emTe_arr) for st in (:stIn,:stOut))
 					stLvl_df = getAllVariables(:stLvl,anyM, filterFunc = x -> x.C in emC_arr)
@@ -448,7 +446,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 							stVar_df = matchSetParameter(filter(x -> x.Te == tInt,stVar_df),part.par[Symbol(:eff,st)],anyM.sets)
 							stVar_df[!,:var] = stVar_df[!,:var] .* (1 .- stVar_df[!,:val])
 							select!(stVar_df,Not(:val))
-							allVar_df = vcat(allVar_df,stVar_df)
+							allVar_df = vcat(allVar_df,select(stVar_df,Not([:id])))
 						end
 
 						# add expression quantifying storage losses for storage discharge
@@ -457,25 +455,26 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 							stLvl_df = matchSetParameter(filter(x -> x.Te == tInt,stLvl_df),part.par[:stDis],anyM.sets)
 							stLvl_df[!,:var] = stLvl_df[!,:var] .* (1 .- (1 .- stLvl_df[!,:val]) .^ sca_arr)
 							select!(stLvl_df,Not(:val))
-							allVar_df = vcat(allVar_df,stLvl_df)
+							allVar_df = vcat(allVar_df,select(stLvl_df,Not([:id])))
 						end
 					end
 				end
 
 				# add expressions for exchange losses
-                if :exc in keys(anyM.parts.exc.var)
-					exc_df = getAllVariables(:exc,anyM, filterFunc = x -> x.C in emC_arr)
-					exc_df = getExcLosses(exc_df,anyM.parts.exc.par,anyM.sets)
+				relExc_arr = collect(filter(x -> !isempty(intersect(emC_arr,anyM.parts.exc[x].carrier)) && :exc in keys(anyM.parts.exc[x].var), keys(anyM.parts.exc)))
+				if !isempty(relExc_arr)
+					exc_df = vcat(map(z -> anyM.parts.exc[z] |> (u -> addLossesExc(filter(x -> x.C in subC_arr,u.var[:exc]),u,anyM.sets,true)),relExc_arr)...)
+
 					# exchange losses are equally split between import and export region
-					filter!(x -> x.loss != 0.0,exc_df)
 					if !isempty(exc_df)
-		                exc_df[!,:var] = exc_df[!,:var] .* exc_df[!,:loss] .* 0.5
-						exc_df = rename(combine(groupby(vcat(exc_df,rename(exc_df,:R_from => :R_to,:R_to => :R_from)),filter(x -> x != :R_to,intCol(exc_df))),:var => (x -> sum(x)) => :var),:R_from => :R_dis)
+						exc_df[!,:var] = exc_df[!,:var] .* 0.5
+						exc_df = rename(combine(groupby(flipExc(exc_df),filter(x -> x != :R_to,intCol(exc_df))),:var => (x -> sum(x)) => :var),:R_from => :R_dis)
 						# dimensions not relevant for exchange are set to 0
 						exc_df[!,:Te] .= 0; exc_df[!,:Ts_expSup] .= 0; exc_df[!,:M] .= 0
-						allVar_df = vcat(allVar_df,exc_df)
+						allVar_df = vcat(allVar_df,select(exc_df,Not([:exc])))
 					end
 				end
+
 			end
 
 			allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)
@@ -500,16 +499,11 @@ function getRelTech(c::Int,tech_dic::Dict{Symbol,TechPart},c_tree::Tree)
 	techSym_arr = collect(keys(tech_dic))
 	relTech_arr = Array{Tuple{Symbol,Symbol},1}()
 	for tSym in techSym_arr
-		addConvTech_arr = intersect((:use,:gen),filter(y -> c in tech_dic[tSym].carrier[y], collect(keys(tech_dic[tSym].carrier))))
-		if isempty(c_tree.nodes[c].down) # actual dispatch variables for storage only exists for carriers that are leaves
-			addStTech_arr = intersect((:stExtIn,:stExtOut),filter(y -> c in union(map(z -> union([z],getDescendants(z,c_tree,true)),tech_dic[tSym].carrier[y])...), collect(keys(tech_dic[tSym].carrier))))
-		else
-			addStTech_arr = Array{Tuple{Int,Symbol},1}()
-		end
-		union(addConvTech_arr,addStTech_arr) |> (y -> append!(relTech_arr,collect(zip(fill(tSym,length(y)),y))))
+		addTe_arr = intersect((:use,:gen,:stExtIn,:stExtOut),filter(y -> c in union(tech_dic[tSym].carrier[y]...), collect(keys(tech_dic[tSym].carrier))))
+		append!(relTech_arr,collect(zip(fill(tSym,length(addTe_arr)),addTe_arr)))
 	end
 
-	return relTech_arr
+	return filter(x -> x[2] in keys(tech_dic[x[1]].var), relTech_arr)
 end
 
 #endregion

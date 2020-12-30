@@ -456,7 +456,7 @@ mutable struct anyModel <: AbstractModel
 	supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}}
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}}
 	sets::Dict{Symbol,Tree}
-	parts::NamedTuple{(:tech,:trd,:exc,:bal,:lim,:obj),Tuple{Dict{Symbol,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
+	parts::NamedTuple{(:tech,:exc,:bal,:lim,:obj),Tuple{Dict{Symbol,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart}}
 	graInfo::graInfo
 end
 ```
@@ -495,7 +495,7 @@ mutable struct anyModel <: AbstractModel
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}}
 
 	sets::Dict{Symbol,Tree}
-	parts::NamedTuple{(:tech,:exc,:trd,:bal,:lim,:obj),Tuple{Dict{Symbol,TechPart},Dict{Symbol,ExcPart},OthPart,OthPart,OthPart,OthPart}}
+	parts::NamedTuple{(:tech,:exc,:bal,:lim,:obj),Tuple{Dict{Symbol,TechPart},Dict{Symbol,ExcPart},OthPart,OthPart,OthPart}}
 
 	graInfo::graInfo
 	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, emissionLoss = true,
@@ -548,7 +548,7 @@ mutable struct anyModel <: AbstractModel
 			end
 		end
 		
-		anyM.parts = (tech = Dict(sysSym(x,anyM.sets[:Te]) => TechPart(getUniName(x,anyM.sets[:Te])) for x in sysArr_dic[:Te]), exc = Dict(sysSym(x,anyM.sets[:Exc]) => ExcPart(getUniName(x,anyM.sets[:Exc])) for x in sysArr_dic[:Exc]), trd = OthPart(), bal = OthPart(), lim = OthPart(), obj = OthPart())
+		anyM.parts = (tech = Dict(sysSym(x,anyM.sets[:Te]) => TechPart(getUniName(x,anyM.sets[:Te])) for x in sysArr_dic[:Te]), exc = Dict(sysSym(x,anyM.sets[:Exc]) => ExcPart(getUniName(x,anyM.sets[:Exc])) for x in sysArr_dic[:Exc]), bal = OthPart(), lim = OthPart(), obj = OthPart())
 
 		createCarrierMapping!(setData_dic,anyM)
 		createTimestepMapping!(anyM)

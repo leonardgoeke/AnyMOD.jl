@@ -23,17 +23,18 @@ include("src/dataHandling/tree.jl")
 include("src/dataHandling/util.jl")
 
 #using Gurobi
-# ratio und exc: 1) vorgelagert: funktionierne ratios überhaupt noch bei conversion (und bei anderen sachen)? wenn ja wie? => 2 loops! beachten!
-# 2) mache ratio tatsächlich 2x für exc
 
-# gucke exc losses an, auch bei allVariables mit emissions
-# andere teile des modells: gucke energy balance und limits/ratios an, move costs into main part, make costs for: retrofitting, new exchange, update reporting
+
+
+# andere teile des modells: move costs into main part, make costs for: retrofitting, new exchange, update cost reporting
+# fixe problem mit check limits, 
+# mache performance: julia version, add_expressions
 
 anyM = anyModel("examples/demo","examples/results", objName = "test")
 createOptModel!(anyM)
 setObjective!(:costs,anyM)
 
-tSym = :wind
+tSym = :gasStorage
 tInt = sysInt(tSym,anyM.sets[:Te])
 part = anyM.parts.tech[tSym]
 prepTech_dic = prepSys_dic[:Te][tSym]
