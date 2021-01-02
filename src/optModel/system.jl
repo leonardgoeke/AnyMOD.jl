@@ -24,9 +24,9 @@ function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dic
 		
 		# saves required dimensions to dictionary
 		if exp == :Conv && !isempty(convCar_arr)
-			prepTech_dic[Symbol(:exp,exp)] =  (var = addSupTsToExp(allMap_df,part.par,exp,tsYear_dic,anyM), resi = DataFrame())
+			prepTech_dic[Symbol(:exp,exp)] =  (var = addSupTsToExp(allMap_df,part,exp,tsYear_dic,anyM), resi = DataFrame())
 		elseif exp != :Conv && !isempty(stCar_arr)
-			prepTech_dic[Symbol(:exp,exp)] =  (var = addSupTsToExp(combine(groupby(allMap_df,namesSym(allMap_df)), :Te => (x -> collect(1:countStGrp(carGrp_ntup))) => :id),part.par,exp,tsYear_dic,anyM), resi = DataFrame())
+			prepTech_dic[Symbol(:exp,exp)] =  (var = addSupTsToExp(combine(groupby(allMap_df,namesSym(allMap_df)), :Te => (x -> collect(1:countStGrp(carGrp_ntup))) => :id),part,exp,tsYear_dic,anyM), resi = DataFrame())
 		else
 			continue
 		end
@@ -65,14 +65,14 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 
 	# ! gather all existing capacity entries that could be relevant for retrofitting
 	allCapaDf_dic = Dict{Symbol,DataFrame}()
-	retroPotSym_arr = Symbol.(replace.(string.(filter(x -> occursin("costRetro",string(x)), collect(keys(anyM.parts.obj.par)))),"costRetro" => ""))
+	retroPotSym_arr = Symbol.(replace.(string.(filter(x -> occursin("costRetro",string(x)), collect(keys(anyM.parts.cost.par)))),"costRetro" => ""))
 
 	# prefilter systems that can be relevant for retrofitting technologies
 	filtSys_dic = Dict{Symbol,Array{Symbol,1}}()
 	
 	for capa in retroPotSym_arr
 		sys_sym = capa != :Exc ? :Te : :Exc
-		parData_df = anyM.parts.obj.par[Symbol(:costRetro,capa)].data
+		parData_df = anyM.parts.cost.par[Symbol(:costRetro,capa)].data
 		sysInt_arr = map(y -> filter(w -> isempty(anyM.sets[sys_sym].nodes[w].down),getDescendants(y,anyM.sets[sys_sym],true)), intersect([Symbol(sys_sym,:_i),Symbol(sys_sym,:_j)],namesSym(parData_df)) |> (z -> isempty(z) ? [0] : union([parData_df[!,x] for x in z]...)))
 		filtSys_dic[capa] = map(x -> sysSym(x,anyM.sets[sys_sym]),union(sysInt_arr...))
 	end
@@ -104,33 +104,24 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 			relSys_df = filter(x -> x[sys] == sysInt(sSym,anyM.sets[sys]),allCapaDf_dic[capaSym])
 			
 			# rename columns so they refer to target system, joins with all other capacity entries as starting points and renames them as well
-			if capaSym == :capaConv
-				relSys_df  = innerjoin(rename(relSys_df, :Ts_expSup => :Ts_expSup_i, sys => Symbol(sys,"_i"), :R_exp => :R_exp_i),allCapaDf_dic[capaSym],on = [:Ts_disSup])
-				rename!(relSys_df,:Ts_expSup => :Ts_expSup_j, sys => Symbol(sys,"_j"), :R_exp => :R_exp_j, :Ts_disSup => :Ts_retro)
-			elseif capaSym in (:capaStIn, :capaStOut, :capaStSize)
-				relSys_df  = innerjoin(rename(relSys_df, :Ts_expSup => :Ts_expSup_i, sys => Symbol(sys,"_i"), :R_exp => :R_exp_i, :id => :id_i),allCapaDf_dic[capaSym],on = [:Ts_disSup])
-				rename!(relSys_df,:Ts_expSup => :Ts_expSup_j, sys => Symbol(sys,"_j"), :R_exp => :R_exp_j, :id => :id_j, :Ts_disSup => :Ts_retro)
-			else
-				relSys_df = innerjoin(rename(relSys_df, :Ts_expSup => :Ts_expSup_i, sys => Symbol(sys,"_i"), :R_from => :R_from_i, :R_to => :R_to_i),allCapaDf_dic[capaSym],on = [:Ts_disSup])
-				rename!(relSys_df,:Ts_expSup => :Ts_expSup_j, sys => Symbol(sys,"_j"), :R_from => :R_from_j, :R_to => :R_to_j, :Ts_disSup => :Ts_retro)
-			end
+			startCol_arr = capaSym == :capaConv ? [:Te, :Ts_expSup, :R_exp] : (capaSym in (:capaStIn, :capaStOut, :capaStSize) ? [:Te, :Ts_expSup, :R_exp, :id] : [:Exc,:Ts_expSup,:R_from,:R_to])
+			relSys_df  = innerjoin(rename(relSys_df, startCol_arr .=> Symbol.(startCol_arr,"_i")),allCapaDf_dic[capaSym],on = [:Ts_disSup])
+			rename!(relSys_df,vcat(vcat(startCol_arr,[:Ts_disSup]) .=> vcat(Symbol.(startCol_arr,"_j"),[:Ts_retro])))
 
 			# filter all rows where regions are not related
 			relR_dic = Dict(x =>  vcat([x],getAncestors(x,anyM.sets[:R],:int)...,getDescendants(x,anyM.sets[:R])...) for x in (sys != :Exc ? unique(relSys_df[!,:R_exp_i]) : unique(vcat(map(z -> relSys_df[!,z],[:R_from_j,:R_from_i,:R_to_j,:R_to_i])...))))
 			filter!(x -> capaSym != :capaExc ? x.R_exp_j in relR_dic[x.R_exp_i] : (x.R_from_j in relR_dic[x.R_from_i] && x.R_to_j in relR_dic[x.R_to_i]),relSys_df)
 
 			# ! match with cost data to see where actual retrofitting is possible
-			allRetro_df = filter(x -> x[Symbol(sys,:_i)] != x[Symbol(sys,:_j)],select(orderDf(matchSetParameter(relSys_df,anyM.parts.obj.par[Symbol(:costRetro,replace(String(capaSym),"capa" => ""))],anyM.sets)),Not([:val])))
+			allRetro_df = filter(x -> x[Symbol(sys,:_i)] != x[Symbol(sys,:_j)],select(orderDf(matchSetParameter(relSys_df,anyM.parts.cost.par[Symbol(:costRetro,replace(String(capaSym),"capa" => ""))],anyM.sets)),Not([:val])))
 			if isempty(allRetro_df) continue end
 
 			# ! add column for last superordinate timestep of operation
 			# join lifetime of starting technology
-			if capaSym == :capaConv
-				allRetro_df[!,:lifeStart] = matchSetParameter(rename(select(allRetro_df,:Te_i, :Ts_expSup_i, :R_exp_i),:Te_i => :Te, :Ts_expSup_i => :Ts_expSup, :R_exp_i => :R_exp),part.par[Symbol(:life,type_sym)],anyM.sets)[!,:val]
-			elseif capaSym in (:capaStIn, :capaStOut, :capaStSize)
-				allRetro_df[!,:lifeStart] = matchSetParameter(rename(select(allRetro_df,:Te_i, :Ts_expSup_i, :R_exp_i, :id_i),:Te_i => :Te, :Ts_expSup_i => :Ts_expSup, :R_exp_i => :R_exp,:id_i => :id),part.par[Symbol(:life,type_sym)],anyM.sets)[!,:val]
+			if capaSym != :capaExc
+				allRetro_df[!,:lifeStart] = matchSetParameter(rename(allRetro_df,Symbol.(startCol_arr,"_i") .=> startCol_arr),part.par[Symbol(:life,type_sym)],anyM.sets)[!,:val]
 			else
-				allRetro_df[!,:lifeStart] = matchExcParameter(Symbol(:life,type_sym),rename(select(allRetro_df,:Exc_i, :Ts_expSup_i, :R_from_i,:R_to_i),:Exc_i => :Exc, :Ts_expSup_i => :Ts_expSup, :R_from_i => :R_from, :R_to_i => :R_to),part,anyM.sets)[!,:val]
+				allRetro_df[!,:lifeStart] = matchExcParameter(Symbol(:life,type_sym),rename(allRetro_df,Symbol.(startCol_arr,"_i") .=> startCol_arr),part,anyM.sets,part.dir)[!,:val]
 			end
 
 			# add column for last superordinate dispatch timesteps capacity would be operating, filters cases where last superordinate dispatch timesteps of operating would be so far in the future, that combination is impossible due to the lifetime
@@ -169,6 +160,7 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 
 			# filters cases where capacity is affected by retrofitting
 			joinOn_arr = sys == :Te ? capaSym != :capaConv ? [:Ts_expSup_i,:Ts_disSup,:R_exp_i,:Te_i,:id_i] : [:Ts_expSup_i,:Ts_disSup,:R_exp_i,:Te_i] : [:Ts_expSup_i,:Ts_disSup,:R_from_i,:R_to_i,:Exc_i]
+			
 			capaGrp_df = (part.type == :stock ? select(prepSys_dic[sys][sSym][capaSym].resi,Not([:var])) : prepSys_dic[sys][sSym][capaSym].var) |> (z -> semijoin(z,flatten(allRetroStart_df,:Ts_disSup),on = intCol(z) .=> joinOn_arr))
 			
 			# ! create new entries for start grouped by operating year
@@ -686,7 +678,7 @@ function createRetroConst!(capaSym::Symbol,cnsDic_arr::Array{Dict{Symbol,cnsCont
 	if isempty(retro_df) return end
 
 	# correct variables with retrofitting factor
-	retro_df = matchSetParameter(select(retro_df,Not([:Ts_disSup])),anyM.parts.obj.par[Symbol(:facRetro,capaSym)],anyM.sets)
+	retro_df = matchSetParameter(select(retro_df,Not([:Ts_disSup])),anyM.parts.cost.par[Symbol(:facRetro,capaSym)],anyM.sets)
 	retro_df[!,:var] = map(x -> x.start ? x.var * x.val : x.var,eachrow(retro_df))
 
 	# aggregate retrofitting variables (first try to aggregate starting entries to target entries => works if start is not less detailed than target, afterwards aggregate remaining cases)
@@ -732,7 +724,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 	# loop over all variables that are subject to any type of limit (except emissions)
 	signLim_dic = Dict(:Up => :greater, :Low => :smaller, :Fix => :equal, :Up => :greater)
 
-	# loop over parameters for conversion ratios
+	# loop over parameters for conversion and exchange ratios
 	for par in filter(x -> occursin("ratio",string(x)),collectKeys(keys(parToLim_dic)))
 
 		for lim in parToLim_dic[par]
@@ -835,7 +827,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 			if limVa[1] != :capaExc
 				cns_df = rename(matchSetParameter(cns_df,part.par[Symbol(par,lim)],anyM.sets),:var => :denom)
 			else
-				cns_df = rename(matchExcParameter(Symbol(par,lim),cns_df,part,anyM.sets),:var => :denom)
+				cns_df = rename(matchExcParameter(Symbol(par,lim),cns_df,part,anyM.sets,part.dir),:var => :denom)
 			end
 
 			# get variables for nominator

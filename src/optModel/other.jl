@@ -312,17 +312,22 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr),Dict(:Up => nothing, :Low => nothing, :Fix => nothing,:UpDir => nothing, :LowDir => nothing, :FixDir=> nothing)))
 		end
 
-		# TODO übearbeiten 1) nervige fehler meldungen raus, 2) muss auch mit FixDir eetc funktionieren
+		# merge columns for for directed limits to rest
+		for dirLim in intersect(namesSym(allLimit_df),(:FixDir,:UpDir,:LowDir))
+			lim_sym = Symbol(replace(string(dirLim),"Dir" => ""))
+			allLimit_df[!,lim_sym] = map(x -> isnothing(x[dirLim]) ? x[lim_sym] : x[dirLim],eachrow(allLimit_df))
+			select!(allLimit_df,Not([dirLim]))
+		end
+
 		# ! check for contradicting values
 		colSet_dic = Dict(x => Symbol(split(string(x),"_")[1]) for x in intCol(allLimit_df))
-		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low,:FixDir,:UpDir,:LowDir))
+		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))
 		entr_int = size(allLimit_df,1)
 		if :Low in limitCol_arr || :Up in limitCol_arr
 			# ! errors
-
 			# upper and lower limit contradicting each other
 			if :Low in limitCol_arr && :Up in limitCol_arr
-				for x in findall(replace(allLimit_df[!,:Low],nothing => 0.0) .- 0.0001 .> replace(allLimit_df[!,:Up],nothing => Inf))
+				for x in findall(replace(allLimit_df[!,:Low],nothing => 0.0) .> replace(allLimit_df[!,:Up],nothing => Inf))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"contradicting values for upper and lower limit detected for: " * dim_str))
@@ -332,7 +337,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 			# fix and upper limit contradicting each other
 			if :Fix in limitCol_arr && :Up in limitCol_arr
-				for x in findall(replace(allLimit_df[!,:Fix],nothing => 0.0) .> (replace(allLimit_df[!,:Up],nothing => Inf) .+ 0.0001))
+				for x in findall(replace(allLimit_df[!,:Fix],nothing => 0.0) .> (replace(allLimit_df[!,:Up],nothing => Inf)))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"fixed limit exceeds upper limit for: " * dim_str))
@@ -342,7 +347,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 			# fix and lower limit contradicting each other
 			if :Fix in limitCol_arr && :Low in limitCol_arr
-				for x in findall(replace(allLimit_df[!,:Fix],nothing => Inf) .< replace(allLimit_df[!,:Low],nothing => 0.0) .- 0.0001)
+				for x in findall(replace(allLimit_df[!,:Fix],nothing => Inf) .< replace(allLimit_df[!,:Low],nothing => 0.0))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"fixed limit is smaller than lower limit for: " * dim_str))
@@ -362,14 +367,6 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			end
 
 			# ! warnings
-			# upper or lower limit of zero
-			if !isempty(limitCol_arr |> (y -> filter(x -> collect(x[y]) |> (z -> any(isnothing.(z)) ? false : any(z .== 0)),allLimit_df))) && va != :emission
-				lock(anyM.lock)
-				push!(anyM.report,(2,"limit",string(va),"upper or lower limit of zero detected, please consider to use fix or omit limit instead"))
-				unlock(anyM.lock)
-				entr_int = size(allLimit_df,1)
-			end
-
 			# value is fixed, but still a upper a lower limit is provided
 			if :Fix in limitCol_arr
 				if !isempty(filter(x -> x != :Fix, limitCol_arr) |> (z -> filter(x -> all([!isnothing(x.Fix),any(.!isnothing.(collect(x[z])))]) ,eachrow(allLimit_df))))
@@ -559,3 +556,4 @@ function checkTechReso!(tRes_tup::Tuple{Int,Int},cBalRes_tup::Tuple{Int,Int},var
 end
 
 #endregion
+

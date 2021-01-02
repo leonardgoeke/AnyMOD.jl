@@ -25,10 +25,17 @@ include("src/dataHandling/util.jl")
 #using Gurobi
 
 
+# ansatz über Ts_disSup_last problematisch, da immer Zuorndung des letzten Betrachtungsjahr => falsche Berechnung von Lebenszeitne über den Rahmen hinaus
 
-# andere teile des modells: move costs into main part, make costs for: retrofitting, new exchange, update cost reporting
-# fixe problem mit check limits, 
+# mache alle cost tables mit: Jahr, Region, :Exc/:Te => wie umgang mit :Exc/:Te? => auf 0, für manche kosten dann eben auch beides 0 => filtern in der auswertung
+# => durchdenke das weiter, was heißt das für limits und objective?
+
+# mache mit dispatch costs weiter co2 preis auch auf exc losses und storage
+
 # mache performance: julia version, add_expressions
+# update reporting
+ 
+
 
 anyM = anyModel("examples/demo","examples/results", objName = "test")
 createOptModel!(anyM)

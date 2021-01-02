@@ -308,11 +308,21 @@ end
 #region # * manipulate model related data frames
 
 # ! add superordinate dispatch timestep to expansion dataframe
-function addSupTsToExp(expMap_df::DataFrame,para_obj::Dict{Symbol,ParElement},type_sym::Symbol,tsYear_dic::Dict{Int,Int},anyM::anyModel)
+function addSupTsToExp(expMap_df::DataFrame,part::AbstractModelPart,type_sym::Symbol,tsYear_dic::Dict{Int,Int},anyM::anyModel)
 	if !isempty(expMap_df)
-		lftm_df = matchSetParameter(flatten(expMap_df,:Ts_expSup),para_obj[Symbol(:life,type_sym)],anyM.sets,newCol = :life)
-		if Symbol(:del,type_sym) in keys(para_obj) # only add an acutal delay for normal expansion, but not in case of retrofitting
-			lftmDel_df = matchSetParameter(lftm_df,para_obj[Symbol(:del,type_sym)],anyM.sets,newCol = :del)
+		# add lifetime to table
+		if :Exc in namesSym(expMap_df)
+			lftm_df = rename(matchExcParameter(Symbol(:life,type_sym),flatten(expMap_df,:Ts_expSup),part,anyM.sets,part.dir),:val => :life)
+		else
+			lftm_df = matchSetParameter(flatten(expMap_df,:Ts_expSup),part.par[Symbol(:life,type_sym)],anyM.sets,newCol = :life)
+		end
+		# add construction delay to table
+		if Symbol(:del,type_sym) in keys(part.par) || Symbol(:del,type_sym,:Dir) in keys(part.par)
+			if :Exc in namesSym(expMap_df) 
+				lftmDel_df = rename(matchExcParameter(Symbol(:del,type_sym),lftm_df,part,anyM.sets,part.dir),:val => :del)
+			else
+				lftmDel_df = matchSetParameter(lftm_df,part.par[Symbol(:del,type_sym)],anyM.sets,newCol = :del)
+			end
 		else
 			lftmDel_df = lftm_df; lftmDel_df[!,:del] .= 0.0
 		end

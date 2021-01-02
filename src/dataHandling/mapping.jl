@@ -512,7 +512,7 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 			end
 		end
 		# remove unrequired parameter data from all other objects
-		for pName in (:trd,:bal,:lim,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
+		for pName in (:trd,:bal,:lim,:cost,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
 			if getfield(anyM.parts,pName).par[parName].problem == :top
 				delete!(getfield(anyM.parts,pName).par,parName)
 			else
@@ -537,7 +537,7 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 			end
 		end
 		# remove unrequired parameter data from all other objects
-		for pName in (:trd,:bal,:lim,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
+		for pName in (:trd,:bal,:lim,:cost,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
 			if getfield(anyM.parts,pName).par[parName].problem == :sub
 				delete!(getfield(anyM.parts,pName).par,parName)
 			end

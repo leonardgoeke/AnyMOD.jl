@@ -99,7 +99,7 @@ function prepareExcExpansion!(excInt::Int,part::ExcPart,partLim::OthPart,prepExc
 		exExp_df[!,:Ts_expSup] = map(x -> getDescendants(x,anyM.sets[:Ts],false,anyM.supTs.lvl) |> (y -> typeof(y) == Array{Int,1} ? y : [y] ), exExp_df[!,:Ts_exp])
 
 		# save result to dictionary for variable creation
-		exp_df = unique(addSupTsToExp(exExp_df,part.par,:Exc,tsYear_dic,anyM))
+		exp_df = unique(addSupTsToExp(exExp_df,part,:Exc,tsYear_dic,anyM))
 		exp_df[!,:dir] = map(x -> part.dir,eachrow(exp_df))
 		prepExc_dic[:expExc] = (var = orderDf(exp_df), resi = DataFrame())
 	end
@@ -241,27 +241,32 @@ end
 
 #region # * utility functions for exchange
 
-# matches exchange variables with directed and undirected parameters
-function matchExcParameter(par_sym::Symbol,var_df::DataFrame,part::ExcPart,sets_dic::Dict{Symbol,Tree})
 
-	if part.dir
+
+# matches exchange variables with directed and undirected parameters
+function matchExcParameter(par_sym::Symbol,var_df::DataFrame,part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},dir_boo::Bool=true,unDir_obj::Union{ParElement,Nothing}=nothing,dir_obj::Union{ParElement,Nothing}=nothing)
+
+	unDir_obj = isnothing(unDir_obj) && Symbol(par_sym) in keys(part.par) ? part.par[Symbol(par_sym)] : unDir_obj
+	dir_obj = isnothing(dir_obj) && Symbol(par_sym,:Dir) in keys(part.par) ? part.par[Symbol(par_sym,:Dir)] : dir_obj
+
+	if dir_boo
 		# obtain directed values first, if a corresponding parameter is defined
-		if Symbol(par_sym,:Dir) in keys(part.par)
-			dirMatch_df = matchSetParameter(var_df,part.par[Symbol(par_sym,:Dir)],sets_dic)
+		if !isnothing(dir_obj)
+			dirMatch_df = matchSetParameter(var_df,dir_obj,sets_dic)
 		else
 			dirMatch_df = DataFrame()
 			foreach(x -> dirMatch_df[!,x] = Int[],vcat(namesSym(var_df),[:val,]))
 		end
 
-		if Symbol(par_sym) in keys(part.par)
+		if !isnothing(unDir_obj)
 			# obtain entries where no directed entries could be matched
 			noMatch_df = antijoin(var_df,select(dirMatch_df,Not([:val])),on = intCol(var_df))
 			# ensures entries exist in both directions in the parameter data
-			if !isempty(intersect(namesSym(part.par[Symbol(par_sym)].data),(:R_from,:R_to)))
-				par_obj = copy(part.par[Symbol(par_sym)])
+			if !isempty(intersect(namesSym(unDir_obj.data),(:R_from,:R_to)))
+				par_obj = copy(unDir_obj)
 				par_obj.data = flipExc(par_obj.data)
 			else
-				par_obj = part.par[Symbol(par_sym)]
+				par_obj = unDir_obj
 			end
 			# match undirected entries to remaining and merge with directed
 			undirMatch_df = matchSetParameter(noMatch_df,par_obj,sets_dic)
@@ -270,7 +275,7 @@ function matchExcParameter(par_sym::Symbol,var_df::DataFrame,part::ExcPart,sets_
 			var_df = dirMatch_df
 		end
 	else
-		var_df = matchSetParameter(var_df,part.par[par_sym],sets_dic)
+		var_df = matchSetParameter(var_df,unDir_obj,sets_dic)
 	end
 
 	return var_df
@@ -280,7 +285,7 @@ end
 function addLossesExc(exc_df::DataFrame,partExc::ExcPart,sets_dic::Dict{Symbol,Tree},onlyLoss_boo::Bool=false)
 	
 	# get loss parameters
-	exc_df = matchExcPar(:lossExc,exc_df,partExc,sets_dic)
+	exc_df = matchExcParameter(:lossExc,exc_df,partExc,sets_dic)
 	
 	# corrects input dataframe for losses or return only the loss itself
 	if onlyLoss_boo
