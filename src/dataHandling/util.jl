@@ -82,8 +82,8 @@ intCol(in_df::DataFrame,add_sym::Array) = union(intCol(in_df),intersect(namesSym
 countStGrp(carGrp_ntup::NamedTuple) = intersect((:stExtIn,:stsExtOut,:stIntIn,:stsIntOut),collect(keys(carGrp_ntup))) |> (z ->  isempty(z) ? 0 : maximum(map(x -> length(getfield(carGrp_ntup,x)),z)))
 
 # ! puts relevant dimensions in consistent order and adds remaining entries at the end
-orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
-orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts, :Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts, :Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
 
 # ! puts dataframes columns in consistent order
 orderDf(in_df::DataFrame) = select(in_df,orderDim(namesSym(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
@@ -396,7 +396,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 	sys_dic = getfield(anyM.parts,exc_boo ? :exc : :tech)
 	sysSym_arr = collect(keys(sys_dic))
 	
-	if !(va in (:crt,:lss,:trdBuy,:trdSell,:emission)) # get all variables for systems
+	if !(va in (:crt,:lss,:trdBuy,:trdSell,:emission)) && !occursin("cost",string(va)) # get all variables for systems
 		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :in => (:use,:stIntOut), :out => (:gen,:stIntIn))
 		sysType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(sys_dic[y].var), sysSym_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
 
@@ -410,12 +410,53 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 		if va in keys(va_dic) && !isempty(allVar_df)
 			allVar_df = combine(groupby(allVar_df, intCol(allVar_df)), :var => (x -> sum(x)) => :var)
 		end
-	elseif va != :emission # get variables from other parts
-		if va in keys(anyM.parts.bal.va)
+	elseif va in (:crt,:lss,:trdBuy,:trdSell) # get variables from balance part
+		if va in keys(anyM.parts.bal.var)
 			allVar_df = anyM.parts.bal.var[va]
 		else
 			allVar_df = DataFrame()
 		end
+	elseif occursin("cost",string(va)) && va != :cost # get single variables from cost part
+		if va in keys(anyM.parts.cost.var)
+			allVar_df = anyM.parts.cost.var[va]
+		else
+			allVar_df = DataFrame()
+		end
+	elseif va == :cost # get merged cost variables
+		
+		# determines temporal and spatial level all cost variables can be aggregated to
+		tsLvl_int = minimum(vcat(map(x -> anyM.parts.tech[x].balLvl.exp[1],collect(keys(anyM.parts.tech))),map(x -> anyM.parts.exc[x].expLvl[1],collect(keys(anyM.parts.exc)))))
+		rLvl_int = minimum(getfield.(collect(values(anyM.cInfo)),:rDis))
+
+		costVar_arr = collect(keys(anyM.parts.cost.var))
+		costDf_arr = Array{DataFrame}(undef,length(costVar_arr))
+
+		for (idx,va) in enumerate(costVar_arr)
+			var_df = anyM.parts.cost.var[va]
+	
+			# splits costs of exchange across regions
+			if :R_from in intCol(var_df)
+				var_df[!,:var] = var_df[!,:var] .* 0.5
+				var_df = rename(combine(groupby(flipExc(var_df),filter(x -> x != :R_to,intCol(var_df))),:var => (x -> sum(x)) => :var),:R_from => :R_dis)
+			end
+			
+			# adjust temporal column
+			var_df[!,:Ts] = map(x -> getAncestors(x,anyM.sets[:Ts],:int,tsLvl_int)[end],var_df[!,intersect([:Ts_disSup,:Ts_exp],intCol(var_df))[1]])
+
+			# adjust spatial column
+			var_df[!,:R] = map(x -> getAncestors(x,anyM.sets[:R],:int,rLvl_int)[end],var_df[!,intersect([:R_exp,:R_dis],intCol(var_df))[1]])
+
+			# drop unrequired columns
+			var_df = select(var_df,vcat(intersect([:Ts, :R, :Te, :Exc],intCol(var_df)),[:var]))
+
+			var_df[!,:type] .= va
+			# fill non-existing columns with zero
+			foreach(x -> var_df[!,x] .= 0, setdiff([:Ts, :R, :Te, :Exc],intCol(var_df)))
+			costDf_arr[idx] = orderDf(var_df)
+		end
+
+		allVar_df = vcat(costDf_arr...) |> (z -> combine(groupby(z,intCol(z,:type)), :var => (x -> sum(x)) => :var))
+
 	else va == :emission # for emission all use variables are obtained and then already matched with emission factors
 
 		if !(:emissionFac in keys(anyM.parts.lim.par))
@@ -435,6 +476,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 
 			# get use variables
 			allVar_df = getAllVariables(:use,anyM, filterFunc = x -> x.C in emC_arr || x.Te in emTe_arr)
+			allVar_df[!,:Exc] .= 0
 
 			# get expressions for storage and exchange losses, if this is enabled
 			if anyM.options.emissionLoss
@@ -455,6 +497,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 							stVar_df = stVar_dic[st]
 							stVar_df = matchSetParameter(filter(x -> x.Te == tInt,stVar_df),part.par[Symbol(:eff,st)],anyM.sets)
 							stVar_df[!,:var] = stVar_df[!,:var] .* (1 .- stVar_df[!,:val])
+							stVar_df[!,:Exc] .= 0
 							select!(stVar_df,Not(:val))
 							allVar_df = vcat(allVar_df,select(stVar_df,Not([:id])))
 						end
@@ -473,15 +516,15 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 				# add expressions for exchange losses
 				relExc_arr = collect(filter(x -> !isempty(intersect(emC_arr,anyM.parts.exc[x].carrier)) && :exc in keys(anyM.parts.exc[x].var), keys(anyM.parts.exc)))
 				if !isempty(relExc_arr)
-					exc_df = vcat(map(z -> anyM.parts.exc[z] |> (u -> addLossesExc(filter(x -> x.C in subC_arr,u.var[:exc]),u,anyM.sets,true)),relExc_arr)...)
+					exc_df = vcat(map(z -> anyM.parts.exc[z] |> (u -> addLossesExc(filter(x -> x.C in emC_arr,u.var[:exc]),u,anyM.sets,true)),relExc_arr)...)
 
 					# exchange losses are equally split between import and export region
 					if !isempty(exc_df)
 						exc_df[!,:var] = exc_df[!,:var] .* 0.5
 						exc_df = rename(combine(groupby(flipExc(exc_df),filter(x -> x != :R_to,intCol(exc_df))),:var => (x -> sum(x)) => :var),:R_from => :R_dis)
 						# dimensions not relevant for exchange are set to 0
-						exc_df[!,:Te] .= 0; exc_df[!,:Ts_expSup] .= 0; exc_df[!,:M] .= 0
-						allVar_df = vcat(allVar_df,select(exc_df,Not([:exc])))
+						exc_df[!,:Te] .= 0;  exc_df[!,:M] .= 0
+						allVar_df = vcat(allVar_df,exc_df)
 					end
 				end
 
@@ -500,7 +543,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 		allVar_df[!,:var] .= allVar_df[!,:var] .* anyM.options.redStep
 	end
 
-	return filter(filterFunc,allVar_df)
+	return orderDf(filter(filterFunc,allVar_df))
 end
 
 # ! returns array of technologies and respective dispatch variables relevant for input carrier

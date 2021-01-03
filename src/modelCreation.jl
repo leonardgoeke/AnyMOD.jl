@@ -105,8 +105,9 @@ function createOptModel!(anyM::anyModel)
 		createTradeVarCns!(anyM.parts.bal,ts_dic,anyM)
 		createEnergyBal!(techSym_arr,ts_dic,anyM)
 	end
+	createCost!(anyM.parts.cost,anyM)
 	createLimitCns!(anyM.parts.lim,anyM)
-
+	
 	#endregion
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")

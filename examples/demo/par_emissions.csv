@@ -4,3 +4,4 @@ timestep_1,carrier_1,carrier_2,technology_1,region_1,parameter,value,comment
 2020,,,,West,emissionUp,180,emission limit for West in 2020
 2020,,,,East,emissionUp,170,emission limit for East in 2020
 2030,,,,all,emissionUp,80,independent emission limits for East and West in 2020
+,,,,,emissionPrc,30,

@@ -53,22 +53,22 @@ end
 
 createObjective!(objGrp::Symbol, partObj::OthPart,anyM::anyModel) = createObjective!(Val{objGrp}(), partObj::OthPart,anyM::anyModel)
 
+#=
+	# ! creates overall costs variable considering scaling parameters
+	relVar_arr = filter(x -> x != :objVar, collectKeys(keys(partCost.var)))
+	grpVar_arr = fill(:costs,length(relVar_arr))
+	objVar_arr = map(relVar_arr) do varName
+		# sets lower limit of zero, except for curtailment and revenues from selling, because these can incure "negative" costs
+		lowBd_tup = !(varName in (:costCrt,:costTrdSell)) |> (x -> (x,x ? 0.0 : NaN))
+		info = VariableInfo(lowBd_tup[1], lowBd_tup[2], false, NaN, false, NaN, false, NaN, false, false)
+		return JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, info),string(varName))
+	end
 
+	# create dataframe with for overall cost equations and scales it
+	objExpr_arr = [objVar_arr[idx] - sum(partCost.var[name][!,:var]) for (idx, name) in enumerate(relVar_arr)]
+	cns_df = DataFrame(group = fill(:costs,length(objExpr_arr)), name = relVar_arr, cnsExpr = objExpr_arr)
 
-# ! transfers provided cost dataframe into dataframe of overall objective variables and equations (and scales them)
-function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symbol,optModel::Model,lock_::ReentrantLock,sets_dic::Dict{Symbol,Tree},
-												coefRng_tup::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}, scaCost_fl::Float64, checkRng_fl::Float64, lowBd::Float64 = 0.0)
-
-	# create variables for cost entry and builds corresponding expression for equations controlling them
-	cost_df = createVar(cost_df,string(costPar_sym),NaN,optModel,lock_,sets_dic, scaFac = scaCost_fl, lowBd = lowBd)
-	cost_df[!,:cnsExpr] = map(x -> x.expr - x.var, eachrow(cost_df))
-	select!(cost_df,Not(:expr))
-
-	# scales cost expression
-	scaleCnsExpr!(cost_df,coefRng_tup,checkRng_fl)
-	cost_df[!,:var] = cost_df[!,:var]
-
-	# writes equations and variables
-	partObj.cns[costPar_sym] = createCns(cnsCont(select(cost_df,Not(:var)),:equal),optModel)
-	partObj.var[costPar_sym] = select(cost_df,Not(:cnsExpr))
-end
+	# add variables and equations to overall objective dataframes
+	partCost.cns[:objEqn] = vcat(partCost.cns[:objEqn],createCns(cnsCont(cns_df,:equal),anyM.optModel))
+	partCost.var[:objVar] = vcat(partCost.var[:objVar],DataFrame(group = grpVar_arr, name = relVar_arr, var = objVar_arr))
+=#

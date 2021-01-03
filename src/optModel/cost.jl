@@ -1,11 +1,9 @@
-# ! create variables and equations for cost objective
-
+# ! create variables and equations for costs
 function createCost!(partCost::OthPart,anyM::anyModel)
-
-	partCost = anyM.parts.cost
 
 	parObj_arr = collectKeys(keys(partCost.par))
 	sysSym_dic = Dict(:tech => collect(keys(anyM.parts.tech)), :exc => collect(keys(anyM.parts.exc)))
+	reachEnd_boo = false
 
 	# computes discount factors from discount rate provided and saves them as new parameter elements
 	computeDisFac!(partCost,anyM)
@@ -64,7 +62,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			if va != :Exc
 				techLife_df = matchSetParameter(techLife_df,parObj_dic[Symbol(:life,va)],anyM.sets,newCol = :life)
 			else
-				techLife_df = rename(matchCostExcParameter(costPar_sym,techLife_df,anyM,parObj_dic[:lifeExc],parObj_dic[:lifeExcDir]),:val => :life)
+				techLife_df = rename(matchCostExcParameter(costPar_sym,techLife_df,anyM,nothing,parObj_dic[:lifeExc],parObj_dic[:lifeExcDir]),:val => :life)
 			end
 			allExp_df = vcat(techLife_df,filter(x -> !isnothing(x.life),allExp_df))
 
@@ -84,10 +82,15 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			allExp_df = matchSetParameter(allExp_df,partCost.par[va != :Exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
 
 			# ! group cost expressions by system, scales groups expression and creates a variables for each grouped entry
-			allExp_df = rename(combine(x -> (expr = sum(x.disFac .* x.exp .* x.costAnn),) ,groupby(allExp_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:Exc])),:Ts_disSup => :Ts_exp)
+			allExp_df = rename(combine(x -> (expr = sum(x.disFac .* x.exp .* x.costAnn),) ,groupby(allExp_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:R_from,:R_to,:Exc])),:Ts_disSup => :Ts_exp)
 			transferCostEle!(allExp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng)
+			reachEnd_boo = true
 		end
-		produceMessage(anyM.options,anyM.report, 3," - Created expression for expansion costs")
+		
+		if reachEnd_boo 
+			produceMessage(anyM.options,anyM.report, 3," - Created variables and constraints for expansion costs")
+			reachEnd_boo = false
+		end
 
 		# ! add elements for operational costs of technologies
 		for va in (:Conv, :StIn, :StOut, :StSize, :Exc)
@@ -117,11 +120,16 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			if isempty(allCapa_df) continue end
 
 			# ! group cost expressions by system, scales groups expression and creates a variables for each grouped entry
-			allCapa_df = combine(x -> (expr = sum(x.disFac .* x.capa .* x.costOpr),), groupby(allCapa_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:Exc]))
+			allCapa_df = combine(x -> (expr = sum(x.disFac .* x.capa .* x.costOpr),), groupby(allCapa_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:R_from,:R_to,:Exc]))
 			transferCostEle!(allCapa_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng)
+			reachEnd_boo = true
 		end
-		produceMessage(anyM.options,anyM.report, 3," - Created expression for capacity costs")
 
+		if reachEnd_boo 
+			produceMessage(anyM.options,anyM.report, 3," - Created variables and constraints for capacity costs")
+			reachEnd_boo = false
+		end
+		
 		# ! add elements for retrofitting costs
 		for va in (:Conv, :StIn, :StOut, :StSize, :Exc)
 			
@@ -173,7 +181,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			if va != :Exc
 				techLife_df = matchSetParameter(rename(allRetro_df,Symbol.(startCol_arr,"_i") .=> startCol_arr),parObj_dic[Symbol(:life,va)],anyM.sets,newCol = :lifeStart)
 			else
-				techLife_df = rename(matchCostExcParameter(:lifeExc,rename(allRetro_df,Symbol.(startCol_arr,"_i") .=> startCol_arr),anyM,parObj_dic[:lifeExc],parObj_dic[:lifeExcDir]),:val => :lifeStart)
+				techLife_df = rename(matchCostExcParameter(:lifeExc,rename(allRetro_df,Symbol.(startCol_arr,"_i") .=> startCol_arr),anyM,nothing,parObj_dic[:lifeExc],parObj_dic[:lifeExcDir]),:val => :lifeStart)
 			end
 			rename!(techLife_df,startCol_arr .=> Symbol.(startCol_arr,"_i"))
 
@@ -200,38 +208,49 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			rename!(allRetro_df,Symbol.(startCol_arr,"_i") .=> startCol_arr)
 			allRetro_df = matchSetParameter(allRetro_df,partCost.par[va != :Exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
 
+			# switches dimension so cost relate to technology
+			rename!(allRetro_df,startCol_arr .=> Symbol.(startCol_arr,"_i"))
+			rename!(allRetro_df,Symbol.(startCol_arr,"_j") .=> startCol_arr)
+
 			# ! group cost expressions by system, scales groups expression and creates a variables for each grouped entry
-			allExp_df = rename(combine(x -> (expr = sum(x.disFac .* x.retro .* x.fac .* x.costAnn),) ,groupby(allRetro_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:Exc])),:Ts_disSup => :Ts_exp)
+			allExp_df = combine(x -> (expr = sum(x.disFac .* x.retro .* x.fac .* x.costAnn),) ,groupby(allRetro_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:R_from,:R_to,:Exc]))
 			transferCostEle!(allExp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng)
+			reachEnd_boo = true
 		end
 
+		if reachEnd_boo 
+			produceMessage(anyM.options,anyM.report, 3," - Created variables and constraints for retrofitting costs")
+			reachEnd_boo = false
+		end
 	end
+
+	produceMessage(anyM.options,anyM.report, 2," - Created all variables and constraints for expansion related costs")
 
 	#endregion
 
 	#region # * dispatch related costs
 
 	if isempty(anyM.subPro) || anyM.subPro != (0,0)
-		# ! add elements for variable costs of technologies
-		for va in (:use,:gen,:stIn,:stOut,:exc,:in,:out)
+		# ! add elements for variable costs of systems
+		for va in (:use,:gen,:stIn,:stOut,:in,:out,:exc)
 
 			costPar_sym = string(va) |> (x -> Symbol(:costVar,uppercase(x[1]),x[2:end]))
 
-			if !(costPar_sym in parObj_arr || (va == :use && :emissionPrc in parObj_arr && :emissionFac in keys(anyM.parts.lim.par))) continue end
+			if !(costPar_sym in parObj_arr) continue end
 
 			# obtain all variables
 			allDisp_df = getAllVariables(va,anyM)
-			if isempty(allDisp_df)
-				continue
-			else
+			if !isempty(allDisp_df)
 				allDisp_df = rename(allDisp_df,:var => :disp)
+			else
+				continue
 			end
 
 			# special case for variable costs of exchange (direct and symmetric values need to be considered both) and of use (emission price needs to be considered)
 			if va != :exc
 				allDisp_df = matchSetParameter(allDisp_df,anyM.parts.cost.par[costPar_sym],anyM.sets,newCol = :costVar)
 			else
-				allDisp_df = rename(matchCostExcParameter(costPar_sym,allDisp_df,anyM),:val => :costVar)
+				allDisp_df = rename(matchCostExcParameter(costPar_sym,allDisp_df,anyM,true),:val => :costVar)
 			end
 
 			if isempty(allDisp_df) continue end
@@ -240,55 +259,60 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			allDisp_df[!,:disp] = allDisp_df[!,:disp] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allDisp_df))
 
 			# renames dispatch regions to enable join with discount factors
-			if va != :exc rename!(allDisp_df,:R_dis => :R_exp) end
-			allDisp_df = matchSetParameter(allDisp_df,partCost.par[va != :exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
+			allDisp_df[!,:disFac] = matchSetParameter(va != :exc ? rename(allDisp_df,:R_dis => :R_exp) : allDisp_df, partCost.par[va != :exc ? :disFac : :disFacExc],anyM.sets)[!,:val]
 
 			# ! group cost expressions by system, scales groups expression and creates a variables for each grouped entry
-			allDisp_df = combine(x -> (expr = sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0 .* anyM.options.redStep,) ,groupby(allDisp_df,va != :exc ? [:Ts_disSup,:R_exp,:Te,:scr] : [:Ts_disSup,:C,:scr]))
+			allDisp_df = combine(x -> (expr = sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0 .* anyM.options.redStep,) ,groupby(allDisp_df,va != :exc ? [:Ts_disSup,:R_dis,:Te,:scr] : [:Ts_disSup,:R_from,:R_to,:C,:scr]))
 			transferCostEle!(allDisp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng)
+			reachEnd_boo = true
 		end
-		produceMessage(anyM.options,anyM.report, 3," - Created expression for variables costs")
+		
+		if reachEnd_boo 
+			produceMessage(anyM.options,anyM.report, 3," - Created variables and constraints for variables costs")
+			reachEnd_boo = false
+		end
+
+		# ! add elements for emission costs
+		if :emissionPrc in parObj_arr && :emissionFac in keys(anyM.parts.lim.par)
+			# get emission variables, prices and discount factor
+			emVar_df = matchSetParameter(getAllVariables(:emission,anyM),partCost.par[:emissionPrc],anyM.sets,newCol = :emPrc)
+			emVar_df = matchSetParameter(rename(emVar_df,:R_dis => :R_exp),partCost.par[:disFac],anyM.sets,newCol = :disFac)
+			# add scenario probability
+			emVar_df[!,:var] = emVar_df[!,:var] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(emVar_df))
+			# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
+			emVar_df = combine(x -> (expr = sum(x.disFac .* x[!,:var] .* x.emPrc) ./ 1000.0 .* anyM.options.redStep,) ,groupby(emVar_df, [:Ts_disSup,:R_exp,:C,:scr]))
+			transferCostEle!(rename(emVar_df,:R_exp => :R_dis), partCost,:costEm,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng, 0.0)
+			produceMessage(anyM.options,anyM.report, 3," - Created variables and constraints for emission costs")
+		end
 
 		# ! add elements for curtailment and loss of load costs of energy carriers
 		varToPar_dic = Dict(:crt => :costCrt, :lss => :costLss, :trdBuy => :trdBuyPrc, :trdSell => :trdSellPrc)
-		for varType in [:crt,:lss,:trdBuy, :trdSell]
-			if varType in keys(anyM.parts.bal.var)
-				cost_sym = varToPar_dic[varType]
+		for va in [:crt,:lss,:trdBuy, :trdSell]
+			if va in keys(anyM.parts.bal.var)
+				cost_sym = varToPar_dic[va]
 				# compute discounted curtailment costs
-				allVar_df = rename(matchSetParameter(anyM.parts.bal.var[varType],anyM.parts.bal.par[cost_sym],anyM.sets,newCol = :cost),:var => varType)
+				allVar_df = rename(matchSetParameter(anyM.parts.bal.var[va],anyM.parts.bal.par[cost_sym],anyM.sets,newCol = :cost),:var => va)
 				allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partCost.par[:disFac],anyM.sets,newCol = :disFac)
 				# add scenario probability
-				allVar_df[!,varType] = allVar_df[!,varType] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allVar_df))
+				allVar_df[!,va] = allVar_df[!,va] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allVar_df))
 				# groups cost expressions by carrier, scales groups expression and creates a variables for each grouped entry
-				allVar_df = combine(x -> (expr = sum(x.disFac .* x[!,varType] .* x.cost) ./ 1000.0 .* anyM.options.redStep,) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C,:scr]))
-				transferCostEle!(allVar_df, partCost,cost_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng, (va == :trdBuy ? 0.0 : NaN))
+				allVar_df = rename(combine(x -> (expr = sum(x.disFac .* x[!,va] .* x.cost) ./ 1000.0 .* anyM.options.redStep,) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C,:scr])),:R_exp => :R_dis)
+				transferCostEle!(allVar_df, partCost,va in (:crt,:lls) ? cost_sym : Symbol(:cost,makeUp(replace(string(cost_sym),"Prc" => ""))),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng, (va == :trdBuy ? 0.0 : NaN))
+				reachEnd_boo = true
 			end
 		end
 
-		produceMessage(anyM.options,anyM.report, 3," - Created expression for curtailment and trade costs")
+		if reachEnd_boo 
+			produceMessage(anyM.options,anyM.report, 3," - Created variables and constraints for curtailment and trade costs")
+			reachEnd_boo = false
+		end
 	end
 
+	produceMessage(anyM.options,anyM.report, 2," - Created all variables and constraints for dispatch related costs")
 	#endregion
 
-	# ! creates overall costs variable considering scaling parameters
-	relVar_arr = filter(x -> x != :objVar, collectKeys(keys(partCost.var)))
-	grpVar_arr = fill(:costs,length(relVar_arr))
-	objVar_arr = map(relVar_arr) do varName
-		# sets lower limit of zero, except for curtailment and revenues from selling, because these can incure "negative" costs
-		lowBd_tup = !(varName in (:costCrt,:costTrdSell)) |> (x -> (x,x ? 0.0 : NaN))
-		info = VariableInfo(lowBd_tup[1], lowBd_tup[2], false, NaN, false, NaN, false, NaN, false, false)
-		return JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, info),string(varName))
-	end
-
-	# create dataframe with for overall cost equations and scales it
-	objExpr_arr = [objVar_arr[idx] - sum(partCost.var[name][!,:var]) for (idx, name) in enumerate(relVar_arr)]
-	cns_df = DataFrame(group = fill(:costs,length(objExpr_arr)), name = relVar_arr, cnsExpr = objExpr_arr)
-
-	# add variables and equations to overall objective dataframes
-	partCost.cns[:objEqn] = vcat(partCost.cns[:objEqn],createCns(cnsCont(cns_df,:equal),anyM.optModel))
-	partCost.var[:objVar] = vcat(partCost.var[:objVar],DataFrame(group = grpVar_arr, name = relVar_arr, var = objVar_arr))
+	produceMessage(anyM.options,anyM.report, 1," - Created all variables and constraints for costs")
 end
-
 
 # ! computes annuity of expansion or retrofitting costs
 function computeAnn(va_sym::Symbol,type_sym::Symbol,allData_df::DataFrame,anyM::anyModel)
@@ -368,8 +392,8 @@ function computeDisFac!(partObj::OthPart,anyM::anyModel)
 	partObj.par[:disFacExc] = discPar_obj
 end
 
-# matches exchange variables with cost parameters, matchExcParameter cannot be applied directly, because cost parameters are stored in other model part
-function matchCostExcParameter(par_sym::Symbol,data_df::DataFrame,anyM::anyModel,unDir_obj::Union{ParElement,Nothing}=nothing,dir_obj::Union{ParElement,Nothing}=nothing)
+# ! matches exchange variables with cost parameters, matchExcParameter cannot be applied directly, because cost parameters are stored in other model part
+function matchCostExcParameter(par_sym::Symbol,data_df::DataFrame,anyM::anyModel,useDir_boo::Union{Bool,Nothing}=nothing,unDir_obj::Union{ParElement,Nothing}=nothing,dir_obj::Union{ParElement,Nothing}=nothing)
 
 	# groups by exchange technology
 	grpExc_gdf = groupby(data_df,[:Exc])
@@ -377,8 +401,26 @@ function matchCostExcParameter(par_sym::Symbol,data_df::DataFrame,anyM::anyModel
 
 	# loops over exchange technologies and obtains data
 	for (idx,excDf) in enumerate(grpExc_gdf)	
-		matchData_arr[idx] = matchExcParameter(par_sym,DataFrame(excDf),anyM.parts.cost,anyM.sets,anyM.parts.exc[sysSym(excDf.Exc[1],anyM.sets[:Exc])].dir,unDir_obj,dir_obj)
+		matchData_arr[idx] = matchExcParameter(par_sym,DataFrame(excDf),anyM.parts.cost,anyM.sets,isnothing(useDir_boo) ? anyM.parts.exc[sysSym(excDf.Exc[1],anyM.sets[:Exc])].dir : useDir_boo,unDir_obj,dir_obj)
 	end
 
 	return vcat(matchData_arr...)
+end
+
+# ! transfers provided cost dataframe into dataframe of overall objective variables and equations (and scales them)
+function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symbol,optModel::Model,lock_::ReentrantLock,sets_dic::Dict{Symbol,Tree},
+	coefRng_tup::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}, scaCost_fl::Float64, checkRng_fl::Float64, lowBd::Float64 = 0.0)
+
+	# create variables for cost entry and builds corresponding expression for equations controlling them
+	cost_df = createVar(cost_df,string(costPar_sym),NaN,optModel,lock_,sets_dic, scaFac = scaCost_fl, lowBd = lowBd)
+	cost_df[!,:cnsExpr] = map(x -> x.expr - x.var, eachrow(cost_df))
+	select!(cost_df,Not(:expr))
+
+	# scales cost expression
+	scaleCnsExpr!(cost_df,coefRng_tup,checkRng_fl)
+	cost_df[!,:var] = cost_df[!,:var]
+
+	# writes equations and variables
+	partObj.cns[costPar_sym] = createCns(cnsCont(select(cost_df,Not(:var)),:equal),optModel)
+	partObj.var[costPar_sym] = select(cost_df,Not(:cnsExpr))
 end
