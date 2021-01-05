@@ -232,13 +232,9 @@ function createConvBal(part::TechPart,anyM::anyModel)
 		end
 	end
 
-	# aggregate in and out variables respectively
-	cns_df[!,:in] = map(x -> sum(x),eachrow(cns_df[!,in_arr]))
-	cns_df[!,:out] = map(x -> sum(x),eachrow(cns_df[!,out_arr]))
-	select(cns_df,Not(vcat(in_arr,out_arr)))
-
-	# create actual constraint
-	cns_df[!,:cnsExpr] = map(x -> x.in*x.eff - x.out,eachrow(cns_df))
+	
+	# aggregate in and out variables respectively and create actual constraint
+	cns_df[!,:cnsExpr] = map(x -> sum(getindex(x,in_arr))*x.eff - sum(getindex(x,out_arr)),eachrow(cns_df))
 	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),:equal)
 end
 
