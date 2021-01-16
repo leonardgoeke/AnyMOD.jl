@@ -89,7 +89,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 
 	# add carriers beings generated or used
 	append!(relC_arr,union(union(map(x -> anyM.parts.tech[x].carrier |> (y -> map(z -> getfield(y,z),intersect(keys(y),(:gen,:use)))),techSym_arr)...)...))
-	relC_arr = unique(relC_arr)
+	relC_arr = unique(filter(x -> anyM.cInfo[x].bal != :none,relC_arr))
 
 	# create object to write constraint data too
 	cns_arr = Array{Pair{Symbol,cnsCont}}(undef,length(relC_arr))
@@ -163,7 +163,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		filter!(x -> x.cnsExpr != AffExpr(),cns_df)
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
-		cns_arr[idx] = Symbol(c_str) => cnsCont(cns_df,anyM.cInfo[c].eq ? :equal : :greater)
+		cns_arr[idx] = Symbol(c_str) => cnsCont(cns_df,anyM.cInfo[c].bal == :eq ? :equal : :greater)
 
 		produceMessage(anyM.options,anyM.report, 2," - Prepared energy balance for $(c_str)")
 	end
@@ -179,7 +179,7 @@ end
 
 # ! aggregate all technology variables for energy balance
 function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,tech_dic::Dict{Symbol,TechPart},
-																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}},sets_dic::Dict{Symbol,Tree})
+																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:bal),Tuple{Int,Int,Int,Int,Symbol}}},sets_dic::Dict{Symbol,Tree})
 	techVar_arr = Array{Array{AffExpr,1}}(undef,length(subC_arr))
 
 	# get temporal and spatial resolution for carrier being balanced
@@ -223,7 +223,7 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 	end
 
 	# check where tech variables are sinks for energy carriers, which means in this case an energy balance will be necessary 
-	if !cInfo_dic[cBal_int].eq 
+	if cInfo_dic[cBal_int].bal == :ineq 
 		if unique(techVar_arr[1]) != [AffExpr()] # sinks are terms with a negative sign
 			unEtr_arr = map(x -> values(x.terms) |> (y -> isempty(y) ? true : minimum(collect(y)) >= 0.0), techVar_arr[1])
 		else # if all expressions are empty there aren't any sinks

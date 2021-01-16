@@ -8,7 +8,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     resCol_tup =  (:timestep_dispatch, :timestep_expansion, :region_dispatch, :region_expansion)
     resLongShort_tup = Dict(:timestep_dispatch => :lvlTsDis, :timestep_expansion => :lvlTsExp, :region_dispatch => :lvlRDis, :region_expansion => :lvlRExp)
 
-    anyM.cInfo = Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}}()
+    anyM.cInfo = Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:bal),Tuple{Int,Int,Int,Int,Symbol}}}()
 
     # loops over rows in carrier file and writes specific resolutions
     for row in eachrow(setData_dic[:C])
@@ -19,15 +19,15 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     	resVal_dic = Dict(resLongShort_tup[x] => row[x] for x in resCol_tup)
 
 		# check, if carrier got an equality constraint or not
-		if :carrier_equality in namesSym(row)
-			if !(row[:carrier_equality] in ("no","yes"))
-				push!(anyM.report,(2,"carrier mapping","","column carrier_equality can only contain keywords 'yes' or 'no', assumed 'no'"))
-				eq_boo = false
+		if :carrier_balance in namesSym(row)
+			if !(row[:carrier_balance] in ("eq","ineq","none"))
+				push!(anyM.report,(2,"carrier mapping","","column carrier_equality can only contain keywords 'eq', 'ineq', or 'none', assumed 'ineq'"))
+				bal_sym = :ineq
 			else
-				eq_boo = row[:carrier_equality] == "yes" ? true : false
+				bal_sym = Symbol(row[:carrier_balance])
 			end
 		else
-			eq_boo = false
+			bal_sym = :ineq
 		end
 
     	# check if level values can be converted to integers
@@ -44,7 +44,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     		push!(anyM.report,(3,"carrier mapping","","spatial resolution of expansion must be at least as detailed as dispatch for '$(createFullString(car_int,anyM.sets[:C]))'"))
     		continue
     	else
-    		anyM.cInfo[car_int] = (tsDis = res_dic[:lvlTsDis],tsExp = res_dic[:lvlTsExp],rDis = res_dic[:lvlRDis],rExp = res_dic[:lvlRExp], eq = eq_boo)
+    		anyM.cInfo[car_int] = (tsDis = res_dic[:lvlTsDis],tsExp = res_dic[:lvlTsExp],rDis = res_dic[:lvlRDis],rExp = res_dic[:lvlRExp], bal = bal_sym)
     	end
     end
 
@@ -63,7 +63,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
 end
 
 # ! checks carrier for errors in resolution or derive resolution from lower carriers
-function evaluateReso(startIdx_int::Int,car_tree::Tree,cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:eq),Tuple{Int,Int,Int,Int,Bool}}},report::Array{Tuple,1})
+function evaluateReso(startIdx_int::Int,car_tree::Tree,cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:bal),Tuple{Int,Int,Int,Int,Symbol}}},report::Array{Tuple,1})
 	# extracts all children and all columns related to resolution
 	carName_str = createFullString(startIdx_int,car_tree)
 	allChildIdx_arr = getDescendants(startIdx_int,car_tree)
@@ -80,7 +80,7 @@ function evaluateReso(startIdx_int::Int,car_tree::Tree,cInfo_dic::Dict{Int,Named
 			return cInfo_dic
 		else
 			newReso_dic = Dict(y => minimum([getfield(cInfo_dic[x],y) for x in allChildIdx_arr]) for y in (:tsDis,:tsExp,:rDis,:rExp))
-			cInfo_dic[startIdx_int] = (tsDis = newReso_dic[:tsDis],tsExp = newReso_dic[:tsExp],rDis = newReso_dic[:rDis],rExp = newReso_dic[:rExp], eq = false)
+			cInfo_dic[startIdx_int] = (tsDis = newReso_dic[:tsDis],tsExp = newReso_dic[:tsExp],rDis = newReso_dic[:rDis],rExp = newReso_dic[:rExp], bal = :ineq)
 			push!(report,(1,"carrier mapping","","carrier '$(carName_str)' inherited resolution from children"))
 			return cInfo_dic
 		end

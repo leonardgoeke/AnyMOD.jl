@@ -719,7 +719,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 	parToLim_dic = Dict(y => unique(getindex.(filter(z -> z[2] == y,ratioLim_arr),1)) for y in unique(getindex.(ratioLim_arr,2)))
 
 	ratioVar_dic = Dict(:stInToConv => ((:capaConv, :capaStIn),(:expConv, :expStIn)), :stOutToStIn => ((:capaStIn, :capaStOut),(:expStIn, :expStOut)),
-												:sizeToStIn => ((:capaStSize, :capaStIn),(:expStSize, :expStIn)), :flhConv => ((:capaConv,:in),), :flhStIn => ((:capaStIn,:stIn),), :flhExc => ((:capaExc,:exc),),
+												:sizeToStIn => ((:capaStSize, :capaStIn),(:expStSize, :expStIn)), :flhConv => ((:capaConv,:convIn),), :flhStIn => ((:capaStIn,:stIn),), :flhExc => ((:capaExc,:exc),),
 																				:flhStOut => ((:capaStOut,:stOut),), :cycStIn => ((:capaStSize,:stIn),), :cycStOut => ((:capaStSize,:stOut),))
 
 	va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :convIn => (:use,:stIntOut), :convOut => (:gen,:stIntIn))
@@ -872,7 +872,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 	cnstrType_dic = Dict(:exc => (dis = (:exc,), capa = :Exc), :convOut => (dis = (:gen, :stIntIn), capa = :Conv), :convIn => (dis = (:use,:stIntOut), capa = :Conv),
 							:stIn => (dis = (:stExtIn, :stIntIn), capa = :StIn), :stOut => (dis = (:stExtOut, :stIntOut), capa = :StOut), :stSize => (dis = (:stLvl,), capa = :StSize))
 
-	capaRestr_gdf = groupby(part.capaRestr,:cnstrType)
+	capaRestr_gdf = groupby(filter(x -> x.cnstrType != "fix",part.capaRestr),:cnstrType)
 
 	# loop over groups of capacity restrictions (like out, stIn, ...)
 	for restrGrp in capaRestr_gdf
