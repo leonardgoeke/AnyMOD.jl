@@ -67,6 +67,9 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 	allCapaDf_dic = Dict{Symbol,DataFrame}()
 	retroPotSym_arr = Symbol.(replace.(string.(filter(x -> occursin("costRetro",string(x)), collect(keys(anyM.parts.cost.par)))),"costRetro" => ""))
 
+	# get systems which are irrelevant because they are have no capacity variables
+	unResTe_arr, unResExc_arr = [filter(x -> getfield(anyM.parts,z)[x].type == :unrestricted ,collect(keys(getfield(anyM.parts,z)))) for z in (:tech,:exc)]
+
 	# prefilter systems that can be relevant for retrofitting technologies
 	filtSys_dic = Dict{Symbol,Array{Symbol,1}}()
 	
@@ -79,12 +82,12 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 
 	for retroSym in intersect(retroPotSym_arr,(:Conv,:StIn,:StOut,:StSize))
 		capaSym = Symbol(:capa,retroSym)
-		relCapa_dic = filter(x -> x[1] in filtSys_dic[retroSym], prepSys_dic[:Te])
+		relCapa_dic = filter(x -> x[1] in filtSys_dic[retroSym] && !(x[1] in unResTe_arr), prepSys_dic[:Te])
 		allCapaDf_dic[capaSym] = unique(vcat(filter(w -> !isempty(w), vcat(map(x -> capaSym in keys(x) ? map(y -> getfield(x[capaSym],y) |> (z -> select(z,intCol(z))),[:var,:resi]) : DataFrame[],values(relCapa_dic))...))...))
 	end
 	
 	if :Exc in retroPotSym_arr
-		relCapa_dic = filter(x -> x[1] in filtSys_dic[:Exc], prepSys_dic[:Exc])
+		relCapa_dic = filter(x -> x[1] in filtSys_dic[:Exc]&& !(x[1] in unResExc_arr), prepSys_dic[:Exc])
 		capaExc_df = unique(vcat(filter(w -> !isempty(w), vcat(map(x -> :capaExc in keys(x) ? map(y -> getfield(x[:capaExc],y) |> (z -> select(z,intCol(z))),[:var,:resi]) : DataFrame[],values(relCapa_dic))...))...))
 		allCapaDf_dic[:capaExc] = filter(x -> anyM.parts.exc[sysSym(x.Exc,anyM.sets[:Exc])].dir || (x.R_from < x.R_to),capaExc_df)
 	end
@@ -719,7 +722,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 												:sizeToStIn => ((:capaStSize, :capaStIn),(:expStSize, :expStIn)), :flhConv => ((:capaConv,:in),), :flhStIn => ((:capaStIn,:stIn),), :flhExc => ((:capaExc,:exc),),
 																				:flhStOut => ((:capaStOut,:stOut),), :cycStIn => ((:capaStSize,:stIn),), :cycStOut => ((:capaStSize,:stOut),))
 
-	va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :in => (:use,:stIntOut), :out => (:gen,:stIntIn))
+	va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :convIn => (:use,:stIntOut), :convOut => (:gen,:stIntIn))
 
 	# loop over all variables that are subject to any type of limit (except emissions)
 	signLim_dic = Dict(:Up => :greater, :Low => :smaller, :Fix => :equal, :Up => :greater)
@@ -729,7 +732,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 
 		for lim in parToLim_dic[par]
 
-			ratioType_sym = par == :ratioOut ? :out : :in
+			ratioType_sym = par == :ratioConvOut ? :convOut : :convIn
 
 			# obtain variable name and parameter data
 			if par != :ratioExc
@@ -866,7 +869,7 @@ end
 # ! create all capacity restrictions for technology and exchange
 function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 
-	cnstrType_dic = Dict(:exc => (dis = (:exc,), capa = :Exc), :out => (dis = (:gen, :stIntIn), capa = :Conv), :in => (dis = (:use,:stIntOut), capa = :Conv),
+	cnstrType_dic = Dict(:exc => (dis = (:exc,), capa = :Exc), :convOut => (dis = (:gen, :stIntIn), capa = :Conv), :convIn => (dis = (:use,:stIntOut), capa = :Conv),
 							:stIn => (dis = (:stExtIn, :stIntIn), capa = :StIn), :stOut => (dis = (:stExtOut, :stIntOut), capa = :StOut), :stSize => (dis = (:stLvl,), capa = :StSize))
 
 	capaRestr_gdf = groupby(part.capaRestr,:cnstrType)
@@ -903,7 +906,7 @@ end
 function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::DataFrameRow, type_sym::Symbol, info_ntup::NamedTuple,
 															ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple)
 
-	conv_boo = type_sym in (:out,:in) && type_sym != :exc
+	conv_boo = type_sym in (:convOut,:convIn) && type_sym != :exc
 	dim_arr = type_sym == :exc ? [:Ts_expSup,:Ts_dis,:R_from,:R_to,:Exc,:scr] : (conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:Te,:id,:scr])
 	agg_arr = type_sym == :exc ? [:Ts_expSup,:Ts_dis,:R_from,:R_to,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:scr] |> (x -> filter(x -> part.type == :emerging || x != :Ts_expSup,x))
 
@@ -951,8 +954,8 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 		if va != :exc
 			ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:ava,info_ntup.capa)],sets_dic, newCol = :ava)[!,:ava]
 
-			if type_sym in (:out,:stOut)
-				ava_arr = matchSetParameter(allVar_df,part.par[type_sym == :out ? :effConv : :effStOut],sets_dic,newCol = :eff)[!,:eff] .* ava_arr
+			if type_sym in (:convOut,:stOut)
+				ava_arr = matchSetParameter(allVar_df,part.par[type_sym == :convOut ? :effConv : :effStOut],sets_dic,newCol = :eff)[!,:eff] .* ava_arr
 			end
 			allVar_df[!,:var] = allVar_df[!,:var] .* 1 ./ ava_arr
 		else

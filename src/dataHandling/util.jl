@@ -1,7 +1,7 @@
 
 #region # * reporting of calculation progress and error handling
 
-# ! return elapsed time since Start_date
+# ! return elapsed time since Start_dates
 function getElapsed(start::DateTime)
     elapSec_per = Dates.value(floor(now() - start,Dates.Second(1)))
     if elapSec_per < 3600*24
@@ -397,7 +397,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 	sysSym_arr = collect(keys(sys_dic))
 	
 	if !(va in (:crt,:lss,:trdBuy,:trdSell,:emission)) && !occursin("cost",string(va)) # get all variables for systems
-		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :in => (:use,:stIntOut), :out => (:gen,:stIntIn))
+		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :convIn => (:use,:stIntOut), :convOut => (:gen,:stIntIn))
 		sysType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(sys_dic[y].var), sysSym_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
 
 		if !isempty(sysType_arr)

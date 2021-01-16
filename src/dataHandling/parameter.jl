@@ -259,13 +259,13 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:stIntInLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = ofHeritSt_tup, part = :lim)
     parDef_dic[:stIntInFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = ofHeritSt_tup, part = :lim)
 
-    parDef_dic[:inUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup, part = :lim)
-    parDef_dic[:inLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
-    parDef_dic[:inFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:convInUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup, part = :lim)
+    parDef_dic[:convInLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:convInFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
 
-    parDef_dic[:outUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup, part = :lim)
-    parDef_dic[:outLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
-    parDef_dic[:outFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:convOutUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup, part = :lim)
+    parDef_dic[:convOutLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:convOutFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
 
     parDef_dic[:stOutUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = upHeritSt_tup, part = :lim)
     parDef_dic[:stOutLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = ofHeritSt_tup, part = :lim)
@@ -400,13 +400,13 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:costVarStOutLow] = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_any, :R_dis => :sum_any, :Te => :sum_any, :scr => :up), part = :lim)
     parDef_dic[:costVarStOutFix] = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_any, :R_dis => :sum_any, :Te => :sum_any, :scr => :up), part = :lim)
 
-    parDef_dic[:costVarInUp]  = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_full, :R_dis => :sum_full, :Te => :sum_full, :scr => :up), part = :lim)
-    parDef_dic[:costVarInLow] = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_any, :R_dis => :sum_any, :Te => :sum_any, :scr => :up), part = :lim)
-    parDef_dic[:costVarInFix] = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_any, :R_dis => :sum_any, :Te => :sum_any, :scr => :up), part = :lim)
+    parDef_dic[:costVarConvInUp]  = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_full, :R_dis => :sum_full, :Te => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:costVarConvInLow] = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_any, :R_dis => :sum_any, :Te => :sum_any, :scr => :up), part = :lim)
+    parDef_dic[:costVarConvInFix] = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_any, :R_dis => :sum_any, :Te => :sum_any, :scr => :up), part = :lim)
 
-    parDef_dic[:costVarOutUp]  = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_full, :R_dis => :sum_full, :Te => :sum_full, :scr => :up), part = :lim)
-    parDef_dic[:costVarOutLow] = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_any, :R_dis => :sum_any, :Te => :sum_any, :scr => :up), part = :lim)
-    parDef_dic[:costVarOutFix] = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_any, :R_dis => :sum_any, :Te => :sum_any, :scr => :up), part = :lim)
+    parDef_dic[:costVarConvOutUp]  = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_full, :R_dis => :sum_full, :Te => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:costVarConvOutLow] = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_any, :R_dis => :sum_any, :Te => :sum_any, :scr => :up), part = :lim)
+    parDef_dic[:costVarConvOutFix] = (dim = (:Ts_disSup, :R_dis, :Te, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_any, :R_dis => :sum_any, :Te => :sum_any, :scr => :up), part = :lim)
 
     parDef_dic[:costVarExcUp]   =  (dim = (:Ts_disSup, :R_from, :R_to, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :Exc => :sum_full, :scr => :up), part = :lim)
     parDef_dic[:costVarExcLow]  =  (dim = (:Ts_disSup, :R_from, :R_to, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_disSup => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :Exc => :sum_any, :scr => :up),  part = :lim)
@@ -441,13 +441,13 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     # ! technology dispatch properties
 
     # availability parameters
-    parDef_dic[:avaConv]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :M, :scr),     problem = :sub, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up,            :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :lowest,    mode = (:in, :out)))
+    parDef_dic[:avaConv]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :M, :scr), problem = :sub, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :lowest,    mode = (:convIn, :convOut)))
     parDef_dic[:avaStIn]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :C => :up, :id => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
     parDef_dic[:avaStOut]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :C => :up, :id => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
     parDef_dic[:avaStSize] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :C => :up, :id => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
 
     # efficiency parameters
-    parDef_dic[:effConv]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :M, :scr),     problem = :sub, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :Te => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :reference, mode = (:in, :out)))
+    parDef_dic[:effConv]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :M, :scr),     problem = :sub, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :Te => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :reference, mode = (:convIn, :convOut)))
     parDef_dic[:effStIn]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :id => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :C => :up), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
     parDef_dic[:effStOut] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :id => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :C => :up), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
 
@@ -456,22 +456,22 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:stInflow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id, :scr),     problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :sum_any, :R_dis => :sum_any, :Te => :up, :scr => :up, :id => :up),                                part = :techSt, techPre = (preset = :carrierSt, mode = tuple()))
 
     # variable costs
-    parDef_dic[:costVarUse]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost, techPre = (preset = :carrierIn,  mode = (:in,)))
-    parDef_dic[:costVarGen]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost, techPre = (preset = :carrierOut, mode = (:out,)))
-    parDef_dic[:costVarIn]    = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost, techPre = (preset = :carrierIn,  mode = (:in,)))
-    parDef_dic[:costVarOut]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost, techPre = (preset = :carrierOut, mode = (:out,)))
+    parDef_dic[:costVarUse]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost, techPre = (preset = :carrierIn,  mode = (:convIn,)))
+    parDef_dic[:costVarGen]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost, techPre = (preset = :carrierOut, mode = (:convOut,)))
+    parDef_dic[:costVarConvIn]    = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost, techPre = (preset = :carrierIn,  mode = (:convIn,)))
+    parDef_dic[:costVarConvOut]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost, techPre = (preset = :carrierOut, mode = (:convOut,)))
     parDef_dic[:costVarStIn]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :id => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost, techPre = (preset = :carrierSt,  mode = (:stIn,:stOut,:stLvl)))
     parDef_dic[:costVarStOut] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :id => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost, techPre = (preset = :carrierSt,  mode = (:stIn,:stOut,:stLvl)))
 
     # energy related ratios (x% of energy from/to technology has to be carrier y)
-    parDef_dic[:ratioInUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minUse, mode = (:in,)))
-    parDef_dic[:ratioInLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minUse, mode = (:in,)))
-    parDef_dic[:ratioInFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minUse, mode = (:in,)))
+    parDef_dic[:ratioConvInUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minUse, mode = (:convIn,)))
+    parDef_dic[:ratioConvInLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minUse, mode = (:convIn,)))
+    parDef_dic[:ratioConvInFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minUse, mode = (:convIn,)))
 
-    parDef_dic[:ratioOutUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minGen, mode = (:out,)))
-    parDef_dic[:ratioOutLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minGen, mode = (:out,)))
-    parDef_dic[:ratioOutFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minGen, mode = (:out,)))
-
+    parDef_dic[:ratioConvOutUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minGen, mode = (:convOut,)))
+    parDef_dic[:ratioConvOutLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minGen, mode = (:convOut,)))
+    parDef_dic[:ratioConvOutFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :Te => :up, :Ts_dis => :up, :scr => :up), part = :techConv, techPre = (preset = :minGen, mode = (:convOut,)))
+    
     # restrictions on deployment
     parDef_dic[:flhConvUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_dis, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any), part = :techConv)
     parDef_dic[:flhConvLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_dis, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any), part = :techConv)
@@ -492,6 +492,10 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:cycStOutUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_dis, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :scr => :up, :id => :up, :Te => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any), part = :techSt)
     parDef_dic[:cycStOutLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_dis, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :scr => :up, :id => :up, :Te => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any), part = :techSt)
     parDef_dic[:cycStOutFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_dis, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :scr => :up, :id => :up, :Te => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any), part = :techSt)
+
+    # parameters to enforce a fixed production profile
+    parDef_dic[:fixOut]     = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :carrierOut, mode = (:convOut,)))
+    parDef_dic[:designFac]  = (dim = (:Ts_expSup, :R_dis, :Te), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :R_dis => :up, :Te => :up), part = :techConv)
 
     # ! further dispatch properties
     parDef_dic[:dem]     = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = 0.0,     herit = (:Ts_dis => :avg_any, :R_dis  => :sum_any, :scr => :up),             					part = :bal)
@@ -682,7 +686,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 	parPre_dic = Dict(x => parDef_dic[x].techPre.preset for x in relPar_arr)
 	preType_arr = union(values(parPre_dic))
 
-    typeVar_dic = Dict(:out => [:gen, :stIntIn], :in => [:use,:stIntOut], :stIn => [:stExtIn, :stOut], :stOut => [:stExtOut, :stIntOut], :stLvl => [:stLvl])
+    typeVar_dic = Dict(:convOut => [:gen, :stIntIn], :convIn => [:use,:stIntOut], :stIn => [:stExtIn, :stOut], :stOut => [:stExtOut, :stIntOut], :stLvl => [:stLvl])
     modeDep_dic = Dict(x => DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], scr = Int[]) for x in union(values(typeVar_dic)...))
 
     for preType in preType_arr
@@ -712,7 +716,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 			if preType == :carrierIn || preType == :carrierOut
 				car_arr = (preType == :carrierIn ? :use : :gen) |> (y -> haskey(part.carrier,y) ? collect(getfield(part.carrier,y)) : Int[])
 				if isempty(car_arr) continue end
-                capaLvl_df[!,:C] .= car_arr
+                capaLvl_df[!,:C] = map(x -> car_arr, 1:size(capaLvl_df,1))
                 capaLvl_df = flatten(capaLvl_df,:C)
             else
                 # gets array of carriers defined for each group of storage
@@ -747,11 +751,14 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 		end
 
         # loops over all parameters of specific pre-setting type
-		for parItr in keys(filter(x -> x[2] == preType,parPre_dic))
+        for parItr in keys(filter(x -> x[2] == preType,parPre_dic))
             parPef_ntup = parDef_dic[parItr]
-			newPar_obj, report = resetParameter(:M in namesSym(part.par[parItr].data) ? dispResoM_df : dispReso_df, part.par[parItr], part.name[end], anyM.sets, anyM.options, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
+			newPar_obj = resetParameter(:M in namesSym(part.par[parItr].data) ? dispResoM_df : dispReso_df, part.par[parItr], part.name[end], anyM, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
 
-            if :M in namesSym(newPar_obj.data)
+            # skips parameter if no values are remaining after resetting, in case of mode dependant parameter writes the dimensions that have to be made mode specific
+            if isempty(newPar_obj.data)  # TODO hier geändert, vorher nur zweites if
+                continue
+            elseif :M in namesSym(newPar_obj.data)
                 mode_df = unique(filter(x -> x.M != 0, newPar_obj.data)[!,Not([:val,:M])])
 
                 # loops over all types of relevant variables (:gen, :use etc.) that have to be mode specific
@@ -797,7 +804,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 end
 
 # ! pre-sets specific dispatch parameter
-function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String, sets::Dict{Symbol,Tree}, options::modOptions, cntM_int::Int = 0, newHerit_tup::Tuple = ())
+function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String, anyM::anyModel, cntM_int::Int = 0, newHerit_tup::Tuple = ())
     # gets dimension of search tables and parameter without mode
     newData_df = select(newData_df,intersect(namesSym(newData_df),par_obj.dim))
     # creates empty report, that entries are written to within subprocess
@@ -805,10 +812,10 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String
 
     if !(:M in namesSym(newData_df))
         # in case modes are not being searched for just directly set data
-        par_obj.data = matchSetParameter(newData_df,par_obj,sets) |> (x -> select(x,orderDim(namesSym(x))))
+        par_obj.data = matchSetParameter(newData_df,par_obj,anyM.sets) |> (x -> select(x,orderDim(namesSym(x))))
     else
         # looks up original table without applying default values
-        matchData1_df = matchSetParameter(newData_df,par_obj,sets,newCol = :val, useDef = false)
+        matchData1_df = matchSetParameter(newData_df,par_obj,anyM.sets,newCol = :val, useDef = false)
 
         # filter returned table by weather a mode was specified
         noMode_df = filter(r -> r.M == 0,matchData1_df)
@@ -824,18 +831,18 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String
             modeGrpDef_arr = filter(r -> cntM_int == size(r,1), collect(modeGrp_gdf))
 
             if length(modeGrp_gdf.ends) > length(modeGrpDef_arr)
-                push!(report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was not specified for all modes in some cases for '$tStr', existing values were ignored"))
+                push!(anyM.report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was not specified for all modes in some cases for '$tStr', existing values were ignored"))
             end
 
             # filters entries where mode values are not distinct, reports on it and uses these entries as non-mode specific data
             disMode_arr = filter(r -> length(unique(r[!,:val])) != 1, modeGrpDef_arr)
             if length(modeGrpDef_arr) > length(disMode_arr)
-                push!(report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was the same for all modes in some cases for '$tStr', no differentiation between modes was applied in these cases"))
+                push!(anyM.report,(2, "parameter pre-setting", string(par_obj.name), "parameter data was the same for all modes in some cases for '$tStr', no differentiation between modes was applied in these cases"))
                 noMode_df = vcat(noMode_df, vcat(filter(r -> length(unique(r[!,:val])) == 1, modeGrpDef_arr)...) )
             end
 
             # filters data where distinct mode data is provided for all modes and expends resulting table again
-            finalMode_df =  vcat(disMode_arr...)
+            finalMode_df =  isempty(disMode_arr) ? filter(x -> false, matchData1_df) : vcat(disMode_arr...)
         else
             finalMode_df = mode_df
         end
@@ -846,7 +853,7 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String
 
         if !isempty(newSearch_df)
             newSearch_df[!,:M] .= 0
-            matchData2_df = matchSetParameter(newSearch_df,par_obj,sets)
+            matchData2_df = matchSetParameter(newSearch_df,par_obj,anyM.sets)
             noMode_df = vcat(matchData2_df,noMode_df)
         end
 
@@ -856,7 +863,7 @@ function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String
     # sets new inherit rules and default value
     par_obj.herit = newHerit_tup
 
-    return par_obj, report
+    return par_obj
 end
 
 # ! extract specified limit parameter from the limit part of the model

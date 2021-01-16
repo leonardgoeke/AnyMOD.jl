@@ -4,17 +4,19 @@ function createExc!(eInt::Int,part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple}
 	cns_dic = Dict{Symbol,cnsCont}()
 	exc_str = createFullString(eInt,anyM.sets[:Exc])
 
-	# creates capacity, expansion, and retrofitting variables
-	createExpCap!(part,prepExc_dic,anyM)
+	if part.type != :unrestricted
+		# creates capacity, expansion, and retrofitting variables
+		createExpCap!(part,prepExc_dic,anyM)
 
-	# create expansion constraints
-	if isempty(anyM.subPro) || anyM.subPro == (0,0)
-		# connect capacity and expansion variables
-		createCapaCns!(part,prepExc_dic,cns_dic,excDir_arr)
+		# create expansion constraints
+		if isempty(anyM.subPro) || anyM.subPro == (0,0)
+			# connect capacity and expansion variables
+			createCapaCns!(part,prepExc_dic,cns_dic,excDir_arr)
 
-		# control operated capacity variables
-		if part.decomm != :none
-			createOprVarCns!(part,cns_dic,anyM)
+			# control operated capacity variables
+			if part.decomm != :none
+				createOprVarCns!(part,cns_dic,anyM)
+			end
 		end
 	end
 
@@ -22,10 +24,12 @@ function createExc!(eInt::Int,part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple}
 
 	if isempty(anyM.subPro) || anyM.subPro != (0,0)
 		# create dispatch variables
-		createExcVar!(part,ts_dic,r_dic,anyM) 
+		createExcVar!(part,ts_dic,r_dic,prepExc_dic,anyM) 
 		produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for exchange $(exc_str)")
 		# create capacity restrictions
-		createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM)
+		if part.type != :unrestricted
+			createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM)
+		end
 		produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for exchange $(exc_str)")
 	end
 
@@ -207,9 +211,9 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 end
 
 # ! create exchange variables
-function createExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
+function createExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},prepExc_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
 	# ! extend capacity variables to dispatch variables
-	capa_df = unique(flipExc(part.var[:capaExc][!,Not([:var,:dir])]))
+	capa_df = unique(flipExc(prepExc_dic[:capaExc].var[!,Not([:dir])]))
 	
 	# add carriers to capacity variables
 	capa_df[!,:C] .= fill(collect(part.carrier),size(capa_df,1))

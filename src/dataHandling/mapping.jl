@@ -141,7 +141,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 	nameC_dic = Dict(collect(values(anyM.sets[:C].nodes)) |> (y -> Pair.(getfield.(y,:val),getfield.(y,:idx))))
 
     # maps selected strings of tech types to integers
-    typeStringInt_dic = Dict("stock" => 0, "mature" => 1,"emerging" => 2)
+    typeStringInt_dic = Dict("stock" => 0, "mature" => 1,"emerging" => 2, "unrestricted" => 3)
 
     # gets datarow for respective technology
 	row_df = anyM.sets[sys].nodes[s_int].val |> (z -> filter(x -> any(map(y -> z == x[y],lvlTech_arr)) ,setData_dic[sys])[1,:])
@@ -382,21 +382,64 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
     balLvl_ntup = part.balLvl
     disAgg_boo  = part.disAgg
 
-    # ! writes dimension of capacity restrictions for conversion part (even if there are no inputs)
-	for side in intersect((:use,:gen),keys(carGrp_ntup))
+	# ! writes dimension of capacity restrictions for conversion part (even if there are no inputs)
+	
+	# for actual conversion capacities (capacities that do not solely use or generate) the general capacity restriction can be either enfored on the use or generation side, 
+	# the code here tests which options will ultimately lead to the fewer number of constraints and uses it 
+	collectDim_arr = Array{Array{Tuple{String,Array{Int,1},Int,Int},1}}(undef,isempty(setdiff((:use,:gen),keys(carGrp_ntup))) ? 2 : 1)
 
-		# get respective carrier and their reference level
-		carDis_arr = map(collect(getfield(carGrp_ntup,side))) do x
-			carRow_ntup = anyM.cInfo[x]
-			return x, carRow_ntup.tsDis, disAgg_boo ? balLvl_ntup.exp[2] : carRow_ntup.rDis
+	# determine relevant capacity constraints, for actual conversion this is performed for both sides
+	for (idx,ctrSide) in enumerate(intersect((:use,:gen),keys(carGrp_ntup)))
+		singleDim_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
+		for side in intersect((:use,:gen),keys(carGrp_ntup))
+
+			# get respective carrier and their reference level
+			carDis_arr = map(collect(getfield(carGrp_ntup,side))) do x
+				carRow_ntup = anyM.cInfo[x]
+				return x, carRow_ntup.tsDis, disAgg_boo ? balLvl_ntup.exp[2] : carRow_ntup.rDis
+			end
+			
+			restrInfo_arr = mapCapaRestr(carDis_arr,side,anyM,carGrp_ntup,balLvl_ntup,ctrSide)
+			typeCapa_str = side == :use ? "convIn" : "convOut"
+
+			# adds necessary capacity restrictions below reference level
+			map(x -> push!(singleDim_arr,(typeCapa_str, restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])),1:length(restrInfo_arr))
+
+			# adjusts restrictions with regards to fixed output
+			if :fixOut in keys(part.par)
+				# adds a restriction to fix the relative output
+				fixC_arr = unique(part.par[:fixOut].data[!,:C])
+				for c in fixC_arr
+					push!(singleDim_arr,("fix",[c],anyM.cInfo[c].tsDis ,anyM.cInfo[c].rDis))
+				end
+				# removes restrictions on out that become redundant due to the fixed output (out can only become redundant if carrier is not subject to storage)
+				if side == :gen
+					redC_arr = setdiff(fixC_arr,vcat(map(x -> collect(getfield(carGrp_ntup,x)...),intersect((:stIntIn,:stExtOut),keys(carGrp_ntup)))...))
+					for c in redC_arr
+						filter!(x -> x != ("convOut",[c],anyM.cInfo[c].tsDis ,anyM.cInfo[c].rDis),singleDim_arr)
+					end
+				end
+			end
 		end
-		
-		restrInfo_arr = mapCapaRestr(carDis_arr,side,anyM,carGrp_ntup,balLvl_ntup)
-		typeCapa_str = side == :use ? "in" : "out"
+		collectDim_arr[idx] = unique(singleDim_arr)
+	end
 
-        # adds necessary capacity restrictions below reference level
-        map(x -> push!(capaDispRestr_arr,(typeCapa_str, restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])),1:length(restrInfo_arr))
-    end
+	# for no acutal conversion just one array of capacity restrictions was written and is used subsequently, for acutal conversion the number of constraints in both cases is computed
+	if length(collectDim_arr) == 1
+		if isempty(intersect((:use,:gen),keys(carGrp_ntup)))
+			capaDispRestr_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
+		else
+			capaDispRestr_arr = collectDim_arr[1]
+		end
+	else 
+		# get number of elements at temporal and spatial levels occuring in the written dimensions
+		tsLvl_dic, rLvl_dic = [Dict(w => length(getNodesLvl(anyM.sets[z],w)) for w in union(map(x -> map(y -> y[z == :Ts ? 3 : 4],x),collectDim_arr)...)) for z in [:Ts,:R]]
+		# compute number of resulting restrictions
+		numbRestr_arr = map(x -> sum(map(y -> tsLvl_dic[y[3]] * rLvl_dic[y[4]],x)),collectDim_arr)
+
+		# select collected restrictions with fewer elements
+		capaDispRestr_arr = collectDim_arr[findall(minimum(numbRestr_arr) .== numbRestr_arr)][1]
+	end
 
 	# ! writes dimension of capacity restrictions for storage
 	for g in 1:countStGrp(carGrp_ntup)
@@ -547,7 +590,7 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 end
 
 # ! maps capacity restriction for one type (e.g. gen, use, st, or exc)
-function mapCapaRestr(carDis_arr::Array,type::Symbol, anyM::anyModel, carGrp_ntup::NamedTuple = NamedTuple(), balLvl_ntup::NamedTuple = (exp = (0, 0), ref = (0, 0)))
+function mapCapaRestr(carDis_arr::Array,type::Symbol, anyM::anyModel, carGrp_ntup::NamedTuple = NamedTuple(), balLvl_ntup::NamedTuple = (exp = (0, 0), ref = (0, 0)),ctrSide::Symbol = :gen)
 
 	carConstr_arr = Tuple{Array{Int,1},Int,Int}[]
 
@@ -560,7 +603,7 @@ function mapCapaRestr(carDis_arr::Array,type::Symbol, anyM::anyModel, carGrp_ntu
 			else (sort([carDisSort_arr[y][1] for y in 1:x]), minimum([carDisSort_arr[y][2] for y in 1:x]), carDisSort_arr[x][3]) end
 		end
 		# filters entries that exceed the reference level or are not below the reference level, if already a constraint on the reference level exists from the previous iteration
-		if type == :use && isempty(setdiff((:use,:gen),keys(carGrp_ntup)))
+		if type == ctrSide && isempty(setdiff((:use,:gen),keys(carGrp_ntup)))
 			carIt_arr = carIt_arr[findall(x -> j == 2 ? x[2] > balLvl_ntup.ref[1] : x[3] > balLvl_ntup.ref[2],carIt_arr)]
 		elseif type in (:use,:gen)
 			carIt_arr = carIt_arr[findall(x -> j == 2 ? x[2] >= balLvl_ntup.ref[1] : x[3] >= balLvl_ntup.ref[2],carIt_arr)]

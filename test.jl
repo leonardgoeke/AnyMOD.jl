@@ -10,11 +10,13 @@ include("src/objects.jl")
 include("src/tools.jl")
 include("src/modelCreation.jl")
 
+include("src/optModel/technology.jl")
 include("src/optModel/exchange.jl")
 include("src/optModel/system.jl")
-include("src/optModel/objective.jl")
+include("src/optModel/cost.jl")
 include("src/optModel/other.jl")
-include("src/optModel/technology.jl")
+include("src/optModel/objective.jl")
+
 
 include("src/dataHandling/mapping.jl")
 include("src/dataHandling/parameter.jl")
@@ -22,36 +24,39 @@ include("src/dataHandling/readIn.jl")
 include("src/dataHandling/tree.jl")
 include("src/dataHandling/util.jl")
 
-#using Gurobi
 
 
-# ansatz über Ts_disSup_last problematisch, da immer Zuorndung des letzten Betrachtungsjahr => falsche Berechnung von Lebenszeitne über den Rahmen hinaus
-
-# mache alle cost tables mit: Jahr, Region, :Exc/:Te => wie umgang mit :Exc/:Te? => auf 0, für manche kosten dann eben auch beides 0 => filtern in der auswertung
-# => durchdenke das weiter, was heißt das für limits und objective?
-
-# mache mit dispatch costs weiter co2 preis auch auf exc losses und storage
-
-# mache performance: julia version, add_expressions
+# fange mit mustRun implementierug an 
 # update reporting
- 
 
 
 anyM = anyModel("examples/demo","examples/results", objName = "test")
 createOptModel!(anyM)
-setObjective!(:costs,anyM)
+setObjective!(:cost,anyM)
 
-tSym = :gasStorage
+using Gurobi
+set_optimizer(anyM.optModel, Gurobi.Optimizer)
+optimize!(anyM.optModel)
+
+printIIS(anyM)
+
+
+
+# TODO 1) warum keine fehlermeldung mit ratio problem? 2) warum problem mit ratio allgemein, sollte kein widerspruch sein und funktioniert ja auch wo anders
+
+tSym = :heatpump
 tInt = sysInt(tSym,anyM.sets[:Te])
 part = anyM.parts.tech[tSym]
 prepTech_dic = prepSys_dic[:Te][tSym]
 
-eSym = :gas2
+eSym = :gas1
 eInt = sysInt(eSym,anyM.sets[:Exc])
 part = anyM.parts.exc[eSym]
 prepExc_dic = prepSys_dic[:Exc][eSym]
 
 
+
+getAllVariables(:emission,anyM)
 
 anyM = anyModel()
 objName = "bla"

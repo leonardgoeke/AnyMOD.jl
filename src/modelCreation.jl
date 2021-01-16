@@ -65,7 +65,6 @@ function createOptModel!(anyM::anyModel)
 	# connect retrofitting variables from the different technologies
 	foreach(x -> createRetroConst!(x,techCnsDic_arr,tech_itr,anyM),[:Conv, :StIn, :StOut, :StSize])
 
-	
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
     for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
         anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
