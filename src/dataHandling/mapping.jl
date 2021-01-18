@@ -52,7 +52,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
 
 	 #  loops over all carriers and check consistency of resolutions and tries to inherit a resolution where none was defined, cannot be carried if above they have already been errors detected
 	for c in filter(x -> x != 0, keys(anyM.sets[:C].nodes))
-    	anyM.cInfo = evaluateReso(c,anyM.sets[:C],anyM.cInfo,anyM.report)
+    	evaluateReso!(c,anyM)
     end
 
     if minimum(map(x -> getfield(x,:tsDis),values(anyM.cInfo))) < maximum(map(x -> getfield(x,:tsExp),values(anyM.cInfo)))
@@ -63,38 +63,37 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
 end
 
 # ! checks carrier for errors in resolution or derive resolution from lower carriers
-function evaluateReso(startIdx_int::Int,car_tree::Tree,cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:bal),Tuple{Int,Int,Int,Int,Symbol}}},report::Array{Tuple,1})
+function evaluateReso!(startIdx_int::Int,anyM::anyModel)
 	# extracts all children and all columns related to resolution
-	carName_str = createFullString(startIdx_int,car_tree)
-	allChildIdx_arr = getDescendants(startIdx_int,car_tree)
+	carName_str = createFullString(startIdx_int,anyM.sets[:C])
+	allChildIdx_arr = getDescendants(startIdx_int,anyM.sets[:C])
 
 	# all entries need to have a resoultion => otherwise evaluateReso on them
-	for noResoIdx in setdiff(allChildIdx_arr,collect(keys(cInfo_dic)))
-		cInfo_dic = evaluateReso(noResoIdx,car_tree,cInfo_dic,report)
+	for noResoIdx in setdiff(allChildIdx_arr,collect(keys(anyM.cInfo)))
+		evaluateReso!(noResoIdx,anyM)
 	end
 
 	# tries to inherit resolutions from children, if no data exists yet
-	if !haskey(cInfo_dic,startIdx_int)
+	if !haskey(anyM.cInfo,startIdx_int)
 		if isempty(allChildIdx_arr)
-			push!(report,(3,"carrier mapping","","carrier '$(carName_str)' got no resolution and could not inherit from children either"))
-			return cInfo_dic
+			push!(anyM.report,(3,"carrier mapping","","carrier '$(carName_str)' got no resolution and could not inherit from children either"))
+			return anyM.cInfo
 		else
-			newReso_dic = Dict(y => minimum([getfield(cInfo_dic[x],y) for x in allChildIdx_arr]) for y in (:tsDis,:tsExp,:rDis,:rExp))
-			cInfo_dic[startIdx_int] = (tsDis = newReso_dic[:tsDis],tsExp = newReso_dic[:tsExp],rDis = newReso_dic[:rDis],rExp = newReso_dic[:rExp], bal = :ineq)
-			push!(report,(1,"carrier mapping","","carrier '$(carName_str)' inherited resolution from children"))
-			return cInfo_dic
+			newReso_dic = Dict(y => minimum([getfield(anyM.cInfo[x],y) for x in allChildIdx_arr]) for y in (:tsDis,:tsExp,:rDis,:rExp))
+			anyM.cInfo[startIdx_int] = (tsDis = newReso_dic[:tsDis],tsExp = newReso_dic[:tsExp],rDis = newReso_dic[:rDis],rExp = newReso_dic[:rExp], bal = :ineq)
+			push!(anyM.report,(1,"carrier mapping","","carrier '$(carName_str)' inherited resolution from children"))
+			return anyM.cInfo
 		end
 	# checks if existing resolution is flawed
 	else
 		for childIdx in allChildIdx_arr
 			# check if any children got a smaller resolution value
-			if any(map(x -> getfield(cInfo_dic[startIdx_int],x) > getfield(cInfo_dic[childIdx],x),(:tsDis,:tsExp,:rDis,:rExp)))
-				push!(report,(3,"carrier mapping","","carrier '$(carName_str)' got a resolution more detailed than its childrens'"))
+			if any(map(x -> getfield(anyM.cInfo[startIdx_int],x) > getfield(anyM.cInfo[childIdx],x),(:tsDis,:tsExp,:rDis,:rExp)))
+				push!(anyM.report,(3,"carrier mapping","","carrier '$(carName_str)' got a resolution more detailed than its childrens'"))
 			end
 		end
 	end
 
-	return cInfo_dic
 end
 
 # ! maps information about timesteps used
@@ -386,11 +385,13 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 	
 	# for actual conversion capacities (capacities that do not solely use or generate) the general capacity restriction can be either enfored on the use or generation side, 
 	# the code here tests which options will ultimately lead to the fewer number of constraints and uses it 
-	collectDim_arr = Array{Array{Tuple{String,Array{Int,1},Int,Int},1}}(undef,isempty(setdiff((:use,:gen),keys(carGrp_ntup))) ? 2 : 1)
+	collDim_arr = Array{Array{Tuple{String,Array{Int,1},Int,Int},1}}(undef,isempty(setdiff((:use,:gen),keys(carGrp_ntup))) ? 2 : 1)
+	collRmvOut_arr = Array{Array{Int,1}}(undef,isempty(setdiff((:use,:gen),keys(carGrp_ntup))) ? 2 : 1)
 
 	# determine relevant capacity constraints, for actual conversion this is performed for both sides
 	for (idx,ctrSide) in enumerate(intersect((:use,:gen),keys(carGrp_ntup)))
-		singleDim_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
+		snglDim_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}() # collects capacity restrictions for both sides
+		snglRmv_arr = Array{Int,1}() # collects carriers where an output conversion restriction was removed due to must run
 		for side in intersect((:use,:gen),keys(carGrp_ntup))
 
 			# get respective carrier and their reference level
@@ -403,42 +404,47 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 			typeCapa_str = side == :use ? "convIn" : "convOut"
 
 			# adds necessary capacity restrictions below reference level
-			map(x -> push!(singleDim_arr,(typeCapa_str, restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])),1:length(restrInfo_arr))
+			map(x -> push!(snglDim_arr,(typeCapa_str, restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])),1:length(restrInfo_arr))
 
-			# adjusts restrictions with regards to fixed output
-			if :fixOut in keys(part.par)
+			# adjusts restrictions with regard to must run
+			if :mustOut in keys(part.par)
 				# adds a restriction to fix the relative output
-				fixC_arr = unique(part.par[:fixOut].data[!,:C])
+				fixC_arr = unique(part.par[:mustOut].data[!,:C])
 				for c in fixC_arr
-					push!(singleDim_arr,("fix",[c],anyM.cInfo[c].tsDis ,anyM.cInfo[c].rDis))
+					push!(snglDim_arr,("must",[c],anyM.cInfo[c].tsDis ,anyM.cInfo[c].rDis))
 				end
 				# removes restrictions on out that become redundant due to the fixed output (out can only become redundant if carrier is not subject to storage)
 				if side == :gen
 					redC_arr = setdiff(fixC_arr,vcat(map(x -> collect(getfield(carGrp_ntup,x)...),intersect((:stIntIn,:stExtOut),keys(carGrp_ntup)))...))
 					for c in redC_arr
-						filter!(x -> x != ("convOut",[c],anyM.cInfo[c].tsDis ,anyM.cInfo[c].rDis),singleDim_arr)
+						if ("convOut",[c],anyM.cInfo[c].tsDis ,anyM.cInfo[c].rDis) in snglDim_arr push!(snglRmv_arr,c) end # saves information that on capacity restriction about to be removed
+						filter!(x -> x != ("convOut",[c],anyM.cInfo[c].tsDis ,anyM.cInfo[c].rDis),snglDim_arr) # filters redundant entry from array of all capacity restrictions
 					end
 				end
 			end
 		end
-		collectDim_arr[idx] = unique(singleDim_arr)
+		collDim_arr[idx] = unique(snglDim_arr)
+		collRmvOut_arr[idx] = unique(snglRmv_arr)
 	end
 
 	# for no acutal conversion just one array of capacity restrictions was written and is used subsequently, for acutal conversion the number of constraints in both cases is computed
-	if length(collectDim_arr) == 1
+	if length(collDim_arr) == 1
 		if isempty(intersect((:use,:gen),keys(carGrp_ntup)))
 			capaDispRestr_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
+			rmvOutC_arr = Int[]
 		else
-			capaDispRestr_arr = collectDim_arr[1]
+			capaDispRestr_arr = collDim_arr[1]
+			rmvOutC_arr = collRmvOut_arr[1]
 		end
 	else 
 		# get number of elements at temporal and spatial levels occuring in the written dimensions
-		tsLvl_dic, rLvl_dic = [Dict(w => length(getNodesLvl(anyM.sets[z],w)) for w in union(map(x -> map(y -> y[z == :Ts ? 3 : 4],x),collectDim_arr)...)) for z in [:Ts,:R]]
+		tsLvl_dic, rLvl_dic = [Dict(w => length(getNodesLvl(anyM.sets[z],w)) for w in union(map(x -> map(y -> y[z == :Ts ? 3 : 4],x),collDim_arr)...)) for z in [:Ts,:R]]
 		# compute number of resulting restrictions
-		numbRestr_arr = map(x -> sum(map(y -> tsLvl_dic[y[3]] * rLvl_dic[y[4]],x)),collectDim_arr)
+		numbRestr_arr = map(x -> sum(map(y -> tsLvl_dic[y[3]] * rLvl_dic[y[4]],x)),collDim_arr)
 
 		# select collected restrictions with fewer elements
-		capaDispRestr_arr = collectDim_arr[findall(minimum(numbRestr_arr) .== numbRestr_arr)][1]
+		capaDispRestr_arr = collDim_arr[findall(minimum(numbRestr_arr) .== numbRestr_arr)][1]
+		rmvOutC_arr = collRmvOut_arr[findall(minimum(numbRestr_arr) .== numbRestr_arr)][1]
 	end
 
 	# ! writes dimension of capacity restrictions for storage
@@ -454,7 +460,9 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 		end
 	end
 
-    part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : categorical(rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR))
+	part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : categorical(rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR))
+	
+	return rmvOutC_arr
 end
 
 # ! create scenario

@@ -43,7 +43,11 @@ function createOptModel!(anyM::anyModel)
 
     # creates dictionary that assigns combination of superordinate dispatch timestep and dispatch level to dispatch timesteps
     allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
-    ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
+	ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
+	
+	# creates dictionary that assigns superordinate dispatch time-step to each dispatch time-step
+	yTs_dic = Dict{Int,Int}()
+	for x in collect(ts_dic), y in x[2] yTs_dic[y] = x[1][1] end
 
     # creates dictionary that assigns combination of expansion region and dispatch level to dispatch region
     allLvlR_arr = union(getindex.(getfield.(getfield.(values(anyM.parts.tech),:balLvl),:exp),2),map(x -> x.rDis,values(anyM.cInfo)))
@@ -59,7 +63,7 @@ function createOptModel!(anyM::anyModel)
 	tech_itr = collect(enumerate(techSym_arr))
 
 	@threads for (idx,tSym) in tech_itr
-		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,r_dic,anyM)
+		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,yTs_dic,r_dic,anyM)
 	end
 
 	# connect retrofitting variables from the different technologies

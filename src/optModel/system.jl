@@ -867,14 +867,74 @@ end
 #region # * create capacity restrictions
 
 # ! create all capacity restrictions for technology and exchange
-function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
+function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel,yTs_dic::Dict{Int64,Int64}=Dict{Int64,Int64}(),rmvOutC_arr::Array{Int,1}=Int[])
 
+	# ! create restrictions for must run
+	mustRestr_df = filter(x -> x.cnstrType == "must",part.capaRestr)
+
+	if !isempty(mustRestr_df)
+		# gather must run constraints for all carriers n loop
+		allMustCns_arr = Array{DataFrame}(undef,size(mustRestr_df,1))
+		idx = 1
+
+		for m in eachrow(mustRestr_df)
+			addConvOut_boo = false
+
+			# get relevant capacity variables and add carrier
+			relCapa_arr = intersect((:capaConv,:capaStOut),keys(part.var))
+			capaVar_df = vcat(map(x -> (Symbol(:must, makeUp(x)) in keys(part.var) ? part.var[Symbol(:must, makeUp(x))] : part.var[x]) |> (z -> x == :capaStOut ? z : insertcols!(copy(z), 1, :id => fill(0,size(z,1)))),relCapa_arr)...)
+			# add carriers and expand to dispatch regions
+			capaVar_df[!,:C] .= m.car[1]
+			capaVar_df[!,:R_dis] = map(x -> r_dic[(x.R_exp,anyM.cInfo[x.C].rDis)],eachrow(capaVar_df))
+			capaVar_df = flatten(capaVar_df,:R_dis)
+
+			# match with design factor and aggregate capacities
+			capaVar_df = matchSetParameter(select(capaVar_df,Not(:R_exp)),part.par[:desFac],anyM.sets; newCol = :desFac)
+			capaVar_df[!,:var] = capaVar_df[!,:var] .* capaVar_df[!,:desFac]
+			capaVar_df = combine(groupby(capaVar_df,filter(x -> x != :id,intCol(capaVar_df))),:var => (x -> sum(x)) => :capa)
+
+			# get must-run parameters 
+			mustOut_df = filter(x -> x.C == m.car[1],rename(part.par[:mustOut].data,:val => :mustOut))
+		
+			# match must run with capacity variables
+			mustOut_df[!,:Ts_disSup] = map(x -> yTs_dic[x],mustOut_df[!,:Ts_dis])
+			mustOut_df = innerjoin(mustOut_df,capaVar_df,on = intCol(capaVar_df))
+			select!(mustOut_df,Not([:Ts_disSup]))
+
+			# gather relevant dispatch variables
+			dis_arr = collect(intersect(keys(part.var),[:gen,:stExtOut,:stIntIn])) 
+			join_arr = filter(x -> x != :C, intCol(mustOut_df))
+			for dis in dis_arr
+				grpDis_df = combine(groupby(filter(x -> x.C == m.car[1],part.var[dis]), join_arr),:var => (x -> dis == :stIntIn ? (-1*sum(x)) : sum(x)) => dis)
+				mustOut_df= joinMissing(mustOut_df, grpDis_df, join_arr,:left,Dict(dis => AffExpr()))
+
+				# in case the current must run replaces a restriction on conversion output, check if all relevant variables are constrained
+				if m.car[1] in rmvOutC_arr && dis in (:gen,:stIntIn) && !addConvOut_boo
+					if !isempty(antijoin(grpDis_df,mustOut_df,on = join_arr)) addConvOut_boo = true end
+				end
+			end
+
+			# create actual constraint
+			mustOut_df[!,:cnsExpr] = map(x -> x.mustOut * x.capa - sum(getindex(x,collect(dis_arr))),eachrow(mustOut_df))
+			allMustCns_arr[idx] = select(mustOut_df,[:Ts_expSup,:Ts_dis,:R_dis,:C,:Te,:scr,:cnsExpr])
+			idx = idx + 1
+
+			# add a new restriciton on conversion output, in case it was detected that must run cannot replace conversion output
+			if addConvOut_boo
+				push!(part.capaRestr,(cnstrType = "convOut",car = m.car,lvlTs = m.lvlTs, lvlR = m.lvlR))
+			end
+		end
+
+		cns_dic[:mustOut] = cnsCont(vcat(allMustCns_arr...),:equal)
+	end
+
+	# ! create all other capacity restrictions
 	cnstrType_dic = Dict(:exc => (dis = (:exc,), capa = :Exc), :convOut => (dis = (:gen, :stIntIn), capa = :Conv), :convIn => (dis = (:use,:stIntOut), capa = :Conv),
 							:stIn => (dis = (:stExtIn, :stIntIn), capa = :StIn), :stOut => (dis = (:stExtOut, :stIntOut), capa = :StOut), :stSize => (dis = (:stLvl,), capa = :StSize))
 
-	capaRestr_gdf = groupby(filter(x -> x.cnstrType != "fix",part.capaRestr),:cnstrType)
+	capaRestr_gdf = groupby(filter(x -> x.cnstrType != "must",part.capaRestr),:cnstrType)
 
-	# loop over groups of capacity restrictions (like out, stIn, ...)
+	# loop over groups of capacity restrictions except for must-runn (like out, stIn, ...)
 	for restrGrp in capaRestr_gdf
 		# relevant capacity variables
 		type_sym = Symbol(split(String(restrGrp.cnstrType[1]),"_")[1])
@@ -900,6 +960,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 		allCns_df[!,:cnsExpr] = map(x -> x.disp - x.capa,eachrow(allCns_df))
 		cns_dic[Symbol(type_sym,:Restr)] = cnsCont(orderDf(allCns_df[!,[intCol(allCns_df)...,:cnsExpr]]),:smaller)
 	end
+
 end
 
 # ! sub-function to create restriction

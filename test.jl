@@ -26,7 +26,9 @@ include("src/dataHandling/util.jl")
 
 
 
-# fange mit mustRun implementierug an 
+
+
+# TODO mache weiter mit mustRun balance => siehe offene Fragen
 # update reporting
 
 
@@ -42,9 +44,7 @@ printIIS(anyM)
 
 
 
-# TODO 1) warum keine fehlermeldung mit ratio problem? 2) warum problem mit ratio allgemein, sollte kein widerspruch sein und funktioniert ja auch wo anders
-
-tSym = :heatpump
+tSym = :electrolysis
 tInt = sysInt(tSym,anyM.sets[:Te])
 part = anyM.parts.tech[tSym]
 prepTech_dic = prepSys_dic[:Te][tSym]
