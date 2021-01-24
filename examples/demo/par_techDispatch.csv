@@ -12,17 +12,15 @@ timestep_1,technology_1,technology_2,technology_3,mode,carrier_1,carrier_2,param
 ,fuelCell,,,,,,effConv,0.918,
 ,gasPlant,,,,,,avaConv,0.95,
 ,coalPlant,,,,,,avaConv,0.85,
-,gasPlant,ccgt,ccgtCHP,moreHeat,electricity,,ratioOutFix,0.444,
-,gasPlant,ccgt,ccgtCHP,moreElec,electricity,,ratioOutFix,0.625,"for CHP ccgtPlants two modes are assumed, ""moreHeat"" as a lower overall efficiency, but a smaller smaller electricity share "
-,coalPlant,,,,electricity,,ratioOutLow,0.424,"for CHP ccgtPlants two modes are assumed, ""moreHeat"" as a lower overall efficiency, but a smaller smaller electricity share "
-,coalPlant,,,,electricity,,ratioOutUp,0.471,
-2020,fuelCell,,,,electricity,,ratioOutFix,0.523,
-2030,fuelCell,,,,electricity,,ratioOutFix,0.534,
-2020,methanation,,,,gas,synthGas,ratioOutFix,0.769,
-2030,methanation,,,,gas,synthGas,ratioOutFix,0.817,"synthGas ratio of output, the remaining share is excess heat, so increasing value implies increase in ""efficiency"""
-,solar,rooftop,photovoltaic,,electricity,,effStIn,0.96,"synthGas ratio of output, the remaining share is excess heat, so increasing value implies increase in ""efficiency"""
-,solar,rooftop,solarThermal,,heat,,effStIn,0.894,
-,gasStorage,,,,,,effStIn,0.98,
+,gasPlant,ccgt,ccgtCHP,moreHeat,electricity,,ratioConvOutFix,0.444,
+,gasPlant,ccgt,ccgtCHP,moreElec,electricity,,ratioConvOutFix,0.625,"for CHP ccgtPlants two modes are assumed, ""moreHeat"" as a lower overall efficiency, but a smaller smaller electricity share "
+2020,fuelCell,,,,electricity,,ratioConvOutFix,0.523,"for CHP ccgtPlants two modes are assumed, ""moreHeat"" as a lower overall efficiency, but a smaller smaller electricity share "
+2030,fuelCell,,,,electricity,,ratioConvOutFix,0.534,
+2020,methanation,,,,gas,synthGas,ratioConvOutFix,0.769,
+2030,methanation,,,,gas,synthGas,ratioConvOutFix,0.817,
+,solar,rooftop,photovoltaic,,electricity,,effStIn,0.96,
+,solar,rooftop,solarThermal,,heat,,effStIn,0.894,"synthGas ratio of output, the remaining share is excess heat, so increasing value implies increase in ""efficiency"""
+,gasStorage,,,,,,effStIn,0.98,"synthGas ratio of output, the remaining share is excess heat, so increasing value implies increase in ""efficiency"""
 ,hydro,,,,,,effStIn,0.88,
 ,solar,rooftop,photovoltaic,,electricity,,effStOut,0.96,
 ,solar,rooftop,solarThermal,,heat,,effStOut,0.894,
@@ -32,4 +30,8 @@ timestep_1,technology_1,technology_2,technology_3,mode,carrier_1,carrier_2,param
 ,solar,rooftop,solarThermal,,heat,,stDis,0.001,
 ,gasPlant,,,,,,flhConvLow,6000,
 ,coalPlant,,,,,,effStIn,0.85,
-,wind,,,,hydrogen,,ratioOutFix,0.5,
+,wind,,,,hydrogen,,ratioConvOutFix,0.5,
+,electrolysis,,,modeA,hydrogen,,ratioConvOutFix,0.2,
+,electrolysis,,,modeB,hydrogen,,ratioConvOutFix,0.3,
+,electrolysis,,,modeA,gas,synthGas,ratioConvOutLow,0.7,
+,electrolysis,,,modeB,gas,synthGas,ratioConvOutLow,0.5,

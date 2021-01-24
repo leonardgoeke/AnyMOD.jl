@@ -108,6 +108,11 @@ function createOptModel!(anyM::anyModel)
 		createTradeVarCns!(anyM.parts.bal,ts_dic,anyM)
 		createEnergyBal!(techSym_arr,ts_dic,anyM)
 	end
+
+	if :capaDem in keys(anyM.parts.bal.par)
+		createCapaBal!(ts_dic,yTs_dic,r_dic,anyM)
+	end
+	
 	createCost!(anyM.parts.cost,anyM)
 	createLimitCns!(anyM.parts.lim,anyM)
 	
@@ -115,3 +120,12 @@ function createOptModel!(anyM::anyModel)
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")
 end
+
+
+
+
+
+
+
+
+

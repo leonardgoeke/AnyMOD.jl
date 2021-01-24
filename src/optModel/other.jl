@@ -170,7 +170,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 
 	# loops over stored constraints outside of threaded loop to create actual jump constraints
 	for cns in cns_arr
-		partBal.cns[cns[1]] = createCns(cns[2],anyM.optModel)
+		partBal.cns[Symbol(:enerBal,makeUp(cns[1]))] = createCns(cns[2],anyM.optModel)
 	end
 
 	produceMessage(anyM.options,anyM.report, 1," - Created energy balances for all carriers")
@@ -233,8 +233,108 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 		unEtr_arr = fill(false, length(techVar_arr[1]))
 	end
 
-
 	return map(x -> sum(x),eachrow(hcat(techVar_arr...))), unEtr_arr
+end
+
+# ! create balance on output capacity (in particular relevant in combination with must run)
+function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic::Dict{Int64,Int64},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
+	
+	partBal = anyM.parts.bal
+	par_obj = partBal.par[:capaDem]
+
+	#region # * obtain and prepare capacity variables
+
+	# ! get relevant capacity variables in right format
+	conv_df, st_df = [getAllVariables(Symbol(:mustCapa,z),anyM) |> (x -> vcat(x,antijoin(getAllVariables(Symbol(:capa,z),anyM),x,on = intCol(x)))) for z in (:Conv,:StOut)]
+	conv_df[!,:id] .= 0
+
+	# extends capacity with generated carriers and merges them
+	conv_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier.gen) , eachrow(conv_df))
+	st_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier.stExtOut[x.id]) , eachrow(st_df))
+
+	allCapa_df = vcat(conv_df,st_df)
+	allCapa_df = flatten(allCapa_df,:C)
+
+	# filter capacity variables that will not be part due to carrier dimension
+	if :C in namesSym(par_obj.data)
+		c_arr = unique(par_obj.data[!,:C])
+		filter!(x -> x.C in c_arr, allCapa_df)
+	end
+
+
+	# add dispatch regions according to output carriers
+	allCapa_df[!,:R_dis] = map(x -> r_dic[(x.R_exp,anyM.cInfo[x.C].rDis)],eachrow(allCapa_df))
+	allCapa_df = orderDf(flatten(select(allCapa_df,Not([:R_exp])),:R_dis))
+
+	# ! add design factors to capacities
+
+	# group by technologies 
+	grpCapa_gdf = groupby(allCapa_df,:Te)
+	allDesFac_arr = Array{DataFrame}(undef,length(grpCapa_gdf))
+
+	# loop over technologies and write match of capacity and design factors to array
+	capa_itr = collect(enumerate(grpCapa_gdf))
+	@threads for (idx,teCapa) in capa_itr
+
+		teCapa_df = DataFrame(teCapa)
+		part = anyM.parts.tech[sysSym(teCapa_df[1,:Te],anyM.sets[:Te])]
+
+		# if design factor already defined, match with it, otherwise create an empty parameter object for design factor
+		if :desFac in keys(part.par)
+			hasDesFac_df = matchSetParameter(teCapa_df,part.par[:desFac],anyM.sets; newCol = :desFac)
+		else 
+			parDef_ntup = (dim = (:Ts_expSup, :Ts_disSup, :R_dis, :C, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :C => :up, :Te => :up), part = :techConv)
+			part.par[:desFac] = ParElement(DataFrame(),parDef_ntup,:desFac,anyM.report)
+			part.par[:desFac].data = DataFrame(Ts_expSup = Int[],Ts_disSup = Int[],R_dis = Int[],C = Int[],Te = Int[], id = Int[], val = Float64[])
+			hasDesFac_df = DataFrame(Ts_expSup = Int[],Ts_disSup = Int[],R_dis = Int[],C = Int[],Te = Int[], id = Int[], desFac = Float64[], var = AffExpr[])
+		end
+
+		# compute missing design factors, match with capacity and merge everything 
+		noDesFac_df = antijoin(teCapa_df,hasDesFac_df,on = intCol(hasDesFac_df))
+		if !isempty(noDesFac_df)
+			computeDesFac!(part,yTs_dic,anyM,ts_dic,select(noDesFac_df,Not([:var])))
+			allDesFac_arr[idx] = vcat(hasDesFac_df,matchSetParameter(noDesFac_df,part.par[:desFac],anyM.sets; newCol = :desFac))
+		else
+			allDesFac_arr[idx] = hasDesFac_df
+		end
+	end
+
+	# merge all capacity variables with design factors
+	allCapa_df = combine(x -> (var = sum(x.var .* x.desFac),), groupby(vcat(allDesFac_arr...),[:Ts_disSup,:R_dis,:C]) )
+
+	#endregion
+
+	#region # * create corresponding constraints
+
+	# ! create variables for missing capacities
+	if :costMissCapa in keys(partBal.par)
+		# create missing capacity variable
+		var_df = matchSetParameter(allCapa_df,partBal.par[:costMissCapa],anyM.sets)
+		partBal.var[:missCapa] = orderDf(createVar(select(var_df,Not([:val])),"missCapa",anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.insCapa))
+	end
+
+	# ! match with capacity demand
+	cns_df = matchLimitParameter(allCapa_df,par_obj,anyM)
+
+	if !(:Ts_disSup in namesSym(cns_df))
+		push!(anyM.report,(2,"capacity balance","","capacity demand was provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all years was limited instead of enforcing the same limit for each year (see https://leonardgoeke.github.io/AnyMOD.jl/stable/parameter_list/#Limits-on-quantities-dispatched)"))
+	end
+	# add missing capacity variables
+	if :missCapa in keys(partBal.var)
+		cns_df[!,:var] = cns_df[!,:var] .+ aggDivVar(partBal.var[:missCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets)
+	end
+
+	# ! create constraint
+	cns_df[!,:cnsExpr] = map(x -> x.var - x.val, eachrow(cns_df))
+	cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
+	scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
+
+	partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:equal),anyM.optModel)
+
+	produceMessage(anyM.options,anyM.report, 2," - Created capacity balances")
+
+	#endregion
+
 end
 
 # ! create constarints that enforce any type of limit (Up/Low/Fix) on any type of variable
@@ -271,39 +371,8 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			if occursin("exc",lowercase(string(va))) && !occursin("Dir",string(lim)) && :R_from in namesSym(par_obj.data) && :R_to in namesSym(par_obj.data)
 				par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_from => :R_to,:R_to => :R_from))
 			end
-			agg_tup = tuple(intCol(par_obj.data)...)
-
-			# aggregate search variables according to dimensions in limit parameter
-			if isempty(agg_tup)
-				grpVar_df = allVar_df
-			else
-				grpVar_df = combine(groupby(allVar_df,collect(agg_tup)), :var => (x -> sum(x)) => :var)
-			end
-
-			# try to aggregate variables to limits directly provided via inputs
-			limit_df = copy(par_obj.data)
-			if size(limit_df,2) != 1
-				limit_df[!,:var] = aggDivVar(grpVar_df, limit_df[!,Not(:val)], agg_tup, anyM.sets, aggFilt = agg_tup)
-			else
-				limit_df[!,:var] .= sum(grpVar_df[!,:var])
-			end
-
-			# gets provided limit parameters, that no variables could assigned to so far and tests if via inheritance any could be assigned
-			mtcPar_arr, noMtcPar_arr  = findall(map(x -> x != AffExpr(),limit_df[!,:var])) |>  (x -> [x, setdiff(1:size(par_obj.data,1),x)])
-			# removes entries with no parameter assigned from limits
-			limit_df = limit_df[mtcPar_arr,:]
-
-			if !isempty(noMtcPar_arr)
-				# tries to inherit values to existing variables only for parameters without variables aggregated so far
-				aggPar_obj = copy(par_obj,par_obj.data[noMtcPar_arr,:])
-				aggPar_obj.data = matchSetParameter(grpVar_df[!,Not(:var)],aggPar_obj,anyM.sets, useNew = false)
-				# again performs aggregation for inherited parameter data and merges if original limits
-				aggLimit_df = copy(aggPar_obj.data)
-				if !isempty(aggLimit_df)
-					aggLimit_df[!,:var]  = aggDivVar(grpVar_df, aggLimit_df, agg_tup, anyM.sets, aggFilt = agg_tup)
-					limit_df = vcat(limit_df,aggLimit_df)
-				end
-			end
+			
+			limit_df = matchLimitParameter(allVar_df,par_obj,anyM)
 
 			# merge limit constraint to other limits for the same variables
 			limit_df = rename(limit_df,:val => lim)
@@ -401,8 +470,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		if occursin("capa",string(va))
 			if !(:Ts_disSup in namesSym(allLimit_df))
 				lock(anyM.lock)
-				push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all years was limited instead of enforcing the same limit for each year
-																												(see https://leonardgoeke.github.io/AnyMOD.jl/stable/parameter_list/#Limits-on-quantities-dispatched)"))
+				push!(anyM.report,(2,"limit","capacity","capacity limits were provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all years was limited instead of enforcing the same limit for each year (see https://leonardgoeke.github.io/AnyMOD.jl/stable/parameter_list/#Limits-on-quantities-dispatched)"))
 				unlock(anyM.lock)
 			elseif 0 in unique(allLimit_df[!,:Ts_disSup])
 				relEntr_df = filter(x -> x.Ts_disSup == 0, allLimit_df)

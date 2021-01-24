@@ -497,12 +497,18 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:mustOut] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :carrierOut, mode = (:convOut,)))
     parDef_dic[:desFac] = (dim = (:Ts_expSup, :Ts_disSup, :R_dis, :C, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :C => :up, :Te => :up), part = :techConv)
 
-    # ! further dispatch properties
+    # ! further dispatch parameters
+
+    # probability of dispatch scenarios
+    parDef_dic[:scrProp] = (dim = (:Ts_sup, :scr), problem = :sub, defVal = nothing, herit = (:scr => :up, :Ts_sup => :up, :Ts_sup => :avg_any), part = :obj)
+
+    # demand related parameters
+    parDef_dic[:capaDem] = (dim = (:Ts_disSup, :R_dis, :C), problem = :top, defVal = nothing, herit = (:R_dis => :sum_any, :Ts_disSup => :avg_any), part = :bal)
+    parDef_dic[:costMissCapa] = (dim = (:Ts_disSup, :R_dis, :C), problem = :top, defVal = nothing, herit =   (:Ts_disSup => :up, :R_dis => :up, :C => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any, :C => :avg_any), part = :bal)
+
     parDef_dic[:dem]     = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = 0.0,     herit = (:Ts_dis => :avg_any, :R_dis  => :sum_any, :scr => :up),             					part = :bal)
     parDef_dic[:costCrt] = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
     parDef_dic[:costLss] = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
-
-    parDef_dic[:scrProp] = (dim = (:Ts_sup, :scr), problem = :sub, defVal = nothing, herit = (:scr => :up, :Ts_sup => :up, :Ts_sup => :avg_any), part = :obj)
 
     # trade (=sell or buy to an external market) parameters
     parDef_dic[:trdBuyPrc]  = (dim = (:Ts_dis, :R_dis, :C, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :scr => :up, :R_dis => :avg_any, :Ts_dis => :avg_any), part = :bal)
@@ -919,7 +925,10 @@ end
 #region # * perform match between dimension tables and parameter data
 
 # ! matches set with input parameters, uses inheritance rules for unmatched cases
-function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Dict{Symbol,Tree}; newCol::Symbol =:val, useDef::Bool = true, useNew::Bool = true)
+function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Dict{Symbol,Tree}; newCol::Symbol =:val, useDef::Bool = true, useNew::Bool = true, defVal = nothing)
+
+    # check if default value of parameter object is overwritten
+    defVal_fl = isnothing(defVal) ? par_obj.defVal : defVal
 
      # directly return search dataframes with added empty column if it is empty itself
     if isempty(srcSetIn_df)
@@ -931,7 +940,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
     # directly returns default values if no data was provided for the parameter
     if isempty(par_obj.data) || length(namesSym(par_obj.data)) == 1
         paraMatch_df = copy(srcSetIn_df)
-        paraMatch_df[!,newCol] = fill(isempty(par_obj.data) ? par_obj.defVal : par_obj.data[1,:val],size(paraMatch_df,1))
+        paraMatch_df[!,newCol] = fill(isempty(par_obj.data) ? defVal_fl : par_obj.data[1,:val],size(paraMatch_df,1))
         return paraMatch_df
     end
 
@@ -986,9 +995,9 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
 
             # writes default values for remaining unmatched values
             cntNoMatch_int = size(noMatch_df,1)
-            if !allMatch_boo && par_obj.defVal != nothing && useDef
+            if !allMatch_boo && defVal_fl != nothing && useDef
                 defaultMatch_df = noMatch_df
-                defaultMatch_df[!,:val] = fill(par_obj.defVal,cntNoMatch_int)
+                defaultMatch_df[!,:val] = fill(defVal_fl,cntNoMatch_int)
                 paraMatch_df = isempty(paraMatch_df) ? defaultMatch_df : vcat(paraMatch_df,defaultMatch_df)
             end
         end
@@ -1101,6 +1110,45 @@ function heritParameter_rest(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{I
     end
 
     return newData_df
+end
+
+# ! matches limiting parameter with data, this is not straightforward, because not only can limits be aggregated to match with a variable, but also variales are aggregated to match with a limit
+function matchLimitParameter(allVar_df::DataFrame,par_obj::ParElement,anyM::anyModel)
+    agg_tup = tuple(intCol(par_obj.data)...)
+
+    # aggregate search variables according to dimensions in limit parameter
+    if isempty(agg_tup)
+        grpVar_df = allVar_df
+    else
+        grpVar_df = combine(groupby(allVar_df,collect(agg_tup)), :var => (x -> sum(x)) => :var)
+    end
+
+    # try to aggregate variables to limits directly provided via inputs
+    limit_df = copy(par_obj.data)
+    if size(limit_df,2) != 1
+        limit_df[!,:var] = aggDivVar(grpVar_df, limit_df[!,Not(:val)], agg_tup, anyM.sets, aggFilt = agg_tup)
+    else
+        limit_df[!,:var] .= sum(grpVar_df[!,:var])
+    end
+
+    # gets provided limit parameters, that no variables could assigned to so far and tests if via inheritance any could be assigned
+    mtcPar_arr, noMtcPar_arr  = findall(map(x -> x != AffExpr(),limit_df[!,:var])) |>  (x -> [x, setdiff(1:size(par_obj.data,1),x)])
+    # removes entries with no parameter assigned from limits
+    limit_df = limit_df[mtcPar_arr,:]
+
+    if !isempty(noMtcPar_arr)
+        # tries to inherit values to existing variables only for parameters without variables aggregated so far
+        aggPar_obj = copy(par_obj,par_obj.data[noMtcPar_arr,:])
+        aggPar_obj.data = matchSetParameter(grpVar_df[!,Not(:var)],aggPar_obj,anyM.sets, useNew = false)
+        # again performs aggregation for inherited parameter data and merges if original limits
+        aggLimit_df = copy(aggPar_obj.data)
+        if !isempty(aggLimit_df)
+            aggLimit_df[!,:var]  = aggDivVar(grpVar_df, aggLimit_df, agg_tup, anyM.sets, aggFilt = agg_tup)
+            limit_df = vcat(limit_df,aggLimit_df)
+        end
+    end
+
+    return limit_df
 end
 
 #endregion

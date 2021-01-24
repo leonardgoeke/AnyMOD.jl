@@ -915,7 +915,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			end
 
 			# create actual constraint
-			mustOut_df[!,:cnsExpr] = map(x -> x.mustOut * x.capa - sum(getindex(x,collect(dis_arr))),eachrow(mustOut_df))
+			mustOut_df[!,:cnsExpr] = map(x -> x.mustOut * x.capa - sum(getindex(x,intersect(namesSym(mustOut_df),[:gen,:stExtOut,:stIntIn]))),eachrow(mustOut_df))
 			allMustCns_arr[idx] = select(mustOut_df,[:Ts_expSup,:Ts_dis,:R_dis,:C,:Te,:scr,:cnsExpr])
 			idx = idx + 1
 

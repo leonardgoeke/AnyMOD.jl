@@ -432,7 +432,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 		costDf_arr = Array{DataFrame}(undef,length(costVar_arr))
 
 		for (idx,va) in enumerate(costVar_arr)
-			var_df = anyM.parts.cost.var[va]
+			var_df = copy(anyM.parts.cost.var[va])
 	
 			# splits costs of exchange across regions
 			if :R_from in intCol(var_df)

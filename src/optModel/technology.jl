@@ -319,8 +319,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 
 		# add discharge parameter, if defined
 		if :stDis in keys(part.par)
-			part.par[:stDis].defVal = 0.0
-			cnsC_df = matchSetParameter(cnsC_df,part.par[:stDis],anyM.sets)
+			cnsC_df = matchSetParameter(cnsC_df,part.par[:stDis],anyM.sets, defVal = 0.0)
 			cnsC_df[!,:stDis] =   (1 .- cnsC_df[!,:val]) .^ sca_arr
 			select!(cnsC_df,Not(:val))
 		else
@@ -329,8 +328,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 
 		# add inflow parameter, if defined
 		if :stInflow in keys(part.par)
-			part.par[:stInflow].defVal = 0.0
-			cnsC_df = matchSetParameter(cnsC_df,part.par[:stInflow],anyM.sets, newCol = :stInflow)
+			cnsC_df = matchSetParameter(cnsC_df,part.par[:stInflow],anyM.sets, newCol = :stInflow, defVal = 0.0)
 			if !isempty(part.modes)
             	cnsC_df[!,:stInflow] = cnsC_df[!,:stInflow] ./ length(part.modes) .* sca_arr
 			end
@@ -350,7 +348,7 @@ end
 # ! computes design factors and create specific variables plus corresponding contraint for must run capacities where sensible
 function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},prepTech_dic::Dict{Symbol,NamedTuple},yTs_dic::Dict{Int64,Int64},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 
-	#region # * check for pre-defined design factors
+	#region # * check for pre-defined design factors and compute them were none are defined
 
 	if :desFac in keys(part.par)
 		# get all potential output capacities
@@ -368,63 +366,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},prep
 		part.par[:desFac] = ParElement(DataFrame(),parDef_ntup,:desFac,anyM.report)
 		part.par[:desFac].data = DataFrame(Ts_expSup = Int[],Ts_disSup = Int[],R_dis = Int[],C = Int[],Te = Int[], id = Int[], val = Float64[])
 	end
-
-	#endregion
-
-	#region # * compute new design factors from time-series parameters
-
-	# obtained must out and add modes
-	allFac_df = rename(part.par[:mustOut].data,:val => :mustOut)
-	if !isempty(part.modes)
-		allFac_df[!,:M] = collect(part.modes) |> (z -> map(x -> z,1:size(allFac_df,1)))
-		allFac_df = flatten(allFac_df,:M)
-	else
-		allFac_df[!,:M] .= 0
-	end
-
-	# get availability and efficiency for storage capacities
-	if :capaStOut in keys(part.var)
-		facSt_df = allFac_df
-		facSt_df[!,:id] = fill(unique(part.var[:capaStOut][!,:id]),size(facSt_df,1))
-		facSt_df = flatten(facSt_df,:id)
-
-		facSt_df = matchSetParameter(facSt_df,part.par[:avaStOut],anyM.sets; newCol = :ava)
-		facSt_df = orderDf(matchSetParameter(facSt_df,part.par[:effStOut],anyM.sets; newCol = :eff))
-	else
-		facSt_df = DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], scr = Int[], id = Int[], eff = Float64[], mustOut = Float64[], ava = Float64[])
-	end
-
-	# get availability and efficiency, and eventually ratios for conversion capacities
-	if :capaConv in keys(part.var)
-		# add availability, efficiency and ratios if any are defined
-		facConv_df = matchSetParameter(allFac_df,part.par[:avaConv],anyM.sets; newCol = :ava)
-		facConv_df = orderDf(matchSetParameter(facConv_df,part.par[:effConv],anyM.sets; newCol = :eff))
-
-		# TODO enable other kinds of conversion ratios  
-		# throws an error, if ratios are not implemented as fixed ratios on the must run carrier
-		if :ratioConvOutUp in keys(part.par) || :ratioConvOutLow in keys(part.par) || (:ratioConvOutFix in keys(part.par) && !isempty(setdiff(unique(part.par[:ratioConvOutFix].data[!,:C]),unique(part.par[:mustOut].data[!,:C]))))
-			push!(anyM.report,(3,"must output","","output of technology '$(tech_str)' is fixed, in this case so far the only permitted ratio parameter is fixing the ratio of the must-run carrier, but other ratios were detected"))
-		end
-
-		# adds conversion ratio if any defined
-		if :ratioConvOutFix in keys(part.par)
-			facConv_df = matchSetParameter(facConv_df,part.par[:ratioConvOutFix],anyM.sets; newCol = :ratio)
-			facConv_df[!,:eff] = facConv_df[!,:eff] .* facConv_df[!,:ratio]
-			select!(facConv_df,Not([:ratio]))
-		end
-		facConv_df[!,:id] .= 0
-	else
-		facConv_df = DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], scr = Int[], id = Int[], eff = Float64[], mustOut = Float64[], ava = Float64[])
-	end
-
-	#  computes overall mustrun factor in relation to input capacity for each timestep and mode
-	allFac_df = vcat(facConv_df,facSt_df)
-	allFac_df = combine(x -> (run = maximum(x.eff .* x.ava ./ x.mustOut), mustOut = x.mustOut[1]),groupby(allFac_df,filter(x -> x != :M,intCol(allFac_df))))
-	allFac_df[!,:Ts_disSup] = map(x -> yTs_dic[x],allFac_df[!,:Ts_dis])
-	allFac_df = combine(x -> (desFac = minimum(x.run) * maximum(x.mustOut),),groupby(allFac_df,filter(x -> !(x in [:Ts_dis,:scr]),intCol(allFac_df))))
-	
-	# add computed factors to parameter data
-	part.par[:desFac].data = orderDf(vcat(part.par[:desFac].data,antijoin(rename(allFac_df,:desFac => :val),part.par[:desFac].data,on = intCol(allFac_df))))
+	computeDesFac!(part,yTs_dic,anyM)
 
 	#endregion
 
@@ -456,6 +398,94 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},prep
 	end
 
 	#endregion
+
+end
+
+# ! compute design factors, either based on defined must run parameters or for all capacities in input dataframe
+function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel,ts::Dict{Tuple{Int64,Int64},Array{Int64,1}}=Dict{Tuple{Int64,Int64},Array{Int64,1}}(), capa::DataFrame=DataFrame())
+
+	# obtain all dispatch entries (either uses or defined must run or input dataframe of capacities)
+	if isempty(capa)
+		allFac_df = rename(part.par[:mustOut].data,:val => :mustOut)
+	else
+		allFac_df = capa
+		# add dispatch timesteps and scenarios
+		allFac_df[!,:Ts_dis] = map(x -> ts[(x.Ts_disSup,anyM.cInfo[x.C].tsDis)], eachrow(allFac_df))
+		allFac_df[!,:scr] = map(x -> anyM.supTs.scr[x], allFac_df[!,:Ts_disSup])
+		allFac_df = flatten(allFac_df,:scr)
+		allFac_df = flatten(select(allFac_df,Not([:Ts_disSup])),:Ts_dis)
+		# add must run factor of 1 to ensure consistency with other case
+		allFac_df[!,:mustOut] .= 1.0
+	end
+
+	# add all operational modes
+	if !isempty(part.modes)
+		allFac_df[!,:M] = collect(part.modes) |> (z -> map(x -> z,1:size(allFac_df,1)))
+		allFac_df = flatten(allFac_df,:M)
+	else
+		allFac_df[!,:M] .= 0
+	end
+
+	# split into conversion and storage capacities
+	if isempty(capa)
+		if :capaStOut in keys(part.var)
+			facSt_df = allFac_df
+			facSt_df[!,:id] = fill(unique(part.var[:capaStOut][!,:id]),size(facSt_df,1))
+			facSt_df = flatten(facSt_df,:id)
+		else
+			facSt_df = DataFrame()
+		end
+
+		if :capaConv in keys(part.var)
+			facConv_df = allFac_df
+			facConv_df[!,:id] .= 0
+		else
+			facConv_df = DataFrame()
+		end
+
+	else
+		facConv_df = filter(x -> x.id == 0,allFac_df)
+		facSt_df = filter(x -> x.id != 0,allFac_df)
+	end
+
+	# get availability and efficiency for storage capacities
+	if !isempty(facSt_df)
+		facSt_df = matchSetParameter(facSt_df,part.par[:avaStOut],anyM.sets; newCol = :ava)
+		facSt_df = orderDf(matchSetParameter(facSt_df,part.par[:effStOut],anyM.sets; newCol = :eff))
+	else
+		facSt_df = DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], scr = Int[], id = Int[], eff = Float64[], mustOut = Float64[], ava = Float64[])
+	end
+
+	# get availability and efficiency, and eventually ratios for conversion capacities
+	if !isempty(facConv_df)
+		# add availability, efficiency and ratios if any are defined
+		facConv_df = matchSetParameter(facConv_df,part.par[:avaConv],anyM.sets; newCol = :ava)
+		facConv_df = orderDf(matchSetParameter(facConv_df,part.par[:effConv],anyM.sets; newCol = :eff))
+
+		# TODO enable other kinds of conversion ratios  
+		# throws an error, if ratios are not implemented as fixed ratios on the must run carrier
+		if :ratioConvOutUp in keys(part.par) || :ratioConvOutLow in keys(part.par) || (:ratioConvOutFix in keys(part.par) && isempty(capa) && !isempty(setdiff(unique(part.par[:ratioConvOutFix].data[!,:C]),unique(part.par[:mustOut].data[!,:C]))))
+			push!(anyM.report,(3,"must output","","output of technology '$(createFullString(allFac_df[1,:Te],anyM.sets[:Te]))' is fixed, in this case so far the only permitted ratio parameter is fixing the ratio of the must-run carrier, but other ratios were detected"))
+		end
+
+		# adds conversion ratio if any defined
+		if :ratioConvOutFix in keys(part.par)
+			facConv_df = matchSetParameter(facConv_df,part.par[:ratioConvOutFix],anyM.sets; newCol = :ratio, defVal = 1.0)
+			facConv_df[!,:eff] = facConv_df[!,:eff] .* facConv_df[!,:ratio]
+			select!(facConv_df,Not([:ratio]))
+		end
+	else
+		facConv_df = DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], scr = Int[], id = Int[], eff = Float64[], mustOut = Float64[], ava = Float64[])
+	end
+
+	#  computes overall mustrun factor in relation to input capacity for each timestep and mode
+	allFac_df = vcat(facConv_df,facSt_df)
+	allFac_df = combine(x -> (run = maximum(x.eff .* x.ava ./ x.mustOut), mustOut = x.mustOut[1]),groupby(allFac_df,filter(x -> x != :M,intCol(allFac_df))))
+	allFac_df[!,:Ts_disSup] = map(x -> yTs_dic[x],allFac_df[!,:Ts_dis])
+	allFac_df = combine(x -> (desFac = minimum(x.run) * maximum(x.mustOut),),groupby(allFac_df,filter(x -> !(x in [:Ts_dis,:scr]),intCol(allFac_df))))
+
+	# add computed factors to parameter data
+	part.par[:desFac].data = orderDf(vcat(part.par[:desFac].data,antijoin(rename(allFac_df,:desFac => :val),part.par[:desFac].data,on = intCol(allFac_df))))
 
 end
 

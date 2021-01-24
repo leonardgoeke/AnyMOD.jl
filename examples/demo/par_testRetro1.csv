@@ -6,5 +6,3 @@ coalPlant,gasPlant,ccgt,ccgtCHP,,,,,,facRetroConv,0.7
 gasStorage,hydro,,,,,,,,costRetroStIn,20
 ,,,,gas1,,gas2,,,costRetroExc,180
 coalPlant,gasPlant,ccgt,ccgtCHP,,,,,,creditRetroConv,0.2
-,,,,,,,,,costUp,9999
-wind,,,,,,,,,costExpConvUp,5050

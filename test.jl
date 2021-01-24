@@ -25,12 +25,10 @@ include("src/dataHandling/tree.jl")
 include("src/dataHandling/util.jl")
 
 
-
-
-
-# TODO mache weiter mit mustRun balance => siehe offene Fragen
 # update reporting
 
+
+# TODO teste ohne filter, teste mit infeas, teste mit jahr
 
 anyM = anyModel("examples/demo","examples/results", objName = "test")
 createOptModel!(anyM)
