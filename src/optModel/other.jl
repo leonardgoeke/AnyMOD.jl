@@ -156,10 +156,10 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		# ! prepare, scale and save constraints to dictionary
 		c_str = Symbol(anyM.sets[:C].nodes[c].val)
 
-		negVar_arr = intersect([:crtVar,:trdSellVar],namesSym(cns_df))
+		negVar_arr = intersect([:crtVar,:trdSellVar,:dem],namesSym(cns_df))
 		posVar_arr = intersect([:techVar,:excVar,:lssVar,:trdBuyVar],namesSym(cns_df))
 
-		cns_df[!,:cnsExpr] = map(x -> sum(getindex(x,posVar_arr)) - sum(getindex(x,negVar_arr)), eachrow(cns_df))
+		cns_df[!,:cnsExpr] = map(x -> (isempty(posVar_arr) ? AffExpr() : sum(getindex(x,posVar_arr))) - (isempty(negVar_arr) ? AffExpr() : sum(getindex(x,negVar_arr))), eachrow(cns_df))
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		filter!(x -> x.cnsExpr != AffExpr(),cns_df)
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
@@ -245,7 +245,7 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	#region # * obtain and prepare capacity variables
 
 	# ! get relevant capacity variables in right format
-	conv_df, st_df = [getAllVariables(Symbol(:mustCapa,z),anyM) |> (x -> vcat(x,antijoin(getAllVariables(Symbol(:capa,z),anyM),x,on = intCol(x)))) for z in (:Conv,:StOut)]
+	conv_df, st_df = [getAllVariables(Symbol(:mustCapa,z),anyM) |> (x -> isempty(x) ? getAllVariables(Symbol(:capa,z),anyM) : vcat(x,antijoin(getAllVariables(Symbol(:capa,z),anyM),x,on = intCol(x)))) for z in (:Conv,:StOut)]
 	conv_df[!,:id] .= 0
 
 	# extends capacity with generated carriers and merges them

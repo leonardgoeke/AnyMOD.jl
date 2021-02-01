@@ -892,6 +892,8 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			capaVar_df = matchSetParameter(select(capaVar_df,Not(:R_exp)),part.par[:desFac],anyM.sets; newCol = :desFac)
 			capaVar_df[!,:var] = capaVar_df[!,:var] .* capaVar_df[!,:desFac]
 			capaVar_df = combine(groupby(capaVar_df,filter(x -> x != :id,intCol(capaVar_df))),:var => (x -> sum(x)) => :capa)
+			# resize capacity variables
+			capaVar_df[!,:capa]  = capaVar_df[!,:capa] .* map(x -> anyM.supTs.sca[(x,anyM.cInfo[m.car[1]].tsDis)],	capaVar_df[!,:Ts_disSup])
 
 			# get must-run parameters 
 			mustOut_df = filter(x -> x.C == m.car[1],rename(part.par[:mustOut].data,:val => :mustOut))
@@ -1028,6 +1030,7 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 		# aggregate dispatch variables
 		capaDim_df[!,va] = aggUniVar(allVar_df, select(capaDim_df,intCol(capaDim_df)), agg_arr, resDis_ntup, sets_dic)
 	end
+
 	# sum dispatch variables and filter cases without any
 	capaDim_df[!,:disp] = map(x -> sum(x),eachrow(capaDim_df[!,dispVar_arr]))
 	select!(capaDim_df,Not(dispVar_arr))

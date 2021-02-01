@@ -48,7 +48,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 	    produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
 
 	    # create conversion balance for conversion technologies
-	    if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && :capaConv in keys(part.var)
+	    if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && :capaConv in keys(part.var) || part.type == :unrestricted 
 	        cns_dic[:convBal] = createConvBal(part,anyM)
 	        produceMessage(anyM.options,anyM.report, 3," - Prepared conversion balance for technology $(tech_str)")
 	    end
@@ -73,7 +73,9 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
     # all constraints are scaled and then written into their respective array position
     foreach(x -> scaleCnsExpr!(x[2].data,anyM.options.coefRng,anyM.options.checkRng), collect(cns_dic))
 
-    produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for technology $(tech_str)")
+	produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for technology $(tech_str)")
+	
+	#part.par = Dict{Symbol,ParElement}()
 
     return cns_dic
 end
@@ -82,6 +84,7 @@ end
 function prepareTechs!(techSym_arr::Array{Symbol,1},prepAllTech_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},tsYear_dic::Dict{Int,Int},anyM::anyModel)
 
 	for tSym in techSym_arr
+
 		prepTech_dic = Dict{Symbol,NamedTuple}()
 		part = anyM.parts.tech[tSym]
         tInt = sysInt(tSym,anyM.sets[:Te])
@@ -132,12 +135,12 @@ function addResidualCapaTech!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPa
 	stCar_arr = intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut)) |> (z -> isempty(z) ? Int[] : unique(union(union(map(x -> getproperty(carGrp_ntup,x),z)...)...)))
 
 	for resi in (:Conv, :StIn, :StOut, :StSize)
+
 		# cretes dataframe of potential entries for residual capacities
 		if resi == :Conv
 			permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step))...),i) for i in (1,2)]
 			potCapa_df = DataFrame(Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], Te = fill(tInt,length(permutDim_arr[1])))
 		elseif !isempty(stCar_arr)
-
 			permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step,collect(1:countStGrp(carGrp_ntup))))...),i) for i in (1,2,3)]
 			potCapa_df = DataFrame(Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], Te = fill(tInt,length(permutDim_arr[1])), id = permutDim_arr[3])
 		else
@@ -162,16 +165,17 @@ end
 function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},prepTech_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,))
+	hasSt_boo = (:capaStIn in keys(prepTech_dic) || :capaStOut in keys(prepTech_dic))
 
-	for va in collectKeys(keys(part.carrier)) |> (x -> :capaStIn in keys(prepTech_dic) ? [:stLvl,x...]  : x) # loop over all relevant kind of variables
+	for va in collectKeys(keys(part.carrier)) |> (x -> hasSt_boo  ? [:stLvl,x...]  : x) # loop over all relevant kind of variables
 		conv_boo = va in (:gen,:use) && :capaConv in keys(prepTech_dic)
 		# obtains relevant capacity variable
 		if conv_boo
-			basis_df = copy(prepTech_dic[:capaConv].var)
+			basis_df = copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[:capaConv]))...)))
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
-		elseif :capaStIn in keys(prepTech_dic) && !(va in (:gen,:use))
-			basis_df = orderDf(copy(prepTech_dic[:capaStIn].var))
+		elseif hasSt_boo && !(va in (:gen,:use))
+			basis_df = orderDf(copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[collect(intersect(keys(prepTech_dic),[:capaStIn,:capaStOut]))[1]]))...))))
 			# gets array of carriers defined for each group of storage
 			subField_arr = intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(part.carrier))
 			idC_dic = Dict(y => union(map(x -> getfield(part.carrier,x)[y],subField_arr)...) for y in 1:length(part.carrier[subField_arr[1]]))
@@ -295,6 +299,12 @@ function createStBal(part::TechPart,anyM::anyModel)
 			typVar_df = copy(cns_df[!,cnsDim_arr])
 			# create array of all dispatch variables
 			allType_arr = intersect(keys(part.carrier),typ == :in ? (:stExtIn,:stIntIn) : (:stExtOut,:stIntOut))
+			# aborts if no variables on respective side exist
+			if isempty(allType_arr)
+				cnsC_df[!,typ] .= AffExpr() 
+				continue
+			end
+
 			effPar_sym = typ == :in ? :effStIn : :effStOut
 			# adds dispatch variables
 			typExpr_arr = map(allType_arr) do va

@@ -79,7 +79,7 @@ intCol(in_df::DataFrame,add_sym::Symbol) = union(intCol(in_df),intersect(namesSy
 intCol(in_df::DataFrame,add_sym::Array) = union(intCol(in_df),intersect(namesSym(in_df),add_sym))
 
 # ! returns the number of different capacity groups of storage from named tuple of carriers
-countStGrp(carGrp_ntup::NamedTuple) = intersect((:stExtIn,:stsExtOut,:stIntIn,:stsIntOut),collect(keys(carGrp_ntup))) |> (z ->  isempty(z) ? 0 : maximum(map(x -> length(getfield(carGrp_ntup,x)),z)))
+countStGrp(carGrp_ntup::NamedTuple) = intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),collect(keys(carGrp_ntup))) |> (z ->  isempty(z) ? 0 : maximum(map(x -> length(getfield(carGrp_ntup,x)),z)))
 
 # ! puts relevant dimensions in consistent order and adds remaining entries at the end
 orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts, :Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])

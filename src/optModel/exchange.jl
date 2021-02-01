@@ -49,7 +49,6 @@ function prepareExc!(excSym_arr::Array{Symbol,1},prepAllExc_dic::Dict{Symbol,Dic
 	partLim = anyM.parts.lim
 
 	for excSym in excSym_arr
-	
 		excInt = sysInt(excSym,anyM.sets[:Exc])
 		part = anyM.parts.exc[excSym]
 		prepExc_dic = Dict{Symbol,NamedTuple}()
@@ -131,6 +130,9 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 			select!(capaResi_df,Not([:val]))
 		end
 		capaResi_df[!,:dir] .= true
+		
+		# aborts if nothing was defined
+		if isempty(capaResi_df) return end
 
 		if part.type != :stock && !isempty(prepExc_dic)
 			adjVar_df = prepExc_dic[:capaExc].var
@@ -142,6 +144,9 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 		capaResi_df = filter(x -> x.R_from != x.R_to, checkResiCapa(:capaExc,potExc_df, part, anyM))
 		sortR_mat = sort(hcat([capaResi_df[!,x] for x in (:R_from,:R_to)]...);dims = 2)
 		for (index,col) in enumerate((:R_from,:R_to)) capaResi_df[!,col] = sortR_mat[:,index] end
+		
+		# aborts if nothing was defined
+		if isempty(capaResi_df) return end
 
 		# manipulate entries in case directed residual capacities are defined
 		if :capaExcResiDir in keys(part.par)
