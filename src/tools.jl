@@ -59,7 +59,7 @@ reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{
 function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
     techSym_arr = collect(keys(anyM.parts.tech))
-	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
+	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], id = Int[], variable = Symbol[], value = Float64[])
 
 	# ! get demand values
 	if :dem in keys(anyM.parts.bal.par)
@@ -97,6 +97,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 
 			dem_df = combine(groupby(dem_df,[:Ts_disSup,:R_dis,:C,:scr]),:val => ( x -> sum(x) / 1000) => :value)
 			dem_df[!,:Te] .= 0
+			dem_df[!,:id] .= 0
 			dem_df[!,:variable] .= :demand
 			if wrtSgn dem_df[!,:value] = dem_df[!,:value] .* -1 end
 			allData_df = vcat(allData_df,flatten(dem_df,:R_dis))
@@ -106,7 +107,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	# ! get expansion and capacity variables
 	for t in techSym_arr
 		part = anyM.parts.tech[t]
-		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
+		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], id = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
 		# get installed capacity values
 		for va in intersect(keys(part.var),(:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :insCapaConv, :insCapaStIn, :insCapaStOut, :insCapaStSize))
@@ -118,17 +119,16 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 			end
 			# set carrier column to zero for conversion capacities and add a spatial dispatch column
 			if va in (:expConv,:capaConv,:insCapaConv)
-				capa_df[!,:C] .= 0
-				capa_df[!,:R_dis] = map(x -> getAncestors(x,anyM.sets[:R],:int,part.balLvl.exp[2])[end],capa_df[!,:R_exp])
-			else
-				capa_df[!,:R_dis] = map(x -> getAncestors(x.R_exp,anyM.sets[:R],:int,anyM.cInfo[x.C].rDis)[end],eachrow(capa_df))
+				capa_df[!,:id] .= 0
 			end
 
+			capa_df[!,:R_dis] = map(x -> getAncestors(x,anyM.sets[:R],:int,part.balLvl.exp[2])[end],capa_df[!,:R_exp])
 			select!(capa_df,Not(:R_exp))
 			# aggregate values and add to tech data frame
-			capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_dis,:C,:Te]),:var => ( x -> value.(sum(x))) => :value)
+			capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_dis,:id,:Te]),:var => ( x -> value.(sum(x))) => :value)
 			capa_df[!,:variable] .= va
 			capa_df[!,:scr] .= 0
+			capa_df[!,:C] .= 0
 			tech_df = vcat(tech_df,capa_df)
 		end
 
@@ -143,12 +143,12 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		if isempty(allVar_df) continue end
 
 		disp_df = combine(groupby(allVar_df,intersect(intCol(allVar_df),[:Ts_disSup,:R_dis,:C,:Te,:scr])),:var => (x -> value(sum(x))) => :value)
-		# scales values to twh (except for emissions of course)
+		# scales values to twh (except for emissions)
 		if va != :emission disp_df[!,:value] = disp_df[!,:value]  ./ 1000 end
 		disp_df[!,:variable] .= va
 
 		# add empty values for non-existing columns
-		for dim in (:Te,:C)
+		for dim in (:Te,:C,:id)
 			if !(dim in namesSym(disp_df))
 				disp_df[:,dim] .= 0
 			end
@@ -177,6 +177,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	end
 
 	# ! get full load hours for conversion, storage input and storage output
+	#=
 	flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
 
 	for flhCapa in collect(keys(flh_dic))
@@ -222,6 +223,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
 		allData_df = vcat(allData_df,capaCyc_df)
 	end
+	=#
 
 	# removes scenario column if only one scenario is defined
 	if length(unique(allData_df[!,:scr])) == 1
