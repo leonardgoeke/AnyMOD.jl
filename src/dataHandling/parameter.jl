@@ -1137,9 +1137,24 @@ function matchLimitParameter(allVar_df::DataFrame,par_obj::ParElement,anyM::anyM
     limit_df = limit_df[mtcPar_arr,:]
 
     if !isempty(noMtcPar_arr)
-        # tries to inherit values to existing variables only for parameters without variables aggregated so far
+        # get unmatched limits 
         aggPar_obj = copy(par_obj,par_obj.data[noMtcPar_arr,:])
+
+        # find ancestors of entries in columns that also occur in remaining limits
+        aggEtr_dic = Dict(x => unique(aggPar_obj.data[!,x]) |> (z -> Dict(y => intersect(z,getAncestors(y,anyM.sets[Symbol(split(string(x),"_")[1])],:int,0)) for y in unique(grpVar_df[!,x]))) for x in agg_tup)
+
+        # extend table of variables with entries for relevant ancestorrs
+        for u in keys(aggEtr_dic)
+            if !all(isempty.(getindex.(collect(aggEtr_dic[u]),2)))
+                grpVar_df[!,u] = map(x -> aggEtr_dic[u][x] |> (y -> isempty(y) ? [x] : vcat([x],y)), grpVar_df[!,u])
+                grpVar_df = flatten(grpVar_df,u)
+            end
+        end
+        grpVar_df = combine(groupby(grpVar_df,collect(agg_tup)), :var => (x -> sum(x)) => :var)
+
+        # tries to inherit values to existing variables only for parameters without variables aggregated so far
         aggPar_obj.data = matchSetParameter(grpVar_df[!,Not(:var)],aggPar_obj,anyM.sets, useNew = false)
+        
         # again performs aggregation for inherited parameter data and merges if original limits
         aggLimit_df = copy(aggPar_obj.data)
         if !isempty(aggLimit_df)
