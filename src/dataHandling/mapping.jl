@@ -450,7 +450,7 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 	# ! writes dimension of capacity restrictions for storage
 	for g in 1:countStGrp(carGrp_ntup)
 		stInVar_arr, stOutVar_arr = [intersect(x,keys(carGrp_ntup)) for x in ((:stExtIn,:stIntIn),(:stExtOut,:stIntOut))]
-		if isempty(stInVar_arr) && !isempty(stOutVar_arr) continue end
+		if isempty(stInVar_arr) && isempty(stOutVar_arr) continue end
 		for st in (:stIn,:stOut,:stSize)
 			stC_arr = unique(vcat(collect.([getproperty(carGrp_ntup,y)[g] for y in (st == :stSize ? union(stInVar_arr,stOutVar_arr) : (st == :stIn ? stInVar_arr : stOutVar_arr))])...))
 			if isempty(stC_arr) continue end
