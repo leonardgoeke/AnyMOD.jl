@@ -250,8 +250,6 @@ end
 
 #region # * utility functions for exchange
 
-
-
 # matches exchange variables with directed and undirected parameters
 function matchExcParameter(par_sym::Symbol,var_df::DataFrame,part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},dir_boo::Bool=true,unDir_obj::Union{ParElement,Nothing}=nothing,dir_obj::Union{ParElement,Nothing}=nothing)
 

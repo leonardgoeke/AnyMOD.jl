@@ -1027,6 +1027,8 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 			allVar_df = matchExcParameter(:avaExc,allVar_df,part,sets_dic)
 			allVar_df[!,:var] = allVar_df[!,:var] .* 1 ./ allVar_df[!,:val]
 			select!(allVar_df,Not([:val]))
+
+			if !part.dir allVar_df = flipExc(allVar_df) end
 		end
 
 		# aggregate dispatch variables
