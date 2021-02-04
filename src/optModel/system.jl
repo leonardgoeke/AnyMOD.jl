@@ -1012,11 +1012,13 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	for va in dispVar_arr
 		# filter dispatch variables not belonging to relevant carrier
 		allVar_df = filter(r -> r.C in restr.car, part.var[va])[!,Not(:Ts_disSup)]
+		
+		# correct dispatch variables with energy carrier
+		allVar_df = addEnergyCont(allVar_df,part,anyM)
 
 		# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
 		if va != :exc
 			ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:ava,info_ntup.capa)],sets_dic, newCol = :ava)[!,:ava]
-
 			if type_sym in (:convOut,:stOut)
 				ava_arr = matchSetParameter(allVar_df,part.par[type_sym == :convOut ? :effConv : :effStOut],sets_dic,newCol = :eff)[!,:eff] .* ava_arr
 			end

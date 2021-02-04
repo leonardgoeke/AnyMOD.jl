@@ -242,16 +242,19 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	out_arr = intersect(keys(part.carrier),(:gen,:stIntIn))
 
 	for va in union(in_arr,out_arr)
-		if :M in namesSym(cns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated separately
+		# add energy content to expression if defined
+		var_df = addEnergyCont(part.var[va],part,anyM)
+		
+		# aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated separately
+		if :M in namesSym(cns_df) 
 			cns_df[!,va] .= AffExpr()
-			cns_df[m_arr,va] = aggUniVar(part.var[va], select(cns_df[m_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResM_ntup, anyM.sets)
-			cns_df[noM_arr,va] = aggUniVar(part.var[va], select(cns_df[noM_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResNoM_ntup, anyM.sets)
+			cns_df[m_arr,va] = aggUniVar(var_df, select(cns_df[m_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResM_ntup, anyM.sets)
+			cns_df[noM_arr,va] = aggUniVar(var_df, select(cns_df[noM_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResNoM_ntup, anyM.sets)
 		else
-			cns_df[!,va] = aggUniVar(part.var[va], select(cns_df,intCol(cns_df)), agg_arr, srcRes_ntup, anyM.sets)
+			cns_df[!,va] = aggUniVar(var_df, select(cns_df,intCol(cns_df)), agg_arr, srcRes_ntup, anyM.sets)
 		end
 	end
 
-	
 	# aggregate in and out variables respectively and create actual constraint
 	cns_df[!,:cnsExpr] = map(x -> sum(getindex(x,in_arr))*x.eff - sum(getindex(x,out_arr)),eachrow(cns_df))
 	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),:equal)
@@ -497,6 +500,19 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 	# add computed factors to parameter data
 	part.par[:desFac].data = orderDf(vcat(part.par[:desFac].data,antijoin(rename(allFac_df,:desFac => :val),part.par[:desFac].data,on = intCol(allFac_df))))
 
+end
+
+# ! returns type of variable and corrects with energy content
+function addEnergyCont(var_df::DataFrame,part::AbstractModelPart,anyM::anyModel)
+
+	if :enCont in keys(part.par)
+		part.par[:enCont].defVal = 1.0
+		var_df = filter(x -> x.val != 0.0, matchSetParameter(var_df,part.par[:enCont],anyM.sets))
+		var_df[!,:var] = var_df[!,:var] .* var_df[!,:val]
+		select!(var_df,Not([:val]))
+	end
+
+	return var_df
 end
 
 #endregion

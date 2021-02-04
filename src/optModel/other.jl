@@ -170,7 +170,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 
 	# loops over stored constraints outside of threaded loop to create actual jump constraints
 	for cns in cns_arr
-		partBal.cns[Symbol(:enerBal,makeUp(cns[1]))] = createCns(cns[2],anyM.optModel)
+		partBal.cns[Symbol(:enBal,makeUp(cns[1]))] = createCns(cns[2],anyM.optModel)
 	end
 
 	produceMessage(anyM.options,anyM.report, 1," - Created energy balances for all carriers")

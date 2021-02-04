@@ -162,16 +162,23 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 
 	# ! get exchange variables aggregated by import and export
 	allExc_df = getAllVariables(:exc,anyM)
+
 	if !isempty(allExc_df)
-	    # add losses to all exchange variables
-	    allExc_df = getExcLosses(allExc_df,anyM.parts.exc.par,anyM.sets)
+		# add losses to all exchange variables
+		# TODO enable losses again 
+	    #allExc_df = getExcLosses(allExc_df,anyM.parts.exc.par,anyM.sets)
 	    # compute export and import of each region, losses are considered at import
 	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:R_from,:C,:scr]),:var => ( x -> value(sum(x))/1000) => :value),:R_from => :R_dis)
 	    excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
 		if wrtSgn excFrom_df[!,:value] = excFrom_df[!,:value] .* -1 end
 
-	    excTo_df = rename(combine(x -> (value = value(dot(x.var,(1 .- x.loss)))/1000,),groupby(allExc_df,[:Ts_disSup,:R_to,:C,:scr])),:R_to => :R_dis)
+		# TODO enable losses again 
+		#excTo_df = rename(combine(x -> (value = value(dot(x.var,(1 .- x.loss)))/1000,),groupby(allExc_df,[:Ts_disSup,:R_to,:C,:scr])),:R_to => :R_dis)
+		excTo_df = rename(combine(x -> (value = value(sum(x.var))/1000,),groupby(allExc_df,[:Ts_disSup,:R_to,:C,:scr])),:R_to => :R_dis)
 	    excTo_df[!,:variable] .= :import; excTo_df[!,:Te] .= 0
+
+		excFrom_df[!,:id] .= 0
+		excTo_df[!,:id] .= 0
 
 	    allData_df = vcat(allData_df,vcat(excFrom_df,excTo_df))
 	end
@@ -916,6 +923,8 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 				else
 					aggExc_df[!,:R_dis] .= drop.R_dis
 				end
+				# TODO quick fix hier gemacht
+				aggExc_df[!,:id] .= 0
 				dropData_df = vcat(filter(x -> !(x.variable in (:netImport,:netExport)),dropData_df),aggExc_df)
 			end
 		end
