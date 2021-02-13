@@ -456,7 +456,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
 
     # specific storage parameters
     parDef_dic[:stDis]    = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :C => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up, :id => :up), part = :techSt, techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
-    parDef_dic[:stInflow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id, :scr),     problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :sum_any, :R_dis => :sum_any, :Te => :up, :scr => :up, :id => :up),                                part = :techSt, techPre = (preset = :carrierSt, mode = tuple()))
+    parDef_dic[:stInflow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id, :scr),     problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :avg_any, :R_dis => :sum_any, :Te => :up, :scr => :up, :id => :up),                                part = :techSt, techPre = (preset = :carrierSt, mode = tuple()))
 
     # variable costs
     parDef_dic[:costVarUse]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost)
@@ -597,6 +597,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, sy
 
     # ! loop over all actual parameters to assign them to parts of the model
     @threads for parIt in allPar_arr
+
         # ensures all dataframes with data from single files have the same columns so they can be merged
         relFiles_arr = collect(filter(y -> parIt in parToFile_dic[y],keys(paraTemp_dic)))
         allCol_arr = unique(vcat(map(x -> namesSym(paraTemp_dic[x][parIt]), relFiles_arr)...))
@@ -659,9 +660,19 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, sy
             for relSys in filter(x -> !isempty(intersect(allParSys_arr,sysToPar_dic[sym][herit_sym][x])), sysPart_dic[parPart_sym])
                 # filters all entries of possible inheritance for each technology
                 filtParData_df = sym in namesSym(allParData_df) ? filter(row -> row[sym] in sysToPar_dic[sym][herit_sym][relSys], allParData_df) : allParData_df
+
                 # removes potential zero columns from data being actually written to part
                 rmvZeroParData_df = filtParData_df[!,filter(x -> unique(filtParData_df[!,x]) != [0] || x == :val,namesSym(filtParData_df))]
-                getfield(anyM.parts,sym == :Te ? :tech : :exc)[sysSym(relSys,anyM.sets[sym])].par[parIt] = ParElement(rmvZeroParData_df,paraDef_ntup,parIt,anyM.report)
+
+                # gets corresponding part
+                part_obj = getfield(anyM.parts,sym == :Te ? :tech : :exc)[sysSym(relSys,anyM.sets[sym])]
+                # continues in case of must run parameters that will not be relevant, because no such carrier is generated
+                out_arr = intersect((:gen, :stExtOut),keys(part_obj.carrier))
+                if parIt == :mustOut && (isempty(out_arr) || (:C in namesSym(rmvZeroParData_df) && isempty(intersect(union(map(x -> part_obj.carrier[x],out_arr)...),rmvZeroParData_df[!,:C]))))
+                    continue
+                end
+                # creates new parameter element
+                part_obj.par[parIt] = ParElement(rmvZeroParData_df,paraDef_ntup,parIt,anyM.report)
             end
         end
     end
