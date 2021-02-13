@@ -48,7 +48,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 	    produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
 
 	    # create conversion balance for conversion technologies
-	    if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && :capaConv in keys(part.var) || part.type == :unrestricted 
+	    if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && (:capaConv in keys(part.var) || part.type == :unrestricted)
 	        cns_dic[:convBal] = createConvBal(part,anyM)
 	        produceMessage(anyM.options,anyM.report, 3," - Prepared conversion balance for technology $(tech_str)")
 	    end
@@ -342,8 +342,9 @@ function createStBal(part::TechPart,anyM::anyModel)
 		# add inflow parameter, if defined
 		if :stInflow in keys(part.par)
 			cnsC_df = matchSetParameter(cnsC_df,part.par[:stInflow],anyM.sets, newCol = :stInflow, defVal = 0.0)
+			cnsC_df[!,:stInflow] = cnsC_df[!,:stInflow] .* sca_arr
 			if !isempty(part.modes)
-            	cnsC_df[!,:stInflow] = cnsC_df[!,:stInflow] ./ length(part.modes) .* sca_arr
+            	cnsC_df[!,:stInflow] = cnsC_df[!,:stInflow] ./ length(part.modes)
 			end
 		else
 			cnsC_df[!,:stInflow] .= 0.0
