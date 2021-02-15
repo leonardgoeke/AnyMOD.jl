@@ -1,0 +1,2031 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Parameter list · AnyMOD.jl</title><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.11.1/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.png" alt="AnyMOD.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit">AnyMOD.jl</span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><span class="tocitem">Model Elements</span><ul><li><a class="tocitem" href="../model_object/">Model object</a></li><li><a class="tocitem" href="../sets/">Sets and Mappings</a></li><li><a class="tocitem" href="../parts/">Parts</a></li><li><input class="collapse-toggle" id="menuitem-2-4" type="checkbox" checked/><label class="tocitem" for="menuitem-2-4"><span class="docs-label">Parameter</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../parameter_overview/">Parameter overview</a></li><li class="is-active"><a class="tocitem" href>Parameter list</a><ul class="internal"><li class="toplevel"><a class="tocitem" href="#Dispatch-of-technologies"><span>Dispatch of technologies</span></a></li><li class="toplevel"><a class="tocitem" href="#Dispatch-of-exchange-and-trade"><span>Dispatch of exchange and trade</span></a></li><li class="toplevel"><a class="tocitem" href="#Other-dispatch"><span>Other dispatch</span></a></li><li class="toplevel"><a class="tocitem" href="#Capacity-expansion"><span>Capacity expansion</span></a></li><li class="toplevel"><a class="tocitem" href="#Limits-on-quantities-dispatched"><span>Limits on quantities dispatched</span></a></li><li class="toplevel"><a class="tocitem" href="#Limits-on-expansion-and-capacity"><span>Limits on expansion and capacity</span></a></li><li class="toplevel"><a class="tocitem" href="#Emissions"><span>Emissions</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../variables/">Variables</a></li><li><a class="tocitem" href="../constraints/">Constraints</a></li></ul></li><li><span class="tocitem">Tools</span><ul><li><input class="collapse-toggle" id="menuitem-3-1" type="checkbox"/><label class="tocitem" for="menuitem-3-1"><span class="docs-label">Reporting</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../error/">Error handling</a></li><li><a class="tocitem" href="../data/">Data files</a></li><li><a class="tocitem" href="../plots/">Plots</a></li></ul></li><li><a class="tocitem" href="../performance/">Performance and stability</a></li></ul></li><li><span class="tocitem">Annex</span><ul><li><a class="tocitem" href="../tips/">Tips</a></li><li><a class="tocitem" href="../api/">API</a></li><li><a class="tocitem" href="../related/">Related material</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Model Elements</a></li><li><a class="is-disabled">Parameter</a></li><li class="is-active"><a href>Parameter list</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Parameter list</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/leonardgoeke/AnyMOD.jl/blob/master/docs/src/parameter_list.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><style>
+table.tabelle2 td {
+  padding-left: 0.57em;
+  padding-right: 0.57em;
+  border-right: solid 1px;
+  border-bottom: none;
+  border-color: #dbdbdb;
+  font-size: small;
+  font-weight: normal;
+}
+table.tabelle td {
+  border-left: 1px solid;
+  border-color: #dbdbdb;
+}
+table.tabelle td:first-child {
+  border-right: 2.5px solid;
+  border-color: #dbdbdb;
+  border-left: none;
+}
+ol.liste {
+  list-style-position: inside;
+  margin-left: 0em;
+  margin-top: 0em;
+  white-space: nowrap;
+  display:inline-block;
+  text-align: left;
+}
+ul.liste {
+  list-style-position: inside;
+  margin-left: 0em;
+  margin-top: 0em;
+  white-space: nowrap;
+  display:inline-block;
+  text-align: left;
+}
+</style><h1 id="Parameter-list"><a class="docs-heading-anchor" href="#Parameter-list">Parameter list</a><a id="Parameter-list-1"></a><a class="docs-heading-anchor-permalink" href="#Parameter-list" title="Permalink"></a></h1><p>In the following all parameters available in AnyMOD are listed. Information includes the name used in the input files and throughout the model, the parameters&#39; unit, its dimensions according to the symbols introduced in <a href="../sets/#Sets-and-Mappings">Sets and Mappings</a>, the default value and the inheritance rules. In addition, related model elements and the part a parameter is assigned are documented.</p><h1 id="Dispatch-of-technologies"><a class="docs-heading-anchor" href="#Dispatch-of-technologies">Dispatch of technologies</a><a id="Dispatch-of-technologies-1"></a><a class="docs-heading-anchor-permalink" href="#Dispatch-of-technologies" title="Permalink"></a></h1><p>The parameters listed here describe the conversion and storage of energy carriers by technologies. As a result, each of these parameters can vary by operational mode. If any mode specific values are provided, these replace mode unspecific data.</p><p>The following two diagrams serve as a remainder on how conversion and storage are generally modelled in AnyMOD.</p><p style="text-align:center;"><img src="../assets/convTech.svg" width="64%"/>
+<p style="text-align:center;"><img src="../assets/stTech.svg" width="80%"/><h3 id="Availability"><a class="docs-heading-anchor" href="#Availability">Availability</a><a id="Availability-1"></a><a class="docs-heading-anchor-permalink" href="#Availability" title="Permalink"></a></h3><p>Technical availability of the operated capacity.</p><p>Since operated capacity is split into conversion, storage-input, storage-output, and storage-size, the same distinction applies to availabilities.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>avaConv</td>
+<td>avaSt{In/Out/Size}</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">percent as decimal</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $Te$, $M$</td>
+<td>$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $C$, $Te$, $M$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">1.0</td>
+</tr>
+<tr>
+<td rowspan="2"><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ol class="liste">
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>upwards</em></li>
+<li>$R_{dis}$ &#8594; <em>upwards</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">
+<ol class="liste"; start="4">
+<li>$Te$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+<td colspan="1"; style="text-align:center;padding-top:0px">
+<ol class="liste"; start="4">
+<li>$C$ &#8594; <em>upwards</em></li>
+<li>$Te$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td>
+<ul class="liste">
+<li><a href="../constraints/#Conversion-capacity-restriction-1">conversion capacity restriction</a></li>
+<li><a href="../variables/#Generation-and-use-1">conversion variables</a> only created <br> where availability is not zero</li>
+</ul>
+</td>
+<td>
+<ul class="liste">
+<li><a href="../constraints/#Storage-capacity-restriction-1">storage capacity restriction</a></li>
+<li><a href="../variables/#Charging-and-discharging-1">storage variables</a> only created <br> where availability is not zero</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h3 id="Efficiency"><a class="docs-heading-anchor" href="#Efficiency">Efficiency</a><a id="Efficiency-1"></a><a class="docs-heading-anchor-permalink" href="#Efficiency" title="Permalink"></a></h3><p>Efficiency of converting or storing energy carriers.</p><p>For conversion the parameter controls the ratio between in- and output carriers. For storage it determines the losses charging to and discharging from the storage system is subjected to.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>effConv</td>
+<td>effSt{In/Out}</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">percent as decimal</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $Te$, $M$</td>
+<td>$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $C$, $Te$, $M$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">1.0</td>
+</tr>
+<tr>
+<td rowspan="2"><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ol class="liste">
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>upwards</em></li>
+<li>$R_{dis}$ &#8594; <em>upwards</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">
+<ol class="liste"; start="4">
+<li>$Te$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+<td colspan="1"; style="text-align:center;padding-top:0px">
+<ol class="liste"; start="4">
+<li>$C$ &#8594; <em>upwards</em></li>
+<li>$Te$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td>
+<ul class="liste">
+<li><a href="../constraints/#Conversion-balance-1">conversion balance</a></li>
+<li><a href="../constraints/#Conversion-capacity-restriction-1">conversion capacity restriction</a></li>
+</ul>
+</td>
+<td>
+<ul class="liste">
+<li><a href="../constraints/#Storage-balance-1">storage balance</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h3 id="Variable-cost"><a class="docs-heading-anchor" href="#Variable-cost">Variable cost</a><a id="Variable-cost-1"></a><a class="docs-heading-anchor-permalink" href="#Variable-cost" title="Permalink"></a></h3><p>Costs imposed on different types of quantities dispatched.</p><p>Note that for storage costs are incurred on quantities as specified in the diagram above. This means <code>stIn</code> quantities still include charging losses, while <code>stOut</code> quantities are already corrected for losses from discharging.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>costVar{Use/Gen/StIn/StOut}</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td>€/MWh</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $C$, $Te$, $M$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td>0.0</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td>
+<ol class="liste">
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>upwards</em></li>
+<li>$C$ &#8594; <em>upwards</em></li>
+<li>$Te$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>average</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related constraints</strong></td>
+<td>
+<ul class="liste">
+<li><a href="../constraints/#Variable-cost-equation-1">variable cost equation</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h3 id="Ratios-of-carrier-use-and-generation"><a class="docs-heading-anchor" href="#Ratios-of-carrier-use-and-generation">Ratios of carrier use and generation</a><a id="Ratios-of-carrier-use-and-generation-1"></a><a class="docs-heading-anchor-permalink" href="#Ratios-of-carrier-use-and-generation" title="Permalink"></a></h3><p>Restricting the share of a single carrier on total use or generation. The share can either be fixed or imposed as a lower or upper limit.</p><p>One practical example for the application of this parameter is modelling the power-to-heat ratio of cogeneration plants (see <a href="https://github.com/leonardgoeke/AnyMOD.jl/blob/master/examples/demo/par_techDispatch.csv"><code>par_techDispatch.csv</code></a>).</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>ratioEnerUse{Fix/Low/Up}</td>
+<td>ratioEnerGen{Fix/Low/Up}</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">percent as decimal</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="2"; style="text-align:center">$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $C$, $Te$, $M$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center">
+<ol class="liste">
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>upwards</em></li>
+<li>$Te$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>upwards</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="2"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Energy-ratio-restriction-1">energy ratio restriction</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h3 id="Storage-self-discharge"><a class="docs-heading-anchor" href="#Storage-self-discharge">Storage self-discharge</a><a id="Storage-self-discharge-1"></a><a class="docs-heading-anchor-permalink" href="#Storage-self-discharge" title="Permalink"></a></h3>
+<p class="norm">
+Automatic reduction of stored energy within a storage system.
+</p>
+
+<p class="norm">
+If the stored carrier is assigned an <a href="../parameter_list/#Emission-factor-1">emission factor</a> and <a href="../model_object/#Optional-arguments-1"><code>emissionLoss</code></a> is set to <code>true</code>, these losses are subject to emissions.
+</p>
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>stDis</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td>percent as decimal per hour</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $C$, $Te$, $M$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td>0.0</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td>
+<ol class="liste">
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>upwards</em></li>
+<li>$C$ &#8594; <em>upwards</em></li>
+<li>$R_{dis}$ &#8594; <em>upwards</em></li>
+<li>$Te$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>average</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td>
+<ul class="liste">
+<li><a href="../constraints/#Storage-Balance-1">storage balance</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h3 id="Storage-inflow"><a class="docs-heading-anchor" href="#Storage-inflow">Storage inflow</a><a id="Storage-inflow-1"></a><a class="docs-heading-anchor-permalink" href="#Storage-inflow" title="Permalink"></a></h3><p class="norm">
+External charging of the storage system. Inflows can also be negative and are not subject to charging losses.
+</p>
+
+<p class="norm">
+Flows have to be provided in power units and are converted into energy quantities according to the temporal resolution of the respective carrier (e.g. at a daily resolution 2 GW translate into of 48 GWh). This approach ensures parameters do not need to be adjusted when the temporal resolution is changed. The most important application of this parameter are natural inflows into hydro storages.
+</p>
+
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>stInflow</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td>GW</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $C$, $Te$, $M$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td>0.0</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td>
+<ol class="liste">
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$C$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$ &#8594; <em>sum</em></li>
+<li>$R_{dis}$ &#8594; <em>sum</em></li>
+<li>$Te$ &#8594; <em>upwards</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td>
+<ul class="liste">
+<li><a href="../constraints/#Storage-Balance-1">storage balance</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h1 id="Dispatch-of-exchange-and-trade"><a class="docs-heading-anchor" href="#Dispatch-of-exchange-and-trade">Dispatch of exchange and trade</a><a id="Dispatch-of-exchange-and-trade-1"></a><a class="docs-heading-anchor-permalink" href="#Dispatch-of-exchange-and-trade" title="Permalink"></a></h1><h3 id="Exchange-availability"><a class="docs-heading-anchor" href="#Exchange-availability">Exchange availability</a><a id="Exchange-availability-1"></a><a class="docs-heading-anchor-permalink" href="#Exchange-availability" title="Permalink"></a></h3><p>Technical availability of exchange capacities. The parameter <code>avaExc</code> applies for both directions and will be overwritten by the directed <code>avaExcDir</code>.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>avaExc</td>
+<td>avaExcDir</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">percent in decimal</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td style="text-align:center">$Ts_{dis}$, $R_{a}$, $R_{b}$, $C$</td>
+<td style="text-align:center">$Ts_{dis}$, $R_{from}$, $R_{to}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">1.0</td>
+</tr>
+<tr>
+<td rowspan="3"><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ol class="liste">
+<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;border-top:none;border-bottom:none;padding-top:0px;padding-bottom:0px">
+<ol class="liste"; start="2">
+<li>$R_{a}$ &#8594; <em>upwards</em></li>
+<li>$R_{b}$ &#8594; <em>upwards</em></li>
+<li>$R_{a}$ &#8594; <em>average</em></li>
+<li>$R_{b}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+<td colspan="1"; style="text-align:center;border-bottom:none;padding-top:0px;padding-bottom:0px">
+<ol class="liste"; start="2">
+<li>$R_{from}$ &#8594; <em>upwards</em></li>
+<li>$R_{to}$ &#8594; <em>upwards</em></li>
+<li>$R_{from}$ &#8594; <em>average</em></li>
+<li>$R_{to}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0.1875em">
+<ol class="liste"; start="6">
+<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="2"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Exchange-capacity-restriction-1">exchange capacity restriction</a></li>
+<li><a href="../variables/#Exchange-quantities-1">exchange variables</a> only created where availability is not zero</li>
+</ul>
+</td>
+</tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Exchange-1">exchange</a></td>
+</tr>
+</tbody>
+</table><h3 id="Exchange-losses"><a class="docs-heading-anchor" href="#Exchange-losses">Exchange losses</a><a id="Exchange-losses-1"></a><a class="docs-heading-anchor-permalink" href="#Exchange-losses" title="Permalink"></a></h3>
+<p class="norm">
+Losses occurring when energy is exchanged between two regions. The parameter <code>lossExc</code> applies for both directions and will be overwritten by the directed <code>lossExcDir</code>.
+</p>
+<p class="norm">
+If the exchanged carrier is assigned an <a href="../parameter_list/#Emission-factor-1">emission factor</a> and <a href="../model_object/#Optional-arguments-1"><code>emissionLoss</code></a> is set to <code>true</code>, these losses are subject to emissions.
+</p>
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>lossExc</td>
+<td>lossExcDir</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">percent in decimal</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td style="text-align:center">$Ts_{dis}$, $R_{a}$, $R_{b}$, $C$</td>
+<td style="text-align:center">$Ts_{dis}$, $R_{from}$, $R_{to}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">0.0</td>
+</tr>
+<tr>
+<td rowspan="3"><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ol class="liste">
+<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;border-top:none;border-bottom:none;padding-top:0px;padding-bottom:0px">
+<ol class="liste"; start="2">
+<li>$R_{a}$ &#8594; <em>upwards</em></li>
+<li>$R_{b}$ &#8594; <em>upwards</em></li>
+<li>$R_{a}$ &#8594; <em>average</em></li>
+<li>$R_{b}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+<td colspan="1"; style="text-align:center;border-bottom:none;padding-top:0px;padding-bottom:0px">
+<ol class="liste"; start="2">
+<li>$R_{from}$ &#8594; <em>upwards</em></li>
+<li>$R_{to}$ &#8594; <em>upwards</em></li>
+<li>$R_{from}$ &#8594; <em>average</em></li>
+<li>$R_{to}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0.1875em">
+<ol class="liste"; start="6">
+<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="2"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Conversion-balance-1">conversion balance</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Exchange-1">exchange</a></td>
+</tr>
+</tbody>
+</table><h3 id="Exchange-cost"><a class="docs-heading-anchor" href="#Exchange-cost">Exchange cost</a><a id="Exchange-cost-1"></a><a class="docs-heading-anchor-permalink" href="#Exchange-cost" title="Permalink"></a></h3><p>Costs imposed on the exchange of quantities. Cost are equally split between the exporting and importing region.</p><p>The parameter <code>costVarExc</code> applies for both directions and will be overwritten by the directed <code>costVarExcDir</code>.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>costVarExc</td>
+<td>costVarExcDir</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">€/MWh</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td style="text-align:center">$Ts_{dis}$, $R_{a}$, $R_{b}$, $C$</td>
+<td style="text-align:center">$Ts_{dis}$, $R_{from}$, $R_{to}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td rowspan="3"><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ol class="liste">
+<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;border-top:none;border-bottom:none;padding-top:0px;padding-bottom:0px">
+<ol class="liste"; start="2">
+<li>$R_{a}$ &#8594; <em>upwards</em></li>
+<li>$R_{b}$ &#8594; <em>upwards</em></li>
+<li>$R_{a}$ &#8594; <em>average</em></li>
+<li>$R_{b}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+<td colspan="1"; style="text-align:center;border-bottom:none;padding-top:0px;padding-bottom:0px">
+<ol class="liste"; start="2">
+<li>$R_{from}$ &#8594; <em>upwards</em></li>
+<li>$R_{to}$ &#8594; <em>upwards</em></li>
+<li>$R_{from}$ &#8594; <em>average</em></li>
+<li>$R_{to}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0.1875em">
+<ol class="liste"; start="6">
+<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="2"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Variable-cost-equation-1">variable cost equation</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Exchange-1">exchange</a></td>
+</tr>
+</tbody>
+</table><h3 id="Trade-price"><a class="docs-heading-anchor" href="#Trade-price">Trade price</a><a id="Trade-price-1"></a><a class="docs-heading-anchor-permalink" href="#Trade-price" title="Permalink"></a></h3><p class="norm">
+Price for buying or selling an energy carrier on an external market.
+</p>
+
+<p class="norm">
+Can be combined with the parameter <a href="../parameter_list/#Trade-capacity-1">trade capacity</a> to create stepped demand and supply curves (see following documentation for details).
+</p>
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>trdBuyPrc</td>
+<td>trdSellPrc</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">€/MWh</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="2"; style="text-align:center">$Ts_{dis}$, $R_{dis}$, $C$, $id$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center">
+<ol class="liste">
+<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+<li>$R_{dis}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>average</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="2"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Trade-cost-equation-1">trade cost equation</a></li>
+<li><a href="../variables/#Buy-and-sell-1">trade variables</a> only created where costs defined</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Trade-1">trade</a></td>
+</tr>
+</tbody>
+</table><h3 id="Trade-capacity"><a class="docs-heading-anchor" href="#Trade-capacity">Trade capacity</a><a id="Trade-capacity-1"></a><a class="docs-heading-anchor-permalink" href="#Trade-capacity" title="Permalink"></a></h3><p class="norm">
+Capacity available for buying or selling an energy carrier on an external market.
+</p>
+
+<p class="norm">
+Capacity has to be provided in power units and is converted into energy quantities according to the temporal resolution of the respective carrier (e.g. at a daily resolution 2 GW translate into 48 GWh). This approach ensures parameters do not need to be adjusted when the temporal resolution is changed.
+</p>
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>trdBuyCap</td>
+<td>trdSellCap</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">GW</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="2"; style="text-align:center">$Ts_{dis}$, $R_{dis}$, $C$, $id$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center">
+<ol class="liste">
+<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+<li>$R_{dis}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>average</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="2"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Trade-capacity-restriction-1">trade capacity restriction</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Trade-1">trade</a></td>
+</tr>
+</tbody>
+</table>
+
+<p class="norm">
+By assigning the same <code>id</code> to a <a href="../parameter_list/#Trade-price-1">trade price</a> and capacity the amount of energy that can be bought or sold at the given price can be limited. As a result, stepped supply and demand curves for energy carriers can be created.
+</p>
+
+<p class="norm">
+For example, the table below enables the import of <code>hydrogen</code> to the region <code>West</code> at 100 €/MWh, but limits the import capacity to 20 GW. When imposing this limit, the capacity is scaled according to the temporal resolution hydrogen is modelled at. So, at a yearly resolution 20 GW would translate to 175.2 TWh (= 20 GW	&times; 8760 h).
+</p>
+
+<table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>region_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>carrier_1</strong></td>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>id</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">West</td>
+<td style="border-right:none">hydrogen</td>
+<td>1</td>
+<td style="border-right:none">trdBuyPrc</td>
+<td style="border-right:none;text-align:center">100.0</td>
+</tr>
+<tr>
+<td style="border-right:none">West</td>
+<td style="border-right:none">hydrogen</td>
+<td>1</td>
+<td style="border-right:none">trdBuyCap</td>
+<td style="border-right:none;text-align:center">20.0</td>
+</tr>
+</tbody>
+</table>
+
+<p class="norm">
+Alternatively, this definition creates an additional electricity demand of 2.0 and 1.0 GW with a willingness-to-pay of 60 and 90 €/MWh, respectively. By adding more columns values could be further differentiated by time-step and region.
+
+<table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>carrier_1</strong></td>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>id</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">electricity</td>
+<td>1</td>
+<td style="border-right:none">trdSellPrc</td>
+<td style="border-right:none;text-align:center">60.0</td>
+</tr>
+<tr>
+<td style="border-right:none">electricity</td>
+<td>2</td>
+<td style="border-right:none">trdSellPrc</td>
+<td style="border-right:none;text-align:center">90.0</td>
+</tr>
+<tr>
+<td style="border-right:none">electricity</td>
+<td>1</td>
+<td style="border-right:none">trdSellCap</td>
+<td style="border-right:none;text-align:center">2.0</td>
+</tr>
+<tr>
+<td style="border-right:none">electricity</td>
+<td>2</td>
+<td style="border-right:none">trdSellCap</td>
+<td style="border-right:none;text-align:center">1.0</td>
+</tr>
+</tbody>
+</table>
+</p><h1 id="Other-dispatch"><a class="docs-heading-anchor" href="#Other-dispatch">Other dispatch</a><a id="Other-dispatch-1"></a><a class="docs-heading-anchor-permalink" href="#Other-dispatch" title="Permalink"></a></h1><h3 id="Demand"><a class="docs-heading-anchor" href="#Demand">Demand</a><a id="Demand-1"></a><a class="docs-heading-anchor-permalink" href="#Demand" title="Permalink"></a></h3><p>Inelastic demand for an energy carrier.</p><p>Capacity has to be provided in power units and is converted into energy quantities according to the temporal resolution of the respective carrier (e.g. at a daily resolution 20 GW translate into 480 GWh). This approach ensures parameters do not need to be adjusted when the temporal resolution is changed.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>dem</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td>GW</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{dis}$, $R_{dis}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td>0.0</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td>
+<ol class="liste">
+<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>sum</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td>
+<ul class="liste">
+<li><a href="../constraints/#Energy-balance-1">energy balance</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Balance-1">balance</a></td>
+</tr>
+</tbody>
+</table><h3 id="Cost-of-curtailment-and-loss-of-load"><a class="docs-heading-anchor" href="#Cost-of-curtailment-and-loss-of-load">Cost of curtailment and loss of load</a><a id="Cost-of-curtailment-and-loss-of-load-1"></a><a class="docs-heading-anchor-permalink" href="#Cost-of-curtailment-and-loss-of-load" title="Permalink"></a></h3><p>Variable costs excess generation or unmet demand is subjected to. Costs can also be negative (=revenues).</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>costCrt</td>
+<td>costLss</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">€/MWh</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="2"; style="text-align:center">$Ts_{dis}$, $R_{dis}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center">
+<ol class="liste">
+<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+<li>$R_{dis}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+<li>$R_{dis}$ &#8594; <em>average</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="2"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Curtailment-and-loss-of-load-cost-equation-1">curtailment and loss-of-load cost equation</a></li>
+<li><a href="../variables/#Curtailment-and-loss-of-load-1">respective variables</a> only created where costs defined</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Balance-1">balance</a></td>
+</tr>
+</tbody>
+</table><h1 id="Capacity-expansion"><a class="docs-heading-anchor" href="#Capacity-expansion">Capacity expansion</a><a id="Capacity-expansion-1"></a><a class="docs-heading-anchor-permalink" href="#Capacity-expansion" title="Permalink"></a></h1><p class="norm">
+Here, all parameters relevant to the expansion of conversion, storage, and exchange capacity are listed.
+</p>
+<p class="norm">
+At this point it is important to stress that, as displayed in the <a href="#Dispatch-of-technologies">technology diagrams</a>, <strong>AnyMOD always indicates capacities before efficiency losses!</strong> For instance capacity of a gas power plant does not denote its maximum electricity output, but the maximum gas input. This approach is pursued, because <a href="../parameter_list/#Efficiency-1">efficiency</a> is not a constant and can differ by time-step, region, and mode. As a result, maximum output varies within the dispatch too and is not suited to universally describe installed capacities.
+</p><h3 id="Discount-rate"><a class="docs-heading-anchor" href="#Discount-rate">Discount rate</a><a id="Discount-rate-1"></a><a class="docs-heading-anchor-permalink" href="#Discount-rate" title="Permalink"></a></h3><p>Overall rate to discount all costs to the present. See <a href="../constraints/#Cost-equations">Cost equations</a> for details on use.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>rateDisc</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td>percent as decimal</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{sup}$, $R_{exp}$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td>0.02</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td>
+<ol class="liste">
+<li>$Ts_{sup}$	&#8594; <em>upwards</em></li>
+<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{sup}$ &#8594; <em>average</em></li>
+<li>$R_{exp}$	&#8594; <em>average</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td>
+<ul class="liste">
+<li>all <a href="../constraints/#Cost-equations-1">cost equations</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Objective-1">objective</a></td>
+</tr>
+</tbody>
+</table><h3 id="Interest-rate"><a class="docs-heading-anchor" href="#Interest-rate">Interest rate</a><a id="Interest-rate-1"></a><a class="docs-heading-anchor-permalink" href="#Interest-rate" title="Permalink"></a></h3><p>Interest rate to compute annuity costs of investments. See <a href="../constraints/#Cost-equations">Cost equations</a> for details on use.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>rateExpConv</td>
+<td>rateExpSt{In/Out/Size}</td>
+<td>rateExpExc</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="3"; style="text-align:center">percent as decimal</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+<td>$Ts_{exp}$, $R_{a}$, $R_{b}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="3"; style="text-align:center">respective discount rate is used as a default</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center" >
+<div style = "width: 50%; margin: 0 auto;">
+<ol class="liste">
+<li>$Te$	&#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+</ol>
+</div>
+</td>
+<td>
+<ol class="liste">
+ <li>$Ts_{exp}$	&#8594; <em>upwards</em></li>
+ <li>$R_{a}$ &#8594; <em>average</em></li>
+ <li>$R_{b}$ &#8594; <em>average</em></li>
+ <li>$C$ &#8594; <em>upwards</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="3"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Expansion-cost-equation-1">expansion cost equation</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="3"; style="text-align:center"><a href="../parts/#Objective-1">objective</a></td>
+</tr>
+</tbody>
+</table><h3 id="Expansion-cost"><a class="docs-heading-anchor" href="#Expansion-cost">Expansion cost</a><a id="Expansion-cost-1"></a><a class="docs-heading-anchor-permalink" href="#Expansion-cost" title="Permalink"></a></h3><p>Costs of capacity expansion (or investment).</p><div class="admonition is-warning"><header class="admonition-header">Cost data before efficiency</header><div class="admonition-body"><p>Ensure the cost data provided relates to capacity <strong>before efficiency</strong> (see beginning of section)! Costs before efficiency are computed by multiplying costs after efficiency with a nominal efficiency <span>$K_{before} = K_{after} \cdot \eta$</span>.</p></div></div><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>costExpConv</td>
+<td>costExpSt{In/Out/Size}</td>
+<td>costExpExc</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td>Mil.€/GW</td>
+<td>Mil.€/GWh</td>
+<td>Mil.€/GW</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+<td>$Ts_{exp}$, $R_{a}$, $R_{b}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="3"; style="text-align:center">0</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center" >
+<div style = "width: 50%; margin: 0 auto;">
+<ol class="liste">
+<li>$Te$	&#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+</ol>
+</div>
+</td>
+<td>
+<ol class="liste">
+ <li>$Ts_{exp}$	&#8594; <em>upwards</em></li>
+ <li>$R_{a}$ &#8594; <em>average</em></li>
+ <li>$R_{b}$ &#8594; <em>average</em></li>
+ <li>$C$ &#8594; <em>upwards</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="3"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Expansion-cost-equation-1">expansion cost equation</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="3"; style="text-align:center"><a href="../parts/#Objective-1">objective</a></td>
+</tr>
+</tbody>
+</table><h3 id="Operating-cost"><a class="docs-heading-anchor" href="#Operating-cost">Operating cost</a><a id="Operating-cost-1"></a><a class="docs-heading-anchor-permalink" href="#Operating-cost" title="Permalink"></a></h3><p>Costs of operating installed capacities.</p><div class="admonition is-warning"><header class="admonition-header">Cost data before efficiency</header><div class="admonition-body"><p>Ensure the cost data provided relates to capacity <strong>before efficiency</strong> (see beginning of section)! Costs before efficiency are computed by multiplying costs after efficiency with a nominal efficiency <span>$K_{before} = K_{after} \cdot \eta$</span>.</p></div></div><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>costOprConv</td>
+<td>costOprSt{In/Out/Size}</td>
+<td>costOprExc</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td>Mil.€/GW/a</td>
+<td>Mil.€/GWh/a</td>
+<td>Mil.€/GW/a</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+<td>$Ts_{exp}$, $R_{a}$, $R_{b}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="3"; style="text-align:center">0</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center" >
+<div style = "width: 50%; margin: 0 auto;">
+<ol class="liste">
+<li>$Ts_{sup}$	&#8594; <em>upwards</em></li>
+<li>$Te$	&#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+</ol>
+</div>
+</td>
+<td>
+<ol class="liste">
+ <li>$Ts_{sup}$	&#8594; <em>upwards</em></li>
+ <li>$R_{a}$ &#8594; <em>average</em></li>
+ <li>$R_{b}$ &#8594; <em>average</em></li>
+ <li>$R_{a}$ &#8594; <em>upwards</em></li>
+ <li>$R_{b}$ &#8594; <em>upwards</em></li>
+ <li>$C$ &#8594; <em>upwards</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="3"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Operating-cost-equation-1">operating cost equation</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="3"; style="text-align:center"><a href="../parts/#Objective-1">objective</a></td>
+</tr>
+</tbody>
+</table><h3 id="Technical-lifetime"><a class="docs-heading-anchor" href="#Technical-lifetime">Technical lifetime</a><a id="Technical-lifetime-1"></a><a class="docs-heading-anchor-permalink" href="#Technical-lifetime" title="Permalink"></a></h3><p>Time in years a capacity can be operated after construction.</p><p>To avoid distortions lifetimes are advised to be divisible by the steps-size of capacity modelling (e.g rather using 20 or 25 instead of 23 when using 5-year steps).</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>lifeConv</td>
+<td>lifeSt{In/Out/Size}</td>
+<td>lifeExc</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="3"; style="text-align:center">years</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+<td>$Ts_{exp}$, $R_{a}$, $R_{b}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">20</td>
+<td>50</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center" >
+<div style = "width: 50%; margin: 0 auto;">
+<ol class="liste">
+<li>$Te$	&#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+</ol>
+</div>
+</td>
+<td>
+<ol class="liste">
+ <li>$Ts_{exp}$	&#8594; <em>upwards</em></li>
+ <li>$R_{a}$ &#8594; <em>average</em></li>
+ <li>$R_{b}$ &#8594; <em>average</em></li>
+ <li>$C$ &#8594; <em>upwards</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="3"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Definition-of-installed-capacity-1">definition of installed capacity</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+<td style="text-align:center"><a href="../parts/#Exchange-1">exchange</a></td>
+</tr>
+</tbody>
+</table><h3 id="Economic-lifetime"><a class="docs-heading-anchor" href="#Economic-lifetime">Economic lifetime</a><a id="Economic-lifetime-1"></a><a class="docs-heading-anchor-permalink" href="#Economic-lifetime" title="Permalink"></a></h3><p>Time in years to compute annuity costs of investment. Also determines the time-frame annuity costs are incurred over.</p><p>To avoid distortions lifetimes are advised to be divisible by the steps-size of capacity modelling (e.g rather using 20 or 25 instead of 23 when using 5-year steps).</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>lifeEcoConv</td>
+<td>lifeEcoSt{In/Out/Size}</td>
+<td>lifeEcoExc</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="3"; style="text-align:center">years</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+<td>$Ts_{exp}$, $R_{a}$, $R_{b}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="3"; style="text-align:center">respective technical lifetime is used as a default</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center" >
+<div style = "width: 50%; margin: 0 auto;">
+<ol class="liste">
+<li>$Te$	&#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+</ol>
+</div>
+</td>
+<td>
+<ol class="liste">
+ <li>$Ts_{exp}$	&#8594; <em>upwards</em></li>
+ <li>$R_{a}$ &#8594; <em>average</em></li>
+ <li>$R_{b}$ &#8594; <em>average</em></li>
+ <li>$C$ &#8594; <em>upwards</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="3"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Expansion-cost-equation-1">expansion cost equation</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+<td style="text-align:center"><a href="../parts/#Exchange-1">exchange</a></td>
+</tr>
+</tbody>
+</table><h3 id="Construction-time"><a class="docs-heading-anchor" href="#Construction-time">Construction time</a><a id="Construction-time-1"></a><a class="docs-heading-anchor-permalink" href="#Construction-time" title="Permalink"></a></h3><p>Time in years for construction of capacity. This parameter introduces an offset between the start of the economic and technical lifetime.</p><p>To avoid distortions lifetimes are advised to be divisible by the steps-size of capacity modelling (e.g rather using 0 or 5 instead of 3 when using 5-year steps).</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>delConv</td>
+<td>delSt{In/Out/Size}</td>
+<td>delExc</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="3"; style="text-align:center">years</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+<td>$Ts_{exp}$, $R_{a}$, $R_{b}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="3"; style="text-align:center">0</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center" >
+<div style = "width: 50%; margin: 0 auto;">
+<ol class="liste">
+<li>$Te$	&#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+</ol>
+</div>
+</td>
+<td>
+<ol class="liste">
+ <li>$Ts_{exp}$	&#8594; <em>upwards</em></li>
+ <li>$R_{a}$ &#8594; <em>average</em></li>
+ <li>$R_{b}$ &#8594; <em>average</em></li>
+ <li>$C$ &#8594; <em>upwards</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="3"; style="text-align:center">
+<ul class="liste">
+<li><a href="../constraints/#Definition-of-installed-capacity-1">definition of installed capacity</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+<td style="text-align:center"><a href="../parts/#Exchange-1">exchange</a></td>
+</tr>
+</tbody>
+</table><h1 id="Limits-on-quantities-dispatched"><a class="docs-heading-anchor" href="#Limits-on-quantities-dispatched">Limits on quantities dispatched</a><a id="Limits-on-quantities-dispatched-1"></a><a class="docs-heading-anchor-permalink" href="#Limits-on-quantities-dispatched" title="Permalink"></a></h1>
+<p class="norm">
+Limits on variables also utilize the <a href="../parameter_overview/#Inheritance">inheritance algorithm</a>. Therefore, the way parameter data is provided determines how limits are enforced. For example, in the table below the upper limit of 100 GWh on the use of <code>biomass</code> will be imposed on the sum of use across <u>all years</u>, because the time-step dimension is undefined.
+</p>
+
+<table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>carrier_1</strong></td>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">biomass</td>
+<td></td>
+<td style="border-right:none">useUp</td>
+<td style="border-right:none;text-align:center">100.0</td>
+</tr>
+</tbody>
+</table>
+
+<p class="norm">
+If instead the limit should apply to <u>each year</u> seperately, each of these years needs to be specified.
+</p>
+
+<table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>carrier_1</strong></td>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td style="border-right:none;border-right:none">biomass</td>
+<td>2020</td>
+<td style="border-right:none">useUp</td>
+<td style="border-right:none;text-align:center">100.0</td>
+</tr>
+<tr>
+<td style="border-right:none;border-right:none">biomass</td>
+<td>2030</td>
+<td style="border-right:none">useUp</td>
+<td style="border-right:none;text-align:center">100.0</td>
+</tr>
+</tbody>
+</table>
+<p class="norm">
+As an abbrevation we could also apply the keyword <code>all</code> (see <a href="../sets/#Time-steps">Time-steps</a> for details) to reduce the number of required rows.
+</p>
+<table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>carrier_1</strong></td>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">biomass</td>
+<td>all</td>
+<td style="border-right:none">useUp</td>
+<td style="border-right:none;text-align:center">100.0</td>
+</tr>
+</tbody>
+</table>
+
+<p class="norm">
+So far, the limit for each year still applies to the summed use of biomass across all regions. This could again be altered by adding a respective column.
+</p>
+
+<p class="norm">
+Applying limits on the sum of variables across different years can be insightful in some case (for example in case of an emission budget from now until 2050). But it also is a likely and severe mistake to make if unfamiliar with AnyMOD's specific mechanics. For this reason defining a limit that sums up variables from different years will cause a warning within the <a href="../error/#Error-handling">reporting file</a>  
+</p><h3 id="Limits-on-technology-dispatch"><a class="docs-heading-anchor" href="#Limits-on-technology-dispatch">Limits on technology dispatch</a><a id="Limits-on-technology-dispatch-1"></a><a class="docs-heading-anchor-permalink" href="#Limits-on-technology-dispatch" title="Permalink"></a></h3><p class="norm">
+Limits on technology dispatch. In the inheritance rules <em>sum*</em> only applies for upper limits.
+</p>
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>use{Fix/Low/Up}</td>
+<td>gen{Fix/Low/Up}</td>
+<td>stOut{Fix/Low/Up}</td>
+<td>stIn{Fix/Low/Up}</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="4"; style="text-align:center">GWh</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="4"; style="text-align:center">$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $C$, $Te$, $M$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="4"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="4"; style="text-align:center">
+<ol class="liste">
+<li>$Ts_{dis}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$R_{dis}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Te$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$M$ &#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="4"; style="text-align:center">
+<ul class="liste">
+<li>see <a href="../constraints/#Limiting-constraints-1">limiting constraints</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="4"; style="text-align:center"><a href="../parts/#Limit-1">limit</a></td>
+</tr>
+</tbody>
+</table><h3 id="Limits-on-exchange"><a class="docs-heading-anchor" href="#Limits-on-exchange">Limits on exchange</a><a id="Limits-on-exchange-1"></a><a class="docs-heading-anchor-permalink" href="#Limits-on-exchange" title="Permalink"></a></h3><p class="norm">
+Limits on exchange quantities. In the inheritance rules <em>sum*</em> only applies for upper limits.
+</p>
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>exc{Fix/Low/Up}</td>
+<td>ExcDir{Fix/Low/Up}</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">GWh</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="2"; style="text-align:center">$Ts_{dis}$, $R_{a}$, $R_{b}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center">
+<ol class="liste">
+<li>$Ts_{dis}$	&#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$R_{a}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$R_{b}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td></tr>
+<tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="2"; style="text-align:center">
+<ul class="liste">
+<li>see <a href="../constraints/#Limiting-constraints-1">limiting constraints</a></li>
+</ul>
+</td>
+</tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Limit-1">limit</a></td>
+</tr>
+</tbody>
+</table><h3 id="Limits-on-trade,-curtailment-and-loss-of-load"><a class="docs-heading-anchor" href="#Limits-on-trade,-curtailment-and-loss-of-load">Limits on trade, curtailment and loss of load</a><a id="Limits-on-trade,-curtailment-and-loss-of-load-1"></a><a class="docs-heading-anchor-permalink" href="#Limits-on-trade,-curtailment-and-loss-of-load" title="Permalink"></a></h3><p class="norm">
+Limits on traded and curtailed quantities as well as on unmet demand. In the inheritance rules <em>sum*</em> only applies for upper limits.
+</p>
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>trdBuy{Fix/Low/Up}</td>
+<td>trdSell{Fix/Low/Up}</td>
+<td>crt{Fix/Low/Up}</td>
+<td>lss{Fix/Low/Up}</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="4"; style="text-align:center">GWh</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="4"; style="text-align:center">$Ts_{dis}$, $R_{dis}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="4"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="4"; style="text-align:center">
+<ol class="liste">
+<li>$Ts_{dis}$	&#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$R_{dis}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$C$	&#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="4"; style="text-align:center">
+<ul class="liste">
+<li>see <a href="../constraints/#Limiting-constraints-1">limiting constraints</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="4"; style="text-align:center"><a href="../parts/#Limit-1">limit</a></td>
+</tr>
+</tbody>
+</table><h1 id="Limits-on-expansion-and-capacity"><a class="docs-heading-anchor" href="#Limits-on-expansion-and-capacity">Limits on expansion and capacity</a><a id="Limits-on-expansion-and-capacity-1"></a><a class="docs-heading-anchor-permalink" href="#Limits-on-expansion-and-capacity" title="Permalink"></a></h1><p class="norm">
+Limits on expansion and capacity are enforced analogously to <a href="#Limits-on-quantities-dispatched">limits on dispatch quantities</a>. Therefore, the same caution with regard to how limits are defined should be exercised. As explained for dispatched quantities in greater detail, the table below will impose an upper limit of 80 GW on the installed capacity of <code>wind</code> summed across <u>all years</u>.
+</p>
+
+<table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>technology_1</strong></td>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">wind</td>
+<td></td>
+<td style="border-right:none">capaConvUp</td>
+<td style="border-right:none;text-align:center">80.0</td>
+</tr>
+</tbody>
+</table>
+
+<p class="norm">
+While this table will actually enforce separate limits of 80 GW on the installed capacity of <code>wind</code> in <u>each year</u>.
+</p>
+
+<table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>technology_1</strong></td>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">wind</td>
+<td>all</td>
+<td style="border-right:none">capaConvUp</td>
+<td style="border-right:none;text-align:center">80.0</td>
+</tr>
+</tbody>
+</table><h3 id="Storage-ratios"><a class="docs-heading-anchor" href="#Storage-ratios">Storage ratios</a><a id="Storage-ratios-1"></a><a class="docs-heading-anchor-permalink" href="#Storage-ratios" title="Permalink"></a></h3>One technology can have four different kinds of capacity variables (see <a href="../sets/#Technologies">Technologies</a> for details): conversion, storage-input, storage-output, and storage-size. The ratios between these capacities can be fixed by the following parameters:<ul><li><code>stInToConv</code>: ratio between conversion and storage-input capacity</li><li><code>stOutToStIn</code>: ratio between storage-output and storage-input capacity</li><li><code>sizeToStIn</code>: ratio between storage-size and storage-input capacity, commonly referred to energy-to-power ratio</li></ul><p class="norm">
+Ratios are not directly applied to <a href="../variables/#Installed-capacity-1">installed capacities</a>, but to <a href="../variables/#Expansion-1">expansion variables</a> instead. Consequently, acutally installed capacities can deviate from the specified ratios, if any <a href="../parameter_list/#Residual-capacities-1">residual capacities</a> are provided. In case of <code>stock</code> technologies, which are not expanded, ratios are directly enforced to capacities. In this case any deviating <a href="../parameter_list/#Residual-capacities-1">residual capacities</a> are ignored.
+</p><div class="admonition is-info"><header class="admonition-header">Upper and lower limits on ratios</header><div class="admonition-body"><p>So far, AnyMOD does not support the setting of upper and lower limits on these ratios instead of fixing them. As a workaround, the code below shows how an upper limit of 10 on the energy-to-power ratio can be manually added to a model.</p><pre><code class="language-julia">for x in 1:size(model_object.parts.tech[:battery].var[:capaStIn],1)
+  var = model_object.parts.tech[:battery].var
+  stIn, stSize = [var[y][x,:var] for y in [:capaStIn,:capaStSize]]
+  @constraint(model_object.optModel, fixEP, stIn*10 &gt;= stSize)
+end</code></pre></div></div><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>stInToConv</td>
+<td>stOutToStIn</td>
+<td>sizeToStIn</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="3"; style="text-align:center">dimensionless</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td colspan="3"; style="text-align:center">$Ts_{exp}$, $R_{exo}$, $C$, $Te$, $M$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="3"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td colspan="3"; style="text-align:center">
+<ol class="liste">
+<li>$Te$ &#8594; <em>upwards</em></li>
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$R_{exp}$ &#8594; <em>upwards</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="3"; style="text-align:center">
+<ul class="liste">
+<li><a href="../variables/#Installed-capacity-1">capacity variables</a> substituted by product of ratio and connected variable</li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="3"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><h3 id="Residual-capacities"><a class="docs-heading-anchor" href="#Residual-capacities">Residual capacities</a><a id="Residual-capacities-1"></a><a class="docs-heading-anchor-permalink" href="#Residual-capacities" title="Permalink"></a></h3><p>Installed capacities for technologies that already exist without any expansion.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>capaConvResi</td>
+<td>capa{StIn/StOut/StSize}Resi</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">GW</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{sup}$, $Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{sup}$, $Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td rowspan="2"><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ol class="liste">
+<li>$R_{exp}$ &#8594; <em>sum</em></li>
+<li>$Te$ &#8594; <em>sum</em></li>
+<li>$Ts_{sup}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;border-top:none;padding-top:0px">
+<ol class="liste"; start="4">
+<li>$Ts_{exp}$ &#8594; <em>sum</em></li>
+<li>$Ts_{sup}$ &#8594; <em>upwards</em></li>
+</ol>
+</td>
+<td colspan="1"; style="text-align:center;padding-top:0px">
+<ol class="liste"; start="4">
+<li>$C$ &#8594; <em>sum</em></li>
+<li>$Ts_{exp}$ &#8594; <em>sum</em></li>
+<li>$Ts_{sup}$ &#8594; <em>upwards</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="2"; style="text-align:left">
+<ul class="liste">
+<li><a href="../constraints/#Definition-of-installed-capacity-1">definition of installed capacity</a></li>
+<li><a href="../constraints/#Decommissioning-of-operated-capacitiy-1">decommissioning of operated capacitiy</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Technology-1">technology</a></td>
+</tr>
+</tbody>
+</table><p>Installed exchange capacities that already exist without any expansion.</p><p>Defining a residual capacity between two regions generally enables exchange of a specific carrier between these regions. If exchange should be enabled, but no pre-existing capacity exists, a residual capacity of zero can be provided.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>capaExcResi</td>
+<td>capaExcResiDir</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="2"; style="text-align:center">GW</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td style="text-align:center">$Ts_{dis}$, $R_{a}$, $R_{b}$, $C$</td>
+<td style="text-align:center">$Ts_{dis}$, $R_{from}$, $R_{to}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="2"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td rowspan="3"><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ol class="liste">
+<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;border-top:none;border-bottom:none;padding-top:0px;padding-bottom:0px">
+<ol class="liste"; start="2">
+<li>$R_{a}$ &#8594; <em>sum</em></li>
+<li>$R_{b}$ &#8594; <em>sum</em></li>
+</ol>
+</td>
+<td colspan="1"; style="text-align:center;border-bottom:none;padding-top:0px;padding-bottom:0px">
+<ol class="liste"; start="2">
+<li>$R_{from}$ &#8594; <em>sum</em></li>
+<li>$R_{to}$ &#8594; <em>sum</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="2"; style="text-align:center;border-right:none;border-top:none;padding-top:0.1875em">
+<ol class="liste"; start="4">
+<li>$Ts_{dis}$	&#8594; <em>average</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="2"; style="text-align:left">
+<ul class="liste">
+<li><a href="../constraints/#Definition-of-installed-capacity-1">definition of installed capacity</a></li>
+<li><a href="../constraints/#Decommissioning-of-operated-capacitiy-1">decommissioning of operated capacitiy</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="2"; style="text-align:center"><a href="../parts/#Exchange-1">exchange</a></td>
+</tr>
+</tbody>
+</table><p><code>capaExcResi</code> refers to capacity in both directions, while <code>capaExcResiDir</code> refers to directed capacities and is added to any undirected values. Consequently, the table below will result in an residual capacity of 4 GW from <code>East</code> to <code>West</code> and 3 GW from <code>West</code> to <code>East</code>.</p><table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>region_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>region_1</strong></td>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>carrier_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">East</td>
+<td style="border-right:none">West</td>
+<td>electricity</td>
+<td style="border-right:none">capaExcResi</td>
+<td style="border-right:none;text-align:center">3.0</td>
+</tr>
+<tr>
+<td style="border-right:none">East</td>
+<td style="border-right:none">West</td>
+<td>electricity</td>
+<td style="border-right:none">capaExcResiDir</td>
+<td style="border-right:none;text-align:center">1.0</td>
+</tr>
+</tbody>
+</table><h3 id="Limits-on-expansion"><a class="docs-heading-anchor" href="#Limits-on-expansion">Limits on expansion</a><a id="Limits-on-expansion-1"></a><a class="docs-heading-anchor-permalink" href="#Limits-on-expansion" title="Permalink"></a></h3><p class="norm">
+Limits on capacity expansion. In the inheritance rules <em>sum*</em> only applies for upper limits.
+</p>
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>expConv{Fix/Low/Up}</td>
+<td>exp{StIn/StOut/StSize}{Fix/Low/Up}</td>
+<td>expExc{Fix/Low/Up}</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="3"; style="text-align:center">GW</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+<td>$Ts_{exp}$, $R_{a}$, $R_{b}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="3"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td rowspan="2"><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0.1875em">
+<ol class="liste">
+<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$R_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Te$ &#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td>
+<td colspan="1"; rowspan="2">
+<ol class="liste">
+<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$R_{a}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$R_{b}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;padding-top:0px">
+</td>
+<td colspan="1"; style="text-align:center;padding-top:0px">
+<ol class="liste"; start="4">
+<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="3"; style="text-align:center">
+<ul class="liste">
+<li>see <a href="../constraints/#Limiting-constraints-1">limiting constraints</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="3"; style="text-align:center"><a href="../parts/#Limit-1">limit</a></td>
+</tr>
+</tbody>
+</table><h3 id="Limits-on-capacity"><a class="docs-heading-anchor" href="#Limits-on-capacity">Limits on capacity</a><a id="Limits-on-capacity-1"></a><a class="docs-heading-anchor-permalink" href="#Limits-on-capacity" title="Permalink"></a></h3><p class="norm">
+Limits on installed capacity. In the inheritance rules <em>sum*</em> only applies for upper limits.
+</p>
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>capaConv{Fix/Low/Up}</td>
+<td>capa{StIn/StOut/StSize}{Fix/Low/Up}</td>
+<td>capaExc{Fix/Low/Up}</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="3"; style="text-align:center">GW</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{sup}$, $Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{sup}$,$Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+<td>$Ts_{sup}$, $R_{a}$, $R_{b}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="3"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td rowspan="2"><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0px">
+<ol class="liste">
+<li>$R_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Te$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{sup}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+<td colspan="1"; rowspan="2">
+<ol class="liste">
+<li>$Ts_{sup}$	&#8594; <em>average</em></li>
+<li>$R_{a}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$R_{b}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none;padding-top:0px">
+<ol class="liste"; start="4">
+<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td>
+<td colspan="1"; style="text-align:center;padding-top:0px">
+<ol class="liste"; start="4">
+<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="3"; style="text-align:center">
+<ul class="liste">
+<li>see <a href="../constraints/#Limiting-constraints-1">limiting constraints</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="3"; style="text-align:center"><a href="../parts/#Limit-1">limit</a></td>
+</tr>
+</tbody>
+</table><h3 id="Limits-on-operated-capacity"><a class="docs-heading-anchor" href="#Limits-on-operated-capacity">Limits on operated capacity</a><a id="Limits-on-operated-capacity-1"></a><a class="docs-heading-anchor-permalink" href="#Limits-on-operated-capacity" title="Permalink"></a></h3><p class="norm">
+Limits on operated capacity. In the inheritance rules <em>sum*</em> only applies for upper limits.
+</p>
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>oprCapaConv{Fix/Low/Up}</td>
+<td>oprCapa{StIn/StOut/StSize}{Fix/Low/Up}</td>
+<td>oprCapaExc{Fix/Low/Up}</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td colspan="3"; style="text-align:center">GW</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{sup}$, $Ts_{exp}$, $R_{exp}$, $Te$</td>
+<td>$Ts_{sup}$,$Ts_{exp}$, $R_{exp}$, $C$, $Te$</td>
+<td>$Ts_{sup}$, $R_{a}$, $R_{b}$, $C$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td colspan="3"; style="text-align:center">none</td>
+</tr>
+<tr>
+<td rowspan="2"><strong>inheritance rules</strong></td>
+<td colspan="2"; style="text-align:center;border-bottom:none;padding-bottom:0px">
+<ol class="liste">
+<li>$R_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Te$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{sup}$ &#8594; <em>average</em></li>
+</ol>
+</td>
+<td colspan="1"; rowspan="2">
+<ol class="liste">
+<li>$Ts_{sup}$	&#8594; <em>average</em></li>
+<li>$R_{a}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$R_{b}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td colspan="1"; style="text-align:center;border-right:none">
+<ol class="liste"; start="4">
+<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td>
+<td colspan="1"; style="text-align:center">
+<ol class="liste"; start="4">
+<li>$C$ &#8594; <em>sum</em>/<em>sum*</em></li>
+<li>$Ts_{exp}$ &#8594; <em>sum</em>/<em>sum*</em></li>
+</ol>
+</td>
+</tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td colspan="3"; style="text-align:center;vertical-align:middle">
+<ul class="liste">
+<li>see <a href="../constraints/#Limiting-constraints-1">limiting constraints</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td colspan="3"; style="text-align:center"><a href="../parts/#Limit-1">limit</a></td>
+</tr>
+</tbody>
+</table><h1 id="Emissions"><a class="docs-heading-anchor" href="#Emissions">Emissions</a><a id="Emissions-1"></a><a class="docs-heading-anchor-permalink" href="#Emissions" title="Permalink"></a></h1><h3 id="Emission-limit"><a class="docs-heading-anchor" href="#Emission-limit">Emission limit</a><a id="Emission-limit-1"></a><a class="docs-heading-anchor-permalink" href="#Emission-limit" title="Permalink"></a></h3><p>Upper limit on carbon emissions.</p><p class="norm">
+Upper limits on emissions are enforced analogously to <a href="#Limits-on-quantities-dispatched">limits on dispatch quantities</a>. Therefore, the same caution with regard to how limits are defined should be exercised. As explained for dispatched quantities in greater detail, the table below will impose a carbon budget, meaning an upper limit on the sum of carbon emitted across <u>all years</u>.
+</p>
+
+<table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td></td>
+<td style="border-right:none">emissionUp</td>
+<td style="border-right:none;text-align:center">80.0</td>
+</tr>
+</tbody>
+</table>
+
+<p class="norm">
+While this table will enforce separate limits for <u>each year</u>.
+</p>
+
+<table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-bottom: solid 1px;border-color: #dbdbdb"><strong>timestep_1</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>parameter</strong></td>
+<td style="border-right:none;border-bottom: solid 1px;border-color: #dbdbdb"><strong>value</strong></td>
+</tr>
+<tr>
+<td>all</td>
+<td style="border-right:none">emissionUp</td>
+<td style="border-right:none;text-align:center">80.0</td>
+</tr>
+</tbody>
+</table>
+
+
+<table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>emissionUp</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td>Mil. tCO<sub>2</sub></td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $C$, $Te$, $M$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td>none</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td>
+<ol class="liste">
+<li>$Ts_{dis}$	&#8594; <em>sum*</em></li>
+<li>$Ts_{exp}$ &#8594; <em>sum*</em></li>
+<li>$R_{dis}$	&#8594; <em>sum*</em></li>
+<li>$C$	&#8594; <em>sum*</em></li>
+<li>$Te$	&#8594; <em>sum*</em></li>
+<li>$M$	&#8594; <em>sum*</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td>
+<ul class="liste">
+<li>see <a href="../constraints/#Limiting-constraints-1">limiting constraints</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Limit-1">limit</a></td>
+</tr>
+</tbody>
+</table><h3 id="Emission-factor"><a class="docs-heading-anchor" href="#Emission-factor">Emission factor</a><a id="Emission-factor-1"></a><a class="docs-heading-anchor-permalink" href="#Emission-factor" title="Permalink"></a></h3><p>Relative emissions associated with the use of a carrier.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>emissionFac</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td>tCO<sub>2</sub>/GWh</td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $C$, $Te$, $M$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td>none</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td>
+<ol class="liste">
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+<li>$R_{dis}$	&#8594; <em>upwards</em></li>
+<li>$C$	&#8594; <em>upwards</em></li>
+<li>$Te$	&#8594; <em>upwards</em></li>
+<li>$M$	&#8594; <em>upwards</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td>
+<ul class="liste">
+<li>see <a href="../constraints/#Limiting-constraints-1">limiting constraints</a></li>
+<li><a href="../constraints/#Variable-cost-equation-1">variable cost equation</a></li>
+</ul>
+</td>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Limit-1">limit</a></td>
+</tr>
+</tbody>
+</table><h3 id="Emission-price"><a class="docs-heading-anchor" href="#Emission-price">Emission price</a><a id="Emission-price-1"></a><a class="docs-heading-anchor-permalink" href="#Emission-price" title="Permalink"></a></h3><p>Costs imposed on emitting carbon.</p><table class="tabelle">
+<tbody>
+<tr>
+<td><strong>name</strong></td>
+<td>emissionPrc</td>
+</tr>
+<tr>
+<td><strong>unit</strong></td>
+<td>€/tCO<sub>2</sub></td>
+</tr>
+<tr>
+<td><strong>dimension</strong></td>
+<td>$Ts_{dis}$, $Ts_{exp}$, $R_{dis}$, $C$, $Te$, $M$</td>
+</tr>
+<tr>
+<td><strong>default value</strong></td>
+<td>none</td>
+</tr>
+<tr>
+<td><strong>inheritance rules</strong></td>
+<td>
+<ol class="liste">
+<li>$Ts_{exp}$ &#8594; <em>upwards</em></li>
+<li>$Ts_{dis}$	&#8594; <em>upwards</em></li>
+<li>$R_{dis}$	&#8594; <em>upwards</em></li>
+<li>$C$	&#8594; <em>upwards</em></li>
+<li>$Te$	&#8594; <em>upwards</em></li>
+<li>$M$	&#8594; <em>upwards</em></li>
+</ol>
+</td></tr>
+<tr>
+<td><strong>related elements</strong></td>
+<td>
+<ul class="liste">
+<li>see <a href="../constraints/#Limiting-constraints-1">limiting constraints</a></li>
+<li><a href="../constraints/#Variable-cost-equation-1">variable cost equation</a></li>
+</ul>
+</td>
+</ul>
+</tr>
+<tr>
+<td><strong>part</strong></td>
+<td><a href="../parts/#Objective-1">objective</a></td>
+</tr>
+</tbody>
+</table></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../parameter_overview/">« Parameter overview</a><a class="docs-footer-nextpage" href="../variables/">Variables »</a></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Monday 15 February 2021 12:18">Monday 15 February 2021</span>. Using Julia version 1.3.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>

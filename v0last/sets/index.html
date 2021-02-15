@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Sets and Mappings · AnyMOD.jl</title><link href="https://fonts.googleapis.com/css?family=Lato|Roboto+Mono" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.11.2/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.11.1/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark"/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><a class="docs-logo" href="../"><img src="../assets/logo.png" alt="AnyMOD.jl logo"/></a><div class="docs-package-name"><span class="docs-autofit">AnyMOD.jl</span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Introduction</a></li><li><span class="tocitem">Model Elements</span><ul><li><a class="tocitem" href="../model_object/">Model object</a></li><li class="is-active"><a class="tocitem" href>Sets and Mappings</a><ul class="internal"><li><a class="tocitem" href="#Regions"><span>Regions</span></a></li><li><a class="tocitem" href="#Time-steps"><span>Time-steps</span></a></li><li><a class="tocitem" href="#Carriers"><span>Carriers</span></a></li><li><a class="tocitem" href="#Technologies"><span>Technologies</span></a></li><li><a class="tocitem" href="#Other-Sets"><span>Other Sets</span></a></li></ul></li><li><a class="tocitem" href="../parts/">Parts</a></li><li><input class="collapse-toggle" id="menuitem-2-4" type="checkbox"/><label class="tocitem" for="menuitem-2-4"><span class="docs-label">Parameter</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../parameter_overview/">Parameter overview</a></li><li><a class="tocitem" href="../parameter_list/">Parameter list</a></li></ul></li><li><a class="tocitem" href="../variables/">Variables</a></li><li><a class="tocitem" href="../constraints/">Constraints</a></li></ul></li><li><span class="tocitem">Tools</span><ul><li><input class="collapse-toggle" id="menuitem-3-1" type="checkbox"/><label class="tocitem" for="menuitem-3-1"><span class="docs-label">Reporting</span><i class="docs-chevron"></i></label><ul class="collapsed"><li><a class="tocitem" href="../error/">Error handling</a></li><li><a class="tocitem" href="../data/">Data files</a></li><li><a class="tocitem" href="../plots/">Plots</a></li></ul></li><li><a class="tocitem" href="../performance/">Performance and stability</a></li></ul></li><li><span class="tocitem">Annex</span><ul><li><a class="tocitem" href="../tips/">Tips</a></li><li><a class="tocitem" href="../api/">API</a></li><li><a class="tocitem" href="../related/">Related material</a></li></ul></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Model Elements</a></li><li class="is-active"><a href>Sets and Mappings</a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href>Sets and Mappings</a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/leonardgoeke/AnyMOD.jl/blob/master/docs/src/sets.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><style>
+table.tabelle2 td {
+  padding-left: 0.57em;
+  padding-right: 0.57em;
+  border-right: solid 1px;
+  border-color: #dbdbdb;
+  font-size: small;
+}
+ul.liste {
+  list-style-position: outside;
+  padding-left: 1em;
+  margin-left: 0em;
+  margin-top: 0em;
+  white-space: nowrap;
+  display:inline-block;
+  text-align: left;
+}
+</style><h1 id="Sets-and-Mappings"><a class="docs-heading-anchor" href="#Sets-and-Mappings">Sets and Mappings</a><a id="Sets-and-Mappings-1"></a><a class="docs-heading-anchor-permalink" href="#Sets-and-Mappings" title="Permalink"></a></h1><p class="norm">
+In AnyMOD sets like regions, time-steps, carriers, and technologies are organized as <a href="../api/#AnyMOD.Node"><code>Nodes</code></a> within hierarchical <a href="../api/#AnyMOD.Tree"><code>Trees</code></a>. They are defined by a mandatory input files named <code>set_region.csv</code>, <code>set_timestep.csv</code>, <code>set_carrier.csv</code>, and <code>set_technology.csv</code>, respectively. Relations between different sets (e.g. between carriers and technologies) are represented by mapping nodes within these trees to each other. This graph-based modelling approach is explained in detail in <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a>.</p><p>Next, these key sets and how their tree structure and mappings are obtained from input files are introduced based on the <a href="https://github.com/leonardgoeke/AnyMOD.jl/tree/master/examples/demo">demo problem</a>. Also, additional sets not organized as hierarchical trees are briefly listed as well.</p><h2 id="Regions"><a class="docs-heading-anchor" href="#Regions">Regions</a><a id="Regions-1"></a><a class="docs-heading-anchor-permalink" href="#Regions" title="Permalink"></a></h2><p>The <code>set_region.csv</code> file defines all modelling regions. The file consists out of consecutive columns named <code>region_1</code>,  <code>region_2</code> etc. with each column relating to a level in the resulting tree. A region on a specific level is defined by writing its name into the respective column. To connect regions from different levels, they both need to be written into the same column. Names of regions are not required to be unique, not even on the same level.</p><p>The set file for regions from the demo problem is provided below.</p><table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none !important"><strong>region_1</strong></td>
+<td style="border-right:none"><strong>region_2</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">East</td>
+<td style="border-right:none">EastNorth</td>
+</tr>
+<tr>
+<td style="border-right:none">East</td>
+<td style="border-right:none">EastSouth</td>
+</tr>
+<tr>
+<td style="border-right:none">West</td>
+<td style="border-right:none">WestNorth</td>
+</tr>
+<tr>
+<td style="border-right:none">West</td>
+<td style="border-right:none">WestSouth</td>
+</tr>
+</tbody>
+</table><p>Consequently, this file defines six regions on two different levels. <code>East</code> and <code>West</code> are on level 1 and their descendants <code>EastNorth</code> and <code>EastSouth</code> as well as <code>WestNorth</code> and <code>WestSouth</code> are on level 2. Since names of regions are not required to be unique, alternatively each of the four descendant regions could have also been named <code>North</code> or <code>South</code>. By using the <code>plotTree</code> function the corresponding hierarchical tree can be visualized and exported to the output directory:</p><img src="../assets/region.png" width="80%"/><h3 id="Application-context"><a class="docs-heading-anchor" href="#Application-context">Application context</a><a id="Application-context-1"></a><a class="docs-heading-anchor-permalink" href="#Application-context" title="Permalink"></a></h3><p>Throughout the model regions are used in different contexts and depending on the context different symbols are used:</p><ul><li><span>$R_{exp}$</span>:  Region of capacity expansion, used in all investment related model elements</li><li><span>$R_{disp}$</span>: Region of dispatch, used in all dispatch related model elements</li><li><span>$R_a$</span>, <span>$R_b$</span>: Regions of exchange, element is not differentiated by direction of exchange (e.g. exchange capacities from <span>$R_a$</span> to <span>$R_b$</span> also apply from <span>$R_b$</span> to <span>$R_a$</span>)</li><li><span>$R_{from}$</span>, <span>$R_{to}$</span>​: Regions of exchange, element is differentiated by direction of exchange (e.g. the exchange loses from <span>$R_{from}$</span> to <span>$R_{to}$</span>​ do not apply from <span>$R_{to}$</span> to <span>$R_{from}$</span>)</li></ul><h2 id="Time-steps"><a class="docs-heading-anchor" href="#Time-steps">Time-steps</a><a id="Time-steps-1"></a><a class="docs-heading-anchor-permalink" href="#Time-steps" title="Permalink"></a></h2><p>The <code>set_timestep.csv</code> file defines all modelling time-steps, for both capacity expansion (usually years) and dispatch (for example hours). The file is structured analogously to the file for regions. Just as regions, names of time-steps are not required to be unique.</p><p>The first lines of the corresponding file in the demo problem are provided below.</p><table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none"><strong>timestep_1</strong></td>
+<td style="border-right:none"><strong>timestep_2</strong></td>
+<td style="border-right:none"><strong>timestep_3</strong></td>
+<td style="border-right:none"><strong>timestep_4</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">2020</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">2030</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">all</td>
+<td style="border-right:none">d001</td>
+<td style="border-right:none">hh0001</td>
+<td style="border-right:none">h0001</td>
+</tr>
+<tr>
+<td style="border-right:none">all</td>
+<td style="border-right:none">d001</td>
+<td style="border-right:none">hh0001</td>
+<td style="border-right:none">h0002</td>
+</tr>
+<tr>
+<td colspan="4"; style="text-align:center;border-right:none">&#8942;</td>
+</tr>
+</tbody>
+</table><p>This file makes use of the <code>all</code> keyword to reduce the number of rows required in the input file. This keyword serves as a placeholder for all nodes defined on the respective level. Consequently, in this case the following row</p><table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none"><strong>timestep_1</strong></td>
+<td style="border-right:none"><strong>timestep_2</strong></td>
+<td style="border-right:none"><strong>timestep_3</strong></td>
+<td style="border-right:none"><strong>timestep_4</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">all</td>
+<td style="border-right:none">d001</td>
+<td style="border-right:none">hh0001</td>
+<td style="border-right:none">h0001</td>
+</tr>
+</tbody>
+</table><p>is equivalent to these two rows:</p><table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none"><strong>timestep_1</strong></td>
+<td style="border-right:none"><strong>timestep_2</strong></td>
+<td style="border-right:none"><strong>timestep_3</strong></td>
+<td style="border-right:none"><strong>timestep_4</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">2020</td>
+<td style="border-right:none">d001</td>
+<td style="border-right:none">hh0001</td>
+<td style="border-right:none">h0001</td>
+</tr>
+<tr>
+<td style="border-right:none">2030</td>
+<td style="border-right:none">d001</td>
+<td style="border-right:none">hh0001</td>
+<td style="border-right:none">h0001</td>
+</tr>
+</tbody>
+</table><p>The keyword <code>all</code> can be extended to assign specific nodes:</p><ul><li><code>all(node1,node2,node3)</code> assigns all listed nodes. Accordingly, in the example above <code>all(2020,2030)</code> would have achieved the same result as using <code>all</code>.</li><li><code>all(node1:node2)</code> assigns not only <code>node1</code> and <code>node2</code>, but also all nodes in between according to alphabetical order.</li></ul><p>In the example above, the use of <code>all</code> results in each year having descendant nodes that represent days (level 2), 4-hour steps (level 3) and hours (level 4). Since names of time-steps are not required to be unique, these different nodes for each year can share the same names. A reduced version of the corresponding tree is plotted below:</p><img src="../assets/timestep.png" width="80%"/><h3 id="Application-context-2"><a class="docs-heading-anchor" href="#Application-context-2">Application context</a><a class="docs-heading-anchor-permalink" href="#Application-context-2" title="Permalink"></a></h3><p>The following symbols are used to refer to time-steps depending on the context:</p><ul><li><span>$Ts_{exp}$</span>: Time-steps of capacity expansion</li><li><span>$Ts_{dis}$</span>: Time-steps of dispatch</li><li><span>$Ts_{sup}$</span>: Superordinate dispatch time-steps (usually years)</li></ul><h2 id="Carriers"><a class="docs-heading-anchor" href="#Carriers">Carriers</a><a id="Carriers-1"></a><a class="docs-heading-anchor-permalink" href="#Carriers" title="Permalink"></a></h2><p>The hierarchical tree of energy carriers is defined analogously to regions and time-steps. The respective <code>.csv</code> table from the demo problem is given below. Unlike regions and timestep, carrier names are required to be unique. Carriers are always represented by the symbol <span>$C$</span>.</p><table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none"><strong>carrier_1</strong></td>
+<td><strong>carrier_2</strong></td>
+<td style="border-right:none"><strong>timestep_dispatch</strong></td>
+<td style="border-right:none"><strong>timestep_expansion</strong></td>
+<td style="border-right:none"><strong>region_dispatch</strong></td>
+<td style="border-right:none"><strong>region_expansion</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">electricity</td>
+<td></td>
+<td style="text-align:center;border-right:none">4</td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">2</td>
+</tr>
+<tr>
+<td style="border-right:none">heat</td>
+<td>districtHeat</td>
+<td style="text-align:center;border-right:none">3</td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">2</td>
+<td style="text-align:center;border-right:none">2</td>
+</tr>
+<tr>
+<td style="border-right:none">gas</td>
+<td>naturalGas</td>
+<td style="text-align:center;border-right:none">2</td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">2</td>
+<td style="text-align:center;border-right:none">2</td>
+</tr>
+<tr>
+<td style="border-right:none">gas</td>
+<td>synthGas</td>
+<td style="text-align:center;border-right:none">2</td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">1</td>
+</tr>
+<tr>
+<td style="border-right:none">coal</td>
+<td></td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">1</td>
+</tr>
+<tr>
+<td style="border-right:none">hydrogen</td>
+<td></td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">1</td>
+<td style="text-align:center;border-right:none">1</td>
+</tr>
+</tbody>
+</table><p>The table above corresponds to the following tree:</p><img src="../assets/carrier2.png" width="80%"/><h3 id="Mapping"><a class="docs-heading-anchor" href="#Mapping">Mapping</a><a id="Mapping-1"></a><a class="docs-heading-anchor-permalink" href="#Mapping" title="Permalink"></a></h3><p><strong>Carrier resolution</strong></p><p>In addition to defining carriers, the <code>set_carrier.csv</code> file also maps them to regions and time-steps to specify the resolution there are modelled at. This is done separately for dispatch and expansion in the columns <code>timestep_dispatch</code>,<code>timestep_expansion</code>,<code>region_dispatch</code>, and <code>region_expansion</code>. The numbers in these columns correspond to levels of the respective trees. In the example displayed below, <code>4</code> in the <code>timestep_dispatch</code> column for <code>electricity</code> means, dispatch for electricity is modelled for each time-step on level 4. Going back to the definition of time-steps above, this corresponds to an hourly resolution.</p><div class="admonition is-success"><header class="admonition-header">Less detailed resolution for debugging</header><div class="admonition-body"><p>Creating and especially solving a model is much faster if the temporal resolution of dispatch is decreased. Therefore, it is advisable to first test new models at a less detailed temporal resolution. In the example this would be achieved by replacing the <code>4</code> for electricity with <code>2</code> to switch to a daily resolution. This will help you to spot and fix mistakes or unintended effects more efficiently.</p></div></div><p>AnyMOD checks the specified resolutions and will throw an error, if any logical inconsistencies are detected. Resolutions provided in a specific row only apply to the last carrier in that row. However, carrier on higher levels without a specified resolution, like <code>gas</code> in the example,  automatically inherit a resolution from their descendants.</p><p><strong>Optional mappings</strong></p><p>For reasons elaborated in <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a>, be default energy balances in AnyMOD are not formulated as equality constraints meaning supply can exceed demand. To overwrite this behaviour, an optional column named <code>carrier_equality</code> using the keywords <code>yes</code> and <code>no</code> can be added to the file, where <code>yes</code> will enforce an equality constraint. Carriers are represented by the symbol <span>$Te$</span>.</p><h2 id="Technologies"><a class="docs-heading-anchor" href="#Technologies">Technologies</a><a id="Technologies-1"></a><a class="docs-heading-anchor-permalink" href="#Technologies" title="Permalink"></a></h2><p>The hierarchical tree of technologies is defined analogously to regions and time-steps. The respective <code>.csv</code> table from the demo problem is given below. Unlike regions and timesteps, technology names are required to be unique.</p><table class="tabelle2">
+<tbody>
+<tr>
+<td style="border-right:none"><strong>technology_1</strong></td>
+<td style="border-right:none"><strong>technology_2</strong></td>
+<td><strong>technology_3</strong></td>
+<td style="border-right:none"><strong>carrier_conversion_in</strong></td>
+<td style="border-right:none"><strong>carrier_conversion_out</strong></td>
+<td style="border-right:none"><strong>carrier_stored_in</strong></td>
+<td style="border-right:none"><strong>carrier_stored_out</strong></td>
+</tr>
+<tr>
+<td style="border-right:none">wind</td>
+<td style="border-right:none"></td>
+<td></td>
+<td style="border-right:none"></td>
+<td style="border-right:none">electricity</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">solar</td>
+<td style="border-right:none">openspace</td>
+<td></td>
+<td style="border-right:none"></td>
+<td style="border-right:none">electricity</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">solar</td>
+<td style="border-right:none">rooftop</td>
+<td>photovoltaic</td>
+<td style="border-right:none"></td>
+<td style="border-right:none">electricity</td>
+<td style="border-right:none"></td>
+<td style="border-right:none">electricity</td>
+</tr>
+<tr>
+<td style="border-right:none">solar</td>
+<td style="border-right:none">rooftop</td>
+<td>solarThermal</td>
+<td style="border-right:none"></td>
+<td style="border-right:none">heat</td>
+<td style="border-right:none"></td>
+<td style="border-right:none">heat</td>
+</tr>
+<tr>
+<td style="border-right:none">gasPlant</td>
+<td style="border-right:none">ccgt</td>
+<td>ccgtNoCHP</td>
+<td style="border-right:none">gas</td>
+<td style="border-right:none">electricity</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">gasPlant</td>
+<td style="border-right:none">ccgt</td>
+<td>ccgtCHP</td>
+<td style="border-right:none">gas</td>
+<td style="border-right:none">electricity; districtHeat</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">gasPlant</td>
+<td style="border-right:none">ocgt</td>
+<td></td>
+<td style="border-right:none">gas</td>
+<td style="border-right:none">electricity</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">coalPlant</td>
+<td style="border-right:none"></td>
+<td></td>
+<td style="border-right:none">coal</td>
+<td style="border-right:none">electricity; districtHeat</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">heatpump</td>
+<td style="border-right:none"></td>
+<td></td>
+<td style="border-right:none">electricity</td>
+<td style="border-right:none">heat</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">gasStorage</td>
+<td style="border-right:none"></td>
+<td></td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+<td style="border-right:none">gas</td>
+<td style="border-right:none">gas</td>
+</tr>
+<tr>
+<td style="border-right:none">gasBoiler</td>
+<td style="border-right:none"></td>
+<td></td>
+<td style="border-right:none">gas</td>
+<td style="border-right:none">heat</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">hydro</td>
+<td style="border-right:none"></td>
+<td></td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+<td style="border-right:none">electricity</td>
+<td style="border-right:none">electricity</td>
+</tr>
+<tr>
+<td style="border-right:none">electrolysis</td>
+<td style="border-right:none"></td>
+<td></td>
+<td style="border-right:none">electricity</td>
+<td style="border-right:none">hydrogen</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">methanation</td>
+<td style="border-right:none"></td>
+<td></td>
+<td style="border-right:none">hydrogen</td>
+<td style="border-right:none">synthGas</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+<tr>
+<td style="border-right:none">fuelCell</td>
+<td style="border-right:none"></td>
+<td></td>
+<td style="border-right:none">hydrogen</td>
+<td style="border-right:none">electricity; districtHeat</td>
+<td style="border-right:none"></td>
+<td style="border-right:none"></td>
+</tr>
+</tbody>
+</table><p>Within a model only nodes without any descendants are actual technologies. The remaining nodes have the sole purpose of organizing them. This facilitates the read-in of parameter data and formulation of certain constraints (e.g. the available rooftop area limiting the summed capacity of <code>photovoltaic</code> and <code>solarThermal</code>). The resulting hierarchical tree from the table above is displayed below.</p><img src="../assets/tech.png" width="100%"/><h3 id="Mappings"><a class="docs-heading-anchor" href="#Mappings">Mappings</a><a id="Mappings-1"></a><a class="docs-heading-anchor-permalink" href="#Mappings" title="Permalink"></a></h3><p><strong>Converted and stored carriers</strong></p><p>The <code>.csv</code> table above does not only define the hierarchical tree of technologies, but also maps carriers to these technologies. This assignment differentiates between in- and output carriers and between conversion and storage.</p><p class="norm">
+In AnyMOD conversion generally refers to one or multiple carrier being used or generated as displayed in the diagram below. In the diagram expressions in italic refer to <a href="../variables">model variables</a> and expressions in boxes to <a href="../parameter_list">parameters</a>.
+</p>
+<p style="text-align:center;"><img src="../assets/convTech.svg" width="80%"/><p>The technology <code>ccgtCHP</code> from the example is a pure conversion technology converting <code>gas</code> to <code>electricity</code> and <code>districtHeat</code>, because <code>conversion_input</code> and <code>conversion_output</code> are assigned accordingly. It is not necessary for a conversion technology to have both, an in- and and output carrier. For instance, in the example renewables like <code>wind</code> only have an output.</p><p>Storage is analogously described by the diagram below. In the example, <code>hydro</code> is a pure storage technology, because <code>electricity</code> is assigned to both <code>storage_input</code> and <code>storage_output</code>. Storage is not limited to a single carrier and a technology can store an arbitrary number of different carriers.</p><p style="text-align:center;"><img src="../assets/stTech.svg" width="100%"/><p>Assigning carriers as a storage output (or input) means they can be discharged to (or charged from) the general energy balance. Technologies that can only discharge but not charge a carrier from the energy balance are conceivable as well. However, this only makes sense, if the carrier can be generated internally to charge the storage in the first place. The interplay of conversion and storage in such a case is illustrated by the following diagram:</p><p style="text-align:center;"><img src="../assets/mixTech1.svg" width="100%"/><p>Such a technology is created by assigning the same carrier to <code>conversion_output</code> and <code>storage_output</code>, but not to <code>storage_output</code>. In the example, this is the case for the technology <code>photovoltaic</code>. It is intended to represent a residental photovoltaic panel combined with a home battery that cannot be charged from the gird, but from the panel.</p><p>Also the opposite case can be modelled: A carrier charged from outside, but only discharged within the technology. This only makes sense if the carrier is being used within the technology&#39;s conversion process. The corresponding diagram is given below and could represent a gas power plant with an onside gas storage.</p><p style="text-align:center;"><img src="../assets/mixTech2.svg" width="100%"/><p><strong>Optional mappings</strong></p><p>The following table lists all optional columns that can be specified within in <code>set_technology.csv</code> file to overwrite a default behaviour.</p>
+<p class="norm">
+An important option to point out is <code>technology_type</code>. Three different technology types exist: <code>stock</code>, <code>mature</code> and <code>emerging</code>. Stock technologies cannot be expended and are limited to <a href="../parameter_list/#Residual-capacities-1">pre-existing capacities</a>. Emerging technologies differ from mature technologies in the sense that their capacities are differentiated by time-step of construction $Ts_{exp}$. This allows to account for technological improvement over time, but increases the required numbers of variables and constraints.
+</p>
+
+<table class="tabelle2">
+<tbody>
+<tr>
+<td><strong>column name</strong></td>
+<td><strong>explanation</strong></td>
+<td style="border-right:none"><strong>default</strong></td>
+</tr>
+<tr>
+<td><code>modes</code></td>
+<td>
+<ul class="liste">
+<li>different operational modes separated by a semicolon and a space</li>
+<li>e.g. <code>moreHeat; moreElec</code> for CHP plant in the example</li>
+</ul>
+</td>
+<td style="border-right:none">none</td>
+</tr>
+<tr>
+<td><code>technology_type</code></td>
+<td>
+<ul class="liste">
+<li>types control expansion behaviour of technology, see <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a> for details</li>
+<li>available options are:
+<ul style="margin-top:0px">
+<li style="margin-top:0px"><code>stock</code>: no expansion</li>
+<li><code>mature</code>: expansion without differentiation by time-step of construction</li>
+<li><code>emerging</code>: expansion with differentiation by time-step of construction</li>
+</ul>
+</ul>
+</li>
+</ul>
+</td>
+<td style="border-right:none"><code>mature</code></td>
+</tr>
+<tr>
+<td><code>region_disaggregate</code></td>
+<td>
+<ul class="liste">
+<li>if expansion is spatially more detailed than dispatch, by default the resolution of dispatch <br> is increased to the expansion level</li>
+<li>using the keyword <code>no</code> prevents this behaviour and enforces the orginal dispatch resolution</li>
+</ul>
+</td>
+<td style="border-right:none"><code>yes</code></td>
+</tr>
+<tr>
+<td><code>timestep_expansion</code></td>
+<td>
+<ul class="liste">
+<li>sets the resolution of expansion time-steps</li>
+<li>cannot be more detailed than the superordinate dispatch level (usually years)</li>
+</ul>
+</td>
+<td style="border-right:none">most detailed resolution <br> of carriers</td>
+</tr>
+<tr>
+<td><code>region_expansion</code></td>
+<td><ul class="liste">
+<li>sets the resolution of expansion regions</li>
+<li>default corresponds to the smallest value feasible</li>
+</ul></td>
+<td style="border-right:none">most detailed resolution <br> of carriers</td>
+</tr>
+<tr>
+<td><code>carrier_stored_active</code></td>
+<td><ul class="liste">
+<li>by default, only leafs (nodes without any descendants) of  stored carriers are actively <br> stored (see <a href="https://arxiv.org/abs/2004.10184">Göke (2020)</a> for details)</li>
+<li>non-leaf carriers to be stored actively can be added here</li>
+<li>carriers are separated by a semicolon and a space just like modes</li>
+</ul></td>
+<td style="border-right:none">none</td>
+</tr>
+</tbody>
+</table><h2 id="Other-Sets"><a class="docs-heading-anchor" href="#Other-Sets">Other Sets</a><a id="Other-Sets-1"></a><a class="docs-heading-anchor-permalink" href="#Other-Sets" title="Permalink"></a></h2><p>Other sets in AnyMOD are not organized in hierarchical trees and might even be empty in a specific model. These are listed here.</p><h3 id="Modes"><a class="docs-heading-anchor" href="#Modes">Modes</a><a id="Modes-1"></a><a class="docs-heading-anchor-permalink" href="#Modes" title="Permalink"></a></h3><p>The set of modes includes operational modes defined for technologies. Modes are represented by the symbol <span>$M$</span>.</p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../model_object/">« Model object</a><a class="docs-footer-nextpage" href="../parts/">Parts »</a></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Monday 15 February 2021 12:18">Monday 15 February 2021</span>. Using Julia version 1.3.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
