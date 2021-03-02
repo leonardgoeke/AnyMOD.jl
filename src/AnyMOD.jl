@@ -29,12 +29,14 @@ module AnyMOD
     include("objects.jl")
     include("tools.jl")
     include("modelCreation.jl")
-
+    
+    include("optModel/technology.jl")
     include("optModel/exchange.jl")
-    include("optModel/objective.jl")
+    include("optModel/system.jl")
+    include("optModel/cost.jl")
     include("optModel/other.jl")
-    include("optModel/tech.jl")
-
+    include("optModel/objective.jl")
+    
     include("dataHandling/mapping.jl")
     include("dataHandling/parameter.jl")
     include("dataHandling/readIn.jl")
