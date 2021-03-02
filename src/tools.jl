@@ -721,19 +721,42 @@ Plots the energy flow in a model. Set `plotType` to `:graph` for a qualitative n
 plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
 
 # ! plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
-function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false)
+function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = false, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, relC::Tuple = (), relTe::Tuple = ())
 
     # ! import python function
     netw = pyimport("networkx")
     plt = pyimport("matplotlib.pyplot")
     PyCall.fixqtpath()
 
-    #region # * create graph and map edges
+	#region # * create graph and map edges
+	
+	# ! get arrays of ids to filter relevant carriers and technologies
+	allTe_arr = collect(values(anyM.graInfo.graph.nodeTe))
+
+	if isempty(relC)
+		relC_arr = Int[]
+	else
+		relC_arr = map(x -> anyM.graInfo.graph.nodeC[sysInt(x,anyM.sets[:C])],collect(relC))
+	end
+
+	if isempty(relTe)
+		relTe_arr = Int[]
+	else
+		relTe_arr = map(x -> anyM.graInfo.graph.nodeTe[sysInt(x,anyM.sets[:Te])],collect(relTe))
+	end
+
+	# ! create relevant edges for carriers and technologies
 
     graph_obj = netw.DiGraph()
     flowGrap_obj = anyM.graInfo.graph
 
-    edges_arr =  vcat(collect.(flowGrap_obj.edgeC),collect.(flowGrap_obj.edgeTe))
+	bla = false; blub = false
+	cEdge_arr = filter(x -> isempty(relC_arr) ? true : (x[1] in relC_arr || x[2] in relC_arr),collect.(flowGrap_obj.edgeC))
+	teEdge_arr = filter(x -> x[1] in allTe_arr ? (isempty(relTe_arr) ? (isempty(relC_arr) ? true : x[2] in relC_arr) : x[1] in relTe_arr) : (isempty(relTe_arr) ? (isempty(relC_arr) ? true : x[1] in relC_arr) : x[2] in relTe_arr),flowGrap_obj.edgeTe)
+	
+	addTeEdge_arr = (bla || blub) ? union(teEdge_arr...) |> (z -> filter(x -> !(x in teEdge_arr) && ((bla && x[1] in z) || (blub && x[2] in z)),flowGrap_obj.edgeTe)) : Pair[]
+
+    edges_arr =  vcat(cEdge_arr,collect.(teEdge_arr),collect.(addTeEdge_arr))
     for x in edges_arr
         graph_obj.add_edge(x[1],x[2])
     end

@@ -430,7 +430,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 				for x in findall(resiVal_arr.>  replace(allLimit_df[!,:Up] ,nothing => Inf))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
-					push!(anyM.report,(3,"limit",string(va),"residual values already exceed the upper limit for: " * dim_str))
+					push!(anyM.report,(2,"limit",string(va),"residual values already exceed the upper limit for: " * dim_str))
 					unlock(anyM.lock)
 				end
 			end
