@@ -507,7 +507,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 end
 
 # ! connect capacity and expansion variables
-function createCapaCns!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple},cns_dic::Dict{Symbol,cnsCont},excDir_arr::Array = Int[])
+function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep_dic::Dict{Symbol,NamedTuple},cns_dic::Dict{Symbol,cnsCont},excDir_arr::Array = Int[])
 	# create capacity constraint for installed capacities	
 	for capaVar in filter(x -> occursin(part.decomm == :none ? "capa" : "insCapa",string(x)),keys(part.var))
 
@@ -515,7 +515,7 @@ function createCapaCns!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple
 		join_arr = part.type != :mature ? index_arr : filter(x -> x != :Ts_expSup,collect(index_arr))
 		exc_boo = occursin("Exc",string(capaVar))
 		st_boo = occursin("St",string(capaVar)) 
-		sys_int = sysInt(Symbol(part.name[end]),anyM.sets[exc_boo ? :Exc : :Te])
+		sys_int = sysInt(Symbol(part.name[end]),sets_dic[exc_boo ? :Exc : :Te])
 
         # joins corresponding capacity, retrofitting and expansion variables together
 		expVar_sym, retroVar_sym = [Symbol(replace(string(capaVar),(part.decomm == :none ? "capa" : "insCapa") => x)) for x in ["exp","retro"]]
@@ -551,7 +551,7 @@ function createCapaCns!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple
 			end
 			retro_df = rename(combine(groupby(retroVar_df,retro_arr), :var => (x -> sum(x)) => :var), retro_arr .=> intCol(cns_df))
 			
-			cns_df[!,:retro_j] = aggDivVar(retro_df,cns_df,tuple(intCol(cns_df)...),anyM.sets)
+			cns_df[!,:retro_j] = aggDivVar(retro_df,cns_df,tuple(intCol(cns_df)...),sets_dic)
 		
 		end
 		
@@ -1014,7 +1014,7 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 		allVar_df = filter(r -> r.C in restr.car, part.var[va])[!,Not(:Ts_disSup)]
 		
 		# correct dispatch variables with energy carrier
-		allVar_df = addEnergyCont(allVar_df,part,anyM)
+		allVar_df = addEnergyCont(allVar_df,part,sets_dic)
 
 		# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
 		if va != :exc

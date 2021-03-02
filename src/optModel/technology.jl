@@ -17,7 +17,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		# create expansion constraints
 		if isempty(anyM.subPro) || anyM.subPro == (0,0)
 			# connect capacity and expansion variables
-			createCapaCns!(part,prepTech_dic,cns_dic)
+			createCapaCns!(part,anyM.sets,prepTech_dic,cns_dic)
 
 			# control operated capacity variables
 			if part.decomm != :none
@@ -243,7 +243,7 @@ function createConvBal(part::TechPart,anyM::anyModel)
 
 	for va in union(in_arr,out_arr)
 		# add energy content to expression if defined
-		var_df = addEnergyCont(part.var[va],part,anyM)
+		var_df = addEnergyCont(part.var[va],part,anyM.sets)
 		
 		# aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated separately
 		if :M in namesSym(cns_df) 
@@ -504,11 +504,11 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 end
 
 # ! returns type of variable and corrects with energy content
-function addEnergyCont(var_df::DataFrame,part::AbstractModelPart,anyM::anyModel)
+function addEnergyCont(var_df::DataFrame,part::AbstractModelPart,sets_dic::Dict{Symbol,Tree})
 
 	if :enCont in keys(part.par)
 		part.par[:enCont].defVal = 1.0
-		var_df = filter(x -> x.val != 0.0, matchSetParameter(var_df,part.par[:enCont],anyM.sets))
+		var_df = filter(x -> x.val != 0.0, matchSetParameter(var_df,part.par[:enCont],sets_dic))
 		var_df[!,:var] = var_df[!,:var] .* var_df[!,:val]
 		select!(var_df,Not([:val]))
 	end
