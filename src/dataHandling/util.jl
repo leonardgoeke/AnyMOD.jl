@@ -44,7 +44,7 @@ function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::I
 			printstyled(options.objName; color = :underline); printstyled(" ",getElapsed(options.startTime), fixedString, dynamicString, "\n"; color = sty_dic[currentLvl])
 		end
 	end
-    if options.errCheckLvl >= currentLvl || testErr errorTest(report,options,write = options.errWrtLvl >= currentLvl) end
+    if options.errCheckLvl >= currentLvl || testErr errorTest(unique(report),options,write = options.errWrtLvl >= currentLvl) end
 end
 
 #endregion
@@ -339,7 +339,7 @@ end
 # ! expand expansion dataframe to capacity dataframe
 function expandExpToCapa(in_df::DataFrame)
 
-	noExpCol_arr = intCol(in_df)
+	noExpCol_arr = intCol(in_df,:dir)
 
 	allDf_arr = map(eachrow(in_df)) do x
 		l_arr = length.(x.Ts_disSup)
@@ -351,7 +351,7 @@ function expandExpToCapa(in_df::DataFrame)
 	if !isempty(allDf_arr)
 		capa_df = select(vcat(allDf_arr...),orderDim(namesSym(allDf_arr[1])))[!,Not(:Ts_exp)]
 	else
-		 capa_df = select(in_df,Not(:Ts_exp)); capa_df[!,:Ts_disSup] = Int[];
+		capa_df = select(in_df,Not(:Ts_exp)); capa_df[!,:Ts_disSup] = Int[];
 	end
 
 	return orderDf(capa_df)
@@ -455,7 +455,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			costDf_arr[idx] = orderDf(var_df)
 		end
 
-		allVar_df = vcat(costDf_arr...) |> (z -> combine(groupby(z,intCol(z,:type)), :var => (x -> sum(x)) => :var))
+		allVar_df = vcat(costDf_arr...) |> (z -> isempty(z) ? DataFrame() : combine(groupby(z,intCol(z,:type)), :var => (x -> sum(x)) => :var))
 
 	else va == :emission # for emission all use variables are obtained and then already matched with emission factors
 

@@ -1,39 +1,6 @@
 
 #region # * prepare to create expansion, retrofitting and capacity variables
 
-# ! dimensions for expansion variables
-function prepareExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},part::AbstractModelPart,tInt::Int,anyM::anyModel)
-
-	# extract tech info
-	carGrp_ntup = part.carrier
-	balLvl_ntup = part.balLvl
-
-	tsExp_arr, rExp_arr   = [getfield.(getNodesLvl(anyM.sets[x[2]], balLvl_ntup.exp[x[1]]),:idx) for x in enumerate([:Ts,:R])]
-	tsExpSup_arr = map(x -> getDescendants(x,anyM.sets[:Ts],false,anyM.supTs.lvl) |> (y -> typeof(y) == Array{Int,1} ? y : [y] ), tsExp_arr)
-	if anyM.options.interCapa != :linear tsExp_arr = map(x -> [minimum(x)],tsExp_arr) end
-
-	expDim_arr = vcat(collect(Iterators.product(Iterators.zip(tsExp_arr,tsExpSup_arr),rExp_arr))...)
-	allMap_df =  getindex.(expDim_arr,1) |> (x -> DataFrame(Ts_exp = getindex.(x,1), Ts_expSup = getindex.(x,2), R_exp = getindex.(expDim_arr,2), Te = fill(tInt,length(expDim_arr))))
-
-	stCar_arr::Array{Int,1} = intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut)) |> (z -> isempty(z) ? Int[] : unique(union(union(map(x -> getproperty(carGrp_ntup,x),z)...)...)))
-	convCar_arr::Array{Int,1} = unique(vcat(collect.(map(x -> getproperty(carGrp_ntup,x),intersect(keys(carGrp_ntup),(:use,:gen))))...))
-
-
-	# loops over type of capacities to specify dimensions of capacity variables
-	for exp in (:Conv, :StIn, :StOut, :StSize)
-		
-		# saves required dimensions to dictionary
-		if exp == :Conv && !isempty(convCar_arr)
-			prepTech_dic[Symbol(:exp,exp)] =  (var = addSupTsToExp(allMap_df,part,exp,tsYear_dic,anyM), resi = DataFrame())
-		elseif exp != :Conv && !isempty(stCar_arr)
-			prepTech_dic[Symbol(:exp,exp)] =  (var = addSupTsToExp(combine(groupby(allMap_df,namesSym(allMap_df)), :Te => (x -> collect(1:countStGrp(carGrp_ntup))) => :id),part,exp,tsYear_dic,anyM), resi = DataFrame())
-		else
-			continue
-		end
-		
-	end
-end
-
 # ! dimensions for capacity variables
 function prepareCapacity!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple},exp_df::DataFrame,capaVar::Symbol,anyM::anyModel; sys::Int = 0)
 
@@ -263,7 +230,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 				end
 
 				# only preserve capacity entries that could be created based on expansion and retrofitting
-				prepSys_dic[sys][sSym][capaSym] = prepSys_dic[sys][sSym][capaSym] |> (x -> (var = innerjoin(x.var, potCapa_df, on = intCol(x.var)), resi = x.resi))	
+				prepSys_dic[sys][sSym][capaSym] = prepSys_dic[sys][sSym][capaSym] |> (x -> (var = innerjoin(x.var, potCapa_df, on = intCol(x.var,:dir)), resi = x.resi))	
 			end
 
 			# ! remove variables for retrofitting and grouped capacity for cases where no start capacity can exist
@@ -337,6 +304,58 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 			end
 		end
 	end
+
+	# ! ensure consistency among different storage capacities (to every storage in- or output capacity a corresponding storage size has to exist)
+	stCapa_arr = [:capaStIn,:capaStOut,:capaStSize]
+	nameSt_dic = Dict(:capaStIn => "input power", :capaStOut => "output power", :capaStSize => "energy")
+
+	for tSym in collect(keys(prepSys_dic[:Te]))
+		
+		# collect variables 
+		prepTech_dic = prepSys_dic[:Te][tSym]
+		part = anyM.parts.tech[tSym]
+		stKey_arr = collectKeys(keys(prepTech_dic))
+
+		# check storage consistency if storage is relevant
+		if !isempty(intersect(stCapa_arr,stKey_arr))
+
+			# loops over groups of storage capacities
+			stTypes_arr = intersect(keys(part.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))
+			
+			for i in 1:length(part.carrier[stTypes_arr[1]])
+
+				# get all storage capacities
+				allSt_arr = filter(z -> !isempty(z), vcat(map(y -> collect(map(x -> filter(w -> w.id == i,getfield(prepTech_dic[y],x)),(:var,:resi))),intersect(stCapa_arr,stKey_arr))...))
+				relSt_df = unique(vcat(map(w -> select(w,intCol(w)), allSt_arr)...))
+				
+				# loops over relevant capacities
+				for capa in stCapa_arr
+
+					# avoids check if technology does not require storage input or output capacity
+					if capa == :capaStSize || (capa == :capaStIn && (:stExtIn in stTypes_arr || :stIntIn in stTypes_arr)) || (capa == :capaStOut && (:stExtOut in stTypes_arr || :stIntOut in stTypes_arr))
+
+						# find cases where variable of checked type is missing
+						if capa in stKey_arr 
+							noCapa_df = (part.type == :stock ? [:resi,] : [:resi,:var]) |> (z -> antijoin(relSt_df,unique(vcat(map(u -> getfield(prepTech_dic[capa],u) |> (k -> select(k,intCol(k))) ,z)...)), on = names(relSt_df)))
+						else
+							noCapa_df = relSt_df
+						end
+
+						# add missing entries to preparation dictionaries and report
+						if !isempty(noCapa_df)
+							prepTech_dic[capa] = capa in stKey_arr ? (var = vcat(prepTech_dic[capa].var,noCapa_df), resi = prepTech_dic[capa].resi) : (var = noCapa_df, resi = DataFrame())
+							if part.type == :stock
+								push!(anyM.report,(2,"technology mapping","storage capacity","in some cases $(nameSt_dic[capa]) capacities for stock technology '$(string(tSym))' are not defined, but other storage capacities exist, if not subject to other limits, these capacities are unrestricted"))
+							else
+								push!(anyM.report,(2,"technology mapping","storage capacity","in some cases limits on expansion prevent $(nameSt_dic[capa]) capacities for technology '$(string(tSym))', but other storage capacities exist, therefore respecitve capacities exist anyway, but are disconnected from expansion variables"))
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
 end
 
 # ! function to either create new entry of retrofitting or merge with existing ones

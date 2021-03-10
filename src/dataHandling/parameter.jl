@@ -631,7 +631,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, sy
                  push!(anyM.report,(3,"parameter read-in","validity check","contradicting entries discovered for '$(string(parIt))'"))
             end
         end
-
+        
         # ! assign parameters to parts
         paraDef_ntup = parDef_dic[parIt]
         parPart_sym = paraDef_ntup.part

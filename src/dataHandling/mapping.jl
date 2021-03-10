@@ -164,7 +164,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 		# reports on typos in assigned in carriers
 		for x in filter(x -> Int[] in carId_dic[x] || any(map(y -> Int[] in y,collect(carId_dic[x]))), collectKeys(keys(carId_dic)))
 			push!(anyM.report,(3,"technology mapping","carrier","$(typeStr_dic[x]) carrier of technology '$(string(sSym))' not entered correctly"))
-			carId_dic[x] = tuple(filter(y -> y != Int[],collect(carId_dic[x]))...)
+			carId_dic[x] = collect(carId_dic[x]) |> (i -> tuple((x in (:carrier_stored_in,:carrier_stored_out) ? map(x -> filter(y -> y != Int[],x),i) : filter(y -> y != Int[],i))...))
 		end
 
 		# avoid storage of carriers that are balanced on superordinate dispatch level (e.g. if gas is balanced yearly, there is no need for gas storage)
@@ -174,7 +174,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 					carId_dic[type] = tuple(map(z -> filter(x -> x != c,z),collect(carId_dic[type]))...)
 					push!(anyM.report,(2,"technology mapping","carrier","carrier '$(createFullString(c,anyM.sets[:C]))' of technology '$(string(sSym))' cannot be stored, because carrier is balanced on superordinate dispatch level"))
 				end
-			end
+			end 
 		end
 		
 		# writes all relevant type of dispatch variables and respective carrier
@@ -210,6 +210,8 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 			end
 		end
 	elseif sys == :Exc
+		
+		# ! checks carrier name
 		carId_arr = map(x -> getDicEmpty(nameC_dic,x),split(replace(row_df[:carrier_exchange]," " => ""),";") |> (z -> filter(x -> !isempty(x),z)))
 		if isempty(carId_arr) 
 			push!(anyM.report,(3,"exchange mapping","carrier","no exchange carrier provided for '$(string(sSym))'"))
@@ -220,6 +222,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 			return
 		end
 
+		# ! reports on exchanged carriers with different spatial resolutions
 		rDis_arr = map(x -> anyM.cInfo[x].rDis,carId_arr)
 		if length(unique(rDis_arr)) > 1
 			push!(anyM.report,(1,"exchange mapping","carrier","carriers that can be exchanged by '$(string(sSym))' have different spatial resolutions"))
@@ -227,7 +230,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 
 		part.carrier = tuple(carId_arr...)
 
-		# detects if any exchanged carrier is a parent of another exchanged carrier and reports on it
+		# ! detects if any exchanged carrier is a parent of another exchanged carrier and reports on it
 		inherCar_arr = carId_arr[findall(map(x -> !(isempty(filter(z -> z != x, intersect(getDescendants(x,anyM.sets[:C],true),carId_arr)))),carId_arr))]
 		if !isempty(inherCar_arr)
 			for inher in inherCar_arr

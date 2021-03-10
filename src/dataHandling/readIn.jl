@@ -56,17 +56,20 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 
 	# reports, if reserved chars were used in set names, if a required set was not defined, or if a non-unique carrier or technology names was defined
 	for set in filter(x -> !(x in (:mode, :id, :scenario, :exchange)), collectKeys(keys(setLngShrt_dic)))
-		strSet_arr = getfield.(values(anyM.sets[setLngShrt_dic[set]].nodes),:val)
-		if any(occursin.(")",strSet_arr)) push!(anyM.report,(3,"set read-in",string(set),"reserved character ')' in set name detected")) end
-		if any(occursin.("(",strSet_arr)) push!(anyM.report,(3,"set read-in",string(set),"reserved character '(' in set name detected")) end
-		if any(occursin.(";",strSet_arr)) push!(anyM.report,(3,"set read-in",string(set),"reserved character ';' in set name detected")) end
-		
 		if !(setLngShrt_dic[set] in keys(setData_dic))
 			push!(anyM.report,(3,"set read-in",string(set),"no file provided to define set"))
-		elseif set == :carrier || set == :technology || set == :exchange
+		else
+			# reports reserved chars
+			strSet_arr = getfield.(values(anyM.sets[setLngShrt_dic[set]].nodes),:val)
+			if any(occursin.(")",strSet_arr)) push!(anyM.report,(3,"set read-in",string(set),"reserved character ')' in set name detected")) end
+			if any(occursin.("(",strSet_arr)) push!(anyM.report,(3,"set read-in",string(set),"reserved character '(' in set name detected")) end
+			if any(occursin.(";",strSet_arr)) push!(anyM.report,(3,"set read-in",string(set),"reserved character ';' in set name detected")) end
+
 			# reports error if carrier names are non-unique
-			if length(strSet_arr) != length(unique(strSet_arr))
-				push!(anyM.report,(3,"set read-in",string(set),"non-unique $set names detected"))
+			if set == :carrier || set == :technology || set == :exchange
+				if length(strSet_arr) != length(unique(strSet_arr))
+					push!(anyM.report,(3,"set read-in",string(set),"non-unique $set names detected"))
+				end
 			end
 		end
 	end
@@ -94,6 +97,7 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 		unlock(anyM.lock)
 		produceMessage(anyM.options,anyM.report, 3," - Read-in parameter file: ",parFile)
 	end
+	
 	produceMessage(anyM.options,anyM.report, 2," - Read-in all parameter files")
 	return paraTemp_dic
 end
@@ -448,6 +452,14 @@ function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLngSh
     # converts parameter columns to symbols
     for i in parVal_arr parData_df[!,i[1]] = map(x -> Symbol(x),parData_df[!,i[1]]) end
 
+	
+	#if !any(occursin.("carrier",names(parData_df)))	
+	#	allPar_arr = union(map(i -> unique(parData_df[!,i[1]]),parVal_arr)...)	
+	#	if !isempty(intersect(allPar_arr,[:ratioConvInUp, :ratioConvInLow, :ratioConvInFix, :ratioConvOutUp, :ratioConvOutLow, :ratioConvOutFix]))
+	#		push!(report,(3,"parameter read-in",fileName_str,"ratios on input or output were provided without specifying a carrier"))
+	#	end
+	#end
+
     # loop over rows to read respective parameter values
 	convertParameter!(parData_df,sets,setIni_arr,parVal_arr,para_dic,setCol_dic,setLngShrt_dic,fileName_str,report,lock_)
 
@@ -534,6 +546,11 @@ function convertParameter!(parData_df::DataFrame,sets::Dict{Symbol,Tree},setIni_
 			rows_int = nrow(para_dic[par_sym])
 			for key in setdiff(namesSym(addEntry_df),namesSym(para_dic[par_sym]))
 				para_dic[par_sym][!,key] = zeros(Int, rows_int)
+			end
+
+			# ! checks if any ratios were defined without an carrier
+			if par_sym in (:ratioConvInUp, :ratioConvInLow, :ratioConvInFix, :ratioConvOutUp, :ratioConvOutLow, :ratioConvOutFix) && (!(:C in namesSym(addEntry_df)) || addEntry_df[1,:C] == 0)
+				push!(report,(3,"parameter read-in",par_sym,"ratios was defined without specifying a carrier"))
 			end
 
 			select!(addEntry_df, namesSym(para_dic[par_sym]))

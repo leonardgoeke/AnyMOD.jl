@@ -77,7 +77,7 @@ function prepareExc!(excSym_arr::Array{Symbol,1},prepAllExc_dic::Dict{Symbol,Dic
 	end	
 end
 
-# ! prepare expansion and capacity variables for exchange
+# ! prepare expansion variables for exchange
 function prepareExcExpansion!(excInt::Int,part::ExcPart,partLim::OthPart,prepExc_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},anyM::anyModel)
 
 	# ! determine dimensions of expansion variables (expansion for exchange capacities is NOT directed!)

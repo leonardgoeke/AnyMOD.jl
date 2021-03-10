@@ -89,47 +89,61 @@ function prepareTechs!(techSym_arr::Array{Symbol,1},prepAllTech_dic::Dict{Symbol
 		part = anyM.parts.tech[tSym]
         tInt = sysInt(tSym,anyM.sets[:Te])
 
-	    # dimension of expansion and corresponding capacity variables
+	    # ! dimension of expansion and corresponding capacity variables
 	    if part.type != :stock
-	        prepareExpansion!(prepTech_dic, tsYear_dic, part, tInt, anyM)
+	        prepareTeExpansion!(prepTech_dic, tsYear_dic, part, tInt, anyM)
 
 			for expan in collectKeys(keys(prepTech_dic))
 				prepareCapacity!(part,prepTech_dic,vcat(map(x -> x[!,removeVal(x)],prepTech_dic[expan])...),Symbol(replace(string(expan),"exp" => "capa")),anyM, sys = tInt)
 			end
 		end
 
-		# check for capacities variables that have to be created, because of residual capacities provided
-		addResidualCapaTech!(prepTech_dic, part, tInt, anyM)
-
-		# ensure consistency among different storage capacities (to every storage in- or output capacity a corresponding storage size has to exist)
-		stKey_arr = collectKeys(keys(prepTech_dic))
-
-		if !isempty(intersect([:capaStIn,:capaStOut],stKey_arr))
-			# determines all defined storage in- and output capacities
-			allSt_arr = filter(z -> !isempty(z), vcat(map(y -> collect(map(x -> getfield(prepTech_dic[y],x),(:var,:resi))),intersect([:capaStIn,:capaStOut],stKey_arr))...))
-			relSt_df = unique(vcat(map(w -> select(w,intCol(w)), allSt_arr)...))
-
-			if isempty(relSt_df) continue end
-
-			# finds cases where no storage size capacity can be matched to in- or output and adds corresponding entries
-			if :capaStSize in stKey_arr
-				newSize_df = (part.type == :stock ? [:resi,] : [:resi,:var]) |> 
-								(z -> vcat(prepTech_dic[:capaStSize].var,antijoin(relSt_df,unique(vcat(map(u -> getfield(prepTech_dic[:capaStSize],u) |> (k -> select(k,intCol(k))) ,z)...)), on = names(relSt_df))))
-				prepTech_dic[:capaStSize] = (var = newSize_df, resi = prepTech_dic[:capaStSize].resi)
-			else
-				prepTech_dic[:capaStSize]= (var = relSt_df, resi = DataFrame())
-			end
-		end
+		# ! check for capacities variables that have to be created, because of residual capacities provided
+		addResidualCapaTe!(prepTech_dic, part, tInt, anyM)
 
 		# if any capacity variables or residuals were prepared, add these to overall dictionary
 		if collect(values(prepTech_dic)) |> (z -> any(map(x -> any(.!isempty.(getfield.(z,x))), (:var,:resi))))
 			prepAllTech_dic[tSym] = prepTech_dic
 		end
+
+	end
+end
+
+# ! prepare expansion variables for technology
+function prepareTeExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},part::AbstractModelPart,tInt::Int,anyM::anyModel)
+
+	# extract tech info
+	carGrp_ntup = part.carrier
+	balLvl_ntup = part.balLvl
+
+	tsExp_arr, rExp_arr   = [getfield.(getNodesLvl(anyM.sets[x[2]], balLvl_ntup.exp[x[1]]),:idx) for x in enumerate([:Ts,:R])]
+	tsExpSup_arr = map(x -> getDescendants(x,anyM.sets[:Ts],false,anyM.supTs.lvl) |> (y -> typeof(y) == Array{Int,1} ? y : [y] ), tsExp_arr)
+	if anyM.options.interCapa != :linear tsExp_arr = map(x -> [minimum(x)],tsExp_arr) end
+
+	expDim_arr = vcat(collect(Iterators.product(Iterators.zip(tsExp_arr,tsExpSup_arr),rExp_arr))...)
+	allMap_df =  getindex.(expDim_arr,1) |> (x -> DataFrame(Ts_exp = getindex.(x,1), Ts_expSup = getindex.(x,2), R_exp = getindex.(expDim_arr,2), Te = fill(tInt,length(expDim_arr))))
+
+	stCar_arr::Array{Int,1} = intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut)) |> (z -> isempty(z) ? Int[] : unique(union(union(map(x -> getproperty(carGrp_ntup,x),z)...)...)))
+	convCar_arr::Array{Int,1} = unique(vcat(collect.(map(x -> getproperty(carGrp_ntup,x),intersect(keys(carGrp_ntup),(:use,:gen))))...))
+
+
+	# loops over type of capacities to specify dimensions of capacity variables
+	for exp in (:Conv, :StIn, :StOut, :StSize)
+		
+		# saves required dimensions to dictionary
+		if exp == :Conv && !isempty(convCar_arr)
+			prepTech_dic[Symbol(:exp,exp)] =  (var = addSupTsToExp(allMap_df,part,exp,tsYear_dic,anyM), resi = DataFrame())
+		elseif exp != :Conv && !isempty(stCar_arr)
+			prepTech_dic[Symbol(:exp,exp)] =  (var = addSupTsToExp(combine(groupby(allMap_df,namesSym(allMap_df)), :Te => (x -> collect(1:countStGrp(carGrp_ntup))) => :id),part,exp,tsYear_dic,anyM), resi = DataFrame())
+		else
+			continue
+		end
+		
 	end
 end
 
 # ! add entries with residual capacities for technologies
-function addResidualCapaTech!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,tInt::Int,anyM::anyModel)
+function addResidualCapaTe!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,tInt::Int,anyM::anyModel)
 
 	carGrp_ntup = part.carrier
 	stCar_arr = intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut)) |> (z -> isempty(z) ? Int[] : unique(union(union(map(x -> getproperty(carGrp_ntup,x),z)...)...)))
@@ -165,7 +179,7 @@ end
 function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},prepTech_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,))
-	hasSt_boo = (:capaStIn in keys(prepTech_dic) || :capaStOut in keys(prepTech_dic))
+	hasSt_boo = :capaStSize in keys(prepTech_dic)
 
 	for va in collectKeys(keys(part.carrier)) |> (x -> hasSt_boo  ? [:stLvl,x...]  : x) # loop over all relevant kind of variables
 		conv_boo = va in (:gen,:use) && :capaConv in keys(prepTech_dic)
@@ -175,7 +189,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
 		elseif hasSt_boo && !(va in (:gen,:use))
-			basis_df = orderDf(copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[collect(intersect(keys(prepTech_dic),[:capaStIn,:capaStOut]))[1]]))...))))
+			basis_df = orderDf(copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[:capaStSize]))...))))
 			# gets array of carriers defined for each group of storage
 			subField_arr = intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(part.carrier))
 			idC_dic = Dict(y => union(map(x -> getfield(part.carrier,x)[y],subField_arr)...) for y in 1:length(part.carrier[subField_arr[1]]))
