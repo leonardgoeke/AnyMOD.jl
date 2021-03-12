@@ -498,7 +498,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
 
     # parameters to enforce a fixed production profile
     parDef_dic[:mustOut] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :carrierOut, mode = (:convOut,)))
-    parDef_dic[:desFac] = (dim = (:Ts_expSup, :Ts_disSup, :R_dis, :C, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :C => :up, :Te => :up), part = :techConv)
+    parDef_dic[:desFac] = (dim = (:Ts_expSup, :Ts_disSup, :R_dis, :C, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :C => :up, :Te => :up, :R_dis => :avg_any), part = :techConv)
 
     # ! further dispatch parameters
 

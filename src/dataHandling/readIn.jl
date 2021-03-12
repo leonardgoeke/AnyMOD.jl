@@ -450,15 +450,9 @@ function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLngSh
     parVal_arr = isempty(oprLvl_arr) ? [[:parameter,:value]] : [[Symbol("parameter_",j),Symbol("value_",j)] for j in unique(oprLvl_arr)]
 
     # converts parameter columns to symbols
-    for i in parVal_arr parData_df[!,i[1]] = map(x -> Symbol(x),parData_df[!,i[1]]) end
-
-	
-	#if !any(occursin.("carrier",names(parData_df)))	
-	#	allPar_arr = union(map(i -> unique(parData_df[!,i[1]]),parVal_arr)...)	
-	#	if !isempty(intersect(allPar_arr,[:ratioConvInUp, :ratioConvInLow, :ratioConvInFix, :ratioConvOutUp, :ratioConvOutLow, :ratioConvOutFix]))
-	#		push!(report,(3,"parameter read-in",fileName_str,"ratios on input or output were provided without specifying a carrier"))
-	#	end
-	#end
+    for i in parVal_arr 
+		parData_df[!,i[1]] = Symbol.(parData_df[!,i[1]])
+	end
 
     # loop over rows to read respective parameter values
 	convertParameter!(parData_df,sets,setIni_arr,parVal_arr,para_dic,setCol_dic,setLngShrt_dic,fileName_str,report,lock_)

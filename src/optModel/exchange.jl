@@ -103,7 +103,7 @@ function prepareExcExpansion!(excInt::Int,part::ExcPart,partLim::OthPart,prepExc
 
 		# save result to dictionary for variable creation
 		exp_df = unique(addSupTsToExp(exExp_df,part,:Exc,tsYear_dic,anyM))
-		exp_df[!,:dir] = map(x -> part.dir,eachrow(exp_df))
+		exp_df[!,:dir] .= part.dir
 		prepExc_dic[:expExc] = (var = orderDf(exp_df), resi = DataFrame())
 	end
 end
