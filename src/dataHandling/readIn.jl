@@ -21,6 +21,11 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 		end
 		setData_dic[setShort_sym] = convertReadIn(CSV.read(setFile;delim = anyM.options.csvDelim[1]),setFile,set_arr,setLngShrt_dic,anyM.report,anyM.lock)
 
+		if isempty(setData_dic[setShort_sym])
+			push!(anyM.report,(2,"set read-in",string(setLong_sym),"detected an empty set file, check your node definition (a common mistake is to do not define any specific nodes on the first level)"))
+			continue
+		end
+
 		if setShort_sym == :scr
 			# exception for scenario file, checks column naming and manipulates tree
 			if namesSym(setData_dic[setShort_sym]) != [:scenario]
