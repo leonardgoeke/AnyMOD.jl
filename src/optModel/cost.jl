@@ -423,7 +423,7 @@ function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symb
 
 	# create variables for cost entry and builds corresponding expression for equations controlling them
 	cost_df = createVar(cost_df,string(costPar_sym),NaN,optModel,lock_,sets_dic, scaFac = scaCost_fl, lowBd = lowBd)
-	cost_df[!,:cnsExpr] = map(x -> x.expr - x.var, eachrow(cost_df))
+	cost_df[!,:cnsExpr] = @expression(anyM.optModel,cost_df[:expr] - cost_df[:var])
 	select!(cost_df,Not(:expr))
 
 	# scales cost expression

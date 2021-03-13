@@ -42,7 +42,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		
     produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
 
-    # create dispatch variables
+    # create dispatch variables and constraints
 	if isempty(anyM.subPro) || anyM.subPro != (0,0)
 	    createDispVar!(part,modeDep_dic,ts_dic,r_dic,prepTech_dic,anyM)
 	    produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
@@ -270,7 +270,7 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	end
 
 	# aggregate in and out variables respectively and create actual constraint
-	cns_df[!,:cnsExpr] = map(x -> sum(getindex(x,in_arr))*x.eff - sum(getindex(x,out_arr)),eachrow(cns_df))
+	cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[in_arr[1]] .* cns_df[:eff] .- cns_df[out_arr[1]])
 	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),:equal)
 end
 
@@ -364,8 +364,8 @@ function createStBal(part::TechPart,anyM::anyModel)
 			cnsC_df[!,:stInflow] .= 0.0
 		end
 
-		# ! create final equation
-		cnsC_df[!,:cnsExpr] = map(x -> x.stLvlPrev * x.stDis + x.stInflow + x.in - x.out - x.stLvl,eachrow(cnsC_df))
+		# ! create final equation	
+		cnsC_df[!,:cnsExpr] = @expression(anyM.optModel, cnsC_df[:stLvlPrev] .* cnsC_df[:stDis] .+ cnsC_df[:stInflow] .+ cnsC_df[:in] .- cnsC_df[:out] .- cnsC_df[:stLvl])
 		cCns_arr[idx] = cnsC_df
 	end
 
@@ -421,7 +421,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},prep
 		# create capacity variables for must output and match them with general capacity variables
 		part.var[Symbol("must",makeUp(capa[1]))] = createVar(var_df[!,Not(:var)],string("must",makeUp(capa[1])),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
 		bothVar_df = innerjoin(rename(var_df,:var => :capa),part.var[Symbol("must",makeUp(capa[1]))],on = intCol(var_df))
-		bothVar_df[!,:cnsExpr] = map(x -> x.var - x.capa,eachrow(bothVar_df))
+		bothVar_df[!,:cnsExpr] = @expression(anyM.optModel, bothVar_df[:var] .- bothVar_df[:capa])
 		cns_dic[Symbol("must",makeUp(capa[1]))] = cnsCont(select(bothVar_df,Not([:var,:capa])),:smaller)
 	end
 

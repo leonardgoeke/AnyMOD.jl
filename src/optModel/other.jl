@@ -30,7 +30,7 @@ function createTradeVarCns!(partBal::OthPart,ts_dic::Dict{Tuple{Int64,Int64},Arr
 				cns_df[!,:cap] = cns_df[!,:cap] .* sca_arr
 
 				# prepare, scale and create constraints
-				cns_df[!,:cnsExpr] = map(x -> x.var - x.cap, eachrow(cns_df))
+				cns_df[!,:cnsExpr] = cns_df[:var] .- cns_df[:cap]
 				scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 				partBal.cns[trdCap_sym] = createCns(cnsCont(cns_df,:smaller),anyM.optModel)
 
@@ -140,7 +140,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 			delete!(cns_df, unEtr_arr) # remove rows for unrequired energy balances	
 			
 			# create final column with import and export variables
-			cns_df[!,:excVar] =  excFrom_arr[.!unEtr_arr] .- excToMain_arr[.!unEtr_arr] .- excToDesc_arr[.!unEtr_arr]
+			cns_df[!,:excVar] = @expression(anyM.optModel, excFrom_arr[.!unEtr_arr] .- excToMain_arr[.!unEtr_arr] .- excToDesc_arr[.!unEtr_arr])
 		end
 		
 		# ! add demand from descendant carriers
@@ -159,7 +159,10 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		negVar_arr = intersect([:crtVar,:trdSellVar,:dem],namesSym(cns_df))
 		posVar_arr = intersect([:techVar,:excVar,:lssVar,:trdBuyVar],namesSym(cns_df))
 
-		cns_df[!,:cnsExpr] = map(x -> (isempty(posVar_arr) ? AffExpr() : sum(getindex(x,posVar_arr))) - (isempty(negVar_arr) ? AffExpr() : sum(getindex(x,negVar_arr))), eachrow(cns_df))
+		aggCol!(cns_df,posVar_arr)
+		aggCol!(cns_df,negVar_arr)
+		cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[posVar_arr[1]] .- cns_df[negVar_arr[1]])
+
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		filter!(x -> x.cnsExpr != AffExpr(),cns_df)
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
@@ -321,7 +324,7 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	end
 	# add missing capacity variables
 	if :missCapa in keys(partBal.var)
-		cns_df[!,:var] = cns_df[!,:var] .+ aggDivVar(partBal.var[:missCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets)
+		add_to_expression!.(cns_df[!,:var], aggDivVar(partBal.var[:missCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets))
 	end
 
 	# ! create constraint

@@ -51,6 +51,9 @@ end
 
 #region # * miscellaneous data processing
 
+# ! aggregates all columns in array of dataframe to first column in array
+aggCol!(col_df::DataFrame,col_arr::Array{Symbol,1}) = foreach(x -> add_to_expression!.(col_df[col_arr[1]],col_df[x]),col_arr[2:end])
+
 # ! new plus function to avoid error when one element being added up is nothing
 plus(a::Int,b::Int) = a + b
 plus(a::Int,b::Nothing) = a
