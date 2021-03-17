@@ -27,6 +27,8 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
         lookUp_sym = Symbol(split(String(colNam_arr[i]),"_")[1])
 		if !(lookUp_sym in keys(sets)) && lookUp_sym == :eqn
 			print_df[!,i] = string.(print_df[!,i])
+		elseif lookUp_sym == :dir
+			print_df[!,i] = map(x -> x == 1 ? "yes" : "no",print_df[!,i])
         elseif lookUp_sym in keys(sets)
 			print_df[!,i] = map(x -> createFullString(x,sets[lookUp_sym]),print_df[!,i])
         end
@@ -34,8 +36,8 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
 
 	# rename columns
 	colName_dic = Dict(:Ts_dis => :timestep_dispatch, :Ts_exp => :timestep_expansion, :Ts_expSup => :timestep_superordinate_expansion, :Ts_disSup => :timestep_superordinate_dispatch,
-															:R => :region, :R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Te => :technology,
-																:cns => :constraint, :var => :variable)
+															:R => :region, :R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Sys => :system, :Te => :technology, :Exc => :exchange,
+																:dir => :directed, :cns => :constraint, :var => :variable)
 
 	rename!(print_df,map(x -> x in keys(colName_dic) ? colName_dic[x] : x, namesSym(print_df)) )
 	if :csv in rtnDf
@@ -56,7 +58,7 @@ Writes results to `.csv` file with content depending on `reportType`. Available 
 reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{reportType}(),anyM::anyModel; kwargs...)
 
 # ! summary of all capacity and dispatch results
-function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
+function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true)
 
     techSym_arr = collect(keys(anyM.parts.tech))
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], id = Int[], variable = Symbol[], value = Float64[])
@@ -74,8 +76,9 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 				ts_dic = Dict(x => anyM.sets[:Ts].nodes[x].lvl == anyM.supTs.lvl ? x : getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(dem_df[!,:Ts_dis]))
 				dem_df[!,:Ts_disSup] = map(x -> ts_dic[x],dem_df[!,:Ts_dis])
 			else
-				dem_df[!,:Ts_disSup] .= anyM.supTs.step
+				dem_df[!,:Ts_disSup] .= collect(anyM.supTs.step) |> (z -> map(x -> z,1:size(dem_df,1)))
 				dem_df = flatten(dem_df,:Ts_disSup)
+				dem_df[!,:Ts_dis] = dem_df[!,:Ts_disSup]
 			end
 
 			# artificially add scenario dimensions, if none exist
@@ -84,7 +87,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 				dem_df = flatten(dem_df,:scr)
 			end
 
-			dem_df[!,:val] = dem_df[!,:val]	.* getResize(dem_df,anyM.sets[:Ts],anyM.supTs) ./ anyM.options.redStep
+			dem_df[!,:val] = dem_df[!,:val]	.*  getResize(dem_df,anyM.sets[:Ts],anyM.supTs) ./ anyM.options.redStep
 
 			allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
 			allLvlR_arr = unique(dem_df[!,:lvlR])
@@ -100,7 +103,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 			dem_df[!,:id] .= 0
 			dem_df[!,:variable] .= :demand
 			if wrtSgn dem_df[!,:value] = dem_df[!,:value] .* -1 end
-			allData_df = vcat(allData_df,flatten(dem_df,:R_dis))
+			append!(allData_df,flatten(dem_df,:R_dis))
 		end
 	end
 
@@ -110,7 +113,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], id = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
 		# get installed capacity values
-		for va in intersect(keys(part.var),(:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :insCapaConv, :insCapaStIn, :insCapaStOut, :insCapaStSize))
+		for va in intersect(keys(part.var),(:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :insCapaConv, :insCapaStIn, :insCapaStOut, :insCapaStSize, :mustCapaConv, :mustCapaStOut))
 			capa_df = copy(part.var[va])
 			if va in (:expConv, :expStIn, :expStOut, :expStSize)
 				capa_df = flatten(capa_df,:Ts_expSup)
@@ -118,7 +121,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 				rename!(capa_df,:Ts_expSup => :Ts_disSup)
 			end
 			# set carrier column to zero for conversion capacities and add a spatial dispatch column
-			if va in (:expConv,:capaConv,:insCapaConv)
+			if va in (:expConv,:capaConv,:insCapaConv,:mustCapaConv)
 				capa_df[!,:id] .= 0
 			end
 
@@ -129,11 +132,11 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 			capa_df[!,:variable] .= va
 			capa_df[!,:scr] .= 0
 			capa_df[!,:C] .= 0
-			tech_df = vcat(tech_df,capa_df)
+			append!(tech_df,capa_df)
 		end
 
 		# add tech dataframe to overall data frame
-		allData_df = vcat(allData_df,tech_df)
+		append!(allData_df,filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),tech_df))
 	end
 
 	# ! get dispatch variables
@@ -157,56 +160,73 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		# adjust sign, if enabled
 		if wrtSgn && va in (:use,:stIn,:stIntIn,:stExtIn,:crt,:trdSell) disp_df[!,:value] = disp_df[!,:value] .* -1 end
 
-		allData_df = vcat(allData_df,disp_df)
+		append!(allData_df,filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),disp_df))
 	end
 
 	# ! get exchange variables aggregated by import and export
 	allExc_df = getAllVariables(:exc,anyM)
+	allExc_arr = unique(fullExc_df[!,:Exc])
 
 	if !isempty(allExc_df)
-		# add losses to all exchange variables
-		# TODO enable losses again 
-	    #allExc_df = getExcLosses(allExc_df,anyM.parts.exc.par,anyM.sets)
-	    # compute export and import of each region, losses are considered at import
-	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:R_from,:C,:scr]),:var => ( x -> value(sum(x))/1000) => :value),:R_from => :R_dis)
+		
+		# compute export and import of each region, losses are considered at import
+	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:R_from,:C,:scr]),:var => (x -> value(sum(x))/1000) => :value),:R_from => :R_dis)
 	    excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
 		if wrtSgn excFrom_df[!,:value] = excFrom_df[!,:value] .* -1 end
 
-		# TODO enable losses again 
-		#excTo_df = rename(combine(x -> (value = value(dot(x.var,(1 .- x.loss)))/1000,),groupby(allExc_df,[:Ts_disSup,:R_to,:C,:scr])),:R_to => :R_dis)
-		excTo_df = rename(combine(x -> (value = value(sum(x.var))/1000,),groupby(allExc_df,[:Ts_disSup,:R_to,:C,:scr])),:R_to => :R_dis)
+		# add losses to all exchange variables
+		lossExc_df = vcat(map(x -> addLossesExc(filter(y -> y.Exc == x,fullExc_df),anyM.parts.exc[sysSym(x,anyM.sets[:Exc])],anyM.sets), allExc_arr)...)
+		excTo_df = rename(combine(groupby(lossExc_df,[:Ts_disSup,:R_to,:C,:scr]),:var => (x -> value(sum(x))/1000) => :value),:R_to => :R_dis)
 	    excTo_df[!,:variable] .= :import; excTo_df[!,:Te] .= 0
 
 		excFrom_df[!,:id] .= 0
 		excTo_df[!,:id] .= 0
 
-	    allData_df = vcat(allData_df,vcat(excFrom_df,excTo_df))
+	    append!(allData_df,filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),vcat(excFrom_df,excTo_df)))
 	end
+	
 
-	# ! get full load hours for conversion, storage input and storage output
-	#=
 	flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
 
 	for flhCapa in collect(keys(flh_dic))
+		# get capacities relevant for full load hours
 		capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
 		capaFlh_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaFlh_df[!,:Ts_disSup])
 		capaFlh_df = flatten(capaFlh_df,:scr)
-		# get relevant dispatch variables for respective group
-		vlh_arr = map(eachrow(capaFlh_df)) do row
-			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te && y.scr == row.scr, allData_df)
-			if flhCapa == :capaConv
-				var_arr = unique(relRow_df[!,:variable]) |> (i -> (i,intersect(i,(:use,:stIntOut)))) |> (j -> isempty(j[2]) ? intersect(j[1],(:gen,:stIntIn)) : j[2])
-			elseif flhCapa  == :capaStIn
-				var_arr = [:stIntIn,:stExtIn]
-			elseif flhCapa  == :capaStOut
-				var_arr = [:stIntOut,:stExtOut]
-			end
-			return sum(abs.(filter(y -> y.variable in var_arr,relRow_df)[!,:value]))/row.value*1000
+		
+		# get dispatch quantities relevant for full load hours
+		if flhCapa == :capaConv
+			var_arr = [:use,:gen,:stIntIn,:stIntOut]
+		elseif flhCapa  == :capaStIn
+			var_arr = [:stIntIn,:stExtIn]
+		elseif flhCapa  == :capaStOut
+			var_arr = [:stIntOut,:stExtOut]
 		end
-		capaFlh_df[!,:value] = vlh_arr
+		
+		relDisp_df = filter(x -> x.variable in var_arr,allData_df)
+		if flhCapa == :capaConv
+			rename_dic = Dict(:use => :in, :gen => :out, :stIntIn => :out, :stIntOut => :in)
+			relDisp_df[!,:variable] = map(x -> rename_dic[x], relDisp_df[!,:variable])
+		else
+			relDisp_df[!,:variable] .= :st
+		end
+
+		# group dispatch quantities and match with capacity data
+		aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr,:variable]), :value => (x -> sum(abs.(x))) => :value),:variable => :variable2, :value => :value2)
+		
+		if flhCapa == :capaConv
+			# match with input quantities where they are defined, otherwise check of output quantities
+			convIn_df = innerjoin(capaFlh_df,filter(x -> x.variable2 == :in,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
+			contOut_df = innerjoin(antijoin(capaFlh_df,convIn_df,on = [:Ts_disSup,:R_dis,:Te,:scr]),filter(x -> x.variable2 == :out,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
+			capaFlh_df = vcat(convIn_df,contOut_df)
+		else
+			capaFlh_df = innerjoin(capaFlh_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
+		end
+
+		capaFlh_df[!,:value] = capaFlh_df[!,:value2] ./ capaFlh_df[!,:value] .* 1000
 		capaFlh_df[!,:variable] .= flh_dic[flhCapa]
 
-		allData_df = vcat(allData_df,capaFlh_df)
+		append!(allData_df,select(capaFlh_df,Not([:variable2,:value2])))
 	end
 
 	# ! comptue storage cycles
@@ -216,21 +236,27 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		capaCyc_df = filter(x -> x.variable == :capaStSize, allData_df)
 		capaCyc_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaCyc_df[!,:Ts_disSup])
 		capaCyc_df = flatten(capaCyc_df,:scr)
-		# get relevant dispatch variables for respective group
-		cyc_arr = map(eachrow(capaCyc_df)) do row
-			relRow_df = filter(y -> y.Ts_disSup == row.Ts_disSup && y.R_dis == row.R_dis && y.Te == row.Te && y.scr == row.scr,allData_df)
-			if cycCapa == :capaStIn
-				var_arr = [:stIntIn,:stExtIn]
-			elseif cycCapa == :capaStOut
-				var_arr = [:stIntOut,:stExtOut]
-			end
-			return sum(abs.(filter(y -> y.variable in var_arr,relRow_df)[!,:value]))/row.value*1000
+		
+		# get dispatch quantities relevant for cycling
+		if cycCapa  == :capaStIn
+			var_arr = [:stIntIn,:stExtIn]
+		elseif cycCapa  == :capaStOut
+			var_arr = [:stIntOut,:stExtOut]
 		end
-		capaCyc_df[!,:value] = cyc_arr
+		
+		relDisp_df = filter(x -> x.variable in var_arr,allData_df)
+
+		# group dispatch quantities and match with capacity data
+		aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr]), :value => (x -> sum(abs.(x))) => :value), :value => :value2)
+
+		capaCyc_df = innerjoin(capaCyc_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
+		
+		# get relevant dispatch variables for respective group
+		capaCyc_df[!,:value] = capaCyc_df[!,:value2] ./ capaCyc_df[!,:value] .* 1000
 		capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
-		allData_df = vcat(allData_df,capaCyc_df)
+
+		append!(allData_df,select(capaCyc_df,Not([:value2])))
 	end
-	=#
 
 	# removes scenario column if only one scenario is defined
 	if length(unique(allData_df[!,:scr])) == 1
@@ -255,19 +281,19 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 end
 
 # ! results for costs
-function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
+function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true)
 	# prepare empty dataframe
-	allData_df = DataFrame(Ts_disSup = Int[], R = Int[], Te = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
+	allData_df = DataFrame(Ts_disSup = Int[], R_tech = Int[], R_from = Int[], R_to = Int[], Te = Int[], Exc = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
 	# loops over all objective variables with keyword "cost" in it
-	for cst in filter(x -> occursin("cost",string(x)),keys(anyM.parts.obj.var))
-		cost_df = copy(anyM.parts.obj.var[cst])
+	for cst in filter(x -> occursin("cost",string(x)),keys(anyM.parts.cost.var))
+		cost_df = copy(anyM.parts.cost.var[cst])
 		# rename all dispatch and expansion regions simply to region
 		if !isempty(intersect([:R_dis,:R_exp],namesSym(cost_df)))
-			rename!(cost_df,:R_dis in namesSym(cost_df) ? :R_dis : :R_exp => :R)
+			rename!(cost_df,(:R_dis in namesSym(cost_df) ? :R_dis : :R_exp) => :R_tech)
 		end
 		# add empty column for non-existing dimensions
-		for dim in (:Te,:C,:R,:scr)
+		for dim in (:Te,:Exc,:C,:R_tech,:R_from,:R_to,:scr)
 			if !(dim in namesSym(cost_df))
 				cost_df[:,dim] .= 0
 			end
@@ -276,7 +302,7 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{
 		cost_df[:,:variable] .= string(cst)
 		cost_df[:,:value] = value.(cost_df[:,:var])
         if :Ts_exp in namesSym(cost_df) cost_df = rename(cost_df,:Ts_exp => :Ts_disSup) end
-		allData_df = vcat(allData_df,cost_df[:,Not(:var)])
+		append!(allData_df,cost_df[:,Not(:var)])
 	end
 
 	# removes scenario column if only one scenario is defined
@@ -286,7 +312,7 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allData_df,anyM, fileName = "results_costs", rtnDf = rtnOpt)
+		csvData_df = printObject(allData_df,anyM, fileName = "results_costs", rtnDf = rtnOpt, filterFunc = rmvZero ? x -> abs(x.value) > 1e-5 : x -> true)
 	end
 
 	if :raw in rtnOpt
@@ -302,61 +328,67 @@ function reportResults(objGrp::Val{:costs},anyM::anyModel; rtnOpt::Tuple{Vararg{
 end
 
 # ! results for exchange
-function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
-	allData_df = DataFrame(Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
-	if isempty(anyM.parts.exc.var) error("No exchange data found") end
+function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true)
+	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
+	if isempty(anyM.parts.exc) error("No exchange data found") end
 
     # ! expansion variables
-	if :expExc in collectKeys(keys(anyM.parts.exc.var))
-		exp_df = copy(anyM.parts.exc.var[:expExc]) |> (x -> vcat(x,rename(x,:R_from => :R_to, :R_to => :R_from)))
-		exp_df = flatten(exp_df,:Ts_expSup)
-		select!(exp_df,Not(:Ts_disSup))
+	exp_df = getAllVariables(:expExc,anyM)
+	if !isempty(exp_df)
+		# manage superordinate dispatch
+		select!(exp_df,Not([:Ts_disSup]))
 		rename!(exp_df,:Ts_expSup => :Ts_disSup)
-
-		exp_df = combine(groupby(exp_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
+		# add direction info
+		dirExc_dir = Dict(sysInt(x,anyM.sets[:Exc]) => anyM.parts.exc[x].dir ? 1 : 0 for x in keys(anyM.parts.exc))
+		exp_df[!,:dir] = map(x -> dirExc_dir[x],exp_df[!,:Exc])
+		exp_df = combine(groupby(exp_df,[:Ts_disSup,:R_from,:R_to,:Exc,:dir]), :var => (x -> value.(sum(x))) => :value)
 		exp_df[!,:variable] .= :expExc
-	else
-		exp_df = DataFrame(Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], variable = Symbol[], value = Float64[])
+		foreach(x -> exp_df[!,x] .= 0,[:Ts_expSup,:C,:scr])
+		append!(allData_df,exp_df)
 	end
 
 	# ! capacity variables
-	capa_df = copy(anyM.parts.exc.var[:capaExc])
-	capa_df = vcat(capa_df,rename(filter(x -> x.dir == 0, capa_df),:R_from => :R_to, :R_to => :R_from))
-	capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
-	capa_df[!,:variable] .= :capaExc
-
-	if anyM.options.decommExc != :none
-		insCapa_df = copy(anyM.parts.exc.var[:insCapaExc])
-		insCapa_df = vcat(insCapa_df,rename(filter(x -> x.dir == 0, insCapa_df),:R_from => :R_to, :R_to => :R_from))
-		insCapa_df = combine(groupby(insCapa_df,[:Ts_disSup,:R_from,:R_to,:C]), :var => (x -> value.(sum(x))) => :value)
-		insCapa_df[!,:variable] .= :insCapaExc
-		capa_df = vcat(capa_df,insCapa_df)
+	for capa in (:capa,:insCapa) 
+		capa_df = getAllVariables(Symbol(capa,:Exc),anyM)
+		if !isempty(capa_df)
+			capa_df[!,:value] = value.(capa_df[!,:var])
+			capa_df[!,:variable] .= Symbol(capa,:Exc)
+			foreach(x -> capa_df[!,x] .= 0,[:C,:scr])
+			append!(allData_df,select(capa_df,Not([:var])))
+		end
 	end
+	# removes small capacity and expansion variables
+	filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),allData_df)
 
 	# ! dispatch variables
 	disp_df = getAllVariables(:exc,anyM)
-	disp_df = combine(groupby(disp_df,[:Ts_disSup,:R_from,:R_to,:C,:scr]), :var => (x -> value.(sum(x)) ./ 1000) => :value)
+	disp_df = combine(groupby(disp_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:C,:Exc,:scr]), :var => (x -> value.(sum(x)) ./ 1000) => :value)
 	disp_df[!,:variable] .= :exc
+	disp_df[!,:dir] .= 0
+	filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),disp_df)
+	append!(allData_df,disp_df)
 
 	# ! get full load hours
-	capaExt_df = replCarLeafs(copy(capa_df),anyM.sets[:C])
-	capaExt_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaExt_df[!,:Ts_disSup])
-	capaExt_df = flatten(capaExt_df,:scr)
 
-	flh_df = innerjoin(rename(select(capaExt_df,Not(:variable)),:value => :capa),rename(select(disp_df,Not(:variable)),:value => :disp),on = [:Ts_disSup,:R_from,:R_to,:C,:scr])
-	flh_df[!,:value] = flh_df[!,:disp] ./ flh_df[!,:capa] .* 1000
+	# obtain relevant dispatch and capacity values
+	aggDispC_df =  combine(groupby(disp_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc,:scr]), :value => (x -> sum(x)) => :from_to)
+	capa_df = filter(x -> x.variable == :capaExc, select(allData_df,Not([:C,:scr])))
+
+	# joins energy exchanged in both direction to each capcity
+	flh_df = joinMissing(capa_df,aggDispC_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc],:left,Dict(:scr => 0,:from_to => 0.0))
+	flh_df = joinMissing(flh_df,rename(switchExcCol(aggDispC_df),:from_to => :to_from),[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc,:scr],:left,Dict(:to_from => 0.0))
+
+	# computs full load hours, considers energy exchanged in one or both directions depending on line type (directed or un-directed)
+	flh_df[!,:value] = map(x ->  (x.dir == 0 ? (x.from_to + x.to_from) : x.from_to) / x.value * 1000 ,eachrow(flh_df))
 	flh_df[!,:variable] .= :flhExc
+	flh_df[!,:C] .= 0
 
-	# ! merge and print all data
-	capa_df = vcat(exp_df,capa_df)
-	capa_df[!,:scr] .= 0
-	allData_df = vcat(capa_df,disp_df,select(flh_df,Not([:capa,:disp])))
-	select!(allData_df,orderDim(namesSym(allData_df)))
+	filter(x -> ((x.R_from == 38 && x.R_to == 111) || (x.R_from == 111 && x.R_to == 38)) && x.Exc == 6 && x.Ts_disSup == 7,getAllVariables(:exc,anyM))
+	filter(x -> ((x.R_from == 38 && x.R_to == 111) || (x.R_from == 111 && x.R_to == 38)) && x.Exc == 6 && x.Ts_disSup == 7,capa_df)
 
-	# removes scenario column if only one scenario is defined
-	if length(unique(allData_df[!,:scr])) == 1
-		select!(allData_df,Not(:scr))
-	end
+	filter(x -> round(x.value, digits = 3) == 4380.0,flh_df)
+
+	append!(allData_df,select(flh_df,Not([:from_to,:to_from])))
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
@@ -412,7 +444,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		dem_df[!,:value] = dem_df[!,:value] .* getResize(dem_df,anyM.sets[:Ts],anyM.supTs) .* -1
 		dem_df[!,:variable] .= "demand"
 		filter!(x -> abs(x.value) > minVal, dem_df)
-		allData_dic[:out] = vcat(allData_dic[:out],select!(dem_df,Not(:C)))
+		append!(allData_dic[:out],select!(dem_df,Not(:C)))
 	end
 
 	# ! adds all technology related variables
@@ -442,43 +474,46 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 
 			# add to dictionary of dataframe for in or out
 			sign_sym = x[2] in (:use,:stExtIn) ? :out : :in
-			allData_dic[sign_sym] = vcat(allData_dic[sign_sym] ,select(add_df,Not(:var)))
+			append!(allData_dic[sign_sym],select(add_df,Not([:var])))
 		end
 	end
 
 	# ! add import and export variables
-    if :exc in keys(anyM.parts.exc.var)
-		exc_df = filterCarrier(anyM.parts.exc.var[:exc],relC_arr)
+    if !isempty(anyM.parts.exc)
+
+		relExc_arr = filter(x -> !isempty(intersect(relC_arr,anyM.parts.exc[x].carrier)), collect(keys(anyM.parts.exc)))
+	
 		if :out in signVar
-			excFrom_df = combine(groupby(filter(filterFunc,rename(copy(exc_df),:R_from => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> value(sum(x)) * -1) => :value)
-			excFrom_df[!,:variable] .= :export
+			excFrom_df = filterCarrier(vcat(map(x -> anyM.parts.exc[x].var[:exc],relExc_arr)...),relC_arr)
+			excFrom_df = combine(groupby(filter(filterFunc,rename(copy(excFrom_df),:R_from => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> value(sum(x)) * -1) => :value)
+			excFrom_df[!,:variable] .= "export"
 			filter!(x -> abs(x.value) > minVal, excFrom_df)
 			if !isempty(excFrom_df)
-				allData_dic[:out] = vcat(allData_dic[:out],excFrom_df)
+				append!(allData_dic[:out],excFrom_df)
 			end
 		end
 
 		if :in in signVar
-			addLoss_df = rename(getExcLosses(exc_df,anyM.parts.exc.par,anyM.sets),:R_to => :R_dis)
-			excTo_df = combine(x -> (value = value(dot(x.var,(1 .- x.loss))),),groupby(filter(filterFunc,addLoss_df), [:Ts_disSup,:Ts_dis,:R_dis,:scr]))
-			excTo_df[!,:variable] .= :import
+			excTo_df = filterCarrier(vcat(map(x -> anyM.parts.exc[x] |> (z -> addLossesExc(z.var[:exc],z,anyM.sets)),relExc_arr)...),relC_arr)
+			excTo_df = combine(groupby(filter(filterFunc,rename(copy(excTo_df),:R_to => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> value(sum(x))) => :value)
+			excTo_df[!,:variable] .= "import"
 			filter!(x -> abs(x.value) > minVal, excTo_df)
 			if !isempty(excTo_df)
-				allData_dic[:in] = vcat(allData_dic[:in],excTo_df)
+				append!(allData_dic[:in],excTo_df)
 			end
 		end
 	end
 
 	# ! add trade
 	agg_arr = [:Ts_dis, :R_dis, :C, :scr]
-	if !isempty(anyM.parts.trd.var)
-		for trd in intersect(keys(anyM.parts.trd.var),(:trdBuy,:trdSell))
+	if !isempty(anyM.parts.bal.var)
+		for trd in intersect(keys(anyM.parts.bal.var),(:trdBuy,:trdSell))
 			trdVar_df = copy(relDim_df)
-			trdVar_df[!,:value] = value.(filterCarrier(anyM.parts.trd.var[trd],relC_arr) |> (x -> aggUniVar(x,relDim_df,agg_arr,cRes_tup,anyM.sets))) .* (trd == :trdBuy ? 1.0 : -1.0)
+			trdVar_df[!,:value] = value.(filterCarrier(anyM.parts.bal.var[trd],relC_arr) |> (x -> aggUniVar(x,relDim_df,agg_arr,cRes_tup,anyM.sets))) .* (trd == :trdBuy ? 1.0 : -1.0)
 			trdVar_df[!,:variable] .= trd
 			filter!(x -> abs(x.value) > minVal, trdVar_df)
 			sign_sym = :trdBuy == trd ? :in : :out
-			allData_dic[sign_sym] = vcat(allData_dic[sign_sym],select(trdVar_df,Not(:C)))
+			append!(allData_dic[sign_sym],select(trdVar_df,Not(:C)))
 		end
 	end
 
@@ -488,7 +523,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		crt_df[!,:value] = value.(filterCarrier(anyM.parts.bal.var[:crt],relC_arr) |> (x -> aggUniVar(x,crt_df,agg_arr, cRes_tup,anyM.sets))) .* -1.0
 		crt_df[!,:variable] .= :crt
 		filter!(x -> abs(x.value) > minVal, crt_df)
-		allData_dic[:out] = vcat(allData_dic[:out],select(crt_df,Not(:C)))
+		append!(allData_dic[:out],select(crt_df,Not(:C)))
 	end
 
 	# ! add losted load
@@ -497,7 +532,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		lss_df[!,:value] = value.(filterCarrier(anyM.parts.bal.var[:lss],relC_arr) |> (x -> aggUniVar(x,lss_df,agg_arr, cRes_tup,anyM.sets)))
 		lss_df[!,:variable] .= :lss
 		filter!(x -> abs(x.value) > minVal, lss_df)
-		allData_dic[:in] = vcat(allData_dic[:in],select(lss_df,Not(:C)))
+		append!(allData_dic[:in],select(lss_df,Not(:C)))
 	end
 
 	# ! unstack data and write to csv
