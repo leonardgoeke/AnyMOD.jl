@@ -402,7 +402,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},prep
 	for capa in collect(filter(x ->x[1] in (:capaConv,:capaStOut),part.var))
 
 		# for conversion specific variables are sensible, 
-		if anyM.subPro != (0,0) # if created problem is a subproblem to avoid infeasibility 
+		if anyM.subPro != (0,0) && !isempty(anyM.subPro) # if created problem is a subproblem to avoid infeasibility 
 			var_df = capa[2]
 		elseif capa[1] == :capaStOut
 			if !isempty(modeDep_dic[:stExtOut]) # if storage output is mode dependant

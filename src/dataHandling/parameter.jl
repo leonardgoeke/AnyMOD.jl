@@ -959,7 +959,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
     end
 
     searchCol_arr = namesSym(srcSetIn_df)
-    paraData_df = par_obj.data
+    paraData_df = copy(par_obj.data)
 
     # removes sets the parameter is not specified for from search table and condenses search table accordingly
     redunSrc_arr = setdiff(searchCol_arr,namesSym(paraData_df))
