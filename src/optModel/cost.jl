@@ -83,7 +83,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 
 			# ! group cost expressions by system, scales groups expression and creates a variables for each grouped entry
 			allExp_df = rename(combine(x -> (expr = sum(x.disFac .* x.exp .* x.costAnn),) ,groupby(allExp_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:R_from,:R_to,:Exc])),:Ts_disSup => :Ts_exp)
-			transferCostEle!(allExp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng)
+			transferCostEle!(allExp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng,anyM)
 			reachEnd_boo = true
 		end
 		
@@ -121,7 +121,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 
 			# ! group cost expressions by system, scales groups expression and creates a variables for each grouped entry
 			allCapa_df = combine(x -> (expr = sum(x.disFac .* x.capa .* x.costOpr),), groupby(allCapa_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:R_from,:R_to,:Exc]))
-			transferCostEle!(allCapa_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng)
+			transferCostEle!(allCapa_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng,anyM)
 			reachEnd_boo = true
 		end
 
@@ -214,7 +214,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 
 			# ! group cost expressions by system, scales groups expression and creates a variables for each grouped entry
 			allExp_df = combine(x -> (expr = sum(x.disFac .* x.retro .* x.fac .* x.costAnn),) ,groupby(allRetro_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:R_from,:R_to,:Exc]))
-			transferCostEle!(allExp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng)
+			transferCostEle!(allExp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng,anyM)
 			reachEnd_boo = true
 		end
 
@@ -231,7 +231,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 		allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partCost.par[:disFac],anyM.sets,newCol = :disFac)
 		# groups cost expressions, scales groups expression and creates a variables for each grouped entry
 		allVar_df = rename(combine(x -> (expr = sum(x.disFac .* x.missCapa .* x.cost),) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C])),:R_exp => :R_dis)
-		transferCostEle!(allVar_df, partCost,:costMissCapa,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng, 0.0)
+		transferCostEle!(allVar_df, partCost,:costMissCapa,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng,anyM,0.0)
 	end
 
 	produceMessage(anyM.options,anyM.report, 2," - Created all variables and constraints for expansion related costs")
@@ -273,7 +273,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 
 			# ! group cost expressions by system, scales groups expression and creates a variables for each grouped entry
 			allDisp_df = combine(x -> (expr = sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0 .* anyM.options.redStep,) ,groupby(allDisp_df,va != :exc ? [:Ts_disSup,:R_dis,:Te,:scr] : [:Ts_disSup,:R_from,:R_to,:C,:scr]))
-			transferCostEle!(allDisp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng)
+			transferCostEle!(allDisp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM)
 			reachEnd_boo = true
 		end
 		
@@ -291,7 +291,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			emVar_df[!,:var] = emVar_df[!,:var] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(emVar_df))
 			# groups cost expressions scales groups expression and creates a variables for each grouped entry
 			emVar_df = combine(x -> (expr = sum(x.disFac .* x[!,:var] .* x.emPrc) .* anyM.options.redStep,) ,groupby(emVar_df, [:Ts_disSup,:R_exp,:C,:scr]))
-			transferCostEle!(rename(emVar_df,:R_exp => :R_dis), partCost,:costEm,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng, 0.0)
+			transferCostEle!(rename(emVar_df,:R_exp => :R_dis), partCost,:costEm,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM,0.0)
 			produceMessage(anyM.options,anyM.report, 3," - Created variables and constraints for emission costs")
 		end
 
@@ -307,7 +307,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 				allVar_df[!,va] = allVar_df[!,va] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allVar_df))
 				# groups cost expressions scales groups expression and creates a variables for each grouped entry
 				allVar_df = rename(combine(x -> (expr = sum(x.disFac .* x[!,va] .* x.cost) ./ 1000.0 .* anyM.options.redStep,) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C,:scr])),:R_exp => :R_dis)
-				transferCostEle!(allVar_df, partCost,va in (:crt,:lls) ? cost_sym : Symbol(:cost,makeUp(replace(string(cost_sym),"Prc" => ""))),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng, (va == :trdBuy ? 0.0 : NaN))
+				transferCostEle!(allVar_df, partCost,va in (:crt,:lls) ? cost_sym : Symbol(cost_sym),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM,(va == :trdSell ? NaN : 0.0))
 				reachEnd_boo = true
 			end
 		end
@@ -419,7 +419,7 @@ end
 
 # ! transfers provided cost dataframe into dataframe of overall objective variables and equations (and scales them)
 function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symbol,optModel::Model,lock_::ReentrantLock,sets_dic::Dict{Symbol,Tree},
-	coefRng_tup::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}, scaCost_fl::Float64, checkRng_fl::Float64, lowBd::Float64 = 0.0)
+	coefRng_tup::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}, scaCost_fl::Float64, checkRng_fl::Float64, anyM::anyModel,lowBd::Float64 = 0.0)
 
 	# create variables for cost entry and builds corresponding expression for equations controlling them
 	cost_df = createVar(cost_df,string(costPar_sym),NaN,optModel,lock_,sets_dic, scaFac = scaCost_fl, lowBd = lowBd)

@@ -51,6 +51,9 @@ end
 
 #region # * miscellaneous data processing
 
+# ! merges elements of named tuples for capacity preparation
+mergePrep(in_tup::NamedTuple) = isempty(in_tup.resi) ? in_tup.var : unique(vcat(in_tup.var,select(in_tup.resi,Not([:var]))))
+
 # ! aggregates all columns in array of dataframe to first column in array
 aggCol!(col_df::DataFrame,col_arr::Array{Symbol,1}) = foreach(x -> add_to_expression!.(col_df[col_arr[1]],col_df[x]),col_arr[2:end])
 
@@ -248,7 +251,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 	# ! filter entries from aggEtr_df, that based on isolated analysis of columns will not be aggregated
 	for dim in intersect(aggFilt,agg_tup)
 		set_sym = Symbol(split(string(dim),"_")[1])
-		allSrc_set = unique(srcEtr_df[!,dim]) |> (z -> union(BitSet(z),map(x -> BitSet(getDescendants(x,sets_dic[set_sym],true)),z)...))
+		allSrc_set = unique(srcEtr_df[!,dim]) |> (z -> union(BitSet(z),map(x -> BitSet(dim == :id ? Int[] : getDescendants(x,sets_dic[set_sym],true)),z)...))
 		aggEtr_df = aggEtr_df[findall(map(x -> (x in allSrc_set),aggEtr_df[!,dim])),:]
 	end
 
@@ -502,7 +505,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 							stVar_df[!,:var] = stVar_df[!,:var] .* (1 .- stVar_df[!,:val])
 							stVar_df[!,:Exc] .= 0
 							select!(stVar_df,Not(:val))
-							allVar_df = vcat(allVar_df,select(stVar_df,Not([:id])))
+							append!(allVar_df,select(stVar_df,Not([:id])))
 						end
 
 						# add expression quantifying storage losses for storage discharge
@@ -511,7 +514,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 							stLvl_df = matchSetParameter(filter(x -> x.Te == tInt,stLvl_df),part.par[:stDis],anyM.sets)
 							stLvl_df[!,:var] = stLvl_df[!,:var] .* (1 .- (1 .- stLvl_df[!,:val]) .^ sca_arr)
 							select!(stLvl_df,Not(:val))
-							allVar_df = vcat(allVar_df,select(stLvl_df,Not([:id])))
+							append!(allVar_df,select(stLvl_df,Not([:id])))
 						end
 					end
 				end
@@ -527,7 +530,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 						exc_df = rename(combine(groupby(flipExc(exc_df),filter(x -> x != :R_to,intCol(exc_df))),:var => (x -> sum(x)) => :var),:R_from => :R_dis)
 						# dimensions not relevant for exchange are set to 0
 						exc_df[!,:Te] .= 0;  exc_df[!,:M] .= 0
-						allVar_df = vcat(allVar_df,exc_df)
+						append!(allVar_df,exc_df)
 					end
 				end
 

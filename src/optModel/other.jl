@@ -178,6 +178,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 
 	produceMessage(anyM.options,anyM.report, 1," - Created energy balances for all carriers")
 	#endregion
+	
 end
 
 # ! aggregate all technology variables for energy balance
@@ -263,7 +264,6 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 		c_arr = unique(par_obj.data[!,:C])
 		filter!(x -> x.C in c_arr, allCapa_df)
 	end
-
 
 	# add dispatch regions according to output carriers
 	allCapa_df[!,:R_dis] = map(x -> r_dic[(x.R_exp,anyM.cInfo[x.C].rDis)],eachrow(allCapa_df))
@@ -367,6 +367,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		end
 
 		allLimit_df = DataFrame(var = AffExpr[])
+
 		# ! loop over respective type of limits to obtain data
 		for lim in varToPar_dic[va]
 			par_obj = copy(partLim.par[Symbol(va,lim)])
@@ -431,7 +432,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			resiVal_arr = getfield.(allLimit_df[!,:var],:constant)
 			if :Up in limitCol_arr
 				for x in findall(resiVal_arr.>  replace(allLimit_df[!,:Up] ,nothing => Inf))
-					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
+					dim_str = join(map(y -> (allLimit_df[x,y] == 0 || y == :id) ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(2,"limit",string(va),"residual values already exceed the upper limit for: " * dim_str))
 					unlock(anyM.lock)

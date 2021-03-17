@@ -523,18 +523,19 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 	subPro = anyM.subPro
 
 	if subPro != (0,0) # ! case of sub-problem
+		supTs_int = anyM.supTs.step[subPro[1]]
 
 		# get tuple of unrequired time-steps and scenarios
-		rmvId_tup = (Ts_dis = map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x != subPro[1],collect(anyM.supTs.step))) |> (y -> isempty(y) ? Int[] : union(y...)),
-							Ts_exp = map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x > subPro[1],collect(anyM.supTs.step))) |> (y -> isempty(y) ? Int[] : union(y...)),
+		rmvId_tup = (Ts_dis = map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x != supTs_int,collect(anyM.supTs.step))) |> (y -> isempty(y) ? Int[] : union(y...)),
+							Ts_exp = map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x > supTs_int,collect(anyM.supTs.step))) |> (y -> isempty(y) ? Int[] : union(y...)),
 																scr = filter(x -> x != subPro[2] && x != 0,getfield.(values(anyM.sets[:scr].nodes),:idx)))
 
 		# remove unrequired nodes from trees of scenarios
 		foreach(y ->  delete!(anyM.sets[:scr].nodes,y),rmvId_tup.scr)
 
 		# rewrite information an superordinate time-steps
-		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(subPro[1],), sca = filter(x -> x[1][1] == subPro[1],anyM.supTs.sca),
-																	scr = Dict(subPro[1] => [subPro[2],]), scrProp = filter(x -> x[1] == (subPro[1],subPro[2]), anyM.supTs.scrProp))
+		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(supTs_int,), sca = filter(x -> x[1][1] == supTs_int,anyM.supTs.sca),
+																	scr = Dict(supTs_int => [subPro[2],]), scrProp = filter(x -> x[1] == (supTs_int,subPro[2]), anyM.supTs.scrProp))
 
 		# ! adjust dictionaries for expansion preparation
 
@@ -546,7 +547,12 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 			for etr in collectKeys(keys(prepSys_dic[sys][sSym]))
 				var_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepSys_dic[sys][sSym][etr].var)
 				resi_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepSys_dic[sys][sSym][etr].resi)
-				prepSys_dic[sys][sSym][etr] = (var = var_df,resi = resi_df)
+				# remove entirely if no capacities exist
+				if isempty(var_df) && isempty(resi_df)
+					delete!(prepSys_dic[sys],sSym)
+				else
+					prepSys_dic[sys][sSym][etr] = (var = var_df,resi = resi_df)
+				end
 			end
 		end
 
@@ -566,7 +572,7 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 			end
 		end
 		# remove unrequired parameter data from all other objects
-		for pName in (:trd,:bal,:lim,:cost,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
+		for pName in (:bal,:lim,:cost,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
 			if getfield(anyM.parts,pName).par[parName].problem == :top
 				delete!(getfield(anyM.parts,pName).par,parName)
 			else
@@ -580,7 +586,7 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 			end
 		end
 
-		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be a sub-problem for time-step '$(createFullString(subPro[1],anyM.sets[:Ts]))'$(getScrName(subPro[2],anyM.sets[:scr]))")
+		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be a sub-problem for time-step '$(createFullString(supTs_int,anyM.sets[:Ts]))'$(getScrName(subPro[2],anyM.sets[:scr]))")
 	else # ! case of top-problem
 
 		# ! remove parameter data
@@ -591,7 +597,7 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 			end
 		end
 		# remove unrequired parameter data from all other objects
-		for pName in (:trd,:bal,:lim,:cost,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
+		for pName in (:bal,:lim,:cost,:obj), parName in collectKeys(keys(getfield(getfield(anyM.parts,pName),:par)))
 			if getfield(anyM.parts,pName).par[parName].problem == :sub
 				delete!(getfield(anyM.parts,pName).par,parName)
 			end

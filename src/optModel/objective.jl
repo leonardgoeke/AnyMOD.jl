@@ -62,7 +62,7 @@ function createObjective!(obj_dic::Dict{Symbol,NamedTuple},anyM::anyModel,minimi
 	if anyM.subPro == (0,0)
 		info = 
 		push!(partObj.var[:objVar],(name = :benders, var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)),"allCut")))
-		partObj.cns[:bendersCuts] = DataFrame(id=Int[], Ts_disSup = Int[], scr = Int[], cut = String[], cns = ConstraintRef[])
+		partObj.cns[:bendersCuts] = DataFrame(id=Int[], Ts_disSup = Int[], scr = Int[], cns = ConstraintRef[])
 	end
 
 	# ! sets overall objective variable with upper limits and according to weights provided in dictionary

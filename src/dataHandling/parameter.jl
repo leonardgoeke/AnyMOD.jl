@@ -497,8 +497,8 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:cycStOutFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_dis, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :scr => :up, :id => :up, :Te => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any), part = :techSt)
 
     # parameters to enforce a fixed production profile
-    parDef_dic[:mustOut] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :carrierOut, mode = (:convOut,)))
-    parDef_dic[:desFac] = (dim = (:Ts_expSup, :Ts_disSup, :R_dis, :C, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :C => :up, :Te => :up, :R_dis => :avg_any), part = :techConv)
+    parDef_dic[:mustOut] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :C, :scr),   problem = :sub,  defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :carrierOut, mode = (:convOut,)))
+    parDef_dic[:desFac] =  (dim = (:Ts_expSup, :Ts_disSup, :R_dis, :C, :Te, :id), problem = :both, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :C => :up, :Te => :up, :R_dis => :avg_any), part = :techConv)
 
     # ! further dispatch parameters
 
@@ -506,8 +506,8 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:scrProp] = (dim = (:Ts_sup, :scr), problem = :sub, defVal = nothing, herit = (:scr => :up, :Ts_sup => :up, :Ts_sup => :avg_any), part = :obj)
 
     # demand related parameters
-    parDef_dic[:capaDem] = (dim = (:Ts_disSup, :R_dis, :C), problem = :top, defVal = nothing, herit = (:R_dis => :sum_any, :Ts_disSup => :avg_any), part = :bal)
-    parDef_dic[:costMissCapa] = (dim = (:Ts_disSup, :R_dis, :C), problem = :top, defVal = nothing, herit =   (:Ts_disSup => :up, :R_dis => :up, :C => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any, :C => :avg_any), part = :bal)
+    parDef_dic[:capaDem] =      (dim = (:Ts_disSup, :R_dis, :C), problem = :both, defVal = nothing, herit = (:R_dis => :sum_any, :Ts_disSup => :avg_any), part = :bal)
+    parDef_dic[:costMissCapa] = (dim = (:Ts_disSup, :R_dis, :C), problem = :both, defVal = nothing, herit = (:Ts_disSup => :up, :R_dis => :up, :C => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any, :C => :avg_any), part = :bal)
 
     parDef_dic[:dem]     = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = 0.0,     herit = (:Ts_dis => :avg_any, :R_dis  => :sum_any, :scr => :up),             					part = :bal)
     parDef_dic[:costCrt] = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
@@ -995,8 +995,8 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
                 cntMatch_int = size(newMatch_df,1)
 
                 # add new rows to both table with matches and parameter data
-                paraData_df = vcat(paraData_df, useNew ? newData_df : antijoin(newData_df,newMatch_df, on = srcCol_arr))
-                paraMatch_df = vcat(paraMatch_df,newMatch_df)
+                append!(paraData_df, useNew ? newData_df : antijoin(newData_df,newMatch_df, on = srcCol_arr))
+                append!(paraMatch_df,newMatch_df)
 
                 # removes newly matched values from search and leaves loop if everything is matched now
                 if cntMatch_int == size(noMatch_df,1)
@@ -1012,7 +1012,11 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
             if !allMatch_boo && defVal_fl != nothing && useDef
                 defaultMatch_df = noMatch_df
                 defaultMatch_df[!,:val] = fill(defVal_fl,cntNoMatch_int)
-                paraMatch_df = isempty(paraMatch_df) ? defaultMatch_df : vcat(paraMatch_df,defaultMatch_df)
+                if isempty(paraMatch_df)
+                    paraMatch_df = defaultMatch_df 
+                else
+                    append!(paraMatch_df,defaultMatch_df)
+                end
             end
         end
     end
@@ -1109,7 +1113,6 @@ function heritParameter_rest(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{I
         for row in eachrow(paraDataGrp_df)
             # either "full" is not used or for all children an initial value was provided
             if !heritFull_boo || isempty(setdiff(childPar_dic[row.pare],full_dic[row.pare]))
-                #checkNew_tup = NamedTuple{Tuple(vcat(heritSet_sym,noHeritSet_tup...))}((row.pare,map(x -> getproperty(row,x),noHeritSet_tup)...))
                 checkNew_tup = (row.pare,map(x -> getproperty(row,x),noHeritSet_tup)...)
                 # writes values if non-existing in table so far
                 if !(checkNew_tup in existKey_arr)
@@ -1128,6 +1131,7 @@ end
 
 # ! matches limiting parameter with data, this is not straightforward, because not only can limits be aggregated to match with a variable, but also variales are aggregated to match with a limit
 function matchLimitParameter(allVar_df::DataFrame,par_obj::ParElement,anyM::anyModel)
+    
     agg_tup = tuple(intCol(par_obj.data)...)
 
     # aggregate search variables according to dimensions in limit parameter
