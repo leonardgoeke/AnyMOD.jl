@@ -299,7 +299,7 @@ function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{S
 			end
 		end
 		# obtain values and write to dataframe
-		cost_df[:,:variable] .= string(cst)
+		cost_df[:,:variable] .= cst
 		cost_df[:,:value] = value.(cost_df[:,:var])
         if :Ts_exp in namesSym(cost_df) cost_df = rename(cost_df,:Ts_exp => :Ts_disSup) end
 		append!(allData_df,cost_df[:,Not(:var)])
