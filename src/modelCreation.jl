@@ -63,7 +63,6 @@ function createOptModel!(anyM::anyModel)
 	tech_itr = collect(enumerate(techSym_arr))
 
 	@threads for (idx,tSym) in tech_itr
-		println(tSym)
 		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,yTs_dic,r_dic,anyM)
 	end
 
