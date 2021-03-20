@@ -1040,16 +1040,14 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 		allVar_df = addEnergyCont(allVar_df,part,sets_dic)
 
 		# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
+		ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:ava,info_ntup.capa)],sets_dic, newCol = :ava)[!,:ava]
 		if va != :exc
-			ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:ava,info_ntup.capa)],sets_dic, newCol = :ava)[!,:ava]
 			if type_sym in (:convOut,:stOut)
 				ava_arr = matchSetParameter(allVar_df,part.par[type_sym == :convOut ? :effConv : :effStOut],sets_dic,newCol = :eff)[!,:eff] .* ava_arr
 			end
 			allVar_df[!,:var] = @expression(optModel, allVar_df[!,:var] .* 1 ./ ava_arr)
 		else
-			allVar_df = matchExcParameter(:avaExc,allVar_df,part,sets_dic)
-			select!(allVar_df,Not([:val]))
-
+			allVar_df[!,:var] = allVar_df[!,:var] .* 1 ./ ava_arr
 			if !part.dir allVar_df = flipExc(allVar_df) end
 		end
 

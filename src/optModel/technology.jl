@@ -268,6 +268,8 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	end
 
 	# aggregate in and out variables respectively and create actual constraint
+	aggCol!(cns_df,in_arr)
+	aggCol!(cns_df,out_arr)
 	cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[in_arr[1]] .* cns_df[:eff] .- cns_df[out_arr[1]])
 	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),:equal)
 end
