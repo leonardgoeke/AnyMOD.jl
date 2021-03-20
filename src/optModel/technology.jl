@@ -31,6 +31,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		if part.type == :unrestricted
 			push!(anyM.report,(3,"must output","","must-run parameter for technology '$(tech_str)' ignored, because technology is unrestricted,"))
 		else
+			computeDesFac!(part,yTs_dic,anyM)
 			prepareMustOut!(part,modeDep_dic,prepTech_dic,yTs_dic,r_dic,cns_dic,anyM)
 		end
 	end
@@ -374,35 +375,13 @@ end
 # ! computes design factors and create specific variables plus corresponding contraint for must run capacities where sensible
 function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},prepTech_dic::Dict{Symbol,NamedTuple},yTs_dic::Dict{Int64,Int64},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 
-	#region # * check for pre-defined design factors and compute them were none are defined
-
-	if :desFac in keys(part.par)
-		# get all potential output capacities
-		desFac_df = orderDf(unique(vcat(map(x -> mergePrep(prepTech_dic[x]) |> (z -> x == :capaStOut ? z : insertcols!(copy(z), 1, :id => fill(0,size(z,1)))) ,intersect((:capaConv,:capaStOut),keys(prepTech_dic)))...)))
-		# add potential output carriers
-		desFac_df[!,:C] = union(map(x -> union(getfield(part.carrier,x)...), intersect(keys(part.carrier),(:gen,:stExtOut)))...) |> (x -> map(y -> x, 1:size(desFac_df,1)))
-		desFac_df = flatten(desFac_df,:C)
-		# add dispatch regions according to output carriers
-		desFac_df[!,:R_dis] = map(x -> r_dic[(x.R_exp,anyM.cInfo[x.C].rDis)],eachrow(desFac_df))
-		desFac_df = flatten(desFac_df,:R_dis)
-
-		part.par[:desFac].data = matchSetParameter(select(desFac_df,Not([:R_exp])),part.par[:desFac],anyM.sets)
-	else
-		parDef_ntup = (dim = (:Ts_expSup, :Ts_disSup, :R_dis, :C, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :C => :up, :Te => :up, :R_dis => :avg_any), part = :techConv)
-		part.par[:desFac] = ParElement(DataFrame(),parDef_ntup,:desFac,anyM.report)
-		part.par[:desFac].data = DataFrame(Ts_expSup = Int[],Ts_disSup = Int[],R_dis = Int[],C = Int[],Te = Int[], id = Int[], val = Float64[])
-	end
-	computeDesFac!(part,yTs_dic,anyM)
-
-	#endregion
-
 	#region # * adds specific variables for share of capacity used to satisfy must-run where sensible (for example chp plant in industry that could also have more capacity than required to be able to operate more flexible), 
 	cMust_arr = unique(part.par[:desFac].data[!,:C])
 
 	for capa in collect(filter(x ->x[1] in (:capaConv,:capaStOut),part.var))
 
 		# for conversion specific variables are sensible, 
-		if anyM.subPro != (0,0) && !isempty(anyM.subPro) # if created problem is a subproblem to avoid infeasibility 
+		if isempty(anyM.subPro) || anyM.subPro != (0,0) # if created problem is a subproblem to avoid infeasibility 
 			var_df = capa[2]
 		elseif capa[1] == :capaStOut
 			if !isempty(modeDep_dic[:stExtOut]) # if storage output is mode dependant
@@ -514,7 +493,9 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 
 	# add computed factors to parameter data
 	if !isempty(allFac_df)
-		part.par[:desFac].data = orderDf(vcat(part.par[:desFac].data,antijoin(rename(allFac_df,:desFac => :val),part.par[:desFac].data,on = intCol(allFac_df))))
+		parDef_ntup = (dim = (:Ts_expSup, :Ts_disSup, :R_dis, :C, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :C => :up, :Te => :up, :R_dis => :avg_any), part = :techConv)
+		part.par[:desFac] = ParElement(DataFrame(),parDef_ntup,:desFac,anyM.report)
+		part.par[:desFac].data = rename(allFac_df,:desFac => :val)
 	end
 
 end

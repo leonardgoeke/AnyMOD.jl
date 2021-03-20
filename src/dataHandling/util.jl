@@ -505,7 +505,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 							stVar_df[!,:var] = stVar_df[!,:var] .* (1 .- stVar_df[!,:val])
 							stVar_df[!,:Exc] .= 0
 							select!(stVar_df,Not(:val))
-							append!(allVar_df,select(stVar_df,Not([:id])))
+							allVar_df = vcat(allVar_df,select(stVar_df,Not([:id])))
 						end
 
 						# add expression quantifying storage losses for storage discharge
@@ -514,7 +514,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 							stLvl_df = matchSetParameter(filter(x -> x.Te == tInt,stLvl_df),part.par[:stDis],anyM.sets)
 							stLvl_df[!,:var] = stLvl_df[!,:var] .* (1 .- (1 .- stLvl_df[!,:val]) .^ sca_arr)
 							select!(stLvl_df,Not(:val))
-							append!(allVar_df,select(stLvl_df,Not([:id])))
+							allVar_df = vcat(allVar_df,select(stLvl_df,Not([:id])))
 						end
 					end
 				end
@@ -530,7 +530,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 						exc_df = rename(combine(groupby(flipExc(exc_df),filter(x -> x != :R_to,intCol(exc_df))),:var => (x -> sum(x)) => :var),:R_from => :R_dis)
 						# dimensions not relevant for exchange are set to 0
 						exc_df[!,:Te] .= 0;  exc_df[!,:M] .= 0
-						append!(allVar_df,exc_df)
+						allVar_df = vcat(allVar_df,exc_df)
 					end
 				end
 

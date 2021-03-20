@@ -558,16 +558,20 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 
 		# ! remove parameter data
 		# remove unrequired parameter data from technology and exchange parts
-		for sys in (:exc,:tech), pName in collectKeys(keys(getfield(anyM.parts,sys))), parName in collectKeys(keys(getfield(getfield(anyM.parts,sys)[pName],:par)))
-			if getfield(anyM.parts,sys)[pName].par[parName].problem == :top # completely delete parameters not relating to subproblems
-				delete!(getfield(anyM.parts,sys)[pName].par,parName)
-			else # remove unrequired data, but keep the parameter itself
-				parData_df = getfield(anyM.parts,sys)[pName].par[parName].data
-				rmv_arr = intersect(namesSym(parData_df),[:Ts_dis,:scr])
-				if isempty(rmv_arr)
-					continue
-				else
-					getfield(anyM.parts,sys)[pName].par[parName].data  = filter(x -> !any(map(y -> x[y] in getfield(rmvId_tup,y),rmv_arr)),parData_df)
+		for sys in (:exc,:tech), pName in collectKeys(keys(getfield(anyM.parts,sys)))
+			println(pName)
+			allPar_arr = collectKeys(keys(getfield(getfield(anyM.parts,sys)[pName],:par)))
+			for parName in allPar_arr
+				if getfield(anyM.parts,sys)[pName].par[parName].problem == :top # completely delete parameters not relating to subproblems
+					delete!(getfield(anyM.parts,sys)[pName].par,parName)
+				elseif ((:mustOut in allPar_arr) && !(parName in (:avaConv,:avaStOut,:effConv,:effStOut,:ratioConvOutFix))) || !(:mustOut in allPar_arr) # remove unrequired data, but keep the parameter itself (parameter relevant to must-run are always kept) 
+					parData_df = getfield(anyM.parts,sys)[pName].par[parName].data
+					rmv_arr = intersect(namesSym(parData_df),[:Ts_dis,:scr])
+					if isempty(rmv_arr)
+						continue
+					else
+						getfield(anyM.parts,sys)[pName].par[parName].data  = filter(x -> !any(map(y -> x[y] in getfield(rmvId_tup,y),rmv_arr)),parData_df)
+					end
 				end
 			end
 		end
