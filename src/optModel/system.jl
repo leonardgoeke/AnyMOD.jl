@@ -190,7 +190,7 @@ end
 function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple}}},allCapaDf_dic::Dict{Symbol,DataFrame},anyM::anyModel)
 
 	for sys in (:Te,:Exc)
-		sysSym_arr = filter(x -> getfield(anyM.parts, sys == :Te ? :tech : :exc)[x].type != :stock, collect(keys(prepSys_dic[sys])))
+		sysSym_arr = filter(x -> getfield(anyM.parts, sys == :Te ? :tech : :exc)[x].type in (:mature,:emerging), collect(keys(prepSys_dic[sys])))
 
 		for sSym in sysSym_arr
 			sys_int = sysInt(sSym,anyM.sets[sys]) 
@@ -351,7 +351,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 							end
 						end
 					end
-				end
+				end 
 			end
 		end
 	end
@@ -739,7 +739,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 	parToLim_dic = Dict(y => unique(getindex.(filter(z -> z[2] == y,ratioLim_arr),1)) for y in unique(getindex.(ratioLim_arr,2)))
 
 	ratioVar_dic = Dict(:stInToConv => ((:capaConv, :capaStIn),(:expConv, :expStIn)), :stOutToStIn => ((:capaStIn, :capaStOut),(:expStIn, :expStOut)),
-												:sizeToStIn => ((:capaStSize, :capaStIn),(:expStSize, :expStIn)), :flhConv => ((:capaConv,:convIn),), :flhStIn => ((:capaStIn,:stIn),), :flhExc => ((:capaExc,:exc),),
+												:sizeToStIn => ((:capaStIn, :capaStSize),(:expStIn, :expStSize)), :flhConv => ((:capaConv,:convIn),), :flhStIn => ((:capaStIn,:stIn),), :flhExc => ((:capaExc,:exc),),
 																				:flhStOut => ((:capaStOut,:stOut),), :cycStIn => ((:capaStSize,:stIn),), :cycStOut => ((:capaStSize,:stOut),))
 
 	va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :convIn => (:use,:stIntOut), :convOut => (:gen,:stIntIn))
@@ -748,67 +748,69 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 	signLim_dic = Dict(:Up => :greater, :Low => :smaller, :Fix => :equal, :Up => :greater)
 
 	# loop over parameters for conversion and exchange ratios
-	for par in filter(x -> occursin("ratio",string(x)),collectKeys(keys(parToLim_dic)))
+	if isempty(anyM.subPro) || anyM.subPro != (0,0)
+		for par in filter(x -> occursin("ratio",string(x)),collectKeys(keys(parToLim_dic)))
 
-		for lim in parToLim_dic[par]
+			for lim in parToLim_dic[par]
 
-			ratioType_sym = par == :ratioConvOut ? :convOut : :convIn
+				ratioType_sym = par == :ratioConvOut ? :convOut : :convIn
 
-			# obtain variable name and parameter data
-			if par != :ratioExc
-				cns_df = rename(copy(part.par[Symbol(par,lim)].data),:val => :ratio)
-			else	
-				cns_df = select(rename(matchExcParameter(Symbol(par,lim),part.var[:exc],part,anyM.sets),:val => :ratio),Not([:var]))
-			end
-
-			if isempty(cns_df) continue end
-
-			# loops over different carriers with a ratio defined and creates corresponding constraint
-			grpCns_gdf = groupby(cns_df,[:C])	
-			allCns_arr = Array{DataFrame}(undef,length(grpCns_gdf))
-			
-			for (idx,subCns) in enumerate(grpCns_gdf)
-
-				subCns_df = DataFrame(subCns)
-
-				# get columns being aggregated
-				agg_arr = filter(r -> r != (par != :ratioExc ? :Te : :Exc) && (part.type == :emerging || r != :Ts_expSup), intCol(subCns_df))
-
-				# writes tuple with names of search columns and respective level they are being aggregated on
-				srcSym_tup = tuple(orderDim(intersect(intCol(subCns_df),vcat(part.type == :emerging ? [:Ts_expSup] : Symbol[],[:Ts_dis,:R_dis,:R_from,:R_to])))...)
-				srcLvl_tup = vcat(part.type == :emerging ? [anyM.supTs.lvl] : Int[], [anyM.sets[:Ts].nodes[subCns_df[1,:Ts_dis]].lvl], par != :ratioExc ? [anyM.sets[:R].nodes[subCns_df[1,:R_dis]].lvl] : anyM.sets[:R].nodes[subCns_df[1,:R_from]].lvl |> (y -> [y,y]) )
-				srcRes_ntup = NamedTuple{srcSym_tup}(tuple(srcLvl_tup...))
-
-				# filter variables for denominator
-				relVar_df = vcat(map(x -> select(part.var[x],vcat(intCol(subCns_df),[:var])),par != :ratioExc ? intersect(keys(part.carrier),va_dic[ratioType_sym]) : [:exc])...)
-
-				if :M in namesSym(subCns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
-					# find cases where ratio constraint is mode dependant
-					srcResM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(1,values(srcRes_ntup)...))...)
-					srcResNoM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(0,values(srcRes_ntup)...))...)
-					m_arr = findall(0 .!= subCns_df[!,:M])
-					noM_arr = setdiff(1:size(subCns_df,1),m_arr)
-					# aggregate variables with defined ratio
-					subCns_df[!,:ratioVar] .= AffExpr()
-					subCns_df[m_arr,:ratioVar] = aggUniVar(relVar_df, select(subCns_df[m_arr,:],intCol(subCns_df)), agg_arr, srcResM_ntup, anyM.sets)
-					subCns_df[noM_arr,:ratioVar] = aggUniVar(relVar_df, select(subCns_df[noM_arr,:],intCol(subCns_df)), agg_arr, srcResNoM_ntup, anyM.sets)
-					# aggregate all variables
-					subCns_df[!,:allVar] .= AffExpr()
-					subCns_df[m_arr,:allVar] =	aggUniVar(relVar_df, select(subCns_df[m_arr,:],intCol(subCns_df)), filter(x -> x != :C,agg_arr), srcResM_ntup, anyM.sets)
-					subCns_df[noM_arr,:allVar] =	aggUniVar(relVar_df, select(subCns_df[noM_arr,:],intCol(subCns_df)), filter(x -> x != :C,agg_arr), srcResNoM_ntup, anyM.sets)
-				else
-					subCns_df[!,:ratioVar] = aggUniVar(relVar_df, select(subCns_df,intCol(subCns_df)), agg_arr, srcRes_ntup, anyM.sets)
-					subCns_df[!,:allVar] =	aggUniVar(relVar_df, select(subCns_df,intCol(subCns_df)), filter(x -> x != :C,agg_arr), srcRes_ntup, anyM.sets)
+				# obtain variable name and parameter data
+				if par != :ratioExc
+					cns_df = rename(copy(part.par[Symbol(par,lim)].data),:val => :ratio)
+				else	
+					cns_df = select(rename(matchExcParameter(Symbol(par,lim),part.var[:exc],part,anyM.sets),:val => :ratio),Not([:var]))
 				end
 
-				# create corresponding constraint
-				subCns_df[!,:cnsExpr] = @expression(anyM.optModel,subCns_df[:allVar] .* subCns_df[:ratio] .- subCns_df[:ratioVar])
-				allCns_arr[idx] = subCns_df
+				if isempty(cns_df) continue end
 
+				# loops over different carriers with a ratio defined and creates corresponding constraint
+				grpCns_gdf = groupby(cns_df,[:C])	
+				allCns_arr = Array{DataFrame}(undef,length(grpCns_gdf))
+				
+				for (idx,subCns) in enumerate(grpCns_gdf)
+
+					subCns_df = DataFrame(subCns)
+
+					# get columns being aggregated
+					agg_arr = filter(r -> r != (par != :ratioExc ? :Te : :Exc) && (part.type == :emerging || r != :Ts_expSup), intCol(subCns_df))
+
+					# writes tuple with names of search columns and respective level they are being aggregated on
+					srcSym_tup = tuple(orderDim(intersect(intCol(subCns_df),vcat(part.type == :emerging ? [:Ts_expSup] : Symbol[],[:Ts_dis,:R_dis,:R_from,:R_to])))...)
+					srcLvl_tup = vcat(part.type == :emerging ? [anyM.supTs.lvl] : Int[], [anyM.sets[:Ts].nodes[subCns_df[1,:Ts_dis]].lvl], par != :ratioExc ? [anyM.sets[:R].nodes[subCns_df[1,:R_dis]].lvl] : anyM.sets[:R].nodes[subCns_df[1,:R_from]].lvl |> (y -> [y,y]) )
+					srcRes_ntup = NamedTuple{srcSym_tup}(tuple(srcLvl_tup...))
+
+					# filter variables for denominator
+					relVar_df = vcat(map(x -> select(part.var[x],vcat(intCol(subCns_df),[:var])),par != :ratioExc ? intersect(keys(part.carrier),va_dic[ratioType_sym]) : [:exc])...)
+
+					if :M in namesSym(subCns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
+						# find cases where ratio constraint is mode dependant
+						srcResM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(1,values(srcRes_ntup)...))...)
+						srcResNoM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(0,values(srcRes_ntup)...))...)
+						m_arr = findall(0 .!= subCns_df[!,:M])
+						noM_arr = setdiff(1:size(subCns_df,1),m_arr)
+						# aggregate variables with defined ratio
+						subCns_df[!,:ratioVar] .= AffExpr()
+						subCns_df[m_arr,:ratioVar] = aggUniVar(relVar_df, select(subCns_df[m_arr,:],intCol(subCns_df)), agg_arr, srcResM_ntup, anyM.sets)
+						subCns_df[noM_arr,:ratioVar] = aggUniVar(relVar_df, select(subCns_df[noM_arr,:],intCol(subCns_df)), agg_arr, srcResNoM_ntup, anyM.sets)
+						# aggregate all variables
+						subCns_df[!,:allVar] .= AffExpr()
+						subCns_df[m_arr,:allVar] =	aggUniVar(relVar_df, select(subCns_df[m_arr,:],intCol(subCns_df)), filter(x -> x != :C,agg_arr), srcResM_ntup, anyM.sets)
+						subCns_df[noM_arr,:allVar] =	aggUniVar(relVar_df, select(subCns_df[noM_arr,:],intCol(subCns_df)), filter(x -> x != :C,agg_arr), srcResNoM_ntup, anyM.sets)
+					else
+						subCns_df[!,:ratioVar] = aggUniVar(relVar_df, select(subCns_df,intCol(subCns_df)), agg_arr, srcRes_ntup, anyM.sets)
+						subCns_df[!,:allVar] =	aggUniVar(relVar_df, select(subCns_df,intCol(subCns_df)), filter(x -> x != :C,agg_arr), srcRes_ntup, anyM.sets)
+					end
+
+					# create corresponding constraint
+					subCns_df[!,:cnsExpr] = @expression(anyM.optModel,subCns_df[:allVar] .* subCns_df[:ratio] .- subCns_df[:ratioVar])
+					allCns_arr[idx] = subCns_df
+
+				end
+
+				cns_df = vcat(allCns_arr...)
+				cns_dic[Symbol(par,lim)] = cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),signLim_dic[lim])
 			end
-
-			cns_df = vcat(allCns_arr...)
-			cns_dic[Symbol(par,lim)] = cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),signLim_dic[lim])
 		end
 	end
 
@@ -830,7 +832,11 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 		for limVa in limVa_arr, lim in parToLim_dic[par]
 
 			# get variables for denominator
-			cns_df = copy(part.var[limVa[1]])
+			if limVa[1] in keys(part.var)
+				cns_df = copy(part.var[limVa[1]])
+			else
+				continue
+			end
 
 			# adjustments for flh and cycling restrictions
 			if !capaRatio_boo
@@ -924,20 +930,20 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			select!(mustOut_df,Not([:Ts_disSup]))
 
 			# gather relevant dispatch variables
-			dis_arr = collect(intersect(keys(part.var),[:gen,:stExtOut,:stIntIn])) 
+			dis_arr = collect(intersect(keys(part.var),[:gen,:stExtOut]))
 			join_arr = filter(x -> x != :C, intCol(mustOut_df))
 			for dis in dis_arr
-				grpDis_df = combine(groupby(filter(x -> x.C == m.car[1],part.var[dis]), join_arr),:var => (x -> dis == :stIntIn ? (-1*sum(x)) : sum(x)) => dis)
+				grpDis_df = combine(groupby(filter(x -> x.C == m.car[1],part.var[dis]), join_arr),:var => (x -> sum(x)) => dis)
 				mustOut_df= joinMissing(mustOut_df, grpDis_df, join_arr,:left,Dict(dis => AffExpr()))
 
 				# in case the current must run replaces a restriction on conversion output, check if all relevant variables are constrained
-				if m.car[1] in rmvOutC_arr && dis in (:gen,:stIntIn) && !addConvOut_boo
+				if m.car[1] in rmvOutC_arr && dis == :gen && !addConvOut_boo
 					if !isempty(antijoin(grpDis_df,mustOut_df,on = join_arr)) addConvOut_boo = true end
 				end
 			end
 
 			# create actual constraint
-			outVar_arr = intersect(namesSym(mustOut_df),[:gen,:stExtOut,:stIntIn])
+			outVar_arr = intersect(namesSym(mustOut_df),[:gen,:stExtOut])
 			aggCol!(mustOut_df,outVar_arr)
 			mustOut_df[!,:cnsExpr] = @expression(anyM.optModel,mustOut_df[:mustOut] .* mustOut_df[:capa] .- mustOut_df[outVar_arr[1]])
 			

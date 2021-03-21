@@ -19,7 +19,7 @@ module AnyMOD
     end
 
     using Base.Threads, CSV, Dates, LinearAlgebra, Requires
-    using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays
+    using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays, Suppressor
     @reexport using DataFrames, JuMP
 
     pyimport_conda("networkx","networkx")
@@ -29,6 +29,7 @@ module AnyMOD
     include("objects.jl")
     include("tools.jl")
     include("modelCreation.jl")
+    include("decomposition.jl")
     
     include("optModel/technology.jl")
     include("optModel/exchange.jl")

@@ -165,9 +165,11 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 
 	# ! get exchange variables aggregated by import and export
 	allExc_df = getAllVariables(:exc,anyM)
-	allExc_arr = unique(allExc_df[!,:Exc])
+	
 
 	if !isempty(allExc_df)
+
+		allExc_arr = unique(allExc_df[!,:Exc])
 		
 		# compute export and import of each region, losses are considered at import
 	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:R_from,:C,:scr]),:var => (x -> value(sum(x))/1000) => :value),:R_from => :R_dis)
@@ -204,6 +206,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		end
 		
 		relDisp_df = filter(x -> x.variable in var_arr,allData_df)
+		if isempty(relDisp_df) continue end
 		if flhCapa == :capaConv
 			rename_dic = Dict(:use => :in, :gen => :out, :stIntIn => :out, :stIntOut => :in)
 			relDisp_df[!,:variable] = map(x -> rename_dic[x], relDisp_df[!,:variable])
@@ -245,7 +248,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		end
 		
 		relDisp_df = filter(x -> x.variable in var_arr,allData_df)
-
+		if isempty(relDisp_df) continue end
 		# group dispatch quantities and match with capacity data
 		aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr]), :value => (x -> sum(abs.(x))) => :value), :value => :value2)
 

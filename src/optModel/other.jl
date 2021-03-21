@@ -470,13 +470,17 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			end
 		end
 
+		if isempty(allLimit_df) continue end
+
 		# ! check for suspicious entries for capacity where limits are provided for the sum of capacity over several years
-		if !(:Ts_disSup in namesSym(allLimit_df))
+		tsCol_sym = any(occursin.(["capa","Capa","exp"],string(va))) ? :Ts_disSup : :Ts_dis
+
+		if !(tsCol_sym in namesSym(allLimit_df))
 			lock(anyM.lock)
 			push!(anyM.report,(2,"limit",string(va),"limits were provided without specificing the superordinate dispatch timestep, this means the sum over all years was limited instead of enforcing the same limit for each year (see https://leonardgoeke.github.io/AnyMOD.jl/stable/parameter_list/#Limits-on-quantities-dispatched)"))
 			unlock(anyM.lock)
-		elseif 0 in unique(allLimit_df[!,:Ts_disSup])
-			relEntr_df = filter(x -> x.Ts_disSup == 0, allLimit_df)
+		elseif 0 in unique(allLimit_df[!,tsCol_sym])
+			relEntr_df = filter(x -> x[tsCol_sym] == 0, allLimit_df)
 			if :Te in namesSym(relEntr_df)
 				allTe_arr = unique(relEntr_df[!,:Te])
 				for tInt in allTe_arr
