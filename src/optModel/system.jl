@@ -560,7 +560,6 @@ function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep
 
 		# adds retrofitting variables where technology is target
 		if retro_boo
-			
 			retroVar_df = filter(x -> sys_int == x[exc_boo ? :Exc_j : :Te_j], flatten(part.var[retroVar_sym],:Ts_disSup))
 			retro_arr = vcat([:Ts_expSup_j, :Ts_disSup], exc_boo ? [:R_from_j, :R_to_j, :Exc_j] : (st_boo ? [:R_exp_j, :Te_j, :id_j] : [:R_exp_j, :Te_j]))
 			if exc_boo && part.dir
@@ -571,7 +570,6 @@ function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep
 			retro_df = rename(combine(groupby(retroVar_df,retro_arr), :var => (x -> sum(x)) => :var), retro_arr .=> intCol(cns_df))
 			
 			cns_df[!,:retro_j] = aggDivVar(retro_df,cns_df,tuple(intCol(cns_df)...),sets_dic)
-		
 		end
 		
 		# adds expansion variables
@@ -580,7 +578,10 @@ function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep
 			cns_df = joinMissing(cns_df, combine(groupby(expVar_df,join_arr), :var => (x -> sum(x)) => :exp), join_arr,:left,Dict(:exp => AffExpr()))
 		end 
 
-        # creates final constraint object
+
+		if !exp_boo && !retro_boo continue end
+        
+		# creates final constraint object
 		cns_df[!,:cnsExpr] = @expression(optModel,cns_df[:capa] .-  getfield.(cns_df[:capa],:constant) .+ (exp_boo ? .- cns_df[:exp] : 0.0) .+ (retro_boo ? .- cns_df[:retro_j] : 0.0))
 		cns_dic[Symbol(capaVar)] = cnsCont(select(cns_df,intCol(cns_df,:cnsExpr)),:equal)
 	end
@@ -679,6 +680,10 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 			# create actual constraint information
 			cns_df[!,:resiDelta] =  map(x -> (x.resiNow - x.resiPrev |> (l -> l > 0.0 ? l : 0.0)),eachrow(cns_df))
 			cns_df[!,:cnsExpr]  = @expression(anyM.optModel, -1 .* cns_df[:oprNow] .+ cns_df[:oprPrev] .+ cns_df[:expNow] .+ cns_df[:retroNow] .+ cns_df[:resiDelta])
+			# filter cases without variables
+			filter!(x -> !isempty(x.cnsExpr.terms), cns_df)
+			if isempty(cns_df) continue end
+
 			select!(cns_df,Not([:Ts_disSupPrev,:oprNow,:oprPrev,:expNow,:retroNow,:resiNow,:resiPrev,:resiDelta]))
 			cns_dic[string(insVar_sym) |> (x -> Symbol(:re,uppercase(x[1]),x[2:end]))] = cnsCont(orderDf(cns_df),:greater)
 		end
