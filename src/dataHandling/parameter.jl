@@ -7,7 +7,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
 
     #region # * expansion and retrofit parameters
 
-    # ! general expansion
+    # ! general discount rate
     parDef_dic[:rateDisc]  = (dim = (:Ts_disSup, :R_exp), problem = :both, defVal = 0.02, herit = (:Ts_disSup => :up, :R_exp => :up, :R_exp => :avg_any, :Ts_disSup => :avg_any), part = :cost)
 
     # ! technology and exchange expansion
