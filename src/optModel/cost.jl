@@ -82,7 +82,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			allExp_df = matchSetParameter(allExp_df,partCost.par[va != :Exc ? :disFac : :disFacExc],anyM.sets,newCol = :disFac)
 
 			# ! group cost expressions by system, scales groups expression and creates a variables for each grouped entry
-			allExp_df = rename(combine(x -> (expr = sum(x.disFac .* x.exp .* x.costAnn),) ,groupby(allExp_df,va != :Exc ? [:Ts_disSup,:R_exp,:Te] : [:Ts_disSup,:R_from,:R_to,:Exc])),:Ts_disSup => :Ts_exp)
+			allExp_df = rename(combine(x -> (expr = sum(x.disFac .* x.exp .* x.costAnn),) ,groupby(allExp_df,va != :Exc ? [:Ts_expSup,:R_exp,:Te] : [:Ts_expSup,:R_from,:R_to,:Exc])),:Ts_expSup => :Ts_exp)
 			transferCostEle!(allExp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng,anyM)
 			reachEnd_boo = true
 		end
