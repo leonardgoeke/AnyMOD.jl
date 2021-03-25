@@ -354,7 +354,6 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal, :UpDir => :smaller, :LowDir => :greater, :FixDir => :equal)
 
 	@threads for va in allKeys_arr
-
 		# obtain all variables relevant for limits
 		allVar_df = getAllVariables(va,anyM)
 
@@ -494,6 +493,9 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 				unlock(anyM.lock)
 			end
 		end
+
+		# filter cases without variables
+		filter!(x -> !isempty(x.var.terms), allLimit_df)
 
 		# ! write constraint containers
 		for lim in limitCol_arr
