@@ -305,7 +305,7 @@ function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{S
 		cost_df[:,:variable] .= cst
 		cost_df[:,:value] = value.(cost_df[:,:var])
         if :Ts_exp in namesSym(cost_df) cost_df = rename(cost_df,:Ts_exp => :Ts_disSup) end
-		append!(allData_df,cost_df[:,Not(:var)])
+		append!(allData_df,select(cost_df,Not([:var])))
 	end
 
 	# removes scenario column if only one scenario is defined
