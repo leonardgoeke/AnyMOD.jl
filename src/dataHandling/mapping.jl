@@ -547,11 +547,22 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 			for etr in collectKeys(keys(prepSys_dic[sys][sSym]))
 				var_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepSys_dic[sys][sSym][etr].var)
 				resi_df = filter(x -> x.Ts_disSup in anyM.supTs.step,prepSys_dic[sys][sSym][etr].resi)
-				# remove entirely if no capacities exist
 				if isempty(var_df) && isempty(resi_df)
-					delete!(prepSys_dic[sys],sSym)
+					delete!(prepSys_dic[sys][sSym],etr)
 				else
 					prepSys_dic[sys][sSym][etr] = (var = var_df,resi = resi_df)
+				end
+
+				# checks carrier attribute of part again in case some fields are not relevant anymore, because capcity does not exist in respective year
+				if sys == :Te
+					part = anyM.parts.tech[sSym]
+					relDisp_arr = intersect(keys(part.carrier),vcat(:capaConv in keys(prepSys_dic[sys][sSym]) ? [:gen,:use] : Symbol[], :capaStOut in keys(prepSys_dic[sys][sSym]) ? [:stExtOut,:stExtIn,:stIntIn,:stIntOut] : Symbol[]))
+					part.carrier = filter(x -> !(typeof(getfield(part.carrier,x)) <: Tuple{Vararg{<:Tuple{}}}),relDisp_arr) |> (y -> NamedTuple{Tuple(y)}(map(x -> getfield(part.carrier,x), y)) )
+				end
+
+				# remove technology fully, if no capacities exist
+				if isempty(prepSys_dic[sys][sSym])
+					delete!(prepSys_dic[sys],sSym)
 				end
 			end
 		end
