@@ -36,8 +36,8 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
 
 	# rename columns
 	colName_dic = Dict(:Ts_dis => :timestep_dispatch, :Ts_exp => :timestep_expansion, :Ts_expSup => :timestep_superordinate_expansion, :Ts_disSup => :timestep_superordinate_dispatch,
-															:R => :region, :R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Sys => :system, :Te => :technology, :Exc => :exchange,
-																:dir => :directed, :cns => :constraint, :var => :variable)
+															:R => :region, :R_tech => :region, :R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Sys => :system, :Te => :technology, :Exc => :exchange,
+																:dir => :directed, :scr => :scenario, :cns => :constraint, :var => :variable)
 
 	rename!(print_df,map(x -> x in keys(colName_dic) ? colName_dic[x] : x, namesSym(print_df)) )
 	if :csv in rtnDf
@@ -112,7 +112,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		missCapa_df = copy(anyM.parts.bal.var[:missCapa])
 		if !isempty(missCapa_df)
 			missCapa_df[!,:value] .= value.(missCapa_df[!,:var])
-			missCapa_df[!,:variable] .= :missCapa_df
+			missCapa_df[!,:variable] .= :missCapa
 			foreach(x -> missCapa_df[!,x] .= 0,(:Te,:scr,:id))
 			append!(allData_df,select(missCapa_df,Not([:var])))
 		end
@@ -403,6 +403,11 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 	filter(x -> round(x.value, digits = 3) == 4380.0,flh_df)
 
 	append!(allData_df,select(flh_df,Not([:from_to,:to_from])))
+
+	# removes scenario column if only one scenario is defined
+	if length(unique(allData_df[!,:scr])) == 1
+		select!(allData_df,Not(:scr))
+	end
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
