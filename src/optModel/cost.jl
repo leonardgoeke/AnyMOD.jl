@@ -376,7 +376,9 @@ function computeDisFac!(partObj::OthPart,anyM::anyModel)
 	rExp_arr = union(map(x -> getfield.(getNodesLvl(anyM.sets[:R],x),:idx), unique(getfield.(values(anyM.cInfo),:rExp)))...)
 	discR_df = matchSetParameter(flatten(flatten(DataFrame(Ts_disSup = anyM.supTs.step, R_exp = rExp_arr),:Ts_disSup),:R_exp),partObj.par[:rateDisc],anyM.sets)
 
-	discR_df[!,:disFac] = 1 ./ (1 .+ discR_df[!,:val]).^anyM.options.shortExp
+	factY_int = !isempty(anyM.subPro) && anyM.subPro != (0,0) ? anyM.subPro[1] : 1 # factor to correct discount factor in case of distributed model generation
+
+	discR_df[!,:disFac] = 1 ./ (1 .+ discR_df[!,:val]).^(anyM.options.shortExp * factY_int)
 	discR_df[!,:disFac] = map(x -> filter(y -> y < x.Ts_disSup ,collect(anyM.supTs.step)) |> (z -> prod(filter(y -> y.R_exp == x.R_exp && y.Ts_disSup in z, discR_df)[!,:disFac])*x.disFac),eachrow(discR_df))
 	select!(discR_df,Not(:val))
 
