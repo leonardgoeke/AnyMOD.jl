@@ -631,7 +631,8 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 			var_df[!,:cnsExpr] = @expression(anyM.optModel,var_df[:var_2] .- var_df[:var])
 			select!(var_df,Not([:var_2]))
 		else
-			var_df[!,:cnsExpr] = map(x -> x[2] - x[1],zip(var_df[!,:var],part.var[capaVar][!,:var]))
+			oprVar_df = part.var[capaVar]
+			var_df[!,:cnsExpr] = map(x -> x[2] - x[1],zip(var_df[!,:var],oprVar_df[!,:var]))
 		end
 		
 		cns_dic[string(insVar_sym) |> (x -> Symbol(:de,uppercase(x[1]),x[2:end]))] = cnsCont(select(var_df,Not(:var)),:smaller)
@@ -640,10 +641,9 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 		if part.decomm == :decomm
 			# add previous period and its capacity variable to table
 			prevTs_dic = Dict(x => anyM.supTs.step[findall(x .== anyM.supTs.step)[1]]-1 for x in anyM.supTs.step[2:end])
-			select!(var_df, Not(:cnsExpr))
-			cns_df = rename(filter(r -> r.Ts_disSup != anyM.supTs.step[1],var_df),:var => :oprNow)
+			cns_df = rename(filter(r -> r.Ts_disSup != anyM.supTs.step[1],oprVar_df),:var => :oprNow)
 			cns_df[!,:Ts_disSupPrev] = map(x -> prevTs_dic[x] ,cns_df[!,:Ts_disSup])
-			cns_df = rename(innerjoin(cns_df,var_df; on = intCol(var_df,:dir) |> (x -> Pair.(replace(x,:Ts_disSup => :Ts_disSupPrev),x))),:var => :oprPrev)
+			cns_df = rename(innerjoin(cns_df,oprVar_df; on = intCol(oprVar_df,:dir) |> (x -> Pair.(replace(x,:Ts_disSup => :Ts_disSupPrev),x))),:var => :oprPrev)
 
 			# add expansion variable to dataframe
 			if Symbol(replace(string(capaVar),"capa" => "exp")) in collect(keys(part.var))
