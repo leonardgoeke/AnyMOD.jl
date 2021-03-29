@@ -431,7 +431,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	# ! initialize dictionary to save data
 	allData_dic = Dict{Symbol,DataFrame}()
 	for signItr in signVar
-		allData_dic[signItr] = DataFrame(Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], scr = Int[], variable = String[], value = Float64[])
+		allData_dic[signItr] = DataFrame(Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 	end
 
 	# ! initialize relevant dimensions and carriers
@@ -445,7 +445,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	if :out in signVar
 		dem_df = matchSetParameter(relDim_df,anyM.parts.bal.par[:dem],anyM.sets,newCol = :value)
 		dem_df[!,:value] = dem_df[!,:value] .* getResize(dem_df,anyM.sets[:Ts],anyM.supTs) .* -1
-		dem_df[!,:variable] .= "demand"
+		dem_df[!,:variable] .= :demand
 		filter!(x -> abs(x.value) > minVal, dem_df)
 		append!(allData_dic[:out],select!(dem_df,Not(:C)))
 	end
@@ -472,7 +472,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 			filter!(filterFunc,add_df)
             if isempty(add_df) continue end
 			add_df[!,:value] = value.(add_df[!,:var]) .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
-			add_df[!,:variable] .= string(x[2],"; ", x[1])
+			add_df[!,:variable] .= Symbol(x[2],"; ", x[1])
 			filter!(x -> abs(x.value) > minVal, add_df)
 
 			# add to dictionary of dataframe for in or out
@@ -489,7 +489,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		if :out in signVar
 			excFrom_df = filterCarrier(vcat(map(x -> anyM.parts.exc[x].var[:exc],relExc_arr)...),relC_arr)
 			excFrom_df = combine(groupby(filter(filterFunc,rename(copy(excFrom_df),:R_from => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> value(sum(x)) * -1) => :value)
-			excFrom_df[!,:variable] .= "export"
+			excFrom_df[!,:variable] .= :export
 			filter!(x -> abs(x.value) > minVal, excFrom_df)
 			if !isempty(excFrom_df)
 				append!(allData_dic[:out],excFrom_df)
@@ -499,7 +499,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		if :in in signVar
 			excTo_df = filterCarrier(vcat(map(x -> anyM.parts.exc[x] |> (z -> addLossesExc(z.var[:exc],z,anyM.sets)),relExc_arr)...),relC_arr)
 			excTo_df = combine(groupby(filter(filterFunc,rename(copy(excTo_df),:R_to => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> value(sum(x))) => :value)
-			excTo_df[!,:variable] .= "import"
+			excTo_df[!,:variable] .= :import
 			filter!(x -> abs(x.value) > minVal, excTo_df)
 			if !isempty(excTo_df)
 				append!(allData_dic[:in],excTo_df)
