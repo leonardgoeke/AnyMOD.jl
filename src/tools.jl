@@ -107,6 +107,17 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		end
 	end
 
+	# ! get missing capacity variable
+	if :missCapa in keys(anyM.parts.bal.var)
+		missCapa_df = copy(anyM.parts.bal.var[:missCapa])
+		if !isempty(missCapa_df)
+			missCapa_df[!,:value] .= value.(missCapa_df[!,:var])
+			missCapa_df[!,:variable] .= :missCapa_df
+			foreach(x -> missCapa_df[!,x] .= 0,(:Te,:scr,:id))
+			append!(allData_df,select(missCapa_df,Not([:var])))
+		end
+	end
+
 	# ! get expansion and capacity variables
 	for t in techSym_arr
 		part = anyM.parts.tech[t]
