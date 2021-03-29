@@ -1164,7 +1164,7 @@ function matchLimitParameter(allVar_df::DataFrame,par_obj::ParElement,anyM::anyM
         rplMad_boo = false
         for u in keys(aggEtr_dic)
             if !all(isempty.(getindex.(collect(aggEtr_dic[u]),2)))
-                aggPar_obj.data[!,u] = map(x -> aggEtr_dic[u][x] |> (y -> isempty(y) ? [x] : vcat([x],y)), aggPar_obj.data[!,u])
+                aggPar_obj.data[!,u] = map(x -> aggEtr_dic[u][x] |> (y -> isempty(y) ? [x] : y), aggPar_obj.data[!,u])
                 aggPar_obj.data = flatten(aggPar_obj.data,u)
                 rplMad_boo = true
             end
