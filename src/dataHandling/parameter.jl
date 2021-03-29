@@ -1177,7 +1177,7 @@ function matchLimitParameter(allVar_df::DataFrame,par_obj::ParElement,anyM::anyM
             aggLimit_df = copy(aggPar_obj.data)
             if !isempty(aggLimit_df)
                 aggLimit_df[!,:var]  = aggDivVar(grpVar_df, aggLimit_df, agg_tup, anyM.sets, aggFilt = agg_tup)
-                limit_df = vcat(limit_df,aggLimit_df)
+                limit_df = vcat(limit_df,filter(x -> x.var != AffExpr(),aggLimit_df))
             end
         end
     end
