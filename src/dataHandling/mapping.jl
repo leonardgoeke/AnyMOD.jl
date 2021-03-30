@@ -602,7 +602,6 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 
 		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be a sub-problem for time-step '$(createFullString(supTs_int,anyM.sets[:Ts]))'$(getScrName(subPro[2],anyM.sets[:scr]))")
 	else # ! case of top-problem
-
 		# ! remove parameter data
 		# remove unrequired parameter data from technology parts
 		for sys in (:exc,:tech), pName in collectKeys(keys(getfield(anyM.parts,sys))), parName in collectKeys(keys(getfield(getfield(anyM.parts,sys)[pName],:par)))

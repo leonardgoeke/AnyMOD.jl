@@ -14,50 +14,13 @@ mutable struct trustRegion
 	rad::Float64
 	cns::ConstraintRef
 	capa::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}
-	cnsInfo::NamedTuple{(:sca,:cons,:val),Tuple{Float64,Float64,Array{Float64,1}}}	
+	coef::NamedTuple{(:sca,:pol),Tuple{Float64,Float64}}	
 	trustRegion() = new()
 end
 
 #endregion
 
 #region # * function to run top and sub problem of benders
-
-# ! run sub-Level problem
-function runSubLevel(sub_m::anyModel,capaData_obj::bendersData)
-
-	# set rhs of constraints fixing the capacity
-	for sys in (:tech,:exc)
-		part_dic = getfield(sub_m.parts,sys)
-		for sSym in keys(capaData_obj.capa[sys]), capaSym in keys(capaData_obj.capa[sys][sSym])
-			
-			# filter capacity data for respective year
-			filter!(x -> x.Ts_disSup == sub_m.supTs.step[1], capaData_obj.capa[sys][sSym][capaSym])
-			# removes entry from capacity data, if capacity does not exist in respective year, otherwise fix to value
-			if isempty(capaData_obj.capa[sys][sSym][capaSym])
-				delete!(capaData_obj.capa[sys][sSym],capaSym)
-			else
-				fixCapa!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym])
-			end
-		end
-	end
-
-	# set optimizer attributes and solves
-	@suppress begin
-		optimize!(sub_m.optModel)
-	end
-
-	# add duals and objective value to capacity data
-	capaData_obj.objValue = objective_value(sub_m.optModel)
-
-	for sys in (:tech,:exc)
-		part_dic = getfield(sub_m.parts,sys)
-		for sSym in keys(capaData_obj.capa[sys]), capaSym in keys(capaData_obj.capa[sys][sSym])
-			capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym])
-		end
-	end
-
-	return capaData_obj
-end
 
 # ! run top-Level problem
 function runTopLevel!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},i::Int)
@@ -96,9 +59,8 @@ function runTopLevel!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bende
 	# write technology capacites to BendersData object
 	capaData_obj.capa = writeCapa(top_m)
 
-
-
-	topObj_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
+	# get objective value of top problem, substract costs of missing capa because they are already counted in subproblems
+	topObj_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var])) - sum(value.(top_m.parts.cost.var[:costMissCapa][!,:var]))
 	# derive lower and upper bounds on objective value
 	if size(top_m.parts.obj.cns[:bendersCuts],1) > 0
 		bounds_tup = (topObj_fl+value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var]),bounds_tup[2])
@@ -107,6 +69,43 @@ function runTopLevel!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bende
 	end
 
 	return capaData_obj, bounds_tup, topObj_fl
+end
+
+# ! run sub-Level problem
+function runSubLevel(sub_m::anyModel,capaData_obj::bendersData)
+
+	# fixing capacity
+	for sys in (:tech,:exc)
+		part_dic = getfield(sub_m.parts,sys)
+		for sSym in keys(capaData_obj.capa[sys]), capaSym in keys(capaData_obj.capa[sys][sSym])
+			
+			# filter capacity data for respective year
+			filter!(x -> x.Ts_disSup == sub_m.supTs.step[1], capaData_obj.capa[sys][sSym][capaSym])
+			# removes entry from capacity data, if capacity does not exist in respective year, otherwise fix to value
+			if isempty(capaData_obj.capa[sys][sSym][capaSym])
+				delete!(capaData_obj.capa[sys][sSym],capaSym)
+			else
+				fixCapa!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym])
+			end
+		end
+	end
+
+	# set optimizer attributes and solves
+	@suppress begin
+		optimize!(sub_m.optModel)
+	end
+
+	# add duals and objective value to capacity data
+	capaData_obj.objValue = objective_value(sub_m.optModel)
+
+	for sys in (:tech,:exc)
+		part_dic = getfield(sub_m.parts,sys)
+		for sSym in keys(capaData_obj.capa[sys]), capaSym in keys(capaData_obj.capa[sys][sSym])
+			capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym])
+		end
+	end
+
+	return capaData_obj
 end
 
 #endregion
@@ -134,8 +133,8 @@ function centerTrustRegion(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFra
 	capaSum_expr = sum(map(x -> collect(keys(x.var.terms))[1] |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allCapa_df)))
 	
 	# save scaling factor, constant of left hand side and array of capacities values
-	cnsInfo_ntup =  (sca = capaSum_expr.aff.constant, cons = top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)))), val = allCapa_df[!,:value])
-	trustRegion_cns = @constraint(top_m.optModel,  capaSum_expr * cnsInfo_ntup.sca <= sum(map(x -> (x * radScal_fl)^2, cnsInfo_ntup.val))  * cnsInfo_ntup.sca)
+	cnsInfo_ntup =  (sca = top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)))), pol = capaSum_expr.aff.constant)
+	trustRegion_cns = @constraint(top_m.optModel,  capaSum_expr * cnsInfo_ntup.sca <= trustReg_obj.rad^2  * cnsInfo_ntup.sca)
 
 	return trustRegion_cns, cnsInfo_ntup
 end
@@ -145,8 +144,9 @@ function shrinkTrustRegion!(trustReg_obj::trustRegion; shrFac_fl::Float64 = 0.5)
 	# reduce factor for region
 	trustReg_obj.rad = trustReg_obj.rad * shrFac_fl
 	# adjust righ hand side of constraint
-	cnsInfo_tup = trustReg_obj.cnsInfo
-	set_normalized_rhs(trustReg_obj.cns, cnsInfo_tup.cons - sum(map(x -> (x * trustReg_obj.rad)^2, cnsInfo_tup.cons.val))  * cnsInfo_tup.cons.sca )
+	cnsInfo_tup = trustReg_obj.coef
+	set_normalized_rhs(trustReg_obj.cns,  (trustReg_obj.rad^2   - cnsInfo_tup.pol) * cnsInfo_ntup.sca)
+	println(normalized_rhs(trustReg_obj.cns))
 end
 
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
