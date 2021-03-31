@@ -229,6 +229,11 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 		# compute discounted costs
 		allVar_df = rename(matchSetParameter(anyM.parts.bal.var[:missCapa],anyM.parts.bal.par[:costMissCapa],anyM.sets,newCol = :cost),:var => :missCapa)
 		allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partCost.par[:disFac],anyM.sets,newCol = :disFac)
+		if !isempty(anyM.subPro) && anyM.subPro != (0,0)  
+			# add scenario probability
+			allVar_df[!,:scr] .= anyM.subPro[2]
+			allVar_df[!,:missCapa] = allVar_df[!,:missCapa] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allVar_df))
+		end
 		# groups cost expressions, scales groups expression and creates a variables for each grouped entry
 		allVar_df = rename(combine(x -> (expr = sum(x.disFac .* x.missCapa .* x.cost),) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C])),:R_exp => :R_dis)
 		transferCostEle!(allVar_df, partCost,:costMissCapa,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng,anyM,0.0)
