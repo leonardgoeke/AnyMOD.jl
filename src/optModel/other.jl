@@ -328,8 +328,11 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	end
 
 	# ! create constraint
+	# create capacity constraint
 	cns_df[!,:cnsExpr] = map(x -> x.var - x.val, eachrow(cns_df))
-	cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
+	# presever demand column in case of subproblem
+	if !isempty(anyM.subPro) && anyM.subPro != (0,0) rename!(cns_df,:val => :dem) end
+	cns_df = orderDf(cns_df[!,[intCol(cns_df,:dem)...,:cnsExpr]])
 	scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 
 	partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:greater),anyM.optModel)
