@@ -300,7 +300,7 @@ function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{S
 	allData_df = DataFrame(Ts_disSup = Int[], R_tech = Int[], R_from = Int[], R_to = Int[], Te = Int[], Exc = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
 	# loops over all objective variables with keyword "cost" in it
-	for cst in filter(x -> occursin("cost",string(x)),keys(anyM.parts.cost.var))
+	for cst in keys(anyM.parts.cost.var)
 		cost_df = copy(anyM.parts.cost.var[cst])
 		# rename all dispatch and expansion regions simply to region
 		if !isempty(intersect([:R_dis,:R_exp],namesSym(cost_df)))
