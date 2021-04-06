@@ -501,24 +501,26 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
     if !isempty(anyM.parts.exc)
 
 		relExc_arr = filter(x -> !isempty(intersect(relC_arr,anyM.parts.exc[x].carrier)), collect(keys(anyM.parts.exc)))
-	
-		if :out in signVar
-			excFrom_df = filterCarrier(vcat(map(x -> anyM.parts.exc[x].var[:exc],relExc_arr)...),relC_arr)
-			excFrom_df = combine(groupby(filter(filterFunc,rename(copy(excFrom_df),:R_from => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> value(sum(x)) * -1) => :value)
-			excFrom_df[!,:variable] .= :export
-			filter!(x -> abs(x.value) > minVal, excFrom_df)
-			if !isempty(excFrom_df)
-				append!(allData_dic[:out],excFrom_df)
+		
+		if !isempty(relExc_arr)
+			if :out in signVar
+				excFrom_df = filterCarrier(vcat(map(x -> anyM.parts.exc[x].var[:exc],relExc_arr)...),relC_arr)
+				excFrom_df = combine(groupby(filter(filterFunc,rename(copy(excFrom_df),:R_from => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> value(sum(x)) * -1) => :value)
+				excFrom_df[!,:variable] .= :export
+				filter!(x -> abs(x.value) > minVal, excFrom_df)
+				if !isempty(excFrom_df)
+					append!(allData_dic[:out],excFrom_df)
+				end
 			end
-		end
 
-		if :in in signVar
-			excTo_df = filterCarrier(vcat(map(x -> anyM.parts.exc[x] |> (z -> addLossesExc(z.var[:exc],z,anyM.sets)),relExc_arr)...),relC_arr)
-			excTo_df = combine(groupby(filter(filterFunc,rename(copy(excTo_df),:R_to => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> value(sum(x))) => :value)
-			excTo_df[!,:variable] .= :import
-			filter!(x -> abs(x.value) > minVal, excTo_df)
-			if !isempty(excTo_df)
-				append!(allData_dic[:in],excTo_df)
+			if :in in signVar
+				excTo_df = filterCarrier(vcat(map(x -> anyM.parts.exc[x] |> (z -> addLossesExc(z.var[:exc],z,anyM.sets)),relExc_arr)...),relC_arr)
+				excTo_df = combine(groupby(filter(filterFunc,rename(copy(excTo_df),:R_to => :R_dis)), [:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> value(sum(x))) => :value)
+				excTo_df[!,:variable] .= :import
+				filter!(x -> abs(x.value) > minVal, excTo_df)
+				if !isempty(excTo_df)
+					append!(allData_dic[:in],excTo_df)
+				end
 			end
 		end
 	end
