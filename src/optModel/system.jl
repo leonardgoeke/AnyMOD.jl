@@ -1023,11 +1023,11 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	# replaces expansion with dispatch regions and aggregates capacity variables accordingy if required
 	if type_sym != :exc
 		grpCapaVar_df = copy(select(capaVar_df,Not([:var]))) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
-		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
+		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
 		grpCapaVar_df[!,:var] = aggUniVar(rename(capaVar_df,:R_exp => :R_dis),grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 	else
 		grpCapaVar_df = rename(copy(select(capaVar_df,Not([:var]))),:R_from => :R_a,:R_to => :R_b) |> (y -> unique(combine(x -> (R_from = r_dic[(x.R_a[1],x.lvlR[1])],R_to = r_dic[(x.R_b[1],x.lvlR[1])]),groupby(y,namesSym(y)))[!,Not([:lvlR,:R_a,:R_b])]))
-		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.expLvl[1], Ts_disSup = supTs_ntup.lvl, R_from = restr.lvlR, R_to = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
+		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_disSup = supTs_ntup.lvl, R_from = restr.lvlR, R_to = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
 		grpCapaVar_df[!,:var] = aggUniVar(capaVar_df,grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 	end
 
@@ -1038,9 +1038,9 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	# obtain all relevant dispatch variables
 	dispVar_arr = type_sym != :exc ? (type_sym != :stSize ? intersect(keys(part.carrier),info_ntup.dis) : collect(info_ntup.dis)) : [:exc]
 	if type_sym != :exc
-		resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = type_sym != :exc ? part.balLvl.exp[1] : part.expLvl[1], Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
+		resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
 	else
-		resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = type_sym != :exc ? part.balLvl.exp[1] : part.expLvl[1], Ts_dis = restr.lvlTs, R_from = restr.lvlR, R_to = restr.lvlR) : (Ts_dis = restr.lvlTs,  R_from = restr.lvlR, R_to = restr.lvlR)
+		resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_dis = restr.lvlTs, R_from = restr.lvlR, R_to = restr.lvlR) : (Ts_dis = restr.lvlTs,  R_from = restr.lvlR, R_to = restr.lvlR)
 	end
 
 	for va in dispVar_arr
