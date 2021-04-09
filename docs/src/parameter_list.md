@@ -1556,7 +1556,7 @@ Limits on exchange quantities. In the inheritance rules <em>sum*</em> only appli
 <tr>
 <td><strong>name</strong></td>
 <td>exc{Fix/Low/Up}</td>
-<td>ExcDir{Fix/Low/Up}</td>
+<td>excDir{Fix/Low/Up}</td>
 </tr>
 <tr>
 <td><strong>unit</strong></td>
