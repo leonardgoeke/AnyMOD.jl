@@ -5,7 +5,7 @@
 mutable struct bendersData
 	objVal::Float64
 	capa::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}}}}
-	rhs::DataFrame
+	balLvl::DataFrame
 	bendersData() = new(0.0,Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(),DataFrame())
 end
 
@@ -21,16 +21,21 @@ end
 
 #endregion
 
-#region # * function to run top and sub problem of benders
+#region # * functions to run algorithm 
+
+
+#end
+
+
+#region # * sub-function to run top and sub problems of decomposition
 
 # ! run top-Level problem
 function runTopLevel!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},i::Int)
 
 	capaData_obj = bendersData()
-	subObj_fl = Inf
 
 	# obtain sum of objective values for sub-problems
-	subObj_fl = min(sum(map(x -> x.objVal, values(cutData_dic))),subObj_fl)
+	subObj_fl = sum(map(x -> x.objVal, values(cutData_dic)))
 
 	# create array of expressions with duals for sub-problems
 	cut_df = DataFrame(id = Int[], Ts_disSup = Int[],scr = Int[], cnsExpr = AffExpr[])
@@ -38,18 +43,25 @@ function runTopLevel!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bende
 		subCut = cutData_dic[sub]
 		cutExpr_arr = Array{GenericAffExpr,1}()
 		
+		# compute cut element for each capacity
 		for sys in (:tech,:exc)
 			part_dic = getfield(top_m.parts,sys)
 			for sSym in keys(subCut.capa[sys]), capaSym in keys(subCut.capa[sys][sSym])
-				push!(cutExpr_arr,getBendersCut(subCut.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym]))
+				push!(cutExpr_arr,getBendersCut(subCut.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],top_m.options.coefRng.rhs[1]/top_m.options.coefRng.mat[2]))
 			end
 		end
 		
-		# add row for benders cut to cut datafarme
-		cut_expr = @expression(top_m.optModel, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)) - filter(x -> x.Ts_disSup == top_m.supTs.step[sub[1]] && x.scr == sub[2], top_m.parts.obj.var[:cut])[1,:var])
-		cut_expr.terms = filter(x -> abs(x[2]) > (1e-4),cut_expr.terms) # remove extremely small coefficients
-		push!(cut_df,(id = i, Ts_disSup = top_m.supTs.step[sub[1]],scr = sub[2], cnsExpr = cut_expr))
+		# compute cut expression 
+		cut_expr = @expression(top_m.optModel, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)))
+		
+		# remove coefficients that are much smaller than the other coefficients in the problem
+		if !isempty(cut_expr.terms)
+			minCoef_fl = max(1.0,maximum(map(x -> abs(x[2]),collect(cut_expr.terms))))/(top_m.options.coefRng.mat[2]/top_m.options.coefRng.mat[1])
+			cut_expr.terms = filter(x -> abs(x[2]) > minCoef_fl,cut_expr.terms)
+		end
 
+		# add benders variable to cut and push to dataframe of all cuts
+		push!(cut_df,(id = i, Ts_disSup = top_m.supTs.step[sub[1]],scr = sub[2], cnsExpr = cut_expr - filter(x -> x.Ts_disSup == top_m.supTs.step[sub[1]] && x.scr == sub[2], top_m.parts.obj.var[:cut])[1,:var]))
 	end
 
 	# scale cuts and add to dataframe of benders cuts in model
@@ -61,16 +73,14 @@ function runTopLevel!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bende
 		optimize!(top_m.optModel)
 	end
 
-	# write technology capacites and rhs of missing capacities to BendersData object
+	# write technology capacites and level of capacity balance to benders object
 	capaData_obj.capa = writeCapa(top_m)
-	#capaData_obj.rhs = getCapaRhs(top_m)
+	capaData_obj.balLvl = getCapaBalLvl(top_m)
 
 	# get objective values of top problem with and without cut
-	topObj_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
-	# derive lower and upper bounds on objective value
-	lowerLim_fl = topObj_fl+value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
+	lowerLimTrust_fl = value(sum(top_m.parts.obj.var[:objVar][!,:var]))
 
-	return capaData_obj, lowerLim_fl, topObj_fl
+	return capaData_obj, lowerLimTrust_fl
 end
 
 # ! run sub-Level problem
@@ -79,24 +89,25 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData)
 	# fixing capacity
 	for sys in (:tech,:exc)
 		part_dic = getfield(sub_m.parts,sys)
-		for sSym in keys(capaData_obj.capa[sys]), capaSym in keys(capaData_obj.capa[sys][sSym])
-			
-			# filter capacity data for respective year
-			filter!(x -> x.Ts_disSup == sub_m.supTs.step[1], capaData_obj.capa[sys][sSym][capaSym])
-			# removes entry from capacity data, if capacity does not exist in respective year, otherwise fix to value
-			if isempty(capaData_obj.capa[sys][sSym][capaSym])
-				delete!(capaData_obj.capa[sys][sSym],capaSym)
-			else
-				fixCapa!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym])
+		for sSym in keys(capaData_obj.capa[sys])
+			for capaSym in keys(capaData_obj.capa[sys][sSym])
+				# filter capacity data for respective year
+				filter!(x -> x.Ts_disSup == sub_m.supTs.step[1], capaData_obj.capa[sys][sSym][capaSym])
+				# removes entry from capacity data, if capacity does not exist in respective year, otherwise fix to value
+				if isempty(capaData_obj.capa[sys][sSym][capaSym])
+					delete!(capaData_obj.capa[sys][sSym],capaSym)
+				else
+					fixCapa!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m)
+				end
 			end
 		end
 	end
 
-	# set rhs of capacity balance
+	# set level of capacity balance
 	if :capaBal in keys(sub_m.parts.bal.cns)
 		bal_df = sub_m.parts.bal.cns[:capaBal]
-		bal_df = leftjoin(bal_df,capaData_obj.rhs, on = intCol(bal_df))
-		foreach(x -> set_normalized_rhs(x.cns,x.rhs),eachrow(bal_df))
+		bal_df = leftjoin(select(bal_df,Not([:actCapa])),capaData_obj.balLvl, on = intCol(bal_df))
+		foreach(x -> set_normalized_rhs(x.cns,x.dem - x.lvl),eachrow(bal_df))
 	end
 
 	# set optimizer attributes and solves
@@ -110,7 +121,7 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData)
 	for sys in (:tech,:exc)
 		part_dic = getfield(sub_m.parts,sys)
 		for sSym in keys(capaData_obj.capa[sys]), capaSym in keys(capaData_obj.capa[sys][sSym])
-			capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym])
+			capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].cns[Symbol(capaSym,:BendersFix)])
 		end
 	end
 
@@ -119,10 +130,10 @@ end
 
 #endregion
 
-#region # * sub-functions for benders decomposition
+#region # * utility functions for benders algorithm
 
 # ! add trust region to objective part of model
-function centerTrustRegion(capa_dic::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}}}},radScal_fl::Float64,top_m::anyModel)
+function centerTrustRegion(capa_dic::Union{Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}}}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}},top_m::anyModel)
 
 	# * match capacity values with variables
 	capaExpr_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
@@ -131,7 +142,7 @@ function centerTrustRegion(capa_dic::Dict{Symbol,Union{Dict{Symbol,DataFrame},Di
 		part_dic = getfield(top_m.parts,sys)
 		for sSym in keys(capa_dic[sys])
 			subCapa_dic = capa_dic[sys][sSym]
-			capaExpr_dic[sys][sSym] = Dict(subCapa_dic[capaSym] |> (z -> capaSym => innerjoin(part_dic[sSym].var[capaSym],z, on = intCol(z,:dir))) for capaSym in filter(x -> occursin("capa",string(x)), keys(subCapa_dic)))
+			capaExpr_dic[sys][sSym] = Dict(deSelectSys(subCapa_dic[capaSym]) |> (z -> capaSym => innerjoin(deSelectSys(part_dic[sSym].var[capaSym]),z, on = intCol(z,:dir))) for capaSym in filter(x -> occursin("capa",string(x)), keys(subCapa_dic)))
 		end
 	end
 
@@ -139,6 +150,7 @@ function centerTrustRegion(capa_dic::Dict{Symbol,Union{Dict{Symbol,DataFrame},Di
 	
 	# get quadratic left hand side
 	allCapa_df = vcat(vcat(vcat(map(x -> capaExpr_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+	allCapa_df[!,:value] = map(x -> x.value < top_m.options.coefRng.mat[1]/top_m.options.coefRng.mat[2] ? 0.0 : x.value,eachrow(allCapa_df))
 	capaSum_expr = sum(map(x -> collect(keys(x.var.terms))[1] |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allCapa_df)))
 	
 	# save scaling factor, constant of left hand side and array of capacities values
@@ -158,9 +170,10 @@ function shrinkTrustRegion!(trustReg_obj::trustRegion; shrFac_fl::Float64 = 0.5)
 end
 
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
-function getBendersCut(sub_df::DataFrame, variable_df::DataFrame)
-	ben_df = innerjoin(variable_df,sub_df, on = intCol(sub_df,:dir))
-	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual *( collect(keys(x.var.terms))[1] - x.value),eachrow(ben_df)))
+function getBendersCut(sub_df::DataFrame, variable_df::DataFrame,low_fl::Float64)
+	ben_df = deSelectSys(sub_df) |> (z -> innerjoin(deSelectSys(variable_df),z, on = intCol(z,:dir)))
+	ben_df[!,:value] = map(x -> low_fl > x ? 0.0 : x,ben_df[!,:value]) # corrects capacity in cut to zero, if it was below threshold
+	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual *(collect(keys(x.var.terms))[1] - x.value),eachrow(ben_df)))
 end
 
 # ! write capacities in input model to returned capacity dictionary
@@ -181,7 +194,7 @@ function copy(ben_obj::bendersData)
 	out = bendersData()
 	out.objVal = ben_obj.objVal
 	out.capa = deepcopy(ben_obj.capa)
-	out.rhs = deepcopy(ben_obj.rhs)
+	out.balLvl = deepcopy(ben_obj.balLvl)
 	return out
 end
 
@@ -190,40 +203,72 @@ function getCapa(capa_df::DataFrame)
 	# filter entries without variable
 	filter!(x -> !isempty(x.var.terms),capa_df)
 	# write value of variable dataframe
-	capa_df[!,:value] = map(x -> value(collect(keys(x.terms))[1]) |> (z -> z < 1e-5 ? 0.0 : z),capa_df[!,:var])
+	capa_df[!,:value] = map(x -> value(collect(keys(x.terms))[1]),capa_df[!,:var])
+
 	return select(capa_df,Not([:var]))
 end
 
-# ! fixes capacity variable from second dataframe according to value in the first
-function fixCapa!(value_df::DataFrame,variable_df::DataFrame)
-	if !isempty(value_df)
-		capaSub_df = leftjoin(variable_df,value_df,on = intCol(value_df,:dir))|> (y -> y[completecases(y),:])
-		foreach(x -> x.var  |> (y -> fix(collect(keys(y.terms))[1], x.value; force = true)),eachrow(capaSub_df))
+# ! create constraint fixing capacity
+function fixCapa!(value_df::DataFrame,variable_df::DataFrame,capa_sym::Symbol,part_obj::AbstractModelPart,fix_m::anyModel,th_fl::Union{Float64,Nothing}=nothing)
+
+	# join variables with capacity values
+	fix_df = deSelectSys(value_df) |>  (z -> leftjoin(variable_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
+
+	# sets capacities below threshold to zero, if a threshold is defined
+	if !isnothing(th_fl)
+		fix_df[!,:value] = map(x -> x >= th_fl ? x : 0.0,fix_df[!,:value])
 	end
+
+	# extract actual variable
+	fix_df[!,:var] = map(x -> collect(keys(x.var.terms))[1], eachrow(fix_df))
+	# compute scaling factor
+	fix_df[!,:scale] = map(x -> x.value <= fix_m.options.coefRng.rhs[1] ? min(fix_m.options.coefRng.mat[2],fix_m.options.coefRng.rhs[1]/x.value) : 1.0, eachrow(fix_df))
+	fix_df[!,:scale] = map(x -> x.value >= fix_m.options.coefRng.rhs[2] ? min(fix_m.options.coefRng.mat[1],fix_m.options.coefRng.rhs[2]/x.value) : x.scale, eachrow(fix_df))
+
+	# compute righ-hand side and factor of variables for constraint
+	fix_df[!,:rhs] = map(x -> x.value * x.scale |> (u -> round(u,digits = 4) >= fix_m.options.coefRng.rhs[1] ? u : 0.0), eachrow(fix_df))
+	fix_df[!,:fac] = map(x -> x.rhs == 0.0 ? 1.0 : x.scale, eachrow(fix_df))
+
+	if !(Symbol(capa_sym,:BendersFix) in keys(part_obj.cns))
+		# create actual constraint and attach to model part
+		fix_df[!,:cns] = map(x -> @constraint(fix_m.optModel,x.var * x.fac == x.rhs),eachrow(fix_df))
+		part_obj.cns[Symbol(capa_sym,:BendersFix)] = select(fix_df,Not([:var,:value,:scale,:rhs]))
+	else
+		# adjust rhs and factor of existing constraint
+		fix_df = innerjoin(select(part_obj.cns[Symbol(capa_sym,:BendersFix)],Not([:fac])),fix_df,on = intCol(fix_df,:dir))
+		set_normalized_rhs.(fix_df[!,:cns], fix_df[!,:rhs])
+		set_normalized_coefficient.(fix_df[!,:cns], fix_df[!,:var], fix_df[!,:fac])	
+	end
+
+	part_obj.cns[Symbol(capa_sym,:BendersFix)] = select(fix_df,Not([:var,:value,:scale,:rhs]))
+
 end
 
 # ! adds a dual into the first dataframe based on the matching variable column in the second
-function addDual(dual_df::DataFrame,variable_df::DataFrame)
-	new_df = leftjoin(dual_df,variable_df, on = intCol(dual_df,:dir))
-	new_df[!,:dual] = map(x -> dual(FixRef(collect(keys(x.terms))[1])), new_df[!,:var])
-	return select(filter(x -> x.dual != 0.0,new_df),Not([:var]))
+function addDual(dual_df::DataFrame,cns_df::DataFrame)
+	new_df = deSelectSys(cns_df) |> (z -> leftjoin(dual_df,z, on = intCol(z,:dir)))
+	new_df[!,:dual] = map(x -> dual(x), new_df[!,:cns]) .* new_df[!,:fac]
+	return select(filter(x -> x.dual != 0.0,new_df),Not([:cns,:fac]))
 end
 
-# ! writes value of capacity variables in capacity balance that needs to be enforced in subproblems 
-function getCapaRhs(mod_m::anyModel)
+# ! writesl level of capacity balance that needs to be enforced in subproblems 
+function getCapaBalLvl(mod_m::anyModel)
 	if :capaBal in keys(mod_m.parts.bal.cns)
-		rhs_df =  copy(mod_m.parts.bal.cns[:capaBal])
+		lvl_df =  copy(mod_m.parts.bal.cns[:capaBal])
+		# add missing capacity variable if defined
 		if :missCapa in keys(mod_m.parts.bal.var)
-			rhs_df = joinMissing(rhs_df,mod_m.parts.bal.var[:missCapa],intCol(rhs_df),:left,Dict(:var => AffExpr()))
+			lvl_df = joinMissing(lvl_df,mod_m.parts.bal.var[:missCapa],intCol(lvl_df),:left,Dict(:var => AffExpr()))
 		else
-			rhs_df[!,:var] .= AffExpr()
+			lvl_df[!,:var] .= AffExpr()
 		end
-		rhs_df[!,:rhs] = normalized_rhs.(rhs_df[!,:cns]) - value.(rhs_df[!,:var])
-		select!(rhs_df,Not([:var,:cns]))
+
+		# compute by how much rhs of capacity balance has to be adjusted in subproblem, first term gives over capacits in top-problem, second gives missing capacities already accounted for by top objective
+		lvl_df[!,:lvl] = lvl_df[!,:actCapa] .* (normalized_rhs.(lvl_df[!,:cns]) - value.(lvl_df[!,:cns])) + value.(lvl_df[!,:var])
+		select!(lvl_df,Not([:var,:cns]))
 	else
-		rhs_df = DataFrame()
+		lvl_df = DataFrame()
 	end
-	return rhs_df
-end
+	return lvl_df
+end	
 
 #endregion

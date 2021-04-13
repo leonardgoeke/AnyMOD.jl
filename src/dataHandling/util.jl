@@ -33,19 +33,20 @@ function errorTest(report::Array{Tuple,1},options::modOptions;write::Bool = fals
 end
 
 # ! produces a output message and tests for errors accordingly to globally set reporting values
-function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::Int64,fixedString::String,dynamicString::Any="";testErr::Bool = false)
+function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::Int64,fixedString::String,dynamicString::Any="";testErr::Bool = false, printErr::Bool = true)
 	sty_dic = Dict(1 => :bold, 2 => :normal, 3 => :light_black)
 
 	sty_dic[currentLvl]
     if options.reportLvl >= currentLvl
-		if options.errCheckLvl >= currentLvl || testErr
+		if printErr && (options.errCheckLvl >= currentLvl || testErr)
 			printstyled(options.objName; color = :underline); printstyled(" ", getElapsed(options.startTime), fixedString, dynamicString; color = sty_dic[currentLvl])
 		else
 			printstyled(options.objName; color = :underline); printstyled(" ",getElapsed(options.startTime), fixedString, dynamicString, "\n"; color = sty_dic[currentLvl])
 		end
 	end
-    if options.errCheckLvl >= currentLvl || testErr errorTest(unique(report),options,write = options.errWrtLvl >= currentLvl) end
+    if printErr && (options.errCheckLvl >= currentLvl || testErr) errorTest(unique(report),options,write = options.errWrtLvl >= currentLvl) end
 end
+
 
 #endregion
 
@@ -56,6 +57,9 @@ mergePrep(in_tup::NamedTuple) = isempty(in_tup.resi) ? in_tup.var : unique(vcat(
 
 # ! aggregates all columns in array of dataframe to first column in array
 aggCol!(col_df::DataFrame,col_arr::Array{Symbol,1}) = foreach(x -> add_to_expression!.(col_df[col_arr[1]],col_df[x]),col_arr[2:end])
+
+# ! removes column relating to system (technology or exchange)
+deSelectSys(in_df::DataFrame) = select(in_df,Not([:Te in namesSym(in_df) ? :Te : :Exc]))
 
 # ! new plus function to avoid error when one element being added up is nothing
 plus(a::Int,b::Int) = a + b

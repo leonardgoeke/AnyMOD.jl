@@ -322,6 +322,10 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	if !(:Ts_disSup in namesSym(cns_df))
 		push!(anyM.report,(2,"capacity balance","","capacity demand was provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all years was limited instead of enforcing the same limit for each year (see https://leonardgoeke.github.io/AnyMOD.jl/stable/parameter_list/#Limits-on-quantities-dispatched)"))
 	end
+
+	# add column indicating, if capacities other than missing capacity are added, only relevant for benders heuristik
+	cns_df[!,:actCapa] =  .!isempty.(map(x -> x.terms, cns_df[!,:var]))
+
 	# add missing capacity variables
 	if :missCapa in keys(partBal.var)
 		add_to_expression!.(cns_df[!,:var], aggDivVar(partBal.var[:missCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets))
@@ -332,7 +336,7 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	cns_df[!,:cnsExpr] = map(x -> x.var - x.val, eachrow(cns_df))
 	# presever demand column in case of subproblem
 	if !isempty(anyM.subPro) && anyM.subPro != (0,0) rename!(cns_df,:val => :dem) end
-	cns_df = orderDf(cns_df[!,[intCol(cns_df,:dem)...,:cnsExpr]])
+	cns_df = orderDf(cns_df[!,[intCol(cns_df,[:dem,:actCapa])...,:cnsExpr]])
 	scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 
 	partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:greater),anyM.optModel)
