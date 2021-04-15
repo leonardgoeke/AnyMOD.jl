@@ -250,6 +250,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			par_obj = copy(partLim.par[Symbol(va,lim)])
 			if va in (:capaExc,:oprCapaExc) && :R_a in namesSym(par_obj.data) && :R_b in namesSym(par_obj.data)
 				par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_a => :R_b,:R_b => :R_a))
+				allVar_df = convertExcCol(allVar_df)
 			end
 			agg_tup = tuple(intCol(par_obj.data)...)
 
@@ -257,7 +258,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			if isempty(agg_tup)
 				grpVar_df = allVar_df
 			else
-				grpVar_df = combine(groupby(convertExcCol(allVar_df),collect(agg_tup)), :var => (x -> sum(x)) => :var)
+				grpVar_df = combine(groupby(allVar_df,collect(agg_tup)), :var => (x -> sum(x)) => :var)
 			end
 
 			# try to aggregate variables to limits directly provided via inputs
