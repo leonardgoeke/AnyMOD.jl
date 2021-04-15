@@ -250,9 +250,12 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			par_obj = copy(partLim.par[Symbol(va,lim)])
 			if va in (:capaExc,:oprCapaExc) && :R_a in namesSym(par_obj.data) && :R_b in namesSym(par_obj.data)
 				par_obj.data = vcat(par_obj.data,rename(par_obj.data,:R_a => :R_b,:R_b => :R_a))
-				allVar_df = convertExcCol(allVar_df)
 			end
 			agg_tup = tuple(intCol(par_obj.data)...)
+
+			if :R_a in agg_tup && !(:R_a in namesSym(allVar_df))
+				allVar_df = convertExcCol(allVar_df)
+			end
 
 			# aggregate search variables according to dimensions in limit parameter
 			if isempty(agg_tup)
