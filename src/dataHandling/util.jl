@@ -357,6 +357,10 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 	varToPart_dic = Dict(:exc => :exc, :capaExc => :exc, :oprCapaExc => :exc, :expExc => :exc, :crt => :bal, :lss => :bal, :trdSell => :trd, :trdBuy => :trd, :emission => Symbol())
 	techSym_arr = collect(keys(anyM.parts.tech))
 
+	if va == :excDir 
+		va = :exc
+	end
+
 	if !(va in keys(varToPart_dic)) # get all variables for technologies
 		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut))
 		techType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(anyM.parts.tech[y].var), techSym_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])

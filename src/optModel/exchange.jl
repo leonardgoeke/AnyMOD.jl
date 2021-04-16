@@ -142,6 +142,26 @@ end
 # XXX converts table where exchange regins are given as "R_a" and "R_b" to "R_to" and "R_from" and the other way around
 convertExcCol(in_df::DataFrame) = rename(in_df, namesSym(in_df) |> (x  -> :R_a in x ? replace(x,:R_a => :R_from, :R_b => :R_to) : replace(x,:R_from => :R_a, :R_to => :R_b)))
 
+
+# converts dataframe where exchange regions are given as "a -> b" or "from -> to" to other way round
+switchExcCol(in_df::DataFrame) = rename(in_df, replace(namesSym(in_df),:R_from => :R_to, :R_to => :R_from))
+
+# appends input dataframe to version of itself with from and to column exchanged
+function flipExc(in_df::DataFrame)
+	sw_df = switchExcCol(in_df)
+
+	# if input dataframe had only a to or from column respective other column is added
+	if !(:R_to in namesSym(in_df))
+		in_df[!,:R_to] .= 0
+		sw_df[!,:R_from] .= 0
+	elseif !(:R_from in namesSym(in_df))
+		in_df[!,:R_from] .= 0
+		sw_df[!,:R_to] .= 0
+	end
+
+	return orderDf(vcat(in_df,sw_df))
+end
+
 # </editor-fold>
 
 # <editor-fold desc= create exchange related constraints"

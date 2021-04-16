@@ -236,6 +236,11 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		# obtain all variables relevant for limits
 		allVar_df = getAllVariables(va,anyM)
 
+		# aggregates exchange variables on the same line
+		if va == :exc
+			allVar_df[!,:var] = aggDivVar(flipExc(allVar_df),select(allVar_df,Not([:var])),(:Ts_disSup, :R_from, :R_to, :Ts_dis, :C), anyM.sets)
+		end
+		
 		# check if acutally any variables were obtained
 		if isempty(allVar_df)
 			lock(anyM.lock)
