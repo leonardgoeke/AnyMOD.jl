@@ -225,9 +225,17 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 	end
 	
 	# costs of missing capacity
-	if :missCapa in keys(anyM.parts.bal.var)
+
+	# obtain missing capacity variables
+	if !isempty(anyM.subPro) && anyM.subPro != (0,0) # for sub-problems missing capacity variables only server to avoid infeasibilities with storage technologies and are stored in technology parts
+		missCapa_df = filter(x -> :missCapa in keys(anyM.parts.tech[x].var) ,collect(keys(anyM.parts.tech))) |> (z -> isempty(z) ? DataFrame() : vcat(map(y -> anyM.parts.tech[y].var[:missCapa],z)...))
+	else
+		missCapa_df = :missCapa in keys(anyM.parts.bal.var) ? anyM.parts.bal.var[:missCapa] : DataFrame()
+	end
+
+	if !isempty(missCapa_df)
 		# compute discounted costs
-		allVar_df = rename(matchSetParameter(anyM.parts.bal.var[:missCapa],anyM.parts.bal.par[:costMissCapa],anyM.sets,newCol = :cost),:var => :missCapa)
+		allVar_df = rename(matchSetParameter(missCapa_df,anyM.parts.bal.par[:costMissCapa],anyM.sets,newCol = :cost),:var => :missCapa)
 		allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partCost.par[:disFac],anyM.sets,newCol = :disFac)
 		if !isempty(anyM.subPro) && anyM.subPro != (0,0)  
 			# add scenario probability

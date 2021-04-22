@@ -33,10 +33,6 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		else
 			computeDesFac!(part,yTs_dic,anyM)
 			prepareMustOut!(part,modeDep_dic,prepTech_dic,yTs_dic,r_dic,cns_dic,anyM)
-
-			if !isempty(anyM.subPro) && anyM.subPro != (0,0) && :costMissCapa in keys(anyM.parts.bal.par)
-			end
-
 		end
 	end
 
@@ -406,8 +402,17 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},prep
 		bothVar_df = innerjoin(rename(var_df,:var => :capa),part.var[Symbol("must",makeUp(capa[1]))],on = intCol(var_df))
 		bothVar_df[!,:cnsExpr] = @expression(anyM.optModel, bothVar_df[:var] .- bothVar_df[:capa])
 		cns_dic[Symbol("must",makeUp(capa[1]))] = cnsCont(select(bothVar_df,Not([:var,:capa])),:smaller)
+
 	end
 
+	# add missing capacity variables for storage in case of subproblems (otherwise infeasibility is possible, if storage cannot be charged sufficiently)
+	if !isempty(anyM.subPro) && anyM.subPro != (0,0) && :costMissCapa in keys(anyM.parts.bal.par)
+		stCapa_df = filter(x -> x.id != 0,part.par[:desFac].data)
+		if !isempty(stCapa_df)
+			stCapa_df = orderDf(select(matchSetParameter(select(stCapa_df,Not([:val])),anyM.parts.bal.par[:costMissCapa],anyM.sets),Not([:val])))
+			part.var[:missCapa] = createVar(stCapa_df,"missCapa",NaN,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.insCapa)
+		end	
+	end
 end
 
 # ! compute design factors, either based on defined must run parameters or for all capacities in input dataframe
