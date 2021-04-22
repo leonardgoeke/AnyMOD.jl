@@ -76,9 +76,11 @@ function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,
 	capaData_obj.objVal = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
 
 	# re-create top problem again (is faster than just deleting constraints fixing variables)
-	top_m = anyModel([b * "_basis",b * "_full",b * "timeSeries/2days_2010"],b * "results", objName = "topModel", supTsLvl = 2, reportLvl = 1, shortExp = 5)
-	top_m.subPro = tuple(0,0)
-	prepareMod!(top_m,opt_obj)
+	@suppress begin
+		top_m = anyModel([b * "_basis",b * "_full",b * "timeSeries/2days_2010"],b * "results", objName = "topModel", supTsLvl = 2, reportLvl = 1, shortExp = 5)
+		top_m.subPro = tuple(0,0)
+		prepareMod!(top_m,opt_obj)
+	end
 
 	# create seperate variables for costs of subproblems and aggregate them (cannot be part of model creation, because requires information about subproblems) 
 	top_m.parts.obj.var[:cut] = map(y -> map(x -> y == 1 ? top_m.supTs.step[x] : sub_tup[x][2], 1:length(sub_tup)),1:2) |> (z -> createVar(DataFrame(Ts_disSup = z[1], scr = z[2]),"subCut",NaN,top_m.optModel,top_m.lock,top_m.sets, scaFac = 1e2))
@@ -93,22 +95,11 @@ function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,
 		cutData_dic[x] = dual_etr
 	end
 
-	println(cutData_dic[(7,0)].objVal)
-
 	# save total costs of heuristic solution
 	trustReg_obj.objVal = capaData_obj.objVal + sum(map(x -> x.objVal, values(cutData_dic)))
-
-	# write capacities of heuristic solution to reporting
-	for sSym in keys(capaData_obj.capa[:tech])
-		subCapa_dic = copy(capaData_obj.capa[:tech][sSym])
-		for capaSym in keys(subCapa_dic)
-			add_df = subCapa_dic[capaSym]
-			add_df[!,:variable] .= string(capaSym)
-			add_df[!,:dual] .= 0.0
-			foreach(x -> add_df[!,x] .= 0 ,setdiff(namesSym(capaReport_df),namesSym(add_df)))
-			append!(capaReport_df,add_df)
-		end
-	end
+	
+	# write capacity results 
+	reportCapa!(0,cutData_dic)
 
 	return top_m, trustReg_obj, cutData_dic, capaReport_df
 
@@ -132,6 +123,23 @@ function adjustTrustRegion(top_m::anyModel,capaData_obj::bendersData,trustReg_ob
 	end
 
 	return trustReg_obj
+end
+
+# ! report technology capacities
+function reportCapa!(i::Int,cutData_dic::Dict{Tuple{Int64,Int64},bendersData})
+	# report capacities for technologies
+	for x in collect(sub_tup)
+		for sSym in keys(cutData_dic[x].capa[:tech])
+			subCapa_dic = cutData_dic[x].capa[:tech][sSym]
+			for capaSym in keys(subCapa_dic)
+				add_df = copy(subCapa_dic[capaSym])
+				add_df[!,:variable] .= string(capaSym)
+				add_df[!,:i] .= i
+				foreach(x -> add_df[!,x] .= 0 ,setdiff(namesSym(capaReport_df),namesSym(add_df)))
+				append!(capaReport_df,add_df)
+			end
+		end
+	end
 end
 
 #end
@@ -413,4 +421,5 @@ function fixZero!(value_df::DataFrame,variable_df::DataFrame)
 
 
 end
+
 
