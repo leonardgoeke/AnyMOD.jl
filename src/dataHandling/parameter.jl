@@ -303,6 +303,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
 
     # emission limits and factors (are computed as net values of trade and exchange)
     parDef_dic[:emissionUp]    =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_dis => :sum_full, :C => :sum_full, :Te => :sum_full, :Exc => :sum_full, :M => :sum_full, :id => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:emissionInf]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :Ts_expSup => :up, :R_dis => :up, :C => :up, :Te => :up, :Exc => :up, :M => :up, :id => :up, :scr => :up), part = :lim)
     parDef_dic[:emissionFac]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Exc => :up, :M => :up, :id => :up, :scr => :up), part = :lim)
     parDef_dic[:emissionPrc]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Exc => :up, :M => :up, :id => :up, :scr => :up), part = :cost)
 

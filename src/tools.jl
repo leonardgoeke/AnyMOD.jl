@@ -151,18 +151,23 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	end
 
 	# ! get dispatch variables
-	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :crt, :lss, :trdBuy, :trdSell)
+	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :crt, :lss, :trdBuy, :trdSell, :emissionInf)
 		# get all variables, group them and get respective values
 		allVar_df = getAllVariables(va,anyM)
 		if isempty(allVar_df) continue end
 
+		# adds column for superordinate dispatch time-step if non existing
+		if !(:Ts_disSup in intCol(allVar_df)) && :Ts_dis in intCol(allVar_df)
+			allVar_df[!,:Ts_disSup] = map(x -> getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end],allVar_df[!,:Ts_dis])
+		end
+
 		disp_df = combine(groupby(allVar_df,intersect(intCol(allVar_df),[:Ts_disSup,:R_dis,:C,:Te,:scr])),:var => (x -> value(sum(x))) => :value)
 		# scales values to twh (except for emissions)
-		if va != :emission disp_df[!,:value] = disp_df[!,:value]  ./ 1000 end
+		if !(va in (:emission,:emissionInf)) disp_df[!,:value] = disp_df[!,:value]  ./ 1000 end
 		disp_df[!,:variable] .= va
 
 		# add empty values for non-existing columns
-		for dim in (:Te,:C,:id)
+		for dim in (:Te,:C,:id,:scr)
 			if !(dim in namesSym(disp_df))
 				disp_df[:,dim] .= 0
 			end
@@ -198,7 +203,6 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	    append!(allData_df,filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),vcat(excFrom_df,excTo_df)))
 	end
 	
-
 	flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
 
 	for flhCapa in collect(keys(flh_dic))

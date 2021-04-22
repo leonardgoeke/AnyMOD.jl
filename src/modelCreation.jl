@@ -113,8 +113,8 @@ function createOptModel!(anyM::anyModel)
 		createCapaBal!(ts_dic,yTs_dic,r_dic,anyM)
 	end
 	
-	createCost!(anyM.parts.cost,anyM)
 	createLimitCns!(anyM.parts.lim,anyM)
+	createCost!(anyM.parts.cost,anyM)
 	
 	#endregion
 

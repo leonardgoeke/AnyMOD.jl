@@ -398,6 +398,19 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			select!(allLimit_df,Not([dirLim]))
 		end
 
+		# ! infeas variables for emissions
+		if va == :emission
+			# check if corresponding parameter is defined
+			infVar_df = matchSetParameter(select(allLimit_df,intCol(allLimit_df)),partLim.par[:emissionInf],anyM.sets)
+			if !isempty(infVar_df)
+				infVar_df = select(createVar(infVar_df,"emissionInf", NaN, anyM.optModel,anyM.lock,anyM.sets),Not([:val]))
+				allLimit_df = joinMissing(allLimit_df,rename(infVar_df,:var => :inf),intCol(infVar_df), :left, Dict(:var => AffExpr()))
+				allLimit_df[!,:var] = allLimit_df[!,:var] .- allLimit_df[!,:inf]
+				select!(allLimit_df,Not([:inf]))
+				partLim.var[:emissionInf] = infVar_df
+			end
+		end
+
 		# ! check for contradicting values
 		colSet_dic = Dict(x => Symbol(split(string(x),"_")[1]) for x in intCol(allLimit_df))
 		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))

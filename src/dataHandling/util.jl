@@ -406,7 +406,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 	sys_dic = getfield(anyM.parts,exc_boo ? :exc : :tech)
 	sysSym_arr = collect(keys(sys_dic))
 	
-	if !(va in (:crt,:lss,:trdBuy,:trdSell,:emission)) && !occursin("cost",string(va)) # get all variables for systems
+	if !(va in (:crt,:lss,:trdBuy,:trdSell,:emission,:emissionInf)) && !occursin("cost",string(va)) # get all variables for systems
 		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :convIn => (:use,:stIntOut), :convOut => (:gen,:stIntIn))
 		sysType_arr = filter(x -> !isempty(x[2]),[(vaSpec,filter(y -> vaSpec in keys(sys_dic[y].var), sysSym_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
 
@@ -433,10 +433,6 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			allVar_df = DataFrame()
 		end
 	elseif va == :cost # get merged cost variables
-		
-		# determines temporal and spatial level all cost variables can be aggregated to
-		tsLvl_int = minimum(vcat(map(x -> anyM.parts.tech[x].balLvl.exp[1],collect(keys(anyM.parts.tech))),map(x -> anyM.parts.exc[x].expLvl[1],collect(keys(anyM.parts.exc)))))
-		rLvl_int = minimum(getfield.(collect(values(anyM.cInfo)),:rDis))
 
 		costVar_arr = collect(keys(anyM.parts.cost.var))
 		costDf_arr = Array{DataFrame}(undef,length(costVar_arr))
@@ -451,10 +447,16 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			end
 			
 			# adjust temporal column
-			var_df[!,:Ts] = map(x -> getAncestors(x,anyM.sets[:Ts],:int,tsLvl_int)[end],var_df[!,intersect([:Ts_disSup,:Ts_exp],intCol(var_df))[1]])
+			tsCol_arr = intersect([:Ts_disSup,:Ts_exp],intCol(var_df))
+			if !isempty(tsCol_arr)
+				var_df[!,:Ts] = map(x -> getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end],var_df[!,tsCol_arr[1]])
+			end
 
 			# adjust spatial column
-			var_df[!,:R] = map(x -> getAncestors(x,anyM.sets[:R],:int,rLvl_int)[end],var_df[!,intersect([:R_exp,:R_dis],intCol(var_df))[1]])
+			rCol_arr = intersect([:R_exp,:R_dis],intCol(var_df))
+			if !isempty(rCol_arr)
+				var_df[!,:R] = map(x -> getAncestors(x,anyM.sets[:R],:int,1)[end],var_df[!,rCol_arr[1]])
+			end
 
 			# drop unrequired columns
 			var_df = select(var_df,vcat(intersect([:Ts, :R, :Te, :Exc],intCol(var_df)),[:var]))
@@ -467,7 +469,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 
 		allVar_df = vcat(costDf_arr...) |> (z -> isempty(z) ? DataFrame() : combine(groupby(z,intCol(z,:type)), :var => (x -> sum(x)) => :var))
 
-	else va == :emission # for emission all use variables are obtained and then already matched with emission factors
+	elseif va == :emission # for emission all use variables are obtained and then already matched with emission factors
 
 		if !(:emissionFac in keys(anyM.parts.lim.par))
 			lock(anyM.lock)
@@ -546,6 +548,12 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 		if !isempty(allVar_df)
 			allVar_df[!,:var] = allVar_df[!,:val]  ./ 1e6 .* allVar_df[!,:var]
 			select!(allVar_df,Not(:val))
+		end
+	elseif va == :emissionInf
+		if va in keys(anyM.parts.lim.var)
+			allVar_df = anyM.parts.lim.var[va]
+		else
+			allVar_df = DataFrame()
 		end
 	end
 
