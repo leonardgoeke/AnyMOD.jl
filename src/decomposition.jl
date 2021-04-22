@@ -5,8 +5,7 @@
 mutable struct bendersData
 	objVal::Float64
 	capa::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}}}}
-	balLvl::DataFrame
-	bendersData() = new(0.0,Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(),DataFrame())
+	bendersData() = new(0.0,Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}())
 end
 
 # ! stores all information on current trust region 
@@ -35,10 +34,10 @@ end
 
 # ! set optimizer attributes and options, in case gurobi is used (recommended)
 function prepareMod!(mod_m::anyModel,opt_obj::DataType)
-
+	# create optimization problem
 	createOptModel!(mod_m)
 	setObjective!(:cost,mod_m)
-
+	# set optimizer and attributes, if gurobi
 	set_optimizer(mod_m.optModel,opt_obj)
 	if opt_obj <: Gurobi.Optimizer
 		set_optimizer_attribute(mod_m.optModel, "Method", 1)
@@ -66,9 +65,6 @@ function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,
 			end
 		end
 	end
-
-	# write level of capacity balance
-	capaData_obj.balLvl = getCapaBalLvl(heu_m)
 
 	# solve top problem with fixed capacites and save objective
 	@suppress optimize!(top_m.optModel)
@@ -209,7 +205,6 @@ function runTopLevel!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bende
 
 	# write technology capacites and level of capacity balance to benders object
 	capaData_obj.capa = writeCapa(top_m)
-	capaData_obj.balLvl = getCapaBalLvl(top_m)
 
 	# get objective value of top problem
 	objTopTrust_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
@@ -236,13 +231,6 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData)
 				end
 			end
 		end
-	end
-
-	# set level of capacity balance
-	if :capaBal in keys(sub_m.parts.bal.cns)
-		bal_df = sub_m.parts.bal.cns[:capaBal]
-		bal_df = leftjoin(select(bal_df,Not([:actCapa])),capaData_obj.balLvl, on = intCol(bal_df))
-		foreach(x -> set_normalized_rhs(x.cns,x.dem - x.lvl),eachrow(bal_df))
 	end
 
 	# set optimizer attributes and solves
@@ -329,7 +317,6 @@ function copy(ben_obj::bendersData)
 	out = bendersData()
 	out.objVal = ben_obj.objVal
 	out.capa = deepcopy(ben_obj.capa)
-	out.balLvl = deepcopy(ben_obj.balLvl)
 	return out
 end
 
@@ -384,26 +371,6 @@ function addDual(dual_df::DataFrame,cns_df::DataFrame)
 	new_df = deSelectSys(cns_df) |> (z -> leftjoin(dual_df,z, on = intCol(z,:dir)))
 	new_df[!,:dual] = map(x -> dual(x), new_df[!,:cns]) .* new_df[!,:fac]
 	return select(filter(x -> x.dual != 0.0,new_df),Not([:cns,:fac]))
-end
-
-# ! writesl level of capacity balance that needs to be enforced in subproblems 
-function getCapaBalLvl(mod_m::anyModel)
-	if :capaBal in keys(mod_m.parts.bal.cns)
-		lvl_df =  copy(mod_m.parts.bal.cns[:capaBal])
-		# add missing capacity variable if defined
-		if :missCapa in keys(mod_m.parts.bal.var)
-			lvl_df = joinMissing(lvl_df,mod_m.parts.bal.var[:missCapa],intCol(lvl_df),:left,Dict(:var => AffExpr()))
-		else
-			lvl_df[!,:var] .= AffExpr()
-		end
-
-		# compute by how much rhs of capacity balance has to be adjusted in subproblem, first term gives over capacits in top-problem, second gives missing capacities already accounted for by top objective
-		lvl_df[!,:lvl] = lvl_df[!,:actCapa] .* (normalized_rhs.(lvl_df[!,:cns]) - value.(lvl_df[!,:cns])) + value.(lvl_df[!,:var])
-		select!(lvl_df,Not([:var,:cns]))
-	else
-		lvl_df = DataFrame()
-	end
-	return lvl_df
 end
 
 #endregion

@@ -109,7 +109,7 @@ function createOptModel!(anyM::anyModel)
 		createEnergyBal!(techSym_arr,ts_dic,anyM)
 	end
 
-	if :capaDem in keys(anyM.parts.bal.par)
+	if :capaDem in keys(anyM.parts.bal.par) && (isempty(anyM.subPro) || anyM.subPro == (0,0))
 		createCapaBal!(ts_dic,yTs_dic,r_dic,anyM)
 	end
 	

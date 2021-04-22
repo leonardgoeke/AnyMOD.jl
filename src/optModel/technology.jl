@@ -33,6 +33,10 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		else
 			computeDesFac!(part,yTs_dic,anyM)
 			prepareMustOut!(part,modeDep_dic,prepTech_dic,yTs_dic,r_dic,cns_dic,anyM)
+
+			if !isempty(anyM.subPro) && anyM.subPro != (0,0) && :costMissCapa in keys(anyM.parts.bal.par)
+			end
+
 		end
 	end
 
@@ -383,9 +387,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},prep
 	for capa in collect(filter(x ->x[1] in (:capaConv,:capaStOut),part.var))
 
 		# for conversion specific variables are sensible, 
-		if !isempty(anyM.subPro) && anyM.subPro != (0,0) # if created problem is a subproblem to avoid infeasibility 
-			var_df = capa[2]
-		elseif capa[1] == :capaStOut
+		if capa[1] == :capaStOut
 			if !isempty(modeDep_dic[:stExtOut]) # if storage output is mode dependant
 				var_df = capa[2]
 			else # if also non must-run carriers are output of storage
