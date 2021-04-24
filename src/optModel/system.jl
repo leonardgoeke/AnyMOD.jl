@@ -744,7 +744,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 	parToLim_dic = Dict(y => unique(getindex.(filter(z -> z[2] == y,ratioLim_arr),1)) for y in unique(getindex.(ratioLim_arr,2)))
 
 	ratioVar_dic = Dict(:stInToConv => ((:capaConv, :capaStIn),(:expConv, :expStIn)), :stOutToStIn => ((:capaStIn, :capaStOut),(:expStIn, :expStOut)),
-												:sizeToStIn => ((:capaStIn, :capaStSize),(:expStIn, :expStSize)), :flhConv => ((:capaConv,:convIn),), :flhStIn => ((:capaStIn,:stIn),), :flhExc => ((:capaExc,:exc),),
+												:sizeToStOut => ((:capaStOut, :capaStSize),(:expStIn, :expStSize)), :flhConv => ((:capaConv,:convIn),), :flhStIn => ((:capaStIn,:stIn),), :flhExc => ((:capaExc,:exc),),
 																				:flhStOut => ((:capaStOut,:stOut),), :cycStIn => ((:capaStSize,:stIn),), :cycStOut => ((:capaStSize,:stOut),))
 
 	va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :convIn => (:use,:stIntOut), :convOut => (:gen,:stIntIn))
@@ -822,7 +822,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 	# loops over all other parameters (ratios on storage capacity, flh, cycling)
 	for par in filter(x -> !occursin("ratio",string(x)),collectKeys(keys(parToLim_dic)))
 
-		capaRatio_boo = par in (:stInToConv, :stOutToStIn, :sizeToStIn)
+		capaRatio_boo = par in (:stInToConv, :stOutToStIn, :sizeToStOut)
 
 		# controls variables ratio is applied
 		if capaRatio_boo && (part.type == :stock || (!isempty(anyM.subPro) && anyM.subPro != (0,0))) # removes expansion for stock technologies or for subproblem
@@ -914,13 +914,21 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			# get relevant capacity variables and add carrier
 			relCapa_arr = intersect((:capaConv,:capaStOut),keys(part.var))
 			capaVar_df = vcat(map(x -> (Symbol(:must, makeUp(x)) in keys(part.var) ? part.var[Symbol(:must, makeUp(x))] : part.var[x]) |> (z -> x == :capaStOut ? z : insertcols!(copy(z), 1, :id => fill(0,size(z,1)))),relCapa_arr)...)
+
 			# add carriers and expand to dispatch regions
 			capaVar_df[!,:C] .= m.car[1]
 			capaVar_df[!,:R_dis] = map(x -> r_dic[(x.R_exp,anyM.cInfo[x.C].rDis)],eachrow(capaVar_df))
-			capaVar_df = flatten(capaVar_df,:R_dis)
+			capaVar_df = select(flatten(capaVar_df,:R_dis),Not(:R_exp))
+
+			# add variables for missing capacities (only relevant in subproblems)
+			if :missCapa in keys(part.var)
+				missCapa_df = filter(x -> x.C in m.car, part.var[:missCapa])
+				missCapa_df[!,:var] = missCapa_df[!,:var] .* (-1)
+				capaVar_df = vcat(missCapa_df,capaVar_df)
+			end
 
 			# match with design factor and aggregate capacities
-			capaVar_df = matchSetParameter(select(capaVar_df,Not(:R_exp)),part.par[:desFac],anyM.sets; newCol = :desFac)
+			capaVar_df = matchSetParameter(capaVar_df,part.par[:desFac],anyM.sets; newCol = :desFac)
 			capaVar_df[!,:var] = capaVar_df[!,:var] .* capaVar_df[!,:desFac]
 			capaVar_df = combine(groupby(capaVar_df,filter(x -> x != :id,intCol(capaVar_df))),:var => (x -> sum(x)) => :capa)
 			# resize capacity variables

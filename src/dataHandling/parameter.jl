@@ -195,9 +195,9 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:stOutToStInLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
     parDef_dic[:stOutToStInFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
 
-    parDef_dic[:sizeToStInUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:sizeToStInLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:sizeToStInFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:sizeToStOutUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:sizeToStOutLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:sizeToStOutFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
 
     # commssioned capacity limits on conversion, storage and exchange
     parDef_dic[:insCapaConvUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te),  problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any,  :Ts_expSup => :sum_full), part = :lim)

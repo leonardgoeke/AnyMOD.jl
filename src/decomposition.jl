@@ -4,7 +4,7 @@
 # ! struct for results of a sub-problem
 mutable struct bendersData
 	objVal::Float64
-	capa::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}}}}
+	capa::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}
 	bendersData() = new(0.0,Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}())
 end
 
@@ -18,10 +18,10 @@ mutable struct trustRegion
 	coef::NamedTuple{(:sca,:pol),Tuple{Float64,Float64}}	
 	opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64,Float64}}	
 
-	function trustRegion(capa_m::anyModel,trust_opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64,Float64}})
+	function trustRegion(capa_df::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trust_opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64,Float64}})
 		trustReg_obj = new()
 		trustReg_obj.opt = trust_opt
-		trustReg_obj.capa = writeCapa(capa_m)
+		trustReg_obj.capa = capa_df
 		trustReg_obj.abs = sum(vcat(vcat(vcat(map(x -> trustReg_obj.capa[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...))
 		trustReg_obj.rad = trustReg_obj.abs * trustReg_obj.opt.startRad
 		return trustReg_obj
@@ -40,13 +40,15 @@ function prepareMod!(mod_m::anyModel,opt_obj::DataType)
 	# set optimizer and attributes, if gurobi
 	set_optimizer(mod_m.optModel,opt_obj)
 	if opt_obj <: Gurobi.Optimizer
-		set_optimizer_attribute(mod_m.optModel, "Method", 1)
+		set_optimizer_attribute(mod_m.optModel, "Method", 2)
 		set_optimizer_attribute(mod_m.optModel, "Crossover", 0)
 	end
 end
 
 # ! run top problem and sub problems with results of heuristic solution
-function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,Int64},anyModel},trustReg_obj::trustRegion,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},capaReport_df::DataFrame)
+function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,Int64},anyModel},trustReg_obj::trustRegion,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},capaReport_df::DataFrame,inputMod_arr::Array{String,1},resultDir_str::String,opt_obj::DataType)
+	
+	sub_tup = collect(keys(sub_dic))
 	
 	# write solution of heuristic model to benders object and fix top problem to these values
 	capaData_obj = bendersData()
@@ -73,7 +75,7 @@ function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,
 
 	# re-create top problem again (is faster than just deleting constraints fixing variables)
 	@suppress begin
-		top_m = anyModel([b * "_basis",b * "_full",b * "timeSeries/2days_2010"],b * "results", objName = "topModel", supTsLvl = 2, reportLvl = 1, shortExp = 5)
+		top_m = anyModel(inputMod_arr,resultDir_str, objName = "topModel", supTsLvl = 2, reportLvl = 1, shortExp = 5)
 		top_m.subPro = tuple(0,0)
 		prepareMod!(top_m,opt_obj)
 	end
@@ -83,7 +85,7 @@ function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,
 	push!(top_m.parts.obj.cns[:objEqn], (name = :aggCut, group = :benders, cns = @constraint(top_m.optModel, sum(top_m.parts.obj.var[:cut][!,:var]) == filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])))
 
 	# add trust region constraint to top problem
-	trustReg_obj.cns, trustReg_obj.coef = centerTrustRegion(trustReg_obj.capa,top_m);
+	trustReg_obj.cns, trustReg_obj.coef = centerTrustRegion(trustReg_obj.capa,top_m,trustReg_obj.rad);
 
 	# run subproblems
 	@threads for x in collect(sub_tup)
@@ -95,7 +97,7 @@ function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,
 	trustReg_obj.objVal = capaData_obj.objVal + sum(map(x -> x.objVal, values(cutData_dic)))
 	
 	# write capacity results 
-	reportCapa!(0,cutData_dic)
+	reportCapa!(0,cutData_dic,capaReport_df)
 
 	return top_m, trustReg_obj, cutData_dic, capaReport_df
 
@@ -103,14 +105,17 @@ end
 
 # ! dynamically adjusts the trust region
 function adjustTrustRegion(top_m::anyModel,capaData_obj::bendersData,trustReg_obj::trustRegion,objSub_fl::Float64,objTopTrust_fl::Float64,lowLim_fl::Float64,lowLimTrust_fl::Float64)
+	
+	# re-create trust region
 	if (objTopTrust_fl + objSub_fl) < trustReg_obj.objVal # recenter trust region, if new best solution was obtained
-		trustReg_obj.cns, trustReg_obj.coef  = centerTrustRegion(capaData_obj.capa,top_m)
+		changeTrustCapa!(capaData_obj.capa,trustReg_obj) # writes relevant capacities of top problem to trust region 
+		trustReg_obj.cns, trustReg_obj.coef  = centerTrustRegion(trustReg_obj.capa,top_m,trustReg_obj.rad)
 		trustReg_obj.objVal = objTopTrust_fl + objSub_fl
 		produceMessage(top_m.options,top_m.report, 1," - Re-centered trust-region!", testErr = false, printErr = false)
 	else
-		trustReg_obj.cns, trustReg_obj.coef = centerTrustRegion(trustReg_obj.capa,top_m)
+		trustReg_obj.cns, trustReg_obj.coef = centerTrustRegion(trustReg_obj.capa,top_m,trustReg_obj.rad)
 		if abs(1 - lowLimTrust_fl / (objTopTrust_fl + objSub_fl)) < trustReg_obj.opt.extThrs # extend trust region, if constrained top problem converged
-			resizeTrustRegion!(trustReg_obj,2.0)
+			resizeTrustRegion!(trustReg_obj,1.5)
 			produceMessage(top_m.options,top_m.report, 1," - Extended trust-region!", testErr = false, printErr = false)
 		elseif abs(1 - lowLim_fl / lowLimTrust_fl) < trustReg_obj.opt.shrThrs && trustReg_obj.rad > (trustReg_obj.abs * trustReg_obj.opt.lowRad) # shrink trust region, if it does not constrain the top problem and the lower limit for its size is not yet reached
 			resizeTrustRegion!(trustReg_obj,0.5)
@@ -122,9 +127,9 @@ function adjustTrustRegion(top_m::anyModel,capaData_obj::bendersData,trustReg_ob
 end
 
 # ! report technology capacities
-function reportCapa!(i::Int,cutData_dic::Dict{Tuple{Int64,Int64},bendersData})
+function reportCapa!(i::Int,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},capaReport_df::DataFrame)
 	# report capacities for technologies
-	for x in collect(sub_tup)
+	for x in collect(keys(cutData_dic))
 		for sSym in keys(cutData_dic[x].capa[:tech])
 			subCapa_dic = cutData_dic[x].capa[:tech][sSym]
 			for capaSym in keys(subCapa_dic)
@@ -138,12 +143,46 @@ function reportCapa!(i::Int,cutData_dic::Dict{Tuple{Int64,Int64},bendersData})
 	end
 end
 
-#end
+# ! function to fix or unfix capacites for different phases
+function switchCapaPhase!(mod_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},opr_sym::Symbol,fix_fl::Float64 = 0.0)
+	# loop over all capacity variables in input dictionary
+	for sys in (:tech,:exc)
+		modSys_obj = getfield(mod_m.parts,sys)
+		for sSym in keys(capa_dic[sys])
+			modPart_obj = modSys_obj[sSym]
+			for capaSym in keys(capa_dic[sys][sSym])
+				fixUnfix!(capa_dic[sys][sSym][capaSym],modPart_obj.var[capaSym],opr_sym,fix_fl)
+			end
+		end
+	end
+end
+
+# ! remove benders cuts from previous iteration that included limited coefficients to avoid numerical trouble			
+function rmvLimitCuts!(mod_m::anyModel)
+	foreach(x -> delete(mod_m.optModel,x.cns), filter(x -> x.limCoef,eachrow(mod_m.parts.obj.cns[:bendersCuts])))
+	mod_m.parts.obj.cns[:bendersCuts] = DataFrame(filter(x -> !(x.limCoef),eachrow(mod_m.parts.obj.cns[:bendersCuts])))
+end
+
+# ! solves top problem without trust region and obtains lower limits
+function runTopWithoutTrust(mod_m::anyModel,trustReg_obj::trustRegion)
+	# solve top again with trust region and re-compute bound for soultion
+	delete(mod_m.optModel,trustReg_obj.cns)
+	set_optimizer_attribute(mod_m.optModel, "Crossover", 1) # add crossover to get an exact solution
+	@suppress optimize!(mod_m.optModel)
+	set_optimizer_attribute(mod_m.optModel, "Crossover", 0)
+
+	# obtain different objective values
+	objTop_fl = value(sum(filter(x -> x.name == :cost, mod_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
+	lowLim_fl = objTop_fl + value(filter(x -> x.name == :benders,mod_m.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
+
+	return objTop_fl, lowLim_fl
+
+end
 
 #region # * sub-function to run top and sub problems of decomposition
 
 # ! run top-Level problem
-function runTopLevel!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},i::Int)
+function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},i::Int)
 
 	capaData_obj = bendersData()
 
@@ -151,7 +190,7 @@ function runTopLevel!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bende
 	subObj_fl = sum(map(x -> x.objVal, values(cutData_dic)))
 
 	# create array of expressions with duals for sub-problems
-	cut_df = DataFrame(id = Int[], Ts_disSup = Int[],scr = Int[], limCoef = Bool[], cnsExpr = AffExpr[])
+	cut_df = DataFrame(i = Int[], Ts_disSup = Int[],scr = Int[], limCoef = Bool[], cnsExpr = AffExpr[])
 	for sub in keys(cutData_dic)
 
 		subCut = cutData_dic[sub]
@@ -191,7 +230,7 @@ function runTopLevel!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bende
 
 
 		# add benders variable to cut and push to dataframe of all cuts
-		push!(cut_df,(id = i, Ts_disSup = top_m.supTs.step[sub[1]],scr = sub[2], limCoef = limCoef_boo, cnsExpr = cut_expr - cut_var))
+		push!(cut_df,(i = i, Ts_disSup = top_m.supTs.step[sub[1]],scr = sub[2], limCoef = limCoef_boo, cnsExpr = cut_expr - cut_var))
 	end
 
 	# scale cuts and add to dataframe of benders cuts in model
@@ -238,7 +277,6 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData)
 		optimize!(sub_m.optModel)
 	end
 
-
 	# add duals and objective value to capacity data
 	capaData_obj.objVal = objective_value(sub_m.optModel)
 
@@ -256,8 +294,20 @@ end
 
 #region # * utility functions for benders algorithm
 
+# ! write values in capa_dic with corresponding entries in trust region to these entries
+function changeTrustCapa!(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trustReg_obj::trustRegion)
+	# loop over all fields of capa_dic
+	for sys in (:tech,:exc)
+		for sSym in keys(capa_dic[sys])
+			for capaSym in keys(capa_dic[sys][sSym]) 
+				trustReg_obj.capa[sys][sSym][capaSym] = select(trustReg_obj.capa[sys][sSym][capaSym],Not([:value])) |> (z -> innerjoin(z,capa_dic[sys][sSym][capaSym],on = intCol(z,:dir)))	# write capacities where they match		
+			end
+		end
+	end
+end
+
 # ! add trust region to objective part of model
-function centerTrustRegion(capa_dic::Union{Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}}}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}},top_m::anyModel)
+function centerTrustRegion(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},top_m::anyModel,rad_fl::Float64)
 
 	# * match capacity values with variables
 	capaExpr_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
@@ -278,8 +328,8 @@ function centerTrustRegion(capa_dic::Union{Dict{Symbol,Union{Dict{Symbol,DataFra
 	capaSum_expr = sum(map(x -> collect(keys(x.var.terms))[1] |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allCapa_df)))
 	
 	# save scaling factor, constant of left hand side and array of capacities values
-	cnsInfo_ntup =  (sca = 10*top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)))), pol = capaSum_expr.aff.constant)
-	trustRegion_cns = @constraint(top_m.optModel,  capaSum_expr * cnsInfo_ntup.sca <= trustReg_obj.rad^2  * cnsInfo_ntup.sca)
+	cnsInfo_ntup =  (sca = 10*top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)) |> (z -> isempty(z) ? [1.0] : z))), pol = capaSum_expr.aff.constant)
+	trustRegion_cns = @constraint(top_m.optModel,  capaSum_expr * cnsInfo_ntup.sca <= rad_fl^2  * cnsInfo_ntup.sca)
 
 	return trustRegion_cns, cnsInfo_ntup
 end
@@ -300,13 +350,38 @@ function getBendersCut(sub_df::DataFrame, variable_df::DataFrame)
 end
 
 # ! write capacities in input model to returned capacity dictionary
-function writeCapa(in_m::anyModel)
+function writeCapa(in_m::anyModel, filterFunc::Function = x -> true, checkSt::Bool = false)
 	capa_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
+
+	fixPar_dic = Dict(:capaStSize => :sizeToStOutFixExp,:capaStIn => :stOutToStInFixExp)
+
 	for sys in (:tech,:exc)
 		capa_dic[sys] = Dict{Symbol,Dict{Symbol,DataFrame}}()
 		part_dic = getfield(in_m.parts,sys)
 		for sSym in filter(x -> part_dic[x].type in (:mature,:emerging),keys(part_dic))
-			capa_dic[sys][sSym] = Dict(capaSym => getCapa(copy(part_dic[sSym].var[capaSym])) for capaSym in filter(x -> occursin("capa",string(x)), keys(part_dic[sSym].var)))
+			capa_dic[sys][sSym] = Dict(capaSym => filter(filterFunc ,getCapa(copy(part_dic[sSym].var[capaSym]))) for capaSym in filter(x -> occursin("capa",string(x)), keys(part_dic[sSym].var)))
+			if checkSt
+				# check if storage capacities are fixed to storage output and do not be considered therefore
+				for stCapa in intersect([:capaStSize,:capaStIn],collect(keys(capa_dic[sys][sSym])))
+					if fixPar_dic[stCapa] in collect(keys(part_dic[sSym].cns)) && !(Symbol(:ins,makeUp(stCapa)) in collect(keys(part_dic[sSym].var)))
+						# filters cases where expansion variables is not fixed to other variable 
+						expVar_df = flatten(select(part_dic[sSym].var[:expStSize],Not([:var])),:Ts_disSup)
+						fixCns_df = flatten(select(part_dic[sSym].cns[fixPar_dic[stCapa]],Not([:cns])) |> (x -> innerjoin(x,expVar_df, on = intCol(x))),:Ts_disSup) 
+						expNoFix_df = antijoin(expVar_df,fixCns_df, on = intCol(expVar_df))
+						if isempty(expNoFix_df) # removes capacity entry entirely if all expansion is fixed
+							capa_dic[sys][sSym][stCapa] = filter(x -> false, capa_dic[sys][sSym][stCapa])
+						else # filter specific cases where capacity is fixed
+							# adjust expansion datatframe to match capacities
+							select!(expNoFix_df,Not([:Ts_exp]))
+							if part_dic[sSym].type != :emerging
+								expNoFix_df[!,:Ts_expSup] .= 0
+							end
+							# preserve unfixed capacitgies
+							capa_dic[sys][sSym][stCapa] = innerjoin(capa_dic[sys][sSym][:capaStIn],unique(expNoFix_df), on = intCol(expNoFix_df))
+						end
+					end
+				end
+			end
 		end
 	end
 	return capa_dic
@@ -326,7 +401,6 @@ function getCapa(capa_df::DataFrame)
 	filter!(x -> !isempty(x.var.terms),capa_df)
 	# write value of variable dataframe
 	capa_df[!,:value] = map(x -> value(collect(keys(x.terms))[1]) |> (z -> z < 0.0 ? 0.0 : z),capa_df[!,:var])
-
 	return select(capa_df,Not([:var]))
 end
 
@@ -373,20 +447,59 @@ function addDual(dual_df::DataFrame,cns_df::DataFrame)
 	return select(filter(x -> x.dual != 0.0,new_df),Not([:cns,:fac]))
 end
 
-#endregion
-
-function fixZero!(value_df::DataFrame,variable_df::DataFrame)
-
+# ! fixes or unfixed variables in variable_df that can be matched with entries in value_df
+function fixUnfix!(value_df::DataFrame,variable_df::DataFrame,opr_sym::Symbol,fix_fl::Float64)
 	# join variables with capacity values
 	fix_df = deSelectSys(value_df) |>  (z -> leftjoin(variable_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
-
 	# extract actual variable
 	fix_df[!,:var] = map(x -> collect(keys(x.var.terms))[1], eachrow(fix_df))
-	fix_df = filter(x -> x.value == 0.0,fix_df)
 
-	foreach(x -> fix(x.var,0.0; force = true),eachrow(fix_df))
-
-
+	if opr_sym == :fix # fix corresponding capacities to zero
+		if isnan(fix_fl)
+			foreach(x -> fix(x.var,value(x.var); force = true),eachrow(fix_df))
+		else
+			foreach(x -> fix(x.var,fix_fl; force = true),eachrow(fix_df))
+		end
+	elseif opr_sym == :unfix # unfix capacities (and re-enforce lower limit of zero)
+		foreach(x -> unfix(x.var),eachrow(fix_df))
+		foreach(x -> set_lower_bound(x.var,0.0),eachrow(fix_df))
+	elseif opr_sym == :up
+		foreach(x -> set_upper_bound(x.var,fix_fl),eachrow(fix_df))
+	end	
 end
 
 
+#endregion
+
+# experimental functions for second phase
+function getPhaseVar(mod_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}})
+	allVar_arr = Array{AffExpr,1}()
+	for sys in (:tech,:exc)
+		modSys_obj = getfield(mod_m.parts,sys)
+		for sSym in keys(capa_dic[sys])
+			modPart_obj = modSys_obj[sSym]
+			for capaSym in keys(capa_dic[sys][sSym])
+				push!(allVar_arr,sum(deSelectSys(capa_dic[sys][sSym][capaSym]) |>  (z -> leftjoin(modPart_obj.var[capaSym],z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:var])))
+			end
+		end
+	end
+	return sum(allVar_arr)
+end
+
+function fixPhaseTwo!(mod_m::anyModel,phaseCapa_arr::Array{Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},1})
+
+	# set upper limits for phase 2 variables
+	switchCapaPhase!(mod_m,phaseCapa_arr[2],:unfix)
+	switchCapaPhase!(mod_m,phaseCapa_arr[2],:up, 0.01/mod_m.options.scaFac.capa)
+
+	# change objective of top problem and solve
+	@objective(mod_m.optModel, Max, getPhaseVar(mod_m,phaseCapa_arr[2]))
+	optimize!(mod_m.optModel)
+
+	# fix variables for phase 2 to current values
+	switchCapaPhase!(mod_m,phaseCapa_arr[2],:fix, NaN)
+
+	# re-set objective
+	@objective(mod_m.optModel, Min, mod_m.parts.obj.var[:obj][1,:var] / mod_m.options.scaFac.obj)
+
+end
