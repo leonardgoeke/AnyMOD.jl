@@ -79,6 +79,10 @@ function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,
 	# solve top problem with fixed capacites and save objective
 	@suppress optimize!(top_m.optModel)
 
+	if primal_status(top_m.optModel) != MOI.ResultStatusCode(1)
+		printIIS(top_m)
+	end
+
 	capaData_obj.objVal = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
 
 	# run subproblems
