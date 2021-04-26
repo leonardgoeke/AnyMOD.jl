@@ -50,7 +50,7 @@ module AnyMOD
 
     export trustRegion, bendersData
     export runTopLevel, runSubLevel
-    export writeCapa, prepareMod!, switchCapaPhase!, runTopWithoutTrust, adjustTrustRegion, reportCapa!, rmvLimitCuts!, fixPhaseTwo!, heuristicCut
+    export writeResult, prepareMod!, switchExpPhase!, runTopWithoutTrust, adjustTrustRegion, reportCapa!, rmvLimitCuts!, fixPhase!, heuristicCut
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
     function __init__()
