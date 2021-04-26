@@ -436,7 +436,7 @@ function getResult(res_df::DataFrame)
 	end
 
 	# write value of variable dataframe
-	res_df[!,:value] = map(x -> value(collect(keys(x.terms))[1]) |> (z -> z < 0.0 ? 0.0 : z),res_df[!,:var])
+	res_df[!,:value] = map(x -> value(collect(keys(x.terms))[1]) |> (z -> z < 1e-8 ? 0.0 : z),res_df[!,:var])
 
 	return select(res_df,Not([:var]))
 end
