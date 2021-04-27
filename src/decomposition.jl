@@ -69,12 +69,32 @@ function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,
 			part = partTop_dic[sSym]
 			# write to capacity data object
 			capaData_obj.capa[sys][sSym] = Dict(capaSym => getResult(copy(partHeu_dic[sSym].var[capaSym])) for capaSym in filter(x -> occursin("capa",string(x)), keys(partHeu_dic[sSym].var)))
-			# fix top capacities to values
-			for capaSym in filter(x -> occursin("capa",string(x)), keys(partHeu_dic[sSym].var)) # sets capacity of heuristic solution as lower limits for top, fixing could cause infeasibility due to imprecisions
+			 # sets capacity of heuristic solution as upper limits for top, fixing could cause infeasibility due to imprecisions
+			for capaSym in filter(x -> occursin("capa",string(x)), keys(partHeu_dic[sSym].var))
 				fixCapa!(capaData_obj.capa[sys][sSym][capaSym],part.var[capaSym],capaSym,part,top_m,false)
 			end
 		end
 	end
+
+	# change objective of top problem and solve
+	@objective(top_m.optModel, Max, getPhaseVar(top_m,capaData_obj.capa))
+	set_optimizer_attribute(top_m.optModel, "Crossover", 1)
+	@suppress optimize!(top_m.optModel)
+
+	# fix variables for phase to current values
+	topCapa_dic = writeResult(top_m,:capa)
+	for sys in (:tech,:exc)
+		part_dic = getfield(top_m.parts,sys)
+		for sSym in keys(topCapa_dic[sys])
+			for capaSym in keys(topCapa_dic[sys][sSym])
+				fixCapa!(topCapa_dic[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],top_m)
+			end
+		end
+	end
+
+
+	# re-set objective
+	@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,:var] / top_m.options.scaFac.obj)
 
 	# solve top problem with fixed capacites and save objective
 	@suppress optimize!(top_m.optModel)
@@ -463,8 +483,8 @@ function fixCapa!(value_df::DataFrame,variable_df::DataFrame,capa_sym::Symbol,pa
 
 	if !(Symbol(capa_sym,:BendersFix) in keys(part_obj.cns))
 		# create actual constraint and attach to model part
-		fix_df[!,:cns] = map(x -> fix_boo ? @constraint(fix_m.optModel,x.var * x.fac == x.rhs) : @constraint(fix_m.optModel,x.var * x.fac >= x.rhs),eachrow(fix_df))
-		part_obj.cns[Symbol(capa_sym,:BendersFix)] = select(fix_df,Not([:var,:value,:scale,:rhs]))
+		fix_df[!,:cns] = map(x -> fix_boo ? @constraint(fix_m.optModel,x.var * x.fac == x.rhs) : @constraint(fix_m.optModel,x.var * x.fac <= x.rhs),eachrow(fix_df))
+		part_obj.cns[Symbol(capa_sym,fix_boo ? :BendersFix : :BendersUp)] = select(fix_df,Not([:var,:value,:scale,:rhs]))
 	else
 		# adjust rhs and factor of existing constraint
 		fix_df = innerjoin(select(part_obj.cns[Symbol(capa_sym,:BendersFix)],Not([:fac])),fix_df,on = intCol(fix_df,:dir))
