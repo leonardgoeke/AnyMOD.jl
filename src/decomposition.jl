@@ -104,6 +104,7 @@ function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,
 	end
 
 	capaData_obj.objVal = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
+	println("kosten invest: $(capaData_obj.objVal)")
 
 	# run subproblems
 	@threads for x in collect(sub_tup)
@@ -194,6 +195,10 @@ function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bender
 	# solve model
 	@suppress begin
 		optimize!(top_m.optModel)
+	end
+
+	if primal_status(top_m.optModel) != MOI.ResultStatusCode(1)
+		printIIS(top_m)
 	end
 
 	# write technology capacites and level of capacity balance to benders object
