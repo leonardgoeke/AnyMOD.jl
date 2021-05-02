@@ -450,10 +450,10 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			# residual values already violate limits
 			resiVal_arr = getfield.(allLimit_df[!,:var],:constant)
 			if :Up in limitCol_arr
-				for x in findall(resiVal_arr.>  replace(allLimit_df[!,:Up] ,nothing => Inf))
+				for x in findall(resiVal_arr .>  replace(allLimit_df[!,:Up] ,nothing => Inf) .+ 0.0001)
 					dim_str = join(map(y -> (allLimit_df[x,y] == 0 || y == :id) ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
-					push!(anyM.report,(2,"limit",string(va),"residual values already exceed the upper limit for: " * dim_str))
+					push!(anyM.report,(2,"limit",string(va),"residual values might already exceed the upper limit for: " * dim_str))
 					unlock(anyM.lock)
 				end
 			end
