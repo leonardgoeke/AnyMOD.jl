@@ -193,6 +193,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 		sysSym_arr = filter(x -> getfield(anyM.parts, sys == :Te ? :tech : :exc)[x].type in (:mature,:emerging), collect(keys(prepSys_dic[sys])))
 
 		for sSym in sysSym_arr
+
 			sys_int = sysInt(sSym,anyM.sets[sys]) 
 
 			# ! find entries where variables are already fixed to zero and remove them
@@ -326,6 +327,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 
 				# get all storage capacities
 				allSt_arr = filter(z -> !isempty(z), vcat(map(y -> collect(map(x -> filter(w -> w.id == i,getfield(prepTech_dic[y],x)),(:var,:resi))),intersect(stCapa_arr,stKey_arr))...))
+				if isempty(allSt_arr) continue end
 				relSt_df = unique(vcat(map(w -> select(w,intCol(w)), allSt_arr)...))
 				
 				# loops over relevant capacities
@@ -1044,7 +1046,7 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	select!(grpCapaVar_df,Not(:lvlTs))
 
 	# obtain all relevant dispatch variables
-	dispVar_arr = type_sym != :exc ? (type_sym != :stSize ? intersect(keys(part.carrier),info_ntup.dis) : collect(info_ntup.dis)) : [:exc]
+	dispVar_arr = type_sym != :exc ? (type_sym != :stSize ? intersect(collect(keys(part.var)),info_ntup.dis) : collect(info_ntup.dis)) : [:exc]
 	if type_sym != :exc
 		resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
 	else

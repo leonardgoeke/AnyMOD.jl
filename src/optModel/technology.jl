@@ -10,6 +10,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
     # presets all dispatch parameter and obtains mode-dependant variables
 	modeDep_dic = presetDispatchParameter!(part,prepTech_dic,parDef_dic,newHerit_dic,ts_dic,r_dic,anyM)
 
+	# create investment variables and constraints
 	if part.type != :unrestricted
 		# creates capacity, expansion, and retrofitting variables
 		createExpCap!(part,prepTech_dic,anyM,ratioVar_dic)
@@ -26,55 +27,60 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		end
 	end
 
-	# prepare must-run parameters
-	if :mustOut in keys(part.par) && (:capaConv in keys(prepTech_dic) || :capaStIn in keys(prepTech_dic))
-		if part.type == :unrestricted
-			push!(anyM.report,(3,"must output","","must-run parameter for technology '$(tech_str)' ignored, because technology is unrestricted,"))
-		else
-			computeDesFac!(part,yTs_dic,anyM)
-			prepareMustOut!(part,modeDep_dic,prepTech_dic,yTs_dic,r_dic,cns_dic,anyM)
-		end
-	end
+	# create dispatch variables and constraints
+	if !isempty(part.var) || part.type == :unrestricted 
 
-	# map required capacity constraints
-	if part.type != :unrestricted 
-		rmvOutC_arr = createCapaRestrMap!(part, anyM) 
-	end
-		
-    produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
-
-    # create dispatch variables and constraints
-	if isempty(anyM.subPro) || anyM.subPro != (0,0)
-	    createDispVar!(part,modeDep_dic,ts_dic,r_dic,prepTech_dic,anyM)
-	    produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
-
-	    # create conversion balance for conversion technologies
-	    if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && (:capaConv in keys(part.var) || part.type == :unrestricted)
-	        cns_dic[:convBal] = createConvBal(part,anyM)
-	        produceMessage(anyM.options,anyM.report, 3," - Prepared conversion balance for technology $(tech_str)")
-	    end
-
-	    # create storage balance for storage technologies
-	    if :stLvl in keys(part.var)
-	        cns_dic[:stBal] = createStBal(part,anyM)
-	        produceMessage(anyM.options,anyM.report, 3," - Prepared storage balance for technology $(tech_str)")
+		# prepare must-run parameters
+		if :mustOut in keys(part.par) && (:capaConv in keys(prepTech_dic) || :capaStIn in keys(prepTech_dic))
+			if part.type == :unrestricted
+				push!(anyM.report,(3,"must output","","must-run parameter for technology '$(tech_str)' ignored, because technology is unrestricted,"))
+			else
+				computeDesFac!(part,yTs_dic,anyM)
+				prepareMustOut!(part,modeDep_dic,prepTech_dic,yTs_dic,r_dic,cns_dic,anyM)
+			end
 		end
 
-		# create capacity restrictions
-		if part.type != :unrestricted
-			createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM,yTs_dic,rmvOutC_arr)
+		# map required capacity constraints
+		if part.type != :unrestricted 
+			rmvOutC_arr = createCapaRestrMap!(part, anyM) 
 		end
-	    produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for technology $(tech_str)")
+			
+		produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
+
+		# create dispatch variables and constraints
+		if isempty(anyM.subPro) || anyM.subPro != (0,0)
+			createDispVar!(part,modeDep_dic,ts_dic,r_dic,prepTech_dic,anyM)
+			produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
+
+			# create conversion balance for conversion technologies
+			if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && (:capaConv in keys(part.var) || part.type == :unrestricted)
+				cns_dic[:convBal] = createConvBal(part,anyM)
+				produceMessage(anyM.options,anyM.report, 3," - Prepared conversion balance for technology $(tech_str)")
+			end
+
+			# create storage balance for storage technologies
+			if :stLvl in keys(part.var)
+				cns_dic[:stBal] = createStBal(part,anyM)
+				produceMessage(anyM.options,anyM.report, 3," - Prepared storage balance for technology $(tech_str)")
+			end
+
+			# create capacity restrictions
+			if part.type != :unrestricted
+				createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM,yTs_dic,rmvOutC_arr)
+			end
+			produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for technology $(tech_str)")
+
+		end
+
+		# create ratio constraints
+		createRatioCns!(part,cns_dic,r_dic,anyM)
+
+		# all constraints are scaled and then written into their respective array position
+		foreach(x -> scaleCnsExpr!(x[2].data,anyM.options.coefRng,anyM.options.checkRng), collect(cns_dic))
+
+		produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for technology $(tech_str)")
 
 	end
-
-	# create ratio constraints
-	createRatioCns!(part,cns_dic,r_dic,anyM)
-
-    # all constraints are scaled and then written into their respective array position
-    foreach(x -> scaleCnsExpr!(x[2].data,anyM.options.coefRng,anyM.options.checkRng), collect(cns_dic))
-
-	produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for technology $(tech_str)")
 
     return cns_dic
 end
@@ -189,6 +195,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			basis_df = orderDf(flatten(basis_df,:C))
 		elseif hasSt_boo && !(va in (:gen,:use))
 			basis_df = orderDf(copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[:capaStSize]))...))))
+			if isempty(basis_df) continue end
 			# gets array of carriers defined for each group of storage
 			subField_arr = intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(part.carrier))
 			idC_dic = Dict(y => union(map(x -> getfield(part.carrier,x)[y],subField_arr)...) for y in 1:length(part.carrier[subField_arr[1]]))
@@ -251,8 +258,8 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	end
 
 	# add variables via aggregation
-	in_arr = intersect(keys(part.carrier),(:use,:stIntOut))
-	out_arr = intersect(keys(part.carrier),(:gen,:stIntIn))
+	in_arr = intersect(collect(keys(part.var)),(:use,:stIntOut))
+	out_arr = intersect(collect(keys(part.var)),(:gen,:stIntIn))
 
 	for va in union(in_arr,out_arr)
 		# add energy content to expression if defined

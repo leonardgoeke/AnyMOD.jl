@@ -721,6 +721,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
         else # do not no any presetting, if no capacities relevant for parameter will exist (example: stock technology with conversion part, but not conversion capacities are defined)
             continue
         end
+        if isempty(capaLvl_df) continue end
 
         # creates dataframe depending on the respective pre-set mode
 		if preType == :lowest
@@ -760,6 +761,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
             capaLvl_df[!,:lvlTs] .= reso_tup[1]; capaLvl_df[!,:lvlR] .= reso_tup[2];
 		end
 
+       
         # expand based on code above to full table for pre-setting of dispatch paramters
 		dispReso_df = expandExpToDisp(capaLvl_df,ts_dic,r_dic,anyM.supTs.scr)
 

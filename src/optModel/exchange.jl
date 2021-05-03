@@ -4,6 +4,7 @@ function createExc!(eInt::Int,part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple}
 	cns_dic = Dict{Symbol,cnsCont}()
 	exc_str = createFullString(eInt,anyM.sets[:Exc])
 
+	# create investment variables and constraints
 	if part.type != :unrestricted
 		# creates capacity, expansion, and retrofitting variables
 		createExpCap!(part,prepExc_dic,anyM)
@@ -20,23 +21,26 @@ function createExc!(eInt::Int,part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple}
 		end
 	end
 
-	produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for exchange $(exc_str)")
+	# create dispatch variables and constraints
+	if !isempty(part.var) || part.type == :unrestricted 
+		produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for exchange $(exc_str)")
 
-	if isempty(anyM.subPro) || anyM.subPro != (0,0)
-		# create dispatch variables
-		createExcVar!(part,ts_dic,r_dic,prepExc_dic,anyM) 
-		produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for exchange $(exc_str)")
-		# create capacity restrictions
-		if part.type != :unrestricted
-			createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM)
+		if isempty(anyM.subPro) || anyM.subPro != (0,0)
+			# create dispatch variables
+			createExcVar!(part,ts_dic,r_dic,prepExc_dic,anyM) 
+			produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for exchange $(exc_str)")
+			# create capacity restrictions
+			if part.type != :unrestricted
+				createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM)
+			end
+			produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for exchange $(exc_str)")
 		end
-		produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for exchange $(exc_str)")
+
+		# create ratio constraints
+		createRatioCns!(part,cns_dic,r_dic,anyM)
+
+		produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for exchange $(exc_str)")
 	end
-
-	# create ratio constraints
-	createRatioCns!(part,cns_dic,r_dic,anyM)
-
-	produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for exchange $(exc_str)")
 	
 	return cns_dic
 end
@@ -218,7 +222,7 @@ end
 # ! create exchange variables
 function createExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},prepExc_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
 	# ! extend capacity variables to dispatch variables
-	capa_df = unique(flipExc(prepExc_dic[:capaExc].var[!,Not([:dir])]))
+	capa_df = unique(flipExc(vcat(prepExc_dic[:capaExc].var,select(prepExc_dic[:capaExc].resi,Not([:var])))[!,Not([:dir])]))
 	
 	# add carriers to capacity variables
 	capa_df[!,:C] .= fill(collect(part.carrier),size(capa_df,1))
