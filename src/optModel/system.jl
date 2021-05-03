@@ -655,7 +655,7 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 				cns_df = joinMissing(cns_df,exp_df, Pair.(join_arr,replace(join_arr,:Ts_disSup => :Ts_expSup)),:left,Dict(:var => AffExpr(),:Ts_exp => 0))
 				cns_df = rename(cns_df[!,Not(:Ts_exp)],:var => :expNow)
 			else
-				cns_df[!,:expNow] .= AffExpr()
+				cns_df[!,:expNow] = map(x -> AffExpr(), 1:size(cns_df,1))
 			end
 
 			# add retrofitting variable to dataframe
@@ -797,11 +797,11 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 						m_arr = findall(0 .!= subCns_df[!,:M])
 						noM_arr = setdiff(1:size(subCns_df,1),m_arr)
 						# aggregate variables with defined ratio
-						subCns_df[!,:ratioVar] .= AffExpr()
+						subCns_df[!,:ratioVar] = map(x -> AffExpr(), 1:size(subCns_df,1))
 						subCns_df[m_arr,:ratioVar] = aggUniVar(relVar_df, select(subCns_df[m_arr,:],intCol(subCns_df)), agg_arr, srcResM_ntup, anyM.sets)
 						subCns_df[noM_arr,:ratioVar] = aggUniVar(relVar_df, select(subCns_df[noM_arr,:],intCol(subCns_df)), agg_arr, srcResNoM_ntup, anyM.sets)
 						# aggregate all variables
-						subCns_df[!,:allVar] .= AffExpr()
+						subCns_df[!,:allVar] = map(x -> AffExpr(), 1:size(subCns_df,1))
 						subCns_df[m_arr,:allVar] =	aggUniVar(relVar_df, select(subCns_df[m_arr,:],intCol(subCns_df)), filter(x -> x != :C,agg_arr), srcResM_ntup, anyM.sets)
 						subCns_df[noM_arr,:allVar] =	aggUniVar(relVar_df, select(subCns_df[noM_arr,:],intCol(subCns_df)), filter(x -> x != :C,agg_arr), srcResNoM_ntup, anyM.sets)
 					else

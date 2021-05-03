@@ -267,7 +267,7 @@ function createConvBal(part::TechPart,anyM::anyModel)
 		
 		# aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated separately
 		if :M in namesSym(cns_df) 
-			cns_df[!,va] .= AffExpr()
+			cns_df[!,va] = map(x -> AffExpr(),1:size(cns_df,1))
 			cns_df[m_arr,va] = aggUniVar(var_df, select(cns_df[m_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResM_ntup, anyM.sets)
 			cns_df[noM_arr,va] = aggUniVar(var_df, select(cns_df[noM_arr,:],intCol(cns_df)), [:M,agg_arr...], srcResNoM_ntup, anyM.sets)
 		else
@@ -278,6 +278,7 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	# aggregate in and out variables respectively and create actual constraint
 	aggCol!(cns_df,in_arr)
 	aggCol!(cns_df,out_arr)
+	
 	cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[in_arr[1]] .* cns_df[:eff] .- cns_df[out_arr[1]])
 	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),:equal)
 end

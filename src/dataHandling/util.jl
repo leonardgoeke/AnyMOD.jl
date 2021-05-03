@@ -192,7 +192,7 @@ function joinMissing(leftData_df::DataFrame, rightData_df::DataFrame, key_arr::U
 
     # replace missing value, cases differ depending if data type needs to be adjusted
     for col in miss_col
-        joinData_df[!,col[1]] = map(x -> coalesce(x,missVal_dic[col[1]]),col[2])
+        joinData_df[!,col[1]] = missVal_dic[col[1]] |> (z -> typeof(z) == GenericAffExpr{Float64,VariableRef} ? map(x -> coalesce(x,copy(z)),col[2]) : map(x -> coalesce(x,z),col[2]))
     end
 
     return dropmissing(joinData_df)
@@ -221,9 +221,11 @@ end
 
 #region # * functions and sub-functions to aggregate variables
 
+
+
 # ! aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if all entries of search have the same resolution (all entries in a relevant column are on the same level)
 function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Symbol,1},srcRes_tup::NamedTuple,sets_dic::Dict{Symbol,Tree})
-	if isempty(aggEtr_df) return fill(AffExpr(),size(srcEtr_df,1)) end
+	if isempty(aggEtr_df) return map(x -> AffExpr(), 1:size(srcEtr_df,1)) end
 
 	# only selects relevant columns
     aggEtr_df = select(aggEtr_df,vcat(:var,agg_arr...))
@@ -259,56 +261,64 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 		aggEtr_df = aggEtr_df[findall(map(x -> (x in allSrc_set),aggEtr_df[!,dim])),:]
 	end
 
-	if isempty(aggEtr_df) return fill(aff_boo ? AffExpr() : 0.0,size(srcEtr_df,1)) end
+	if isempty(aggEtr_df)
+		out_arr = aff_boo ? map(x -> AffExpr(), 1:size(srcEtr_df,1)) : fill(0.0, size(srcEtr_df,1)) 
+	else
+		# ! filter entries from srcEtr_df, that based on isolated anlysis of columns will not have any values aggregated to
+		idxRel_set = BitSet(1:size(srcEtr_df,1))
+		for dim in filter(x -> !(x in (:id,:id_i,:id_j)), collect(agg_tup))
+			set_sym = Symbol(split(string(dim),"_")[1])
+			allAgg_set = unique(aggEtr_df[!,dim]) |> (z -> union(BitSet(z),map(y -> BitSet(getAncestors(y,sets_dic[set_sym],:int,0)), z)...))
+			idxRel_set = intersect(idxRel_set,BitSet(findall(map(x -> x in allAgg_set, srcEtr_df[!,dim]))))
+		end
+		srcEtrAct_df = srcEtr_df[collect(idxRel_set),:]
+		# group aggregation dataframe to relevant columns and removes unrequired columns
+		aggEtrGrp_df = combine(groupby(aggEtr_df,collect(agg_tup)), agg_sym => (x -> sum(x)) => agg_sym)
 
-	# ! filter entries from srcEtr_df, that based on isolated anlysis of columns will not have any values aggregated to
-	idxRel_set = BitSet(1:size(srcEtr_df,1))
-	for dim in filter(x -> !(x in (:id,:id_i,:id_j)), collect(agg_tup))
-		set_sym = Symbol(split(string(dim),"_")[1])
-		allAgg_set = unique(aggEtr_df[!,dim]) |> (z -> union(BitSet(z),map(y -> BitSet(getAncestors(y,sets_dic[set_sym],:int,0)), z)...))
-		idxRel_set = intersect(idxRel_set,BitSet(findall(map(x -> x in allAgg_set, srcEtr_df[!,dim]))))
-	end
-	srcEtrAct_df = srcEtr_df[collect(idxRel_set),:]
-	# group aggregation dataframe to relevant columns and removes unrequired columns
-	aggEtrGrp_df = combine(groupby(aggEtr_df,collect(agg_tup)), agg_sym => (x -> sum(x)) => agg_sym)
+		# ! create dictionaries in each dimension that assign rows suited for aggregation for each value
+		chldRows = Dict{Symbol,Dict{Int,BitSet}}()
+		for col in agg_tup
+			# row that are potentially aggregated
+			findCol_arr = aggEtrGrp_df[!,col]
+			findCol_set = BitSet(findCol_arr)
 
-	# ! create dictionaries in each dimension that assign rows suited for aggregation for each value
-	chldRows = Dict{Symbol,Dict{Int,BitSet}}()
-	for col in agg_tup
-		# row that are potentially aggregated
-		findCol_arr = aggEtrGrp_df[!,col]
-		findCol_set = BitSet(findCol_arr)
+			# entries that other entries can be aggregated to
+			searchVal_set = BitSet(unique(srcEtrAct_df[!,col]))
 
-		# entries that other entries can be aggregated to
-		searchVal_set = BitSet(unique(srcEtrAct_df[!,col]))
+			# to every unique value in column the value itself and its children are assigned
+			set_sym = Symbol(split(string(col),"_")[1])
+			idxChild_dic = !(col in (:id,:id_i,:id_j)) ? Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set) : Dict(x => x for x in searchVal_set)
 
-		# to every unique value in column the value itself and its children are assigned
-		set_sym = Symbol(split(string(col),"_")[1])
-		idxChild_dic = !(col in (:id,:id_i,:id_j)) ? Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set) : Dict(x => x for x in searchVal_set)
+			# for each unique value in column the rows with children are assigned
+			grp_df = groupby(DataFrame(val = findCol_arr, id = 1:length(findCol_arr)),:val)
+			dicVal_dic = Dict(x.val[1] => BitSet(sort(x[!,:id])) for x in grp_df) |> (dic -> Dict(x => union(map(y -> dic[y],collect(idxChild_dic[x]))...) for x in keys(idxChild_dic)))
+			# excludes column from search, if based on it, every entry in find could be aggregated to every row in search
+			# (if this holds true for all columns, make an exception for the last one and dont remove it to, because otherwise correct aggregation cannot happen )
+			if all(length.(values(dicVal_dic)) .== length(findCol_arr)) && !(col == agg_tup[end] && length(chldRows) < 1)
+				select!(srcEtrAct_df,Not(col)); continue
+			else
+				chldRows[col] = dicVal_dic
+			end
+		end
 
-		# for each unique value in column the rows with children are assigned
-		grp_df = groupby(DataFrame(val = findCol_arr, id = 1:length(findCol_arr)),:val)
-		dicVal_dic = Dict(x.val[1] => BitSet(sort(x[!,:id])) for x in grp_df) |> (dic -> Dict(x => union(map(y -> dic[y],collect(idxChild_dic[x]))...) for x in keys(idxChild_dic)))
-		# excludes column from search, if based on it, every entry in find could be aggregated to every row in search
-		# (if this holds true for all columns, make an exception for the last one and dont remove it to, because otherwise correct aggregation cannot happen )
-		if all(length.(values(dicVal_dic)) .== length(findCol_arr)) && !(col == agg_tup[end] && length(chldRows) < 1)
-			select!(srcEtrAct_df,Not(col)); continue
+		# ! finds aggregation by intersecting suited rows in each dimension
+		if isempty(chldRows)
+			aggRow_arr = fill(BitSet(),size(srcEtrAct_df,1))
 		else
-			chldRows[col] = dicVal_dic
+			aggRow_arr = collectKeys(keys(chldRows)) |> (y -> map(x -> intersect(map(y -> chldRows[y][x[y]],y)...) ,eachrow(srcEtrAct_df)))
+		end
+
+		# ! aggregates values according to lookup
+		out_arr = aff_boo ? Array{AffExpr}(undef,size(srcEtr_df,1)) : Array{Float64}(undef,size(srcEtr_df,1))
+		out_arr[collect(idxRel_set)] =  map(x -> sum(aggEtrGrp_df[x,agg_sym]), collect.(aggRow_arr))
+		noData_arr = setdiff(1:size(srcEtr_df,1),idxRel_set)
+		# adds an empty affine expression or zero where no values are assigned
+		if aff_boo
+			out_arr[noData_arr] = map(x -> AffExpr(), 1:length(noData_arr))
+		else
+			out_arr[noData_arr] .=  0.0
 		end
 	end
-
-	# ! finds aggregation by intersecting suited rows in each dimension
-	if isempty(chldRows)
-		aggRow_arr = fill(BitSet(),size(srcEtrAct_df,1))
-	else
-		aggRow_arr = collectKeys(keys(chldRows)) |> (y -> map(x -> intersect(map(y -> chldRows[y][x[y]],y)...) ,eachrow(srcEtrAct_df)))
-	end
-
-	# ! aggregates values according to lookup
-	out_arr = aff_boo ? Array{AffExpr}(undef,size(srcEtr_df,1)) : Array{Float64}(undef,size(srcEtr_df,1))
-	out_arr[collect(idxRel_set)] =  map(x -> sum(aggEtrGrp_df[x,agg_sym]), collect.(aggRow_arr))
-	out_arr[setdiff(1:size(srcEtr_df,1),idxRel_set)] .= aff_boo ? AffExpr() : 0.0
 
 	return out_arr
 end

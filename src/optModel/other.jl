@@ -197,7 +197,7 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 
 		# leaves loop for carrier, if no relevant technologies could be obtained
 		if isempty(relTech_arr)
-			techVar_arr[idx]  = fill(AffExpr(),size(src_df,1))
+			techVar_arr[idx]  = map(x -> AffExpr(),1:size(src_df,1))
 			continue
 		end
 
@@ -553,7 +553,6 @@ end
 # ! adds column with JuMP variable to dataframe
 function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64,Array{Float64,1}},optModel::Model,lock_::ReentrantLock,sets::Dict{Symbol,Tree}; scaFac::Float64 = 1.0, lowBd::Float64 = 0.0, bi::Bool = false)
 	# adds an upper bound to all variables if provided within the options
-	#if isempty(setData_df) return DataFrame(var = AffExpr[]) end
 	arr_boo = typeof(upBd_fl) <: Array
 	if arr_boo
 		info = VariableInfo.(!isnan(lowBd), lowBd, .!isnan.(upBd_fl), upBd_fl, false, NaN, false, NaN, bi, false)
