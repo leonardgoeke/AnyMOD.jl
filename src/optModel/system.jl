@@ -9,6 +9,11 @@ function prepareCapacity!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTup
 	# ! initialize assignments and data
 	defPar_tup = tuple(keys(part.par)...)
 
+	# for exchange capacities remove id column from expansion variables
+	if sym == :Exc
+		exp_df = unique(select(exp_df,Not([:id])))
+	end
+
 	capaVar_df = expandExpToCapa(exp_df)
 
 	# groups by expansion time steps in case of mature technologies
@@ -211,6 +216,16 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 				# get and expand related entries for expansion
 				potCapa_df = expandExpToCapa(prepSys_dic[sys][sSym][Symbol(replace(string(capaSym),"capa" => "exp"))].var)
 				
+				# removes id columns for expansion (different "projects") and ensures potential capacities in both directions are created for undirected case
+				if capaSym == :capaExc	
+					potCapa_df = select(potCapa_df,Not([:id]))
+					if !anyM.parts.exc[sSym].dir
+						dirOther_df = copy(potCapa_df)
+						dirOther_df[!,:dir]  = map(x -> x ? 0 : 1, potCapa_df[!,:dir])
+						potCapa_df = unique(vcat(dirOther_df,potCapa_df))
+					end
+				end
+
 				# get and expand related entries for retrofitting
 				retro_sym = Symbol(replace(string(capaSym),"capa" => "retro"))
 				if retro_sym in keys(prepSys_dic[sys][sSym])
@@ -580,12 +595,11 @@ function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep
 			cns_df = joinMissing(cns_df, combine(groupby(expVar_df,join_arr), :var => (x -> sum(x)) => :exp), join_arr,:left,Dict(:exp => AffExpr()))
 		end 
 
-
 		if !exp_boo && !retro_boo continue end
         
 		# creates final constraint object
 		cns_df[!,:cnsExpr] = @expression(optModel,cns_df[:capa] .-  getfield.(cns_df[:capa],:constant) .+ (exp_boo ? .- cns_df[:exp] : 0.0) .+ (retro_boo ? .- cns_df[:retro_j] : 0.0))
-		cns_dic[Symbol(capaVar)] = cnsCont(select(cns_df,intCol(cns_df,:cnsExpr)),:equal)
+		cns_dic[Symbol(capaVar)] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df,intCol(cns_df,:cnsExpr))),:equal)
 	end
 	# in case system is start to retrofitting, installed capacities are further differentiated by remaining lifetime, constraints on these variables are created next
 	for capaVar in filter(x -> occursin("grp",lowercase(string(x))),keys(part.var))
@@ -614,7 +628,7 @@ function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep
 
 		# create constraint
 		cns_df[!,:cnsExpr] = @expression(optModel,cns_df[:capa] .-  getfield.(cns_df[:capa],:constant) .+ cns_df[:retro] .+ (Symbol(:exp,type_sym) in keys(part.var) ? .- cns_df[:exp]  : 0.0))
-		cns_dic[Symbol(capaVar,:_b)] = cnsCont(select(cns_df,intCol(cns_df,:cnsExpr)),:equal)
+		cns_dic[Symbol(capaVar,:_b)] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df,intCol(cns_df,:cnsExpr))),:equal)
 	end
 end
 
@@ -651,6 +665,10 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 			if Symbol(replace(string(capaVar),"capa" => "exp")) in collect(keys(part.var))
 				exp_df = part.var[Symbol(replace(string(capaVar),"capa" => "exp"))][!,Not(:Ts_disSup)]
 				join_arr = filter(x -> x != :Ts_expSup,intCol(var_df))
+				# aggregates expansion variables by "project"
+				if exc_boo
+					exp_df = combine(groupby(exp_df,filter(x -> x != :id, intCol(exp_df))), :var => (x -> sum(x)) => :var)
+				end
 
 				cns_df = joinMissing(cns_df,exp_df, Pair.(join_arr,replace(join_arr,:Ts_disSup => :Ts_expSup)),:left,Dict(:var => AffExpr(),:Ts_exp => 0))
 				cns_df = rename(cns_df[!,Not(:Ts_exp)],:var => :expNow)

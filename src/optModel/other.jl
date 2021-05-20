@@ -361,6 +361,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal, :UpDir => :smaller, :LowDir => :greater, :FixDir => :equal)
 
 	@threads for va in allKeys_arr
+
 		# obtain all variables relevant for limits
 		allVar_df = getAllVariables(va,anyM)
 

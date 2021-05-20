@@ -53,6 +53,7 @@ function prepareExc!(excSym_arr::Array{Symbol,1},prepAllExc_dic::Dict{Symbol,Dic
 	partLim = anyM.parts.lim
 
 	for excSym in excSym_arr
+
 		excInt = sysInt(excSym,anyM.sets[:Exc])
 		part = anyM.parts.exc[excSym]
 		prepExc_dic = Dict{Symbol,NamedTuple}()
@@ -65,18 +66,22 @@ function prepareExc!(excSym_arr::Array{Symbol,1},prepAllExc_dic::Dict{Symbol,Dic
 		else
 			prepExc_dic[:capaExc] = (var = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], Exc = Int[], dir = Bool[]), resi = DataFrame())
 		end
-		# add residual capacities
-		addResidualCapaExc!(part,prepExc_dic,anyM)
 
-		# maps required capacity restrictions
-		capaDispRestr_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
-		restrInfo_arr = mapCapaRestr(map(x -> (x, anyM.cInfo[x].tsDis, anyM.cInfo[x].rDis),collect(part.carrier)),:exc,anyM)
-		map(x -> push!(capaDispRestr_arr,("exc", restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])),1:length(restrInfo_arr))
-		part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : categorical(rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR))
+		# checks if any lines can exist at all
+		if :capaExc in keys(prepExc_dic)
+			# add residual capacities
+			addResidualCapaExc!(part,prepExc_dic,anyM)
 	
-		# if any capacity variables or residuals were prepared, add these to overall dictionary
-		if collect(values(prepExc_dic)) |> (z -> any(map(x -> any(.!isempty.(getfield.(z,x))), (:var,:resi))))
-			prepAllExc_dic[excSym] = prepExc_dic
+			# maps required capacity restrictions
+			capaDispRestr_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
+			restrInfo_arr = mapCapaRestr(map(x -> (x, anyM.cInfo[x].tsDis, anyM.cInfo[x].rDis),collect(part.carrier)),:exc,anyM)
+			map(x -> push!(capaDispRestr_arr,("exc", restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])),1:length(restrInfo_arr))
+			part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : categorical(rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR))
+		
+			# if any capacity variables or residuals were prepared, add these to overall dictionary
+			if collect(values(prepExc_dic)) |> (z -> any(map(x -> any(.!isempty.(getfield.(z,x))), (:var,:resi))))
+				prepAllExc_dic[excSym] = prepExc_dic
+			end
 		end
 	end	
 end
@@ -98,6 +103,16 @@ function prepareExcExpansion!(excInt::Int,part::ExcPart,partLim::OthPart,prepExc
 
 	# creates directed or undirected expansion entries
 	exExp_df = unique(filter(y ->  (part.dir ? y.R_from != y.R_to : y.R_from < y.R_to),flipExc(unique(exExp_df))))
+
+	# add different groups of expansion seperated by id columns if used
+	if :costExpExc in collect(keys(anyM.parts.cost.par)) && !isempty(exExp_df)
+		matchCost_df = select(matchSetParameter(exExp_df,anyM.parts.cost.par[:costExpExc],anyM.sets),Not([:val]))
+		noMatchCost_df = antijoin(exExp_df,matchCost_df, on = intCol(exExp_df))
+		noMatchCost_df[!,:id] .= 0
+		exExp_df = vcat(matchCost_df,noMatchCost_df)
+	else
+		exExp_df[!,:id] .= 0
+	end
 	
 	if !isempty(exExp_df)
 		# add supordiante timesteps of expansion
@@ -148,9 +163,6 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 		capaResi_df = filter(x -> x.R_from != x.R_to, checkResiCapa(:capaExc,potExc_df, part, anyM))
 		sortR_mat = sort(hcat([capaResi_df[!,x] for x in (:R_from,:R_to)]...);dims = 2)
 		for (index,col) in enumerate((:R_from,:R_to)) capaResi_df[!,col] = sortR_mat[:,index] end
-		
-		# aborts if nothing was defined
-		if isempty(capaResi_df) return end
 
 		# manipulate entries in case directed residual capacities are defined
 		if :capaExcResiDir in keys(part.par)

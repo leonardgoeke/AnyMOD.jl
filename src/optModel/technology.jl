@@ -165,6 +165,8 @@ function addResidualCapaTe!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart
 		else
 			continue
 		end
+
+		if isempty(potCapa_df) continue end
 		
 		potCapa_df[!,:Ts_expSup] = map(x -> part.type != :emerging ? [0] : filter(y -> y <= x,collect(anyM.supTs.step)), potCapa_df[!,:Ts_disSup])
 		potCapa_df = flatten(potCapa_df,:Ts_expSup)

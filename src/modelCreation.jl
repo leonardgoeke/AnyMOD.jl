@@ -31,7 +31,7 @@ function createOptModel!(anyM::anyModel)
 
 	# remove systems without any potential capacity variables and reports this for exchange
 	for excSym in setdiff(collect(keys(anyM.parts.exc)),collect(keys(prepSys_dic[:Exc])))
-		push!(anyM.report,(2,"exchange mapping","","for exchange '$(string(excSym))' no potential lines were defined, consequently no capacity can exist"))
+		push!(anyM.report,(2,"exchange mapping",string(excSym),"to allow for exchange between regions, residual capacities of any value (even zero) must be defined between them, but none were found"))
 	end
 
 	foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),collect(keys(prepSys_dic[:Te]))))
