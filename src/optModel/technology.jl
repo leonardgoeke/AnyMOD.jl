@@ -3,7 +3,7 @@
 function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTuple},parDef_dic::Dict{Symbol,NamedTuple},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic::Dict{Int64,Int64},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
 	cns_dic = Dict{Symbol,cnsCont}()
-    newHerit_dic = Dict(:lowest => (:Ts_dis => :avg_any, :R_dis => :avg_any),:reference => (:Ts_dis => :up, :R_dis => :up)) # inheritance rules after presetting
+    newHerit_dic = Dict(:lowest => (:Ts_dis => :avg_any, :R_dis => :avg_any),:reference => (:Ts_dis => :up, :R_dis => :up), :minGen => (:Ts_dis => :up, :R_dis => :up), :minUse => (:Ts_dis => :up, :R_dis => :up))  # inheritance rules after presetting
     ratioVar_dic = Dict(:StIn => ("StIn" => "Conv"), :StOut => ("StOut" => "StIn"), :StSize => ("StSize" => "StIn")) # assignment of tech types for ratios stuff
 
     tech_str = createFullString(tInt,anyM.sets[:Te])
@@ -466,7 +466,6 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 		else
 			facConv_df = DataFrame()
 		end
-
 	else
 		facConv_df = filter(x -> x.id == 0,allFac_df)
 		facSt_df = filter(x -> x.id != 0,allFac_df)
