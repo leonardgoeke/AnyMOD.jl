@@ -134,7 +134,6 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 
     # tuple of columns with input, output and stored carriers
 	typeStr_dic = Dict(:carrier_conversion_in => "conversion input", :carrier_conversion_out => "conversion output", :carrier_stored_in => "storage", :carrier_stored_out => "storage")
-    carCol_tup =  (:carrier_conversion_in, :carrier_conversion_out, :carrier_stored_in, :carrier_stored_out)
 
 	# maps carrier strings to their id
 	nameC_dic = Dict(collect(values(anyM.sets[:C].nodes)) |> (y -> Pair.(getfield.(y,:val),getfield.(y,:idx))))
@@ -336,16 +335,16 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 		expLvl_tup = (tsExp_int,rExp_int)
 
 		# ! checks if dispatch variables should be disaggregated by expansion regions
-		rExpOrg_int = cEx_boo ? maximum(map(y -> getfield(anyM.cInfo[y],:rDis), allC_arr)) : 0
+		rExpOrg_int = cEx_boo ? minimum(map(y -> getfield(anyM.cInfo[y],:rDis), allC_arr)) : 0
 
-		if :region_disaggregate in namesSym(row_df) && rExp_int > rExpOrg_int # relies on information in explicit column, if disaggregation is possible and column exists
+		if :region_disaggregate in namesSym(row_df) && rExp_int > rExpOrg_int && row_df[:region_disaggregate] != "" # relies on information in explicit column, if disaggregation is possible and column exists
 			daggR_str = row_df[:region_disaggregate]
 			if daggR_str == "yes"
 				disAgg_boo = true
 			elseif daggR_str == "no"
 				disAgg_boo = false
 			else
-				push!(anyM.report,(3,"technology mapping","spatial aggregation","unknown keyword '$type_str' used to control spatial aggregation, please use 'yes' or 'no'"))
+				push!(anyM.report,(3,"technology mapping","spatial aggregation","unknown keyword '$daggR_str' used to control spatial aggregation, please use 'yes' or 'no'"))
 				return
 			end
 		elseif rExp_int > rExpOrg_int # disaggregate by default, if it makes sense

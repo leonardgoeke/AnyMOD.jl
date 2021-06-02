@@ -564,7 +564,7 @@ mutable struct anyModel <: AbstractModel
 		produceMessage(anyM.options,anyM.report, 2," - Created all mappings among sets", testErr = 3 in getindex.(anyM.report,1))
 
 		# ! assign parameters to model parts
-		parDef_dic = parameterToParts!(paraTemp_dic, sysArr_dic, anyM)
+		parameterToParts!(paraTemp_dic, sysArr_dic, anyM)
 		produceMessage(anyM.options,anyM.report, 2," - Assigned parameter data to model parts")
 
 		# ! create object for data visualization
