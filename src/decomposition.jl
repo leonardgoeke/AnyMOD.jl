@@ -54,7 +54,7 @@ function prepareMod!(mod_m::anyModel,opt_obj::DataType)
 end
 
 # ! run top problem and sub problems with results of heuristic solution
-function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,Int64},anyModel},trustReg_obj::trustRegion,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},capaReport_df::DataFrame,inputMod_arr::Array{String,1},resultDir_str::String,opt_obj::DataType)
+function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,Int64},anyModel},trustReg_obj::trustRegion,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},capaReport_df::DataFrame,inputMod_arr::Array{String,1},resultDir_str::String,opt_obj::DataType,lowTop_fl::Float64)
 	
 	sub_tup = collect(keys(sub_dic))
 	
@@ -87,11 +87,10 @@ function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,
 		part_dic = getfield(top_m.parts,sys)
 		for sSym in keys(topCapa_dic[sys])
 			for capaSym in keys(topCapa_dic[sys][sSym])
-				fixCapa!(topCapa_dic[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],top_m)
+				fixCapa!(topCapa_dic[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],top_m,true,false)
 			end
 		end
 	end
-
 
 	# re-set objective
 	@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,:var] / top_m.options.scaFac.obj)
@@ -128,7 +127,12 @@ function heuristicCut(heu_m::anyModel,top_m::anyModel,sub_dic::Dict{Tuple{Int64,
 	
 	# save total costs of heuristic solution
 	trustReg_obj.objVal = capaData_obj.objVal + sum(map(x -> x.objVal, values(cutData_dic)))
-	
+
+	# add lower limits on costs of top problem
+	lowTop_df = DataFrame(cnsExpr = [lowTop_fl*sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]) - capaData_obj.objVal])
+	scaleCnsExpr!(lowTop_df,top_m.options.coefRng, top_m.options.checkRng)
+	top_m.parts.obj.cns[:lowerLimitTop] = createCns(cnsCont(lowTop_df,:greater),top_m.optModel)
+
 	# write capacity results 
 	reportCapa!(0,cutData_dic,capaReport_df)
 
@@ -272,6 +276,9 @@ end
 # ! dynamically adjusts the trust region
 function adjustTrustRegion(top_m::anyModel,expTrust_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trustReg_obj::trustRegion,objSub_fl::Float64,objTopTrust_fl::Float64,lowLim_fl::Float64,lowLimTrust_fl::Float64)
 	
+	println("thres extend: $(abs(1 - lowLimTrust_fl / (objTopTrust_fl + objSub_fl)))")
+	println("thres shrink: $(abs(1 - lowLim_fl / lowLimTrust_fl))")
+
 	# re-create trust region
 	if (objTopTrust_fl + objSub_fl) < trustReg_obj.objVal # recenter trust region, if new best solution was obtained
 		changeTrustExp!(expTrust_dic,trustReg_obj) # writes relevant expansion of top problem to trust region 
@@ -360,7 +367,7 @@ function fixPhase!(mod_m::anyModel,exp_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,
 
 	# change objective of top problem and solve
 	@objective(mod_m.optModel, Max, getPhaseVar(mod_m,exp_dic))
-	optimize!(mod_m.optModel)
+	@suppress optimize!(mod_m.optModel)
 
 	# fix variables for phase to current values
 	switchExpPhase!(mod_m,exp_dic,:fix, NaN)
@@ -432,14 +439,19 @@ end
 
 # ! write capacities or expansion in input model to returned capacity dictionary
 function writeResult(in_m::anyModel, resType::Symbol, filterFunc::Function = x -> true)
+	
 	res_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
-
 	fixPar_dic = Dict(:expStSize => :sizeToStOutFixExp,:expStIn => :stOutToStInFixExp)
 
 	for sys in (:tech,:exc)
 		res_dic[sys] = Dict{Symbol,Dict{Symbol,DataFrame}}()
 		part_dic = getfield(in_m.parts,sys)
-		for sSym in filter(x -> part_dic[x].type in (:mature,:emerging),keys(part_dic))
+		for sSym in filter(x -> part_dic[x].type in (:stock,:mature,:emerging),keys(part_dic))
+			
+			if part_dic[sSym].type == :stock &&  part_dic[sSym].decomm == :none
+				continue
+			end	
+
 			res_dic[sys][sSym] = Dict(capaSym => filter(filterFunc, getResult(copy(part_dic[sSym].var[capaSym]))) for capaSym in filter(x -> occursin(string(resType),string(x)), keys(part_dic[sSym].var)))
 			if resType == :exp
 				# check if storage expansion is fixed to storage output and removes variables in these cases
@@ -471,8 +483,9 @@ function getResult(res_df::DataFrame)
 end
 
 # ! create constraint fixing capacity (or setting a lower limits)
-function fixCapa!(value_df::DataFrame,variable_df::DataFrame,capa_sym::Symbol,part_obj::AbstractModelPart,fix_m::anyModel,fix_boo::Bool=true)
+function fixCapa!(value_df::DataFrame,variable_df::DataFrame,capa_sym::Symbol,part_obj::AbstractModelPart,fix_m::anyModel,fix_boo::Bool=true,round_boo::Bool=true)
 
+	cns_sym = fix_boo ? :BendersFix : :BendersUp
 	# join variables with capacity values
 	fix_df = deSelectSys(value_df) |>  (z -> leftjoin(variable_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
 
@@ -483,22 +496,20 @@ function fixCapa!(value_df::DataFrame,variable_df::DataFrame,capa_sym::Symbol,pa
 	fix_df[!,:scale] = map(x -> x.value >= fix_m.options.coefRng.rhs[2] ? min(fix_m.options.coefRng.mat[1],fix_m.options.coefRng.rhs[2]/x.value) : x.scale, eachrow(fix_df))
 
 	# compute righ-hand side and factor of variables for constraint
-	fix_df[!,:rhs] = map(x -> x.value * x.scale |> (u -> round(u,digits = 4) >= fix_m.options.coefRng.rhs[1] ? u : 0.0), eachrow(fix_df))
+	fix_df[!,:rhs] = map(x -> x.value * x.scale |> (u -> round(u,digits = 4) >= fix_m.options.coefRng.rhs[1] ? u : round_boo ? 0.0 : u), eachrow(fix_df))
 	fix_df[!,:fac] = map(x -> x.rhs == 0.0 ? 1.0 : x.scale, eachrow(fix_df))
 
-	if !(Symbol(capa_sym,:BendersFix) in keys(part_obj.cns))
+	if !(Symbol(capa_sym,cns_sym) in keys(part_obj.cns))
 		# create actual constraint and attach to model part
 		fix_df[!,:cns] = map(x -> fix_boo ? @constraint(fix_m.optModel,x.var * x.fac == x.rhs) : @constraint(fix_m.optModel,x.var * x.fac <= x.rhs),eachrow(fix_df))
-		part_obj.cns[Symbol(capa_sym,fix_boo ? :BendersFix : :BendersUp)] = select(fix_df,Not([:var,:value,:scale,:rhs]))
 	else
 		# adjust rhs and factor of existing constraint
-		fix_df = innerjoin(select(part_obj.cns[Symbol(capa_sym,:BendersFix)],Not([:fac])),fix_df,on = intCol(fix_df,:dir))
+		fix_df = innerjoin(select(part_obj.cns[Symbol(capa_sym,cns_sym)],Not([:fac])),fix_df,on = intCol(fix_df,:dir))
 		set_normalized_rhs.(fix_df[!,:cns], fix_df[!,:rhs])
 		set_normalized_coefficient.(fix_df[!,:cns], fix_df[!,:var], fix_df[!,:fac])	
 	end
 
-	part_obj.cns[Symbol(capa_sym,:BendersFix)] = select(fix_df,Not([:var,:value,:scale,:rhs]))
-
+	part_obj.cns[Symbol(capa_sym,cns_sym)] = select(fix_df,Not([:var,:value,:scale,:rhs]))
 end
 
 # ! adds a dual into the first dataframe based on the matching variable column in the second
