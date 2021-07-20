@@ -316,7 +316,9 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			emVar_df[!,:var] = emVar_df[!,:var] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(emVar_df))
 			# groups cost expressions scales groups expression and creates a variables for each grouped entry
 			emVar_df = combine(x -> (expr = sum(x.disFac .* x[!,:var] .* x.emPrc) .* anyM.options.redStep,) ,groupby(emVar_df, [:Ts_disSup,:R_exp,:C,:scr]))
-			transferCostEle!(rename(emVar_df,:R_exp => :R_dis), partCost,:costEm,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM,0.0)
+			if !isempty(emVar_df)
+				transferCostEle!(rename(emVar_df,:R_exp => :R_dis), partCost,:costEm,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM,0.0)
+			end
 			produceMessage(anyM.options,anyM.report, 3," - Created variables and constraints for emission costs")
 		end
 
