@@ -193,6 +193,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		# obtains relevant capacity variable
 		if conv_boo
 			basis_df = copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[:capaConv]))...)))
+			if isempty(basis_df) continue end
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
 		elseif hasSt_boo && !(va in (:gen,:use))
