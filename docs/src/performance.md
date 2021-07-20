@@ -172,11 +172,11 @@ For capacity and dispatch, values are provided in GW and limits on dispatch are 
 </p>
 
 <p class="norm" >
-In general, it is strongly advised to provide a limit for the objective function. Doing so achieves a noticeable increase in performance without risking to distort model results. Instead a model will just turn infeasible, if the set limit is below the actual objective value.
+In general, it is strongly advised to provide a limit for the objective function. Doing so achieves a noticeable increase in performance without risking to distort model results. Instead, a model will just turn infeasible, if the set limit is below the actual objective value.
 </p>
 
 <p class="norm" >
-General limits on dispatch and capacity variables should only be set with great caution and used as a measure of last resort against numerical instability. Improper limits could create binding constraints that impact final results, but remain undetected by the user. In addition, their positive impact on performance is not as clear, because they also cause a substantial increase in model size.
+General limits on dispatch and capacity variables should only be set with great caution and used as a measure of last resort against numerical instability. Improper limits could create binding constraints that impact final results but remain undetected by the user. In addition, their positive impact on performance is not as clear, because they also cause a substantial increase in model size.
 </p>
 ```
 

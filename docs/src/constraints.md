@@ -23,7 +23,7 @@ ul.liste {
 
 ```@raw html
 <p class="norm">
-In the following, all constraints used in AnyMOD are listed. Information includes the name used throughout the model, its dimensions and a stylized formulation of the constraint itself (see <a href="https://arxiv.org/abs/2004.10184)">Göke (2020)</a> for details). Within these constraints, variables are printed in bold. In addition, the parameters, variables, and the model part associated with the constraints are listed.
+In the following, all constraints used in AnyMOD are listed. Information includes the name used throughout the model, its dimensions, and a stylized formulation of the constraint itself (see <a href="https://arxiv.org/abs/2004.10184)">Göke (2020)</a> for details). Within these constraints, variables are printed in bold. In addition, the parameters, variables, and the model part associated with the constraints are listed.
 </p>
 <p class="norm">
 To increase performance, AnyMOD stores constraints within DataFrames instead of using JuMPs native containers. Each dimension is represented by a column and integers in these columns relate to nodes within the hierarchical trees of sets (see <a href="../data/#printObject"><code>printObject</code></a> on how to export these in a readable format). An additional <code>cns</code> column stores the corresponding constraint. Note that final constraints will look unintuitive, because they are <a href="../performance/#Scaling">scaled</a> to increase performance and converted to standard form by JuMP.
@@ -551,7 +551,7 @@ Connects installed capacities to expansion variables and residual capacities.
 </table>
 ```
 
-### Decommissioning of operated capacitiy
+### Decommissioning of operated capacity
 
 Ensures operated capacities comply with installed capacities.
 

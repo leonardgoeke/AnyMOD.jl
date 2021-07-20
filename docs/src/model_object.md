@@ -35,7 +35,7 @@ anyModel(inDir::Union{String,Array{String,1}}, outDir::String; kwargs)
 ## In- and output files
 ```@raw html
 <p class="norm">
-The constructor function above has two mandatory arguments that the directories for in- and output files. <code class="language-julia">inDir::Union{String,Array{String,1}}</code> specifies the directory (or directories) of input files. This can either be a string or an array of strings, if input files are spread across different directories.
+The constructor function above has two mandatory arguments that the directories for in- and output files. <code class="language-julia">inDir::Union{String,Array{String,1}}</code> specifies the directory (or directories) of input files. This can either be a string or an array of strings if input files are spread across different directories.
 </p>
 <p class="norm">
 All <code>.csv</code> files within the provided directories (and their sub-directories) starting with <code>set_</code> or <code>par_</code> will be read-in as an input file. Other files are ignored and can be used for documentation. Within the specific files, only columns whose name contains one of the following keywords are actually read-in: <code>parameter</code>, <code>variable</code>, <code>value</code>, <code>id</code>, <code>region</code>, <code>timestep</code>, <code>carrier</code>, <code>technology</code>, and <code>mode</code>. Other columns can be used freely for documentation.
