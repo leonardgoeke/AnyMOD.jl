@@ -48,7 +48,7 @@ function createObjective!(obj_dic::Dict{Symbol,NamedTuple},anyM::anyModel,minimi
 	partObj.cns[:objEqn] = DataFrame(name = Symbol[], cns = ConstraintRef[])
 
 	for obj in collect(obj_dic)
-		allObjVar_df = getAllVariables(obj[1],anyM, filterFunc = obj[2].flt)
+		allObjVar_df = getAllVariables(obj[1],anyM, reflectRed = false, filterFunc = obj[2].flt)
 		if isempty(allObjVar_df)
 			error("At least one cost argument returned no variables. Check for typo in name!")
 		end

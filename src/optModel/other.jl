@@ -113,7 +113,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		# determine where an energy balance is required because a specific demand was defined
 		unEtr_arr = map(x -> x == 0.0 ,cns_df[!,:dem]) .* unEtr_arr
 
-		# add curtailment variables
+		# add curtailment and trade variables
 		for varType in (:crt,:lss,:trdSell,:trdBuy)
 			if varType in keys(partBal.var)
 				cns_df[!,Symbol(varType,:Var)] = filterCarrier(partBal.var[varType],subC_arr) |> (x -> aggUniVar(x,src_df,agg_arr, cRes_tup,anyM.sets))

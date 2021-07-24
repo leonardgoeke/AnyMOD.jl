@@ -432,13 +432,13 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 		end
 	elseif va in (:crt,:lss,:trdBuy,:trdSell) # get variables from balance part
 		if va in keys(anyM.parts.bal.var)
-			allVar_df = anyM.parts.bal.var[va]
+			allVar_df = copy(anyM.parts.bal.var[va])
 		else
 			allVar_df = DataFrame()
 		end
 	elseif occursin("cost",string(va)) && va != :cost # get single variables from cost part
 		if va in keys(anyM.parts.cost.var)
-			allVar_df = anyM.parts.cost.var[va]
+			allVar_df = copy(anyM.parts.cost.var[va])
 		else
 			allVar_df = DataFrame()
 		end
@@ -561,13 +561,13 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 		end
 	elseif va == :emissionInf
 		if va in keys(anyM.parts.lim.var)
-			allVar_df = anyM.parts.lim.var[va]
+			allVar_df = copy(anyM.parts.lim.var[va])
 		else
 			allVar_df = DataFrame()
 		end
 	end
 
-	if !(va in (:capaConv,:capaStIn,:capaStOut,:capaStSize,:insCapaConv,:insCapaStIn,:insCapaStOut,:insCapaStSize,:expConv,:expStIn,:expStOut,:expStSize)) && !isempty(allVar_df) && reflectRed
+	if !(va in (:capaConv,:capaStIn,:capaStOut,:capaStSize,:capaExc,:insCapaConv,:insCapaStIn,:insCapaStOut,:insCapaStSize,:insCapaExc,:expConv,:expStIn,:expStOut,:expStSize,:expExc,:emission)) && !isempty(allVar_df) && reflectRed
 		allVar_df[!,:var] .= allVar_df[!,:var] .* anyM.options.redStep
 	end
 

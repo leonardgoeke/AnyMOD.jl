@@ -297,7 +297,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			allDisp_df[!,:disFac] = matchSetParameter(va != :exc ? rename(allDisp_df,:R_dis => :R_exp) : allDisp_df, partCost.par[va != :exc ? :disFac : :disFacExc],anyM.sets)[!,:val]
 
 			# ! group cost expressions by system, scales groups expression and creates a variables for each grouped entry
-			allDisp_df = combine(x -> (expr = sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0 .* anyM.options.redStep,) ,groupby(allDisp_df,va != :exc ? [:Ts_disSup,:R_dis,:Te,:scr] : [:Ts_disSup,:R_from,:R_to,:C,:scr]))
+			allDisp_df = combine(x -> (expr = sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0,) ,groupby(allDisp_df,va != :exc ? [:Ts_disSup,:R_dis,:Te,:scr] : [:Ts_disSup,:R_from,:R_to,:C,:scr]))
 			transferCostEle!(allDisp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM)
 			reachEnd_boo = true
 		end
@@ -315,7 +315,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			# add scenario probability
 			emVar_df[!,:var] = emVar_df[!,:var] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(emVar_df))
 			# groups cost expressions scales groups expression and creates a variables for each grouped entry
-			emVar_df = combine(x -> (expr = sum(x.disFac .* x[!,:var] .* x.emPrc) .* anyM.options.redStep,) ,groupby(emVar_df, [:Ts_disSup,:R_exp,:C,:scr]))
+			emVar_df = combine(x -> (expr = sum(x.disFac .* x[!,:var] .* x.emPrc),) ,groupby(emVar_df, [:Ts_disSup,:R_exp,:C,:scr]))
 			if !isempty(emVar_df)
 				transferCostEle!(rename(emVar_df,:R_exp => :R_dis), partCost,:costEm,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM,0.0)
 			end
