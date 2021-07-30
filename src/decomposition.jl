@@ -73,7 +73,9 @@ function heuristicSolve(sub_dic::Dict{Tuple{Int64,Int64},anyModel},modOpt_tup::N
 
 	# re-set objective to costs and solve
 	@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,:var] / top_m.options.scaFac.obj)
-	@suppress optimize!(top_m.optModel)
+	#@suppress 
+	optimize!(top_m.optModel)
+	printIIS(top_m)
 
 	heuData_obj.objVal = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
 
