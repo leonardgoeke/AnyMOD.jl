@@ -73,9 +73,7 @@ function heuristicSolve(sub_dic::Dict{Tuple{Int64,Int64},anyModel},modOpt_tup::N
 
 	# re-set objective to costs and solve
 	@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,:var] / top_m.options.scaFac.obj)
-	#@suppress 
-	optimize!(top_m.optModel)
-	printIIS(top_m)
+	@suppress optimize!(top_m.optModel)
 
 	heuData_obj.objVal = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
 
@@ -133,7 +131,7 @@ function getFeasResult(heu_m::anyModel,top_m::anyModel,zeroThrs_fl::Float64)
 
     # write precise results for capacity and expansion
     capaData_obj = bendersData()
-	capaData_obj.capa = writeResult(top_m,[:exp,:capa])
+	capaData_obj.capa = writeResult(top_m,[:exp,:capa],false)
 
     return capaData_obj
 end
@@ -411,7 +409,7 @@ end
 #region # * transfer results between models
 
 # ! write capacities or expansion in input model to returned capacity dictionary
-function writeResult(in_m::anyModel, var_arr::Array{Symbol,1})
+function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}, valThr::Bool=true)
 	
 	var_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
 	fixPar_dic = Dict(:expStSize => :sizeToStOutFixExp, :expStIn => :stOutToStInFixExp, :capaStSize => :sizeToStOutFixCapa, :capaStIn => :stOutToStInFixCapa)
@@ -425,7 +423,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1})
 				continue
 			end	
 
-			var_dic[sys][sSym] = Dict(varSym => getResult(copy(part_dic[sSym].var[varSym])) for varSym in filter(x -> any(occursin.(string.(var_arr),string(x))), keys(part_dic[sSym].var)))
+			var_dic[sys][sSym] = Dict(varSym => getResult(copy(part_dic[sSym].var[varSym]),valThr) for varSym in filter(x -> any(occursin.(string.(var_arr),string(x))), keys(part_dic[sSym].var)))
 
 			# check if storage expansion is fixed to storage output and removes variables in these cases
 			for stExp in intersect([:expStSize,:expStIn,:capaStSize,:capaStIn],collect(keys(var_dic[sys][sSym])))
@@ -443,7 +441,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1})
 end
 
 # ! replaces the variable column with a column storing the value of the variable
-function getResult(res_df::DataFrame)
+function getResult(res_df::DataFrame, valThr::Bool=true)
 	
 	if :Ts_exp in namesSym(res_df) # for expansion filter unique variables
 		res_df = collapseExp(res_df)
@@ -452,7 +450,7 @@ function getResult(res_df::DataFrame)
 	end
 
 	# write value of variable dataframe
-	res_df[!,:value] = map(x -> value(collect(keys(x.terms))[1]) |> (z -> z < 1e-8 ? 0.0 : z),res_df[!,:var])
+	res_df[!,:value] = map(x -> value(collect(keys(x.terms))[1]) |> (z -> z < 1e-8 && valThr ? 0.0 : z),res_df[!,:var])
 
 	return select(res_df,Not([:var]))
 end
