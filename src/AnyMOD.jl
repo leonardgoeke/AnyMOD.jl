@@ -20,7 +20,7 @@ module AnyMOD
 
     using Base.Threads, CSV, Dates, LinearAlgebra, Requires
     using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays, Suppressor
-    @reexport using DataFrames, JuMP, Dates
+    @reexport using DataFrames, JuMP, Dates, Suppressor
 
     pyimport_conda("networkx","networkx")
     pyimport_conda("matplotlib.pyplot","matplotlib")
@@ -47,10 +47,13 @@ module AnyMOD
     export anyModel, initializeModel, createOptModel!, setObjective!
     export reportResults, reportTimeSeries, printObject, printDuals
     export plotTree, plotEnergyFlow, moveNode!, produceMessage
+    export intCol, collapseExp, createVar
 
-    export trustRegion, bendersData
-    export runTopLevel, runSubLevel
-    export writeResult, prepareMod!, switchExpPhase!, runTopWithoutTrust, adjustTrustRegion, reportCapa!, rmvLimitCuts!, fixPhase!, heuristicCut
+    export trustRegion, bendersData, quadTrust
+    export prepareMod!, runTopLevel, runSubLevel
+    export heuristicSolve, addCuts!, getLinTrust, limitCapa!
+    export getNonFixLin, centerQuadTrust, adjustQuadTrust, runTopWithoutQuadTrust
+    
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
     function __init__()

@@ -567,7 +567,8 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 		end
 	end
 
-	if !(va in (:capaConv,:capaStIn,:capaStOut,:capaStSize,:capaExc,:insCapaConv,:insCapaStIn,:insCapaStOut,:insCapaStSize,:insCapaExc,:expConv,:expStIn,:expStOut,:expStSize,:expExc,:emission)) && !isempty(allVar_df) && reflectRed
+	# prevents scaling of variables that do have to be scaled or are scaled already because they are computed form scaled variables (e.g. emissions)
+	if va in (:stIn,:stExtIn,:stIntIn,:stOut,:stExtOut,:stIntOut, :convIn,:use,:gen,:convOut) && !isempty(allVar_df) && reflectRed
 		allVar_df[!,:var] .= allVar_df[!,:var] .* anyM.options.redStep
 	end
 
@@ -586,5 +587,9 @@ function getRelTech(c::Int,tech_dic::Dict{Symbol,TechPart},c_tree::Tree)
 
 	return filter(x -> x[2] in keys(tech_dic[x[1]].var), relTech_arr)
 end
+
+# ! collapse input expansion dataframe to acutal variables by timestep of expansion instead of superordinate dispatch timesteps
+collapseExp(exp_df::DataFrame) = unique(select(exp_df,Not([:Ts_expSup,:Ts_disSup])))
+
 
 #endregion
