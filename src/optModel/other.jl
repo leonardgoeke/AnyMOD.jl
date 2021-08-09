@@ -308,6 +308,7 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	#endregion
 
 	#region # * create corresponding constraints
+	
 
 	# ! create variables for missing capacities
 	if :costMissCapa in keys(partBal.par)
@@ -323,23 +324,31 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 		push!(anyM.report,(2,"capacity balance","","capacity demand was provided without specificing the superordinate dispatch timestep, this means the sum of capacity over all years was limited instead of enforcing the same limit for each year (see https://leonardgoeke.github.io/AnyMOD.jl/stable/parameter_list/#Limits-on-quantities-dispatched)"))
 	end
 
-	# add column indicating, if capacities other than missing capacity are added, only relevant for benders heuristik
-	cns_df[!,:actCapa] =  .!isempty.(map(x -> x.terms, cns_df[!,:var]))
+	# filter cases where residuals already satisfy balance
+	filter!(x -> x.val > x.var.constant,cns_df)
+	
+	
 
-	# add missing capacity variables
-	if :missCapa in keys(partBal.var)
-		add_to_expression!.(cns_df[!,:var], aggDivVar(partBal.var[:missCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets))
+	if !isempty(cns_df)
+		# add column indicating, if capacities other than missing capacity are added, only relevant for benders heuristik
+		cns_df[!,:actCapa] =  .!isempty.(map(x -> x.terms, cns_df[!,:var]))
+
+		# add missing capacity variables
+		if :missCapa in keys(partBal.var)
+			add_to_expression!.(cns_df[!,:var], aggDivVar(partBal.var[:missCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets))
+		end
+
+		# ! create constraint
+		# create capacity constraint, small differences between constants can lead to extremely large ranges, to avoid this small differences are set to zero
+		maxRng_fl = anyM.options.coefRng.mat[2]/anyM.options.coefRng.rhs[1]
+		cns_df[!,:cnsExpr] = map(x -> maxRng_fl < maximum(collect(values(x.var.terms)))/ abs(x.val-x.var.constant) ? x.var - x.var.constant : x.var - x.val, eachrow(cns_df))
+		# presever demand column in case of subproblem
+		if !isempty(anyM.subPro) && anyM.subPro != (0,0) rename!(cns_df,:val => :dem) end
+		cns_df = orderDf(cns_df[!,[intCol(cns_df,[:dem,:actCapa])...,:cnsExpr]])
+		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
+
+		partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:greater),anyM.optModel)
 	end
-
-	# ! create constraint
-	# create capacity constraint
-	cns_df[!,:cnsExpr] = map(x -> x.var - x.val, eachrow(cns_df))
-	# presever demand column in case of subproblem
-	if !isempty(anyM.subPro) && anyM.subPro != (0,0) rename!(cns_df,:val => :dem) end
-	cns_df = orderDf(cns_df[!,[intCol(cns_df,[:dem,:actCapa])...,:cnsExpr]])
-	scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
-
-	partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:greater),anyM.optModel)
 
 	produceMessage(anyM.options,anyM.report, 2," - Created capacity balances")
 
@@ -351,8 +360,8 @@ end
 function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 	parLim_arr = String.(collectKeys(keys(partLim.par)))
-	techLim_arr = filter(x ->  any(map(y -> occursin(y,x),["Up","Low","Fix","UpDir","LowDir","FixDir"])),parLim_arr)
-	limVar_arr = union(map(x -> map(k -> Symbol(k[1]) => Symbol(k[2][1]), filter(z -> length(z[2]) == 2,map(y -> y => split(x,y),["Up","Low","Fix","UpDir","LowDir","FixDir"]))), techLim_arr)...)
+	symLim_arr = filter(x ->  any(map(y -> occursin(y,x),["Up","Low","Fix","UpDir","LowDir","FixDir"])),parLim_arr)
+	limVar_arr = union(map(x -> map(k -> Symbol(k[1]) => Symbol(k[2][1]), filter(z -> length(z[2]) == 2,map(y -> y => split(x,y),["Up","Low","Fix","UpDir","LowDir","FixDir"]))), symLim_arr)...)
 	varToPar_dic = Dict(y => getindex.(filter(z -> z[2] == y,limVar_arr),1) for y in unique(getindex.(limVar_arr,2)))
 
 	# loop over all variables that are subject to any type of limit (except emissions)
@@ -377,6 +386,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 		# ! loop over respective type of limits to obtain data
 		for lim in varToPar_dic[va]
+			if !(Symbol(va,lim) in keys(partLim.par)) continue end
 			par_obj = copy(partLim.par[Symbol(va,lim)])
 
 			if occursin("exc",lowercase(string(va))) && !occursin("Dir",string(lim)) && :R_from in namesSym(par_obj.data) && :R_to in namesSym(par_obj.data)
@@ -391,6 +401,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			miss_arr = [intCol(allLimit_df),intCol(limit_df)] |> (y -> union(setdiff(y[1],y[2]), setdiff(y[2],y[1])))
 			allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr),Dict(:Up => nothing, :Low => nothing, :Fix => nothing,:UpDir => nothing, :LowDir => nothing, :FixDir=> nothing)))
 		end
+		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))
 
 		# merge columns for for directed limits to rest
 		for dirLim in intersect(namesSym(allLimit_df),(:FixDir,:UpDir,:LowDir))
@@ -398,6 +409,8 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			allLimit_df[!,lim_sym] = map(x -> isnothing(x[dirLim]) ? x[lim_sym] : x[dirLim],eachrow(allLimit_df))
 			select!(allLimit_df,Not([dirLim]))
 		end
+
+		filter!(x -> !isempty(x.var.terms), allLimit_df) # filter cases without variables
 
 		# ! infeas variables for emissions
 		if va == :emission
@@ -414,8 +427,6 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 		# ! check for contradicting values
 		colSet_dic = Dict(x => Symbol(split(string(x),"_")[1]) for x in intCol(allLimit_df))
-		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))
-		entr_int = size(allLimit_df,1)
 		if :Low in limitCol_arr || :Up in limitCol_arr
 			# ! errors
 			# upper and lower limit contradicting each other
@@ -440,7 +451,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 			# fix and lower limit contradicting each other
 			if :Fix in limitCol_arr && :Low in limitCol_arr
-				for x in findall(replace(allLimit_df[!,:Fix],nothing => Inf) .< replace(allLimit_df[!,:Low],nothing => 0.0))
+				for x in findall(replace(allLimit_df[!,:Fix],nothing => Inf) .+ 0.0001 .< replace(allLimit_df[!,:Low],nothing => 0.0))
 					dim_str = join(map(y -> allLimit_df[x,y] == 0 ?  "" : string(y,": ",join(getUniName(allLimit_df[x,y], anyM.sets[colSet_dic[y]])," < ")),intCol(allLimit_df)),"; ")
 					lock(anyM.lock)
 					push!(anyM.report,(3,"limit",string(va),"fixed limit is smaller than lower limit for: " * dim_str))
@@ -514,9 +525,6 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 				unlock(anyM.lock)
 			end
 		end
-
-		# filter cases without variables
-		filter!(x -> !isempty(x.var.terms), allLimit_df)
 
 		# ! write constraint containers
 		for lim in limitCol_arr

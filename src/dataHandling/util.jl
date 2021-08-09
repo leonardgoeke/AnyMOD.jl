@@ -61,6 +61,9 @@ aggCol!(col_df::DataFrame,col_arr::Array{Symbol,1}) = foreach(x -> add_to_expres
 # ! removes column relating to system (technology or exchange)
 deSelectSys(in_df::DataFrame) = select(in_df,Not([:Te in namesSym(in_df) ? :Te : :Exc]))
 
+# ! removes entry from dictionary if it is empty 
+removeEmptyDic!(rmvDic::Dict,keySys::Symbol) = if isempty(rmvDic[keySys]) delete!(rmvDic,keySys) end
+
 # ! new plus function to avoid error when one element being added up is nothing
 plus(a::Int,b::Int) = a + b
 plus(a::Int,b::Nothing) = a
@@ -142,13 +145,13 @@ sysInt(sSym::Symbol,sym_tree::Tree) = filter(x -> x.val == string(sSym),collect(
 #region # * data frame based manipulations
 
 # ! finds entries where expansion or capacity would be fixed to zero
-function filterZero(src_df::DataFrame,par_obj::ParElement,anyM::anyModel)
+function getFix(src_df::DataFrame,par_obj::ParElement,anyM::anyModel)
 	if isdefined(par_obj,:name)
-	# copies parameter obj and adds ":up" to inheritance for any dimensions, otherwise variables would be created, but fixed to zero due to a zero limit on a higher level in the tree
+		# copies parameter obj and adds ":up" to inheritance for any dimensions, otherwise variables would be created, but fixed to zero due to a zero limit on a higher level in the tree
 		modPar_obj = par_obj
 		modPar_obj.herit = modPar_obj.herit |> (y -> tuple(vcat(y..., map(x -> x => :up,getindex.(y,1))...)...))
 		# filter zero cases
-		zero_df = select!(filter(r -> r.val == 0, matchSetParameter(src_df, modPar_obj, anyM.sets)),Not(:val))
+		zero_df =  matchSetParameter(src_df, modPar_obj, anyM.sets)
 	else
 		zero_df = src_df[[],:]
 	end
@@ -266,7 +269,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 	else
 		# ! filter entries from srcEtr_df, that based on isolated anlysis of columns will not have any values aggregated to
 		idxRel_set = BitSet(1:size(srcEtr_df,1))
-		for dim in filter(x -> !(x in (:id,:id_i,:id_j)), collect(agg_tup))
+		for dim in agg_tup
 			set_sym = Symbol(split(string(dim),"_")[1])
 			allAgg_set = unique(aggEtr_df[!,dim]) |> (z -> union(BitSet(z),map(y -> BitSet(getAncestors(y,sets_dic[set_sym],:int,0)), z)...))
 			idxRel_set = intersect(idxRel_set,BitSet(findall(map(x -> x in allAgg_set, srcEtr_df[!,dim]))))
@@ -287,7 +290,7 @@ function aggDivVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_tup::Tuple, s
 
 			# to every unique value in column the value itself and its children are assigned
 			set_sym = Symbol(split(string(col),"_")[1])
-			idxChild_dic = !(col in (:id,:id_i,:id_j)) ? Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set) : Dict(x => x for x in searchVal_set)
+			idxChild_dic = Dict(x => intersect(findCol_set,[x,getDescendants(x,sets_dic[set_sym],true)...]) for x in searchVal_set)
 
 			# for each unique value in column the rows with children are assigned
 			grp_df = groupby(DataFrame(val = findCol_arr, id = 1:length(findCol_arr)),:val)

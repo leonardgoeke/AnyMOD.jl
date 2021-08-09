@@ -145,10 +145,21 @@ end
 getNodesLvl(tree_obj::Tree, level_int::Int) = filter(r -> r.lvl == level_int, sort(collect(values(tree_obj.nodes)), by = x -> x.idx))
 
 # ! returns (unique) tuple with strings of node itself and its parents
-function getUniName(nodeIdx_int::Int, tree_obj::Tree)
+function getUniName(nodeIdx_int::Int, tree_obj::Tree, wrtGap::Bool = false)
 	if nodeIdx_int == 0 return ("none",) end
-	relNodes_arr = tree_obj.nodes[nodeIdx_int].lvl == 1 ? [nodeIdx_int] : vcat(reverse(getAncestors(nodeIdx_int,tree_obj,:tup,1))..., nodeIdx_int)
-	return tuple(map(x -> tree_obj.nodes[x[1]].val, relNodes_arr)...)
+	start_tup = (nodeIdx_int,tree_obj.nodes[nodeIdx_int].lvl)
+	relNodes_arr = tree_obj.nodes[nodeIdx_int].lvl == 1 ? [start_tup] : vcat(reverse(getAncestors(nodeIdx_int,tree_obj,:tup,1))..., start_tup)
+
+	nodeStr_arr = map(1:size(relNodes_arr,1)) do y
+		etr = relNodes_arr[y]
+		if y == 1 || (etr[2] - 1 == relNodes_arr[y-1][2]) || !wrtGap
+			return [tree_obj.nodes[etr[1]].val]
+		else
+			return vcat(fill("",(etr[2] - 1) - relNodes_arr[y-1][2]),tree_obj.nodes[etr[1]].val)
+		end	
+	end
+
+	return tuple(vcat(nodeStr_arr...)...)
 end
 
 createFullString(nodeIdx_int::Int,tree_obj::Tree) = join(getUniName(nodeIdx_int,tree_obj)," < ")

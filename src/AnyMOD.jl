@@ -18,7 +18,7 @@ module AnyMOD
         ENV["PYTHON"] = envPy
     end
 
-    using Base.Threads, CSV, Dates, LinearAlgebra, Requires
+    using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles
     using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays, Suppressor
     @reexport using DataFrames, JuMP, Dates, Suppressor
 
@@ -45,14 +45,14 @@ module AnyMOD
     include("dataHandling/util.jl")
 
     export anyModel, initializeModel, createOptModel!, setObjective!
-    export reportResults, reportTimeSeries, printObject, printDuals
+    export reportResults, reportTimeSeries, printObject, printDuals, writeParameterFile!
     export plotTree, plotEnergyFlow, moveNode!, produceMessage
-    export intCol, collapseExp, createVar
+    export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
 
     export trustRegion, bendersData, quadTrust
-    export prepareMod!, runTopLevel, runSubLevel
-    export heuristicSolve, addCuts!, getLinTrust, limitCapa!
-    export getNonFixLin, centerQuadTrust, adjustQuadTrust, runTopWithoutQuadTrust
+    export prepareMod!, runSubLevel, runTopLevel, addCuts!
+    export heuristicSolve, getFeasResult, evaluateHeu, getQtrVar, addLinearTrust!
+    export runTopWithoutQuadTrust, adjustQuadTrust, centerQuadTrust
     
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)

@@ -59,6 +59,9 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 		anyM.sets[:scr] = createTree(DataFrame(scenario_1 = String[]),:scenario,anyM.report)
 	end
 
+	# manually adds id set, creates a top node for all modes to allow for aggregation later
+	anyM.sets[:id] = createTree(DataFrame(id_1 = string.(1:20)),:id,anyM.report)
+
 	# reports, if reserved chars were used in set names, if a required set was not defined, or if a non-unique carrier or technology names was defined
 	for set in filter(x -> !(x in (:mode, :id, :scenario, :exchange)), collectKeys(keys(setLngShrt_dic)))
 		if !(setLngShrt_dic[set] in keys(setData_dic))
@@ -136,7 +139,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 	end
 
 	setNames_arr = filterSetColumns(readIn_df,set_arr)
-    oprNames_arr = filterSetColumns(readIn_df,[:parameter,:variable,:value,:id])
+    oprNames_arr = filterSetColumns(readIn_df,[:parameter,:variable,:value])
 	readInColAll_tup = tuple(namesSym(readIn_df)...)
 
 	# drop irrelevant column that do not relate to a set or an operator or are completely empty
@@ -292,6 +295,18 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 		end
 	end
 
+	# ! check if all "id" columns are validity
+	if any(occursin.("id",names(readIn_df)))	
+		for x in filter(x -> occursin("id",x),names(readIn_df))
+			if !isempty(setdiff(readIn_df[!,Symbol(x)],vcat(string.(0:20),[""])))
+				lock(lock_)
+				push!(report,(3,"parameter read-in",fileName_str,"entries in id column have to be between 1 and 20"))
+				unlock(lock_)
+				return DataFrame()
+			end
+		end
+	end
+
 	return readIn_df
 end
 
@@ -311,7 +326,9 @@ function createTree(readIn_df::DataFrame, setLoad_sym::Symbol, report::Array{Tup
 	firstCol_sym = Symbol(setLoad_str,"_1")
 	topNodes_arr =  filter(x -> !isempty(x),convert(Matrix,unique(readIn_df[!,namesSym(readIn_df) .== firstCol_sym])))
 
-	for (idx, node) in enumerate(sort(topNodes_arr))
+	if setLoad_sym != :id sort!(topNodes_arr) end
+
+	for (idx, node) in enumerate(topNodes_arr)
 	    tree_obj.nodes[idx] = Node(idx,node,1,idx,Int[])
 		tree_obj.srcTup[(node,)] = [idx]
 		tree_obj.up[idx] = 0
@@ -411,7 +428,7 @@ end
 function writeParameter(parData_df::DataFrame, sets::Dict{Symbol,Tree}, setLngShrt_dic::Dict{Symbol,Symbol}, fileName_str::String, report::Array{Tuple,1},lock_::ReentrantLock)
 
 	setShrtLng_dic = Dict(value => key for (key, value) in setLngShrt_dic)
-    set_arr = vcat(collect(setShrtLng_dic[key] for key in keys(sets))...,:id)
+    set_arr = collect(setShrtLng_dic[key] for key in keys(sets))
     setNames_arr = filterSetColumns(parData_df,set_arr)[1]
 	para_dic = Dict{Symbol, DataFrame}()
 

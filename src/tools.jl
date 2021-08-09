@@ -47,6 +47,35 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
 	if :csvDf in rtnDf return print_df end
 end
 
+# ! converts input dataframe to a parameter input file
+function writeParameterFile!(in_m::anyModel,para_df::DataFrame,par_sym::Symbol,parDef_tup::NamedTuple,file::String)
+
+	# define dictionary matching long and short set names
+	set_dic = Dict(:Ts => :timestep, :R => :region, :C => :carrier, :Te => :technology, :Exc => :exchange, :scr => :scenario, :id => :id)
+	# initialize matrix with parameter name and values
+	wrtPara_arr = Array{Any,2}(undef,size(para_df,1)+1,2)
+	wrtPara_arr[1,1:2] = ["parameter", "value"]
+	wrtPara_arr[2:end,1] .= string(par_sym)
+	wrtPara_arr[2:end,2] = para_df[!,:value]
+	
+	# add specification to parameter name in case of directed exchange data
+	if :dir in namesSym(para_df) wrtPara_arr[findall(para_df[!,:dir]) .+ 1,1] .= string(par_sym,:Dir) end
+
+	for setCol in intersect(string.(vcat(collect(parDef_tup.dim))),names(para_df))
+		set_sym = Symbol(split(setCol,"_")[1]) # gets set symbol
+		# creates array of arrays with strings on each level, missing levels are filled with empty strings
+		str_arr = map(x -> x == 0 ? [""] : vcat(getUniName(x,in_m.sets[set_sym],true)...), para_df[!,setCol])
+		colNum_int = maximum(size.(str_arr,1))
+		strExt_arr = map(x -> vcat(x,fill("",colNum_int - size(x,1))),str_arr)
+		# adds new columns for set to array
+		wrtPara_arr = hcat(wrtPara_arr, permutedims(hcat(vcat([map(x -> string(set_dic[set_sym],"_",x), 1:colNum_int)],strExt_arr)...)))
+	end
+	# correct order and remove columns filled with empty strings
+	wrtPara_arr = hcat(wrtPara_arr[:,3:size(wrtPara_arr,2)],wrtPara_arr[:,1:2])
+	# write to csv input file
+	writedlm(file * ".csv", wrtPara_arr, ',')	
+end
+
 #region # * report results to csv files
 """
 ```julia

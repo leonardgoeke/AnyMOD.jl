@@ -18,7 +18,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		# create expansion constraints
 		if isempty(anyM.subPro) || anyM.subPro == (0,0)
 			# connect capacity and expansion variables
-			createCapaCns!(part,anyM.sets,prepTech_dic,cns_dic,anyM.optModel)
+			createCapaCns!(part,anyM.sets,prepTech_dic,cns_dic,anyM.optModel,anyM.options.holdFixed)
 
 			# control operated capacity variables
 			if part.decomm != :none

@@ -1090,38 +1090,36 @@ function heritParameter_rest(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{I
 
     while newVal_boo
         paraDataSrc_df[!,:pare] =  map(x -> sets[heritSetShort_sym].up[x],paraDataSrc_df[!,heritSet_sym])
-        # saves all children of parents currently used in the grouped table within a dictionary to use below within loop over rows
+        
+        # saves all children of parents currently used in the grouped table within a dictionary
         if heritFull_boo
-            childPar_dic = Dict(x => getDescendants(x,sets[heritSetShort_sym], false, x != 0 ? sets[heritSetShort_sym].nodes[x].lvl+1 : 1) for x in unique(paraDataSrc_df[!,:pare]))
+            childPar_dic = Dict(x => sort(getDescendants(x,sets[heritSetShort_sym], false, x != 0 ? sets[heritSetShort_sym].nodes[x].lvl+1 : 1)) for x in unique(paraDataSrc_df[!,:pare]))
         end
 
         # groups table by parents and not used dimensions according to aggregation rule (sum, any, or unique)
-        if heritAgg_sym == :sum
-            paraDataGrp_df = combine(groupby(paraDataSrc_df, vcat(noHeritSet_tup...,:pare)), :val => (x -> sum(x)) => :valAgg)
-        elseif heritAgg_sym == :avg
-            paraDataGrp_df = combine(groupby(paraDataSrc_df, vcat(noHeritSet_tup...,:pare)), :val => (x -> Statistics.mean(x)) => :valAgg)
+        if heritAgg_sym in (:sum,:avg)
+            # groups value and checks, if all possible childeren are covered if necessary 
+            if heritFull_boo
+                paraDataGrp_df = combine(x -> (valAgg = (heritAgg_sym == :sum ? sum(x.val) : Statistics.mean(x.val)), full = [sort(x[heritSet_sym])] == [childPar_dic[x.pare[1]]],), groupby(paraDataSrc_df, vcat(noHeritSet_tup...,:pare)))
+                filter!(x -> x.full, paraDataGrp_df)
+            else
+                paraDataGrp_df = combine(groupby(paraDataSrc_df, vcat(noHeritSet_tup...,:pare)), :val => (x -> heritAgg_sym == :sum ? sum(x) : Statistics.mean(x)) => :valAgg)
+            end
         else
             paraDataGrp_df = dropmissing(combine(groupby(paraDataSrc_df, vcat(noHeritSet_tup...,:pare)), :val => (x -> length(unique(x)) == 1 ? x[1] : missing) => :valAgg))
         end
 
         existKey_arr = Tuple.(eachrow(newData_df[!,Not(:val)]))
 
-        if heritFull_boo
-            full_dic = groupby(paraDataSrc_df,vcat(noHeritSet_tup...,:pare)) |> (y -> Dict(x.pare[1] => collect(x[!,heritSet_sym]) for x in y))
-        end
-
-        # loops through rows of grouped table to see if any row can be coverted into new data
         newVal_boo = false
+        # add new data to table
         for row in eachrow(paraDataGrp_df)
-            # either "full" is not used or for all children an initial value was provided
-            if !heritFull_boo || isempty(setdiff(childPar_dic[row.pare],full_dic[row.pare]))
-                checkNew_tup = (row.pare,map(x -> getproperty(row,x),noHeritSet_tup)...)
-                # writes values if non-existing in table so far
-                if !(checkNew_tup in existKey_arr)
-                    newEntry_tup = (row.pare,map(x -> getproperty(row,x),noHeritSet_tup)...,row.valAgg)
-                    newVal_boo = true
-                    push!(newData_df,newEntry_tup)
-                end
+            checkNew_tup = (row.pare,map(x -> getproperty(row,x),noHeritSet_tup)...)
+            # writes values if non-existing in table so far
+            if !(checkNew_tup in existKey_arr)
+                newEntry_tup = (row.pare,map(x -> getproperty(row,x),noHeritSet_tup)...,row.valAgg)
+                newVal_boo = true
+                push!(newData_df,newEntry_tup)
             end
         end
         # add parent column to new data and filters values to consider for further inheritance (= only children of unmatched values)
@@ -1178,7 +1176,7 @@ function matchLimitParameter(allVar_df::DataFrame,par_obj::ParElement,anyM::anyM
             # try to match parameter data with potential cases of variable aggregation
             aggPar_obj.data = matchSetParameter(potLim_df,aggPar_obj,anyM.sets, useNew = false)
             
-            # again performs aggregation but now for inherited parameter data that includes potential cases of varioable aggregation
+            # again performs aggregation but now for inherited parameter data that includes potential cases of variable aggregation
             aggLimit_df = copy(aggPar_obj.data)
             if !isempty(aggLimit_df)
                 aggLimit_df[!,:var]  = aggDivVar(grpVar_df, aggLimit_df, agg_tup, anyM.sets, aggFilt = agg_tup)

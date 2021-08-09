@@ -19,7 +19,7 @@ function createOptModel!(anyM::anyModel)
 	prepareExc!(collect(keys(anyM.parts.exc)),prepSys_dic[:Exc],tsYear_dic,anyM)
 
 	allCapaDf_dic = addRetrofitting!(prepSys_dic,anyM)
-	removeFixed!(prepSys_dic,allCapaDf_dic,anyM) # remove entries were capacities is fixed to zero
+	removeFixed!(prepSys_dic,allCapaDf_dic,anyM) # remove entries were capacities are fixed to zero
 	addInsCapa!(prepSys_dic,anyM) # add entries for installed capacities
 
 	# ! remove unrequired elements in case of distributed model creation
@@ -120,12 +120,3 @@ function createOptModel!(anyM::anyModel)
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")
 end
-
-
-
-
-
-
-
-
-

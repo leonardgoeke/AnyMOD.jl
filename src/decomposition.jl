@@ -29,9 +29,10 @@ mutable struct quadTrust
 		trustReg_obj = new()
 		trustReg_obj.opt = trust_opt
 		trustReg_obj.exp = exp_df
-		trustReg_obj.abs = sum(vcat(vcat(vcat(map(x -> trustReg_obj.exp[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...))
+		trstExpr_arr = vcat(vcat(vcat(map(x -> trustReg_obj.exp[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+		trustReg_obj.abs = sum(trstExpr_arr)
 		trustReg_obj.rad = trustReg_obj.abs * trustReg_obj.opt.startRad
-		return trustReg_obj
+		return trustReg_obj, size(trstExpr_arr,1)
 	end
 end
 
@@ -40,7 +41,7 @@ end
 #region # * functions for heurstic
 
 # ! run heuristic and return exact capacities plus heuristic cut
-function heuristicSolve(sub_dic::Dict{Tuple{Int64,Int64},anyModel},modOpt_tup::NamedTuple,sub_tup::Tuple,zeroThrs_fl::Float64,redFac::Float64, t_int::Int)
+function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64, t_int::Int)
 
 	#region # * solve heuristic model and get exact results
 	
@@ -50,156 +51,224 @@ function heuristicSolve(sub_dic::Dict{Tuple{Int64,Int64},anyModel},modOpt_tup::N
 	set_optimizer_attribute(heu_m.optModel, "Threads", t_int)
 	optimize!(heu_m.optModel)
 
-
-	# create top level problem
-	top_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "topModel", supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp)
-	top_m.subPro = tuple(0,0)
-	prepareMod!(top_m,modOpt_tup.opt)
-
 	# get feasible capacities (due to imprecisions of barrier heuristic solution can be infeasible)
-	heuData_obj = getFeasResult(heu_m,top_m,zeroThrs_fl)
+	heuData_obj = bendersData()
+	heuData_obj.capa , topFeas_m = @suppress getFeasResult(modOpt_tup,writeResult(heu_m,[:capa,:exp],false,false))
 	
 	#endregion
 	
-	#region # * create heuristic cut
+	#region # * compute heuristic cut
 	
 	# fix variables of top problem to exact values
 	for sys in (:tech,:exc)
-		part_dic = getfield(top_m.parts,sys)
-		for sSym in keys(heuData_obj.capa[sys]), capaSym in filter(x -> occursin("capa",string(x)), collect(keys(heuData_obj.capa[sys][sSym])))
-			limitCapa!(heuData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],top_m,:Fix,false)
+		part_dic = getfield(topFeas_m.parts,sys)
+		for sSym in keys(heuData_obj.capa[sys])
+			part_obj = part_dic[sSym]
+			var_str = part_obj.decomm == :none ? "exp" : "capa" 
+			for varSym in filter(x -> occursin(var_str,string(x)), collect(keys(heuData_obj.capa[sys][sSym])))
+				var_df = part_obj.var[varSym] |> (w -> part_obj.decomm == :none ? collapseExp(w) : w)
+				limitCapa!(heuData_obj.capa[sys][sSym][varSym],var_df,varSym,part_dic[sSym],topFeas_m,:Fix)
+			end
 		end
 	end
 
 	# re-set objective to costs and solve
-	@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,:var] / top_m.options.scaFac.obj)
-	optimize!(top_m.optModel)
-	printIIS(top_m)
+	@objective(topFeas_m.optModel, Min, topFeas_m.parts.obj.var[:obj][1,:var] / topFeas_m.options.scaFac.obj)
+	optimize!(topFeas_m.optModel)
 
-	heuData_obj.objVal = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
-
-	# run subproblems and get cut info
-    cutData_dic = Dict{Tuple{Int64,Int64},bendersData}()
-	@threads for x in collect(sub_tup)
-		dual_etr = runSubLevel(sub_dic[x],copy(heuData_obj))
-		cutData_dic[x] = dual_etr
-	end
+	heuData_obj.objVal = value(sum(filter(x -> x.name == :cost, topFeas_m.parts.obj.var[:objVar])[!,:var]))
 
 	#endregion
 
-	return heuData_obj, cutData_dic
+	return heu_m, heuData_obj
 end
 
-# ! get feasible results from solve heuristic problem
-function getFeasResult(heu_m::anyModel,top_m::anyModel,zeroThrs_fl::Float64)
+# ! returns a feasible as close as possible to the input dictionary
+function getFeasResult(modOpt_tup::NamedTuple,varData_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}=Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}())
+
+	# create top level problem
+	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel", supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp)
+	topFeas_m.subPro = tuple(0,0)
+	prepareMod!(topFeas_m,modOpt_tup.opt)
+
+	# add limits to problem
+	if !isempty(lim_dic) addLinearTrust!(topFeas_m,lim_dic) end
 
     # create absolute value constraints for capacities or expansion variables
     for sys in (:tech,:exc)
-        partHeu_dic = getfield(heu_m.parts,sys)
-        partTop_dic = getfield(top_m.parts,sys)
-        for sSym in keys(partHeu_dic)
+        partTop_dic = getfield(topFeas_m.parts,sys)
+        for sSym in keys(varData_dic[sys])
             part = partTop_dic[sSym]
-			# uses capacity variables for system with decommissioning, otherwise expansion 
-			trust_str = part.decomm == :none ? "exp" : "capa" 
-			# obtain scaling factor used for expansion or capacity variables
-			scaFac_fl = part.decomm == :none ? top_m.options.scaFac.insCapa : top_m.options.scaFac.capa
-            # write to capacity data object
-            var_dic = Dict(varSym => getResult(copy(partHeu_dic[sSym].var[varSym])) for varSym in filter(x -> occursin(trust_str,string(x)), keys(partHeu_dic[sSym].var)))
             # create variabbles and writes constraints to minimize absolute value of capacity delta
-            for varSym in filter(x -> occursin(trust_str,string(x)), keys(partHeu_dic[sSym].var))
-				var_df = part.var[varSym] |> (w -> part.decomm == :none ? collapseExp(w) : w)
-				abs_df = deSelectSys(var_dic[varSym]) |>  (z -> leftjoin(var_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
-				# set variables below threshold to zero and scales value according to factor used in original variable
-				scaFac_fl = part.decomm == :none ? top_m.options.scaFac.insCapa : top_m.options.scaFac.capa
-				abs_df[!,:value] = map(x -> (x.value > (zeroThrs_fl/scaFac_fl) ? x.value : 0.0) * collect(values(x.var.terms))[1],eachrow(abs_df))
-                # create variable for absolute value and connect with rest of dataframe again
-                part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),top_m.options.bound.capa,top_m.optModel, top_m.lock,top_m.sets; scaFac = scaFac_fl)
-                abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var]
-                # create constraints for absolute value
-                abs_df[!,:absLow] = map(x -> x.varAbs - x.var + x.value,eachrow(abs_df))
-                abs_df[!,:absUp] = map(x -> x.varAbs  + x.var - x.value,eachrow(abs_df)) 
-                part.cns[Symbol(varSym,:AbsLow)] = createCns(cnsCont(rename(orderDf(abs_df[!,[intCol(abs_df)...,:absLow]]),:absLow => :cnsExpr),:greater),top_m.optModel)
-                part.cns[Symbol(varSym,:AbsUp)] = createCns(cnsCont(rename(orderDf(abs_df[!,[intCol(abs_df)...,:absUp]]),:absUp => :cnsExpr),:greater),top_m.optModel)
+            for varSym in keys(varData_dic[sys][sSym])
+				exp_boo = occursin("exp",string(varSym))
+				var_df = part.var[varSym] |> (w -> exp_boo ? collapseExp(w) : w)
+				abs_df = deSelectSys(varData_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
+				# set variables below threshold to zero and use smallest values possible within tolerances for others
+				lowVal_fl = topFeas_m.options.coefRng.rhs[1]/topFeas_m.options.coefRng.mat[2]*getfield(topFeas_m.options.scaFac, part.decomm == :none ? :insCapa : :capa)
+				abs_df[!,:value] = map(x -> x.value > 0.0 ? max(x.value,lowVal_fl) : 0.0,eachrow(abs_df))
+				# create variable for absolute value and connect with rest of dataframe again
+				scaFac_fl = exp_boo ? topFeas_m.options.scaFac.insCapa : topFeas_m.options.scaFac.capa 
+                part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),topFeas_m.options.bound.capa,topFeas_m.optModel, topFeas_m.lock,topFeas_m.sets; scaFac = scaFac_fl)
+                abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var] 
+				# create constraints for absolute value
+				abs_df[!,:absLow] = map(x -> x.varAbs - (x.var - x.var.constant) + x.value * scaFac_fl,eachrow(abs_df))
+                abs_df[!,:absUp] = map(x -> x.varAbs  + (x.var - x.var.constant) - x.value * scaFac_fl,eachrow(abs_df)) 
+				# scale and create constraints
+				absLow_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absLow]]),:absLow => :cnsExpr)
+				absUp_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absUp]]),:absUp => :cnsExpr)
+				scaleCnsExpr!(absLow_df,topFeas_m.options.coefRng,topFeas_m.options.checkRng)
+				scaleCnsExpr!(absUp_df,topFeas_m.options.coefRng,topFeas_m.options.checkRng)
+                part.cns[Symbol(varSym,:AbsLow)] = createCns(cnsCont(absLow_df,:greater),topFeas_m.optModel)
+                part.cns[Symbol(varSym,:AbsUp)] = createCns(cnsCont(absUp_df,:greater),topFeas_m.optModel)
             end
         end
     end
 	
     # change objective of top problem and solve
 	absVar_arr = [:CapaConv,:CapaExc,:CapaStOut,:CapaStIn,:CapaStSize,:ExpConv,:ExpExc,:ExpStOut,:ExpStIn,:ExpStSize]
-    @objective(top_m.optModel, Min, sum(map(x -> sum(getAllVariables(Symbol(:abs,x),top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var])),absVar_arr)))
-    set_optimizer_attribute(top_m.optModel, "Crossover", 1)
-    @suppress optimize!(top_m.optModel)
+    @objective(topFeas_m.optModel, Min, sum(map(x -> sum(getAllVariables(Symbol(:abs,x),topFeas_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var])),absVar_arr)))
+    set_optimizer_attribute(topFeas_m.optModel, "Crossover", 1)
+    optimize!(topFeas_m.optModel)
 
-    # write precise results for capacity and expansion
-    capaData_obj = bendersData()
-	capaData_obj.capa = writeResult(top_m,[:exp,:capa],false)
+    # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
+    return writeResult(topFeas_m,[:exp,:capa],false,false), topFeas_m
+end
 
-    return capaData_obj
+# ! evaluate results of heuristic solution to determine fixed and limited variables
+function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::bendersData,linPar::NamedTuple)
+
+	# create empty dictionaries for limits and fixes
+	fix_dic = Dict(:tech => Dict{Symbol,Dict{Symbol,DataFrame}}(),:exc => Dict{Symbol,Dict{Symbol,DataFrame}}())
+	lim_dic = Dict(:tech => Dict{Symbol,Dict{Symbol,DataFrame}}(),:exc => Dict{Symbol,Dict{Symbol,DataFrame}}())
+	cntHeu_arr = [0,0] # tracks number of variables fixed to zero, variable fixed to a non-zero value and limited variable
+
+	# ! determine variables for fixing and limiting
+	for sys in (:tech,:exc)
+		part_dic = getfield(heu_m.parts,sys)
+		for sSym in keys(heuSca_obj.capa[sys])
+			fix_dic[sys][sSym] = Dict{Symbol,DataFrame}()
+			lim_dic[sys][sSym] = Dict{Symbol,DataFrame}()		
+			for varSym in filter(x -> occursin("capa",string(x)), collect(keys(heuSca_obj.capa[sys][sSym])))
+				# match results from two different heuristic models
+				bothCapa_df = rename(heuSca_obj.capa[sys][sSym][varSym],:value => :value_1) |> (x -> innerjoin(x, rename(heuCom_obj.capa[sys][sSym][varSym],:value => :value_2), on = intCol(x,:dir)))
+				# determine cases for fix and limit
+				bothCapa_df[!,:limVal], bothCapa_df[!,:limCns] = map(x -> getLinTrust(x.value_1,x.value_2,linPar,heu_m.options.scaFac.capa), eachrow(bothCapa_df)) |> (w -> map(x -> getindex.(w,x),[1,2]))
+				bothCapa_df = flatten(select(bothCapa_df,Not([:value_1,:value_2])),[:limVal,:limCns])
+
+				# ! store limited variables
+				lim_df = filter(x -> x.limCns != :Fix, bothCapa_df)
+				if !isempty(lim_df)
+					# removes storage variables controlled by ratio from further analysis
+					if sys == :tech lim_df = removeFixStorage(varSym,lim_df,part_dic[sSym]) end
+					lim_dic[sys][sSym][varSym] = lim_df
+					# reports on limited variables
+					cntHeu_arr[2] = cntHeu_arr[2] + size(filter(x -> x.limCns == :Up,lim_df),2)
+				end
+				
+				# ! store fixed variables
+				fix_df = select(filter(x -> x.limCns == :Fix, bothCapa_df),Not([:limCns]))
+				if !isempty(fix_df)
+					fix_dic[sys][sSym][varSym] = rename(fix_df,:limVal => :value)
+					# find related expansion variables and fix as well
+					for expVar in filter(x -> string(x) in replace.(string(varSym),["capa" => "exp"]),keys(heuSca_obj.capa[sys][sSym]))
+						# gets relevant expansion variables
+						exp_df = heuSca_obj.capa[sys][sSym][expVar] |> (w -> innerjoin(w,select(part_dic[sSym].var[expVar],Not([:Ts_expSup,:var])), on = intCol(w)))
+						# only fix expansion variables that relate to a fixed capacity
+						fix_dic[sys][sSym][expVar] = unique(select(select(fix_df,Not(part_dic[sSym].decomm == :emerging ? [:limVal] : [:Ts_expSup,:limVal])) |> (w -> innerjoin(flatten(exp_df,:Ts_disSup),w, on = intCol(w))),Not([:Ts_disSup])))
+					end
+					# report on fixed variables
+					rep_df = fix_df
+					if sys == :tech rep_df = removeFixStorage(varSym,rep_df,part_dic[sSym]) end		
+					cntHeu_arr[1] = cntHeu_arr[1] + size(rep_df,2)
+				end
+			end
+			# delete if nothing was written
+			removeEmptyDic!(fix_dic[sys],sSym)
+			removeEmptyDic!(lim_dic[sys],sSym)
+		end
+	end
+
+	return fix_dic, lim_dic, cntHeu_arr
 end
 
 # ! get limits imposed on by linear trust region
-function getLinTrust(val1_fl::Float64,val2_fl::Float64,thres_fl::Float64)
+function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple,scaCapa_fl::Float64)
 
-	if val1_fl == 0.0 && val2_fl == 0.0 # fix to zero, if both values are zero
+	if (val1_fl == 0.0 && val2_fl == 0.0) || (any([val1_fl == 0.0,val2_fl == 0.0]) && scaCapa_fl*abs(val1_fl - val2_fl) < linPar.thrsAbs) # fix to zero, if both values are zero, or if one is zero and the other is very close to zero
 		val_arr, cns_arr = [0.0], [:Fix]
-	elseif val1_fl != 0.0 && val2_fl == 0.0 # set second value as upper limits, if only this one is zero
+	elseif val1_fl != 0.0 && val2_fl == 0.0 # set second value as upper limit, if other is zero
 		val_arr, cns_arr = [val1_fl], [:Up]
-	elseif val1_fl == 0.0 && val2_fl != 0.0 # set second value as upper limits, if only this one is zero
+	elseif val1_fl == 0.0 && val2_fl != 0.0 # set second value as upper limit, if other zero
 		val_arr, cns_arr = [val2_fl], [:Up]
-	elseif abs(val1_fl/val2_fl-1) > thres_fl # set to mean, if difference does not exceed threshold
+	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) && (scaCapa_fl*abs(val1_fl - val2_fl) > linPar.thrsAbs) # enfore lower and upper limits, if difference does exceed threshold	
 		val_arr, cns_arr = sort([val1_fl,val2_fl]), [:Low,:Up]
-	else # enfore lower and upper limits, if difference does exceed threshold	
-		val_arr, cns_arr = [(val1_fl+val2_fl)/2], [:Fix]
+	else 
+		val_arr, cns_arr = [(val1_fl+val2_fl)/2], [:Fix] # set to mean, if difference does not exceed threshold
 	end
 		
 	return val_arr, cns_arr
 end
 
-# ! get variables controlling unfixed part of linear trust region
-function getNonFixLin(top_m::anyModel,capaData_obj::bendersData)
+# ! get variables in top problem subject to limits
+function getQtrVar(top_m::anyModel,capaData_obj::bendersData)
 
 	var_dic = Dict(x => Dict{Symbol,Dict{Symbol,DataFrame}}() for x in [:tech,:exc])
 
 	for sys in (:exc,:tech)
 		part_dic = getfield(top_m.parts,sys)
-		for sSym in keys(capaData_obj.capa[sys])	
+		for sSym in keys(capaData_obj.capa[sys])
 			var_dic[sys][sSym] = Dict{Symbol,Dict{Symbol,DataFrame}}() # create empty dataframe for values
-			sys_obj = part_dic[sSym] # get part object of system
-			trust_str = part_dic[sSym].decomm == :none ? "exp" : "capa" # uses capacity variables for system with decommissioning, otherwise use expansion
-			for trstSym in filter(x -> occursin(trust_str,string(x)), collect(keys(capaData_obj.capa[sys][sSym])))
-				# get capacities that are not fixed
-				relCns_arr = intersect([Symbol(trstSym,:Benders,x) for x in [:Up,:Low]],keys(sys_obj.cns))
-				if !isempty(relCns_arr)
-					# get all cases where variable is not fixed
-					limCapa_df = vcat(map(x -> select(sys_obj.cns[x],Not([:cns,:fac])),relCns_arr)...) 
-					# get un-fixed variables
-					selCol_arr = filter(x -> x != :Ts_expSup,intCol(limCapa_df,:var))
-					var_dic[sys][sSym][trstSym] = unique(innerjoin(select(sys_obj.var[trstSym],selCol_arr),select(limCapa_df,selCol_arr),on = selCol_arr)) |> (w -> innerjoin(w,capaData_obj.capa[sys][sSym][trstSym],on = intCol(w)))
-					# remove if no capacities remain
-					if isempty(var_dic[sys][sSym][trstSym]) delete!(var_dic[sys][sSym],trstSym) end
-				end
+			
+			# determine where using expansion rather than capacity is possible and more efficient
+			varNum_dic = Dict(x => size(unique(getfield.(part_dic[sSym].var[x][!,:var],:terms)),1) for x in collect(keys(part_dic[sSym].var))) # number of unique variables
+			trstVar_arr = map(filter(x -> occursin("capa",string(x)),collect(keys(part_dic[sSym].var)))) do x
+				expVar_sym = Symbol(replace(string(x),"capa" => "exp"))
+				return part_dic[sSym].decomm == :none && expVar_sym in keys(varNum_dic) && varNum_dic[expVar_sym] < varNum_dic[x] ? expVar_sym : x
 			end
+			for trstSym in trstVar_arr
+				var_df = capaData_obj.capa[sys][sSym][trstSym]
+				if trstSym == :capaExc && !part_dic[sSym].dir filter!(x -> x.R_from < x.R_to,var_df) end # only get relevant capacity variables of exchange
+				if sys == :tech removeFixStorage(trstSym,var_df,part_dic[sSym]) end # remove storage variables controlled by ratio
+				# filter cases where acutal variables are defined
+				var_dic[sys][sSym][trstSym] = intCol(var_df) |> (w ->innerjoin(var_df,unique(select(filter(x -> !isempty(x.var.terms), part_dic[sSym].var[trstSym]),w)), on = w))
+				# remove if no capacities remain
+				removeEmptyDic!(var_dic[sys][sSym],trstSym)
+			end
+			
 			# remove entire system if not capacities
-			if isempty(var_dic[sys][sSym]) delete!(var_dic[sys],sSym) end
+			removeEmptyDic!(var_dic[sys],sSym)
 		end
 	end
 	return var_dic
+end
+
+# ! adds limits specified by dictionary to problem
+function addLinearTrust!(top_m::anyModel,lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}})
+	for sys in (:tech,:exc)
+		part_dic = getfield(top_m.parts,sys)
+		for sSym in keys(lim_dic[sys])
+			for trstSym in keys(lim_dic[sys][sSym])
+				# group limiting constraints
+				grpBothCapa_arr = collect(groupby(lim_dic[sys][sSym][trstSym],:limCns))
+				# get variables of top model
+				trstVar_df = filter(x -> !isempty(x.var.terms),part_dic[sSym].var[trstSym])
+				foreach(lim -> limitCapa!(select(rename(lim,:limVal => :value),Not([:limCns])),trstVar_df,trstSym,part_dic[sSym],top_m,lim[1,:limCns]),grpBothCapa_arr)
+			end
+		end
+	end
 end
 
 # ! solves top problem without trust region and obtains lower limits
 function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 	# solve top again with trust region and re-compute bound for soultion
 	delete(mod_m.optModel,trustReg_obj.cns)
-	set_optimizer_attribute(mod_m.optModel, "Crossover", 1) # add crossover to get an exact solution
-	@suppress optimize!(mod_m.optModel)
-	set_optimizer_attribute(mod_m.optModel, "Crossover", 0)
-
+	optimize!(mod_m.optModel)
 	# obtain different objective values
 	objTop_fl = value(sum(filter(x -> x.name == :cost, mod_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
 	lowLim_fl = objTop_fl + value(filter(x -> x.name == :benders,mod_m.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
 
 	return objTop_fl, lowLim_fl
-
 end
 
 # ! dynamically adjusts the trust region
@@ -296,14 +365,12 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData)
 				end
 			end
 			# remove system if no capacities exist
-			if isempty(capaData_obj.capa[sys][sSym]) delete!(capaData_obj.capa[sys],sSym) end
+			removeEmptyDic!(capaData_obj.capa[sys],sSym)
 		end
 	end
 
 	# set optimizer attributes and solves
-	@suppress begin
-		optimize!(sub_m.optModel)
-	end
+	optimize!(sub_m.optModel)
 
 	# add duals and objective value to capacity data
 	capaData_obj.objVal = objective_value(sub_m.optModel)
@@ -312,12 +379,14 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData)
 		part_dic = getfield(sub_m.parts,sys)
 		for sSym in keys(capaData_obj.capa[sys])
 			for capaSym in filter(x -> occursin("capa",string(x)), collect(keys(capaData_obj.capa[sys][sSym])))
-				capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].cns[Symbol(capaSym,:BendersFix)])
-				# remove capacity if none exists (again necessary because dual can be zero)
-				if isempty(capaData_obj.capa[sys][sSym][capaSym]) delete!(capaData_obj.capa[sys][sSym],capaSym) end
+				if Symbol(capaSym,:BendersFix) in keys(part_dic[sSym].cns)
+					capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].cns[Symbol(capaSym,:BendersFix)])
+					# remove capacity if none exists (again necessary because dual can be zero)
+					removeEmptyDic!(capaData_obj.capa[sys][sSym],capaSym)
+				end
 			end
 			# remove system if no capacities exist (again necessary because dual can be zero)
-			if isempty(capaData_obj.capa[sys][sSym]) delete!(capaData_obj.capa[sys],sSym) end
+			removeEmptyDic!(capaData_obj.capa[sys],sSym)
 		end
 	end
 
@@ -333,12 +402,10 @@ function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bender
 	if !isempty(cutData_dic) addCuts!(top_m,cutData_dic,i) end
 
 	# solve model
-	@suppress begin
-		optimize!(top_m.optModel)
-	end
+	optimize!(top_m.optModel)
 
 	# write technology capacites and level of capacity balance to benders object
-	capaData_obj.capa, expTrust_dic = [writeResult(top_m,[x]) for x in [:capa,:exc]]
+	capaData_obj.capa, expTrust_dic = [writeResult(top_m,[x],true) for x in [:capa,:exc]]
 
 	# get objective value of top problem
 	objTopTrust_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
@@ -370,10 +437,9 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 		cut_expr = @expression(top_m.optModel, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)))
 		
 		# remove extremely small terms and limit the coefficient of extremely large terms
-		
 		limCoef_boo = false
 		
-		if !isempty(cut_expr.terms)
+		if typeof(cut_expr) == AffExpr && !isempty(cut_expr.terms)
 			maxRng_fl = top_m.options.coefRng.mat[2]/top_m.options.coefRng.mat[1] # maximum range of coefficients
 			cutCoef_fl = collect(values(cut_var.terms))[1]	# scaling factor of cut variable
 			
@@ -400,8 +466,8 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 end
 
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
-function getBendersCut(sub_df::DataFrame, variable_df::DataFrame)
-	ben_df = deSelectSys(sub_df) |> (z -> innerjoin(deSelectSys(variable_df),z, on = intCol(z,:dir)))
+function getBendersCut(sub_df::DataFrame, var_df::DataFrame)
+	ben_df = deSelectSys(sub_df) |> (z -> innerjoin(deSelectSys(var_df),z, on = intCol(z,:dir)))
 	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual *(collect(keys(x.var.terms))[1] - x.value),eachrow(ben_df)))
 end
 
@@ -410,11 +476,10 @@ end
 #region # * transfer results between models
 
 # ! write capacities or expansion in input model to returned capacity dictionary
-function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}, valThr::Bool=true)
+function writeResult(in_m::anyModel, var_arr::Array{Symbol,1},rmvFix::Bool = false, fltSt::Bool = true)
 	
 	var_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
-	fixPar_dic = Dict(:expStSize => :sizeToStOutFixExp, :expStIn => :stOutToStInFixExp, :capaStSize => :sizeToStOutFixCapa, :capaStIn => :stOutToStInFixCapa)
-
+	
 	for sys in (:tech,:exc)
 		var_dic[sys] = Dict{Symbol,Dict{Symbol,DataFrame}}()
 		part_dic = getfield(in_m.parts,sys)
@@ -424,25 +489,52 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}, valThr::Bool=true
 				continue
 			end	
 
-			var_dic[sys][sSym] = Dict(varSym => getResult(copy(part_dic[sSym].var[varSym]),valThr) for varSym in filter(x -> any(occursin.(string.(var_arr),string(x))), keys(part_dic[sSym].var)))
+			varSym_arr = filter(x -> any(occursin.(string.(var_arr),string(x))), keys(part_dic[sSym].var))
+			var_dic[sys][sSym] = Dict(varSym => getResult(copy(part_dic[sSym].var[varSym])) for varSym in varSym_arr)
 
 			# check if storage expansion is fixed to storage output and removes variables in these cases
-			for stExp in intersect([:expStSize,:expStIn,:capaStSize,:capaStIn],collect(keys(var_dic[sys][sSym])))
-				if fixPar_dic[stExp] in collect(keys(part_dic[sSym].cns))	
-					fixCns_df = select(part_dic[sSym].cns[fixPar_dic[stExp]],Not([:cns]))
-					var_dic[sys][sSym][stExp] = var_dic[sys][sSym][stExp] |> (x -> antijoin(x,fixCns_df, on = intCol(x)))	
+			if sys == :Te && fltSt
+				for stVar in collect(keys(var_dic[sys][sSym]))
+					var_dic[sys][sSym][stVar] = removeFixStorage(stVar,var_dic[sys][sSym],part_dic[sSym])
 				end
 			end
+
+			# removes variables that are fixed from output
+			if rmvFix
+				for varSym in varSym_arr
+					fixVar_sym = part_dic[sSym].decomm == :none ? Symbol(replace(string(varSym),"capa" => "exp")) : varSym
+					if Symbol(fixVar_sym,"BendersFix") in collect(keys(part_dic[sSym].cns))
+						var_df = var_dic[sys][sSym][varSym]
+						expCns_df = select(part_dic[sSym].cns[Symbol(fixVar_sym,"BendersFix")],Not([:cns,:fac,]))
+						# in case of no decommissioning capacites are fixed if all corresponding expansion variables are fixed
+						if part_dic[sSym].decomm == :none	
+							# get non-fixed cases for expansion variables
+							expCnsY_df = antijoin(select(part_dic[sSym].var[fixVar_sym],Not([:var])),expCns_df, on = intCol(expCns_df))
+							if !isempty(expCnsY_df)
+								expCnsY_df = select(flatten(expCnsY_df,:Ts_disSup),Not(:Ts_exp))
+								join_arr = part_dic[sSym].type == :emerging ? intCol(var_df) : filter(x -> x != :Ts_expSup,intCol(var_df))
+								var_dic[sys][sSym][varSym] = innerjoin(var_df,unique(select(expCnsY_df,join_arr)), on = join_arr)
+							else
+								var_dic[sys][sSym][varSym] = DataFrame()
+							end
+						else
+							var_dic[sys][sSym][varSym] = innerjoin(var_df,expCns_df, on = intCol(var_df))
+						end
+						
+					end
+				end
+			end		
+
 			# remove empty fields
 			filter!(x -> !isempty(x[2]),var_dic[sys][sSym])
-			if isempty(var_dic[sys][sSym]) delete!(var_dic[sys],sSym) end
+			removeEmptyDic!(var_dic[sys],sSym)	
 		end
 	end
 	return var_dic
 end
 
 # ! replaces the variable column with a column storing the value of the variable
-function getResult(res_df::DataFrame, valThr::Bool=true)
+function getResult(res_df::DataFrame)
 	
 	if :Ts_exp in namesSym(res_df) # for expansion filter unique variables
 		res_df = collapseExp(res_df)
@@ -451,26 +543,30 @@ function getResult(res_df::DataFrame, valThr::Bool=true)
 	end
 
 	# write value of variable dataframe
-	res_df[!,:value] = map(x -> value(collect(keys(x.terms))[1]) |> (z -> z < 1e-8 && valThr ? 0.0 : z),res_df[!,:var])
+	res_df[!,:value] = map(x -> value(collect(keys(x.terms))[1]) |> (z -> z < 1e-6 ? 0.0 : z),res_df[!,:var])
 
 	return select(res_df,Not([:var]))
 end
 
 # ! create constraint fixing capacity (or setting a lower limits)
-function limitCapa!(value_df::DataFrame,variable_df::DataFrame,var_sym::Symbol,part_obj::AbstractModelPart,fix_m::anyModel,lim_sym::Symbol=:Fix,round_boo::Bool=true)
+function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_obj::AbstractModelPart,fix_m::anyModel,lim_sym::Symbol=:Fix)
 
 	cns_sym = Symbol(:Benders,lim_sym)
 	# join variables with capacity values
-	fix_df = deSelectSys(value_df) |>  (z -> leftjoin(variable_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
+	fix_df = deSelectSys(value_df) |>  (z -> leftjoin(var_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
+	
+	# filter cases where no variable exists
+	filter!(x -> !isempty(x.var.terms),fix_df)
+	if isempty(fix_df) return end
 
 	# extract actual variable
 	fix_df[!,:var] = map(x -> collect(keys(x.var.terms))[1], eachrow(fix_df))
 	# compute scaling factor
-	fix_df[!,:scale] = map(x -> x.value <= fix_m.options.coefRng.rhs[1] ? min(fix_m.options.coefRng.mat[2],fix_m.options.coefRng.rhs[1]/x.value) : 1.0, eachrow(fix_df))
+	fix_df[!,:scale] = map(x -> x.value <= fix_m.options.coefRng.rhs[1] ? min(fix_m.options.coefRng.mat[2],1.05* fix_m.options.coefRng.rhs[1]/x.value) : 1.0, eachrow(fix_df))
 	fix_df[!,:scale] = map(x -> x.value >= fix_m.options.coefRng.rhs[2] ? min(fix_m.options.coefRng.mat[1],fix_m.options.coefRng.rhs[2]/x.value) : x.scale, eachrow(fix_df))
 
 	# compute righ-hand side and factor of variables for constraint
-	fix_df[!,:rhs] = map(x -> x.value * x.scale |> (u -> round(u,digits = 4) >= fix_m.options.coefRng.rhs[1] ? u : round_boo ? 0.0 : u), eachrow(fix_df))
+	fix_df[!,:rhs] = map(x -> x.value * x.scale |> (u -> (u < fix_m.options.coefRng.rhs[1]) ? 0.0 : u), eachrow(fix_df))
 	fix_df[!,:fac] = map(x -> x.rhs == 0.0 ? 1.0 : x.scale, eachrow(fix_df))
 
 	if !(Symbol(var_sym,cns_sym) in keys(part_obj.cns))
@@ -482,7 +578,6 @@ function limitCapa!(value_df::DataFrame,variable_df::DataFrame,var_sym::Symbol,p
 		else lim_sym == :Low
 			fix_df[!,:cns] = map(x -> @constraint(fix_m.optModel,x.var * x.fac >= x.rhs),eachrow(fix_df))
 		end
-		
 	else
 		# adjust rhs and factor of existing constraint
 		fix_df = innerjoin(select(part_obj.cns[Symbol(var_sym,cns_sym)],Not([:fac])),fix_df,on = intCol(fix_df,:dir))
@@ -495,10 +590,21 @@ end
 
 # ! adds a dual into the first dataframe based on the matching variable column in the second
 function addDual(dual_df::DataFrame,cns_df::DataFrame)
-	new_df = deSelectSys(cns_df) |> (z -> leftjoin(dual_df,z, on = intCol(z,:dir)))
+	new_df = deSelectSys(cns_df) |> (z -> innerjoin(dual_df,z, on = intCol(z,:dir)))
 	new_df[!,:dual] = map(x -> dual(x), new_df[!,:cns]) .* new_df[!,:fac]
 	return select(filter(x -> x.dual != 0.0,new_df),Not([:cns,:fac]))
 end
+
+# ! removes cases where storage variables are fixed by a ratio (e.g. storage energy capacity fixed by e/p ratio) 
+function removeFixStorage(stVar_sym::Symbol,stVar_df::DataFrame,part_obj::TechPart)
+	fixPar_dic = Dict(:expStSize => :sizeToStOutFixExp, :expStIn => :stOutToStInFixExp, :capaStSize => :sizeToStOutFixCapa, :capaStIn => :stOutToStInFixCapa)
+	if stVar_sym in [:expStSize,:expStIn,:capaStSize,:capaStIn] && fixPar_dic[stVar_sym] in collect(keys(part_obj.cns))	
+		fixCns_df = select(part_obj.cns[fixPar_dic[stVar_sym]],Not([:cns]))
+		stVar_df = stVar_df |> (x -> antijoin(x,fixCns_df, on = intCol(x)))	
+	end
+	return stVar_df
+end
+
 
 #endregion
 
