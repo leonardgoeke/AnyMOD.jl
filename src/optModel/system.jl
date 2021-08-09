@@ -1109,6 +1109,8 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 
 		# loops over variables limits are enforced on
 		for limVa in limVa_arr, lim in parToLim_dic[par]
+			# skip lower and upper bound on storage capacites for subproblems (already in top problem)
+			if lim in (:Low,:Up) && par in capaRatio_boo && (isempty(anyM.subPro) || anyM.subPro != (0,0)) continue end
 
 			# get variables for denominator
 			if limVa[1] in keys(part.var)
@@ -1161,6 +1163,10 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 
 			# create constraint
 			cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[!,:val] .* cns_df[!,:denom] .- cns_df[!,:nom])
+
+			# filter cases without variables
+			filter!(x -> !isempty(x.cnsExpr.terms), cns_df)
+			if isempty(cns_df) continue end
 
 			va_str = capaRatio_boo ? (string(limVa)[1:4] == "capa" ? "capa" : "exp") : ""
 			cns_dic[Symbol(par,lim,makeUp(va_str))] = cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),signLim_dic[lim])

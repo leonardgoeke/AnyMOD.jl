@@ -60,6 +60,8 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64, t_int::Int)
 	#region # * compute heuristic cut
 	
 	# fix variables of top problem to exact values
+	stRatio_dic = Dict(:sizeToStOut => (:StSize,:StOut), :stOutToStIn => (:StIn,:StOut),:stInToConv => (:StIn,:Conv)) 
+
 	for sys in (:tech,:exc)
 		part_dic = getfield(topFeas_m.parts,sys)
 		for sSym in keys(heuData_obj.capa[sys])
@@ -67,7 +69,21 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64, t_int::Int)
 			var_str = part_obj.decomm == :none ? "exp" : "capa" 
 			for varSym in filter(x -> occursin(var_str,string(x)), collect(keys(heuData_obj.capa[sys][sSym])))
 				var_df = part_obj.var[varSym] |> (w -> part_obj.decomm == :none ? collapseExp(w) : w)
-				limitCapa!(heuData_obj.capa[sys][sSym][varSym],var_df,varSym,part_dic[sSym],topFeas_m,:Fix)
+				if sys == :tech var_df = removeFixStorage(varSym,var_df,part_dic[sSym]) end # remove cases where storage is fixed end
+				limitCapa!(heuData_obj.capa[sys][sSym][varSym],var_df,varSym,part_dic[sSym],topFeas_m)
+			end
+
+			# remove ratio limits on capacity where all these capacites are already fixed to avoid infeasibility
+			for ratio in (:sizeToStOut, :stOutToStIn,:stInToConv), var in (:capa,:exp), lim in (:Low,:Up)
+				fixVar1_sym, fixVar2_sym = [Symbol(var,stRatio_dic[ratio][x],:BendersFix) for x in 1:2]
+				if Symbol(ratio,lim,makeUp(var)) in keys(part_obj.cns) && fixVar1_sym in keys(part_obj.cns) && fixVar2_sym in keys(part_obj.cns)
+					stRatio_df = copy(part_obj.cns[Symbol(ratio,lim,makeUp(var))]) # get all ratio variables
+					stVar_df = part_obj.cns[fixVar1_sym] |> (w -> innerjoin(select(w,intCol(w)),select(part_obj.cns[fixVar2_sym],intCol(w)) ,on = intCol(w))) # find entries where both variables are fixed
+					stRatio_df = innerjoin(stRatio_df,stVar_df, on = intersect(intCol(stVar_df),intCol(stRatio_df))) # find corresponding constraints
+					foreach(x -> delete(topFeas_m.optModel,x),stRatio_df[!,:cns]) # deletes corresponding contraints
+					part_obj.cns[Symbol(ratio,lim,makeUp(var))] = antijoin(part_obj.cns[Symbol(ratio,lim,makeUp(var))],stRatio_df, on = intCol(stRatio_df)) # removes fields from constraint dataframe
+					if isempty(part_obj.cns[Symbol(ratio,lim,makeUp(var))]) delete!(part_obj.cns,Symbol(ratio,lim,makeUp(var))) end #removes dataframe if no constraint remains
+				end
 			end
 		end
 	end
@@ -103,7 +119,7 @@ function getFeasResult(modOpt_tup::NamedTuple,varData_dic::Dict{Symbol,Dict{Symb
             for varSym in keys(varData_dic[sys][sSym])
 				exp_boo = occursin("exp",string(varSym))
 				var_df = part.var[varSym] |> (w -> exp_boo ? collapseExp(w) : w)
-				abs_df = deSelectSys(varData_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
+				abs_df = deSelectSys(varData_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intersect(intCol(z,:dir),intCol(var_df,:dir)))) |> (y -> y[completecases(y),:])
 				# set variables below threshold to zero and use smallest values possible within tolerances for others
 				lowVal_fl = topFeas_m.options.coefRng.rhs[1]/topFeas_m.options.coefRng.mat[2]*getfield(topFeas_m.options.scaFac, part.decomm == :none ? :insCapa : :capa)
 				abs_df[!,:value] = map(x -> x.value > 0.0 ? max(x.value,lowVal_fl) : 0.0,eachrow(abs_df))
@@ -163,7 +179,7 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 					if sys == :tech lim_df = removeFixStorage(varSym,lim_df,part_dic[sSym]) end
 					lim_dic[sys][sSym][varSym] = lim_df
 					# reports on limited variables
-					cntHeu_arr[2] = cntHeu_arr[2] + size(filter(x -> x.limCns == :Up,lim_df),2)
+					cntHeu_arr[2] = cntHeu_arr[2] + size(filter(x -> x.limCns == :Up,lim_df),1)
 				end
 				
 				# ! store fixed variables
@@ -180,7 +196,7 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 					# report on fixed variables
 					rep_df = fix_df
 					if sys == :tech rep_df = removeFixStorage(varSym,rep_df,part_dic[sSym]) end		
-					cntHeu_arr[1] = cntHeu_arr[1] + size(rep_df,2)
+					cntHeu_arr[1] = cntHeu_arr[1] + size(rep_df,1)
 				end
 			end
 			# delete if nothing was written

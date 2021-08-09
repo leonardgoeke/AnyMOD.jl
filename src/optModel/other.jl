@@ -401,9 +401,15 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			miss_arr = [intCol(allLimit_df),intCol(limit_df)] |> (y -> union(setdiff(y[1],y[2]), setdiff(y[2],y[1])))
 			allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr),Dict(:Up => nothing, :Low => nothing, :Fix => nothing,:UpDir => nothing, :LowDir => nothing, :FixDir=> nothing)))
 		end
-		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))
+	
+		# hold cases where undirected capacity is fixed for later error checking
+		if va == :capaExc && :FixDir in namesSym(allLimit_df)
+			allLimit_df[!,:dirFix] .= map(x -> isnothing(x),allLimit_df[!,:FixDir])
+		elseif va == :capaExc && :Fix in limitCol_arr
+			allLimit_df[!,:dirFix] .= 0
+		end
 
-		# merge columns for for directed limits to rest
+		# merge columns for directed limits to rest
 		for dirLim in intersect(namesSym(allLimit_df),(:FixDir,:UpDir,:LowDir))
 			lim_sym = Symbol(replace(string(dirLim),"Dir" => ""))
 			allLimit_df[!,lim_sym] = map(x -> isnothing(x[dirLim]) ? x[lim_sym] : x[dirLim],eachrow(allLimit_df))
@@ -426,6 +432,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		end
 
 		# ! check for contradicting values
+		limitCol_arr = intersect(namesSym(allLimit_df),(:Fix,:Up,:Low))
 		colSet_dic = Dict(x => Symbol(split(string(x),"_")[1]) for x in intCol(allLimit_df))
 		if :Low in limitCol_arr || :Up in limitCol_arr
 			# ! errors
@@ -485,7 +492,8 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		# an error will occur, because a value cannot be fixed but and the same time differ by direction, this is detected here
 		if :Fix in limitCol_arr && va == :capaExc
 			# filters fixed exchange capacities and extracts residual values
-			fix_df = select(filter(x -> x.Fix != nothing, allLimit_df) ,intCol(allLimit_df,:var))
+			fix_df = select(filter(x -> x.Fix != nothing && x.dirFix, allLimit_df) ,intCol(allLimit_df,:var))
+			select!(allLimit_df,Not([:dirFix]))
 			fix_df[!,:resi] .= getfield.(fix_df[!,:var],:constant)
 			# joins together capacities in both directions
 			joinA_df = rename(select(fix_df,Not([:var])),:resi => :resiA)
