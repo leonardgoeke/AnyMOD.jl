@@ -147,6 +147,8 @@ function getFeasResult(modOpt_tup::NamedTuple,varData_dic::Dict{Symbol,Dict{Symb
     set_optimizer_attribute(topFeas_m.optModel, "Crossover", 1)
     optimize!(topFeas_m.optModel)
 
+	checkIIS(topFeas_m)
+
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
     return writeResult(topFeas_m,[:exp,:capa],false,false), topFeas_m
 end
@@ -280,6 +282,8 @@ function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 	# solve top again with trust region and re-compute bound for soultion
 	delete(mod_m.optModel,trustReg_obj.cns)
 	optimize!(mod_m.optModel)
+	checkIIS(mod_m)
+
 	# obtain different objective values
 	objTop_fl = value(sum(filter(x -> x.name == :cost, mod_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
 	lowLim_fl = objTop_fl + value(filter(x -> x.name == :benders,mod_m.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
@@ -387,6 +391,7 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData)
 
 	# set optimizer attributes and solves
 	optimize!(sub_m.optModel)
+	checkIIS(sub_m)
 
 	# add duals and objective value to capacity data
 	capaData_obj.objVal = objective_value(sub_m.optModel)
@@ -419,6 +424,7 @@ function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bender
 
 	# solve model
 	optimize!(top_m.optModel)
+	checkIIS(top_m)
 
 	# write technology capacites and level of capacity balance to benders object
 	capaData_obj.capa, expTrust_dic = [writeResult(top_m,[x],true) for x in [:capa,:exc]]

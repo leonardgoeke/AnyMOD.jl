@@ -47,6 +47,8 @@ function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::I
     if printErr && (options.errCheckLvl >= currentLvl || testErr) errorTest(unique(report),options,write = options.errWrtLvl >= currentLvl) end
 end
 
+# ! checks termination status and prints IIS if infeasible
+checkIIS(mod_m::anyModel) = if termination_status(mod_m.optModel) != MOI.OPTIMAL && termination_status(mod_m.optModel) != MOI.LOCALLY_SOLVED printIIS(mod_m) end
 
 #endregion
 
