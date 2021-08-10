@@ -91,6 +91,7 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64, t_int::Int)
 	# re-set objective to costs and solve
 	@objective(topFeas_m.optModel, Min, topFeas_m.parts.obj.var[:obj][1,:var] / topFeas_m.options.scaFac.obj)
 	optimize!(topFeas_m.optModel)
+	checkIIS(topFeas_m)
 
 	heuData_obj.objVal = value(sum(filter(x -> x.name == :cost, topFeas_m.parts.obj.var[:objVar])[!,:var]))
 
