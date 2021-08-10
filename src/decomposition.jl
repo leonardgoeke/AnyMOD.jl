@@ -43,115 +43,18 @@ end
 # ! run heuristic and return exact capacities plus heuristic cut
 function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64, t_int::Int)
 
-	#region # * solve heuristic model and get exact results
-	
 	# create and solve model
 	heu_m = anyModel(modOpt_tup.heuIn, modOpt_tup.resultDir, objName = "heuristicModel_" *string(round(redFac,digits = 3)), supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, redStep = redFac)
 	prepareMod!(heu_m,modOpt_tup.opt)
 	set_optimizer_attribute(heu_m.optModel, "Threads", t_int)
 	optimize!(heu_m.optModel)
 
-	# get feasible capacities (due to imprecisions of barrier heuristic solution can be infeasible)
+	# write results to benders object
 	heuData_obj = bendersData()
-	heuData_obj.capa , topFeas_m = @suppress getFeasResult(modOpt_tup,writeResult(heu_m,[:capa,:exp],false,false))
-	
-	#endregion
-	
-	#region # * compute heuristic cut
-	
-	# fix variables of top problem to exact values
-	stRatio_dic = Dict(:sizeToStOut => (:StSize,:StOut), :stOutToStIn => (:StIn,:StOut),:stInToConv => (:StIn,:Conv)) 
-
-	for sys in (:tech,:exc)
-		part_dic = getfield(topFeas_m.parts,sys)
-		for sSym in keys(heuData_obj.capa[sys])
-			part_obj = part_dic[sSym]
-			var_str = part_obj.decomm == :none ? "exp" : "capa" 
-			for varSym in filter(x -> occursin(var_str,string(x)), collect(keys(heuData_obj.capa[sys][sSym])))
-				var_df = part_obj.var[varSym] |> (w -> part_obj.decomm == :none ? collapseExp(w) : w)
-				if sys == :tech var_df = removeFixStorage(varSym,var_df,part_dic[sSym]) end # remove cases where storage is fixed end
-				limitCapa!(heuData_obj.capa[sys][sSym][varSym],var_df,varSym,part_dic[sSym],topFeas_m)
-			end
-
-			# remove ratio limits on capacity where all these capacites are already fixed to avoid infeasibility
-			for ratio in (:sizeToStOut, :stOutToStIn,:stInToConv), var in (:capa,:exp), lim in (:Low,:Up)
-				fixVar1_sym, fixVar2_sym = [Symbol(var,stRatio_dic[ratio][x],:BendersFix) for x in 1:2]
-				if Symbol(ratio,lim,makeUp(var)) in keys(part_obj.cns) && fixVar1_sym in keys(part_obj.cns) && fixVar2_sym in keys(part_obj.cns)
-					stRatio_df = copy(part_obj.cns[Symbol(ratio,lim,makeUp(var))]) # get all ratio variables
-					stVar_df = part_obj.cns[fixVar1_sym] |> (w -> innerjoin(select(w,intCol(w)),select(part_obj.cns[fixVar2_sym],intCol(w)) ,on = intCol(w))) # find entries where both variables are fixed
-					stRatio_df = innerjoin(stRatio_df,stVar_df, on = intersect(intCol(stVar_df),intCol(stRatio_df))) # find corresponding constraints
-					foreach(x -> delete(topFeas_m.optModel,x),stRatio_df[!,:cns]) # deletes corresponding contraints
-					part_obj.cns[Symbol(ratio,lim,makeUp(var))] = antijoin(part_obj.cns[Symbol(ratio,lim,makeUp(var))],stRatio_df, on = intCol(stRatio_df)) # removes fields from constraint dataframe
-					if isempty(part_obj.cns[Symbol(ratio,lim,makeUp(var))]) delete!(part_obj.cns,Symbol(ratio,lim,makeUp(var))) end #removes dataframe if no constraint remains
-				end
-			end
-		end
-	end
-
-	# re-set objective to costs and solve
-	@objective(topFeas_m.optModel, Min, topFeas_m.parts.obj.var[:obj][1,:var] / topFeas_m.options.scaFac.obj)
-	optimize!(topFeas_m.optModel)
-	checkIIS(topFeas_m)
-
-	heuData_obj.objVal = value(sum(filter(x -> x.name == :cost, topFeas_m.parts.obj.var[:objVar])[!,:var]))
-
-	#endregion
+	heuData_obj.objVal = sum(map(z -> sum(value.(heu_m.parts.cost.var[z][!,:var])), collect(filter(x -> any(occursin.(["costExp", "costOpr", "costMissCapa", "costRetro"],string(x))), keys(heu_m.parts.cost.var)))))
+	heuData_obj.capa = writeResult(heu_m,[:capa,:exp])
 
 	return heu_m, heuData_obj
-end
-
-# ! returns a feasible as close as possible to the input dictionary
-function getFeasResult(modOpt_tup::NamedTuple,varData_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}=Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}())
-
-	# create top level problem
-	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel", supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp)
-	topFeas_m.subPro = tuple(0,0)
-	prepareMod!(topFeas_m,modOpt_tup.opt)
-
-	# add limits to problem
-	if !isempty(lim_dic) addLinearTrust!(topFeas_m,lim_dic) end
-
-    # create absolute value constraints for capacities or expansion variables
-    for sys in (:tech,:exc)
-        partTop_dic = getfield(topFeas_m.parts,sys)
-        for sSym in keys(varData_dic[sys])
-            part = partTop_dic[sSym]
-            # create variabbles and writes constraints to minimize absolute value of capacity delta
-            for varSym in keys(varData_dic[sys][sSym])
-				exp_boo = occursin("exp",string(varSym))
-				var_df = part.var[varSym] |> (w -> exp_boo ? collapseExp(w) : w)
-				abs_df = deSelectSys(varData_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intersect(intCol(z,:dir),intCol(var_df,:dir)))) |> (y -> y[completecases(y),:])
-				# set variables below threshold to zero and use smallest values possible within tolerances for others
-				lowVal_fl = topFeas_m.options.coefRng.rhs[1]/topFeas_m.options.coefRng.mat[2]*getfield(topFeas_m.options.scaFac, part.decomm == :none ? :insCapa : :capa)
-				abs_df[!,:value] = map(x -> x.value > 0.0 ? max(x.value,lowVal_fl) : 0.0,eachrow(abs_df))
-				# create variable for absolute value and connect with rest of dataframe again
-				scaFac_fl = exp_boo ? topFeas_m.options.scaFac.insCapa : topFeas_m.options.scaFac.capa 
-                part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),topFeas_m.options.bound.capa,topFeas_m.optModel, topFeas_m.lock,topFeas_m.sets; scaFac = scaFac_fl)
-                abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var] 
-				# create constraints for absolute value
-				abs_df[!,:absLow] = map(x -> x.varAbs - (x.var - x.var.constant) + x.value * scaFac_fl,eachrow(abs_df))
-                abs_df[!,:absUp] = map(x -> x.varAbs  + (x.var - x.var.constant) - x.value * scaFac_fl,eachrow(abs_df)) 
-				# scale and create constraints
-				absLow_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absLow]]),:absLow => :cnsExpr)
-				absUp_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absUp]]),:absUp => :cnsExpr)
-				scaleCnsExpr!(absLow_df,topFeas_m.options.coefRng,topFeas_m.options.checkRng)
-				scaleCnsExpr!(absUp_df,topFeas_m.options.coefRng,topFeas_m.options.checkRng)
-                part.cns[Symbol(varSym,:AbsLow)] = createCns(cnsCont(absLow_df,:greater),topFeas_m.optModel)
-                part.cns[Symbol(varSym,:AbsUp)] = createCns(cnsCont(absUp_df,:greater),topFeas_m.optModel)
-            end
-        end
-    end
-	
-    # change objective of top problem and solve
-	absVar_arr = [:CapaConv,:CapaExc,:CapaStOut,:CapaStIn,:CapaStSize,:ExpConv,:ExpExc,:ExpStOut,:ExpStIn,:ExpStSize]
-    @objective(topFeas_m.optModel, Min, sum(map(x -> sum(getAllVariables(Symbol(:abs,x),topFeas_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var])),absVar_arr)))
-    set_optimizer_attribute(topFeas_m.optModel, "Crossover", 1)
-    optimize!(topFeas_m.optModel)
-
-	checkIIS(topFeas_m)
-
-    # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m,[:exp,:capa],false,false), topFeas_m
 end
 
 # ! evaluate results of heuristic solution to determine fixed and limited variables
@@ -214,11 +117,13 @@ end
 # ! get limits imposed on by linear trust region
 function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple,scaCapa_fl::Float64)
 
-	if (val1_fl == 0.0 && val2_fl == 0.0) || (any([val1_fl == 0.0,val2_fl == 0.0]) && scaCapa_fl*abs(val1_fl - val2_fl) < linPar.thrsAbs) # fix to zero, if both values are zero, or if one is zero and the other is very close to zero
+	lowLim_fl = linPar.thrsAbs / scaCapa_fl # values below this limits are considered zero
+
+	if (val1_fl <= lowLim_fl && val2_fl <= lowLim_fl) || (any([val1_fl <= lowLim_fl,val2_fl <= lowLim_fl]) && scaCapa_fl*abs(val1_fl - val2_fl) < linPar.thrsAbs) # fix to zero, if both values are zero, or if one is zero and the other is very close to zero
 		val_arr, cns_arr = [0.0], [:Fix]
-	elseif val1_fl != 0.0 && val2_fl == 0.0 # set second value as upper limit, if other is zero
+	elseif val1_fl >= lowLim_fl && val2_fl <= lowLim_fl # set second value as upper limit, if other is zero
 		val_arr, cns_arr = [val1_fl], [:Up]
-	elseif val1_fl == 0.0 && val2_fl != 0.0 # set second value as upper limit, if other zero
+	elseif val1_fl <= lowLim_fl && val2_fl >= lowLim_fl # set second value as upper limit, if other zero
 		val_arr, cns_arr = [val2_fl], [:Up]
 	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) && (scaCapa_fl*abs(val1_fl - val2_fl) > linPar.thrsAbs) # enfore lower and upper limits, if difference does exceed threshold	
 		val_arr, cns_arr = sort([val1_fl,val2_fl]), [:Low,:Up]
@@ -227,6 +132,61 @@ function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple,scaCap
 	end
 		
 	return val_arr, cns_arr
+end
+
+# ! returns a feasible as close as possible to the input dictionary
+function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}=Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}())
+
+	# create top level problem
+	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel", supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp)
+	topFeas_m.subPro = tuple(0,0)
+	prepareMod!(topFeas_m,modOpt_tup.opt)
+
+	# add limits to problem
+	if !isempty(lim_dic) addLinearTrust!(topFeas_m,lim_dic) end
+
+    # create absolute value constraints for capacities or expansion variables
+    for sys in (:tech,:exc)
+        partTop_dic = getfield(topFeas_m.parts,sys)
+        for sSym in keys(fix_dic[sys])
+            part = partTop_dic[sSym]
+            # create variabbles and writes constraints to minimize absolute value of capacity delta
+            for varSym in keys(fix_dic[sys][sSym])
+                exp_boo = occursin("exp",string(varSym))
+                var_df = part.var[varSym] |> (w -> exp_boo ? collapseExp(w) : w)
+                abs_df = deSelectSys(fix_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intersect(intCol(z,:dir),intCol(var_df,:dir)))) |> (y -> y[completecases(y),:])
+                # set variables below threshold to zero and use smallest values possible within tolerances for others
+                lowVal_fl = topFeas_m.options.coefRng.rhs[1]/topFeas_m.options.coefRng.rhs[2]*getfield(topFeas_m.options.scaFac, part.decomm == :none ? :insCapa : :capa)
+                abs_df[!,:value] = map(x -> x.value < lowVal_fl ? 0.0 : x.value, eachrow(abs_df))
+				abs_df[!,:weight] = map(x -> x == 0.0 ? 10.0 : 1.0,abs_df[!,:value])
+                # create variable for absolute value and connect with rest of dataframe again
+                scaFac_fl = exp_boo ? topFeas_m.options.scaFac.insCapa : topFeas_m.options.scaFac.capa 
+                part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),topFeas_m.options.bound.capa,topFeas_m.optModel, topFeas_m.lock,topFeas_m.sets; scaFac = scaFac_fl)
+                abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var] 
+                # create constraints for absolute value
+                abs_df[!,:absLow] = map(x -> x.varAbs - (x.var - x.var.constant) + x.value * scaFac_fl,eachrow(abs_df))
+                abs_df[!,:absUp] = map(x -> x.varAbs  + (x.var - x.var.constant) - x.value * scaFac_fl,eachrow(abs_df)) 
+                # scale and create constraints
+                absLow_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absLow]]),:absLow => :cnsExpr)
+                absUp_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absUp]]),:absUp => :cnsExpr)
+                scaleCnsExpr!(absLow_df,topFeas_m.options.coefRng,topFeas_m.options.checkRng)
+                scaleCnsExpr!(absUp_df,topFeas_m.options.coefRng,topFeas_m.options.checkRng)
+                part.cns[Symbol(varSym,:AbsLow)] = createCns(cnsCont(absLow_df,:greater),topFeas_m.optModel)
+                part.cns[Symbol(varSym,:AbsUp)] = createCns(cnsCont(absUp_df,:greater),topFeas_m.optModel)
+            end
+        end
+    end
+	
+    # change objective of top problem and solve
+	absVar_arr = [:CapaConv,:CapaExc,:CapaStOut,:CapaStIn,:CapaStSize,:ExpConv,:ExpExc,:ExpStOut,:ExpStIn,:ExpStSize]
+    @objective(topFeas_m.optModel, Min, sum(map(x -> sum(getAllVariables(Symbol(:abs,x),topFeas_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])),absVar_arr)))
+    set_optimizer_attribute(topFeas_m.optModel, "Crossover", 1)
+    optimize!(topFeas_m.optModel)
+
+	checkIIS(topFeas_m)
+
+    # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
+    return writeResult(topFeas_m,[:exp,:capa],false,false)
 end
 
 # ! get variables in top problem subject to limits
@@ -248,7 +208,7 @@ function getQtrVar(top_m::anyModel,capaData_obj::bendersData)
 			for trstSym in trstVar_arr
 				var_df = capaData_obj.capa[sys][sSym][trstSym]
 				if trstSym == :capaExc && !part_dic[sSym].dir filter!(x -> x.R_from < x.R_to,var_df) end # only get relevant capacity variables of exchange
-				if sys == :tech removeFixStorage(trstSym,var_df,part_dic[sSym]) end # remove storage variables controlled by ratio
+				if sys == :tech var_df = removeFixStorage(trstSym,var_df,part_dic[sSym]) end # remove storage variables controlled by ratio
 				# filter cases where acutal variables are defined
 				var_dic[sys][sSym][trstSym] = intCol(var_df) |> (w ->innerjoin(var_df,unique(select(filter(x -> !isempty(x.var.terms), part_dic[sSym].var[trstSym]),w)), on = w))
 				# remove if no capacities remain
@@ -267,7 +227,7 @@ function addLinearTrust!(top_m::anyModel,lim_dic::Dict{Symbol,Dict{Symbol,Dict{S
 	for sys in (:tech,:exc)
 		part_dic = getfield(top_m.parts,sys)
 		for sSym in keys(lim_dic[sys])
-			for trstSym in keys(lim_dic[sys][sSym])
+			for trstSym in intersect(keys(lim_dic[sys][sSym]),keys(part_dic[sSym].var))
 				# group limiting constraints
 				grpBothCapa_arr = collect(groupby(lim_dic[sys][sSym][trstSym],:limCns))
 				# get variables of top model
@@ -293,21 +253,21 @@ function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 end
 
 # ! dynamically adjusts the trust region
-function adjustQuadTrust(top_m::anyModel,expTrust_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trustReg_obj::quadTrust,objSub_fl::Float64,objTopTrust_fl::Float64,lowLim_fl::Float64,lowLimTrust_fl::Float64)
+function adjustQuadTrust(top_m::anyModel,expTrust_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trustReg_obj::quadTrust,objSub_fl::Float64,objTopTrust_fl::Float64,lowLim_fl::Float64,lowLimTrust_fl::Float64,report_m::anyModel)
 
 	# re-create trust region
 	if (objTopTrust_fl + objSub_fl) < trustReg_obj.objVal # recenter trust region, if new best solution was obtained
 		trustReg_obj.cns, trustReg_obj.coef  = centerQuadTrust(trustReg_obj.exp,top_m,trustReg_obj.rad)
 		trustReg_obj.objVal = objTopTrust_fl + objSub_fl
-		produceMessage(top_m.options,top_m.report, 1," - Re-centered trust-region!", testErr = false, printErr = false)
+		produceMessage(report_m.options,report_m.report, 1," - Re-centered trust-region!", testErr = false, printErr = false)
 	else
 		trustReg_obj.cns, trustReg_obj.coef = centerQuadTrust(trustReg_obj.exp,top_m,trustReg_obj.rad)
 		if abs(1 - lowLimTrust_fl / (objTopTrust_fl + objSub_fl)) < trustReg_obj.opt.extThrs # extend trust region, if constrained top problem converged
 			resizeQuadTrust!(trustReg_obj,1.5)
-			produceMessage(top_m.options,top_m.report, 1," - Extended trust-region!", testErr = false, printErr = false)
+			produceMessage(report_m.options,report_m.report, 1," - Extended trust-region!", testErr = false, printErr = false)
 		elseif abs(1 - lowLim_fl / lowLimTrust_fl) < trustReg_obj.opt.shrThrs && trustReg_obj.rad > (trustReg_obj.abs * trustReg_obj.opt.lowRad) # shrink trust region, if it does not constrain the top problem and the lower limit for its size is not yet reached
 			resizeQuadTrust!(trustReg_obj,0.5)
-			produceMessage(top_m.options,top_m.report, 1," - Shrunk trust-region!", testErr = false, printErr = false)	
+			produceMessage(report_m.options,report_m.report, 1," - Shrunk trust-region!", testErr = false, printErr = false)	
 		end
 	end
 
@@ -566,7 +526,7 @@ function getResult(res_df::DataFrame)
 	end
 
 	# write value of variable dataframe
-	res_df[!,:value] = map(x -> value(collect(keys(x.terms))[1]) |> (z -> z < 1e-6 ? 0.0 : z),res_df[!,:var])
+	res_df[!,:value] = map(x -> value(collect(keys(x.terms))[1]),res_df[!,:var])
 
 	return select(res_df,Not([:var]))
 end
@@ -589,7 +549,8 @@ function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_o
 	fix_df[!,:scale] = map(x -> x.value >= fix_m.options.coefRng.rhs[2] ? min(fix_m.options.coefRng.mat[1],fix_m.options.coefRng.rhs[2]/x.value) : x.scale, eachrow(fix_df))
 
 	# compute righ-hand side and factor of variables for constraint
-	fix_df[!,:rhs] = map(x -> x.value * x.scale |> (u -> (u < fix_m.options.coefRng.rhs[1]) ? 0.0 : u), eachrow(fix_df))
+	slack_fl = lim_sym == :Fix ? 1.0 : (lim_sym == :Up ? 1.0001 : 0.9999) # add "wiggle" room to avoid infeasibility
+	fix_df[!,:rhs] = map(x -> slack_fl * x.value * x.scale |> (u -> (u < fix_m.options.coefRng.rhs[1]) ? 0.0 : u), eachrow(fix_df))
 	fix_df[!,:fac] = map(x -> x.rhs == 0.0 ? 1.0 : x.scale, eachrow(fix_df))
 
 	if !(Symbol(var_sym,cns_sym) in keys(part_obj.cns))
@@ -627,7 +588,6 @@ function removeFixStorage(stVar_sym::Symbol,stVar_df::DataFrame,part_obj::TechPa
 	end
 	return stVar_df
 end
-
 
 #endregion
 
