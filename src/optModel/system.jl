@@ -199,7 +199,8 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 
 		for sSym in sysSym_arr
 			
-			sys_int = sysInt(sSym,anyM.sets[sys]) 
+			sys_int = sysInt(sSym,anyM.sets[sys])
+			part_obj = getfield(anyM.parts,sys == :Te ? :tech : :exc)[sSym]
 			# ! find entries where variables are already fixed to zero and remove them
 			for prepSym in collect(keys(prepSys_dic[sys][sSym]))
 				# get relevant parameter data
@@ -214,7 +215,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 			end
 
 			# ! filter entries where capacity variable cannot exist, because there is no corresponding expansion or retrofitting variable
-			if getfield(anyM.parts, sys == :Te ? :tech : :exc)[sSym].type != :stock
+			if part_obj.type != :stock
 				for capaSym in filter(x -> occursin("capa",string(x)), collect(keys(prepSys_dic[sys][sSym])))
 
 					# get and expand related entries for expansion
@@ -244,7 +245,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 					end
 
 					# groups by expansion time steps in case of mature technologies
-					if getfield(anyM.parts, sys == :Te ? :tech : :exc)[sSym].type == :mature
+					if part_obj.type == :mature
 						potCapa_df[!,:Ts_expSup] .= 0
 						potCapa_df = unique(potCapa_df)
 					end
@@ -255,7 +256,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 			end
 
 			# ! remove variables for retrofitting and grouped capacity for cases where no start capacity can exist
-			if getfield(anyM.parts, sys == :Te ? :tech : :exc)[sSym].type != :stock
+			if part_obj.type != :stock
 				for grpSym in filter(x -> occursin("grp",lowercase(string(x))),collect(keys(prepSys_dic[sys][sSym])))
 
 					type_sym = Symbol(replace(string(grpSym), "grpCapa" => ""))
@@ -344,7 +345,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 			end
 
 			# ! remove expansion variables that become obsolete because no corresponding capacities exist anymore
-			part_obj = getfield(anyM.parts,sys == :Te ? :tech : :exc)[sSym]
+			
 			for expVar in filter(x -> occursin("exp",string(x)),keys(prepSys_dic[sys][sSym]))
 				# gets capacity and expansion variables
 				capa_df = prepSys_dic[sys][sSym][Symbol(replace(string(expVar),"exp" => "capa"))].var
