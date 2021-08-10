@@ -198,6 +198,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 		sysSym_arr = filter(x -> getfield(anyM.parts, sys == :Te ? :tech : :exc)[x].type in (:stock,:mature,:emerging), collect(keys(prepSys_dic[sys])))
 
 		for sSym in sysSym_arr
+			
 			sys_int = sysInt(sSym,anyM.sets[sys]) 
 			# ! find entries where variables are already fixed to zero and remove them
 			for prepSym in collect(keys(prepSys_dic[sys][sSym]))
@@ -325,7 +326,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 				end
 			end
 			
-			# ! replaced fixed variables with a parameter, if holdFixed is active
+			# ! replace fixed variables with a parameter, if holdFixed is active
 			if anyM.options.holdFixed
 				for prepSym in collect(keys(prepSys_dic[sys][sSym]))
 					# get relevant parameter data
@@ -341,6 +342,26 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 					end
 				end
 			end
+
+			# ! remove expansion variables that become obsolete because no corresponding capacities exist anymore
+			part_obj = getfield(anyM.parts,sys == :Te ? :tech : :exc)[sSym]
+			for expVar in filter(x -> occursin("exp",string(x)),keys(prepSys_dic[sys][sSym]))
+				# gets capacity and expansion variables
+				capa_df = prepSys_dic[sys][sSym][Symbol(replace(string(expVar),"exp" => "capa"))].var
+				if isempty(capa_df) delete!(prepSys_dic[sys][sSym],expVar), continue end
+				if isempty(prepSys_dic[sys][sSym][expVar].var) continue end
+				exp_df = flatten(prepSys_dic[sys][sSym][expVar].var,[:Ts_expSup,:Ts_disSup])
+				# groups capacity by superordinate dispatch and matches with expansion
+				capaGrp_df = combine(groupby(capa_df,filter(x -> x != :Ts_disSup,intCol(capa_df))), :Ts_disSup => (x -> [x]) => :Ts_disSup)
+				exp_df = (part_obj.type != :emerging ? filter(x -> x != :Ts_expSup, intCol(capaGrp_df)) : intCol(capaGrp_df)) |> (w -> innerjoin(exp_df,select(rename(capaGrp_df,:Ts_disSup => :Ts_disSup2),vcat(w,[:Ts_disSup2])), on = w))
+				if isempty(exp_df) delete!(prepSys_dic[sys][sSym],expVar), continue end
+				# filters cases where there is no capacity in all superordinate dispatch timesteps relevant for the respective expansion variable
+				filter!(x -> !isempty(intersect(x.Ts_disSup,x.Ts_disSup2)),exp_df)
+				if isempty(exp_df) delete!(prepSys_dic[sys][sSym],expVar), continue end
+				# groups expansion again and writes remaining entries to dictionary
+				prepSys_dic[sys][sSym][expVar] = (var = combine(x -> (Ts_expSup = [x.Ts_expSup],Ts_disSup = [x.Ts_disSup]), groupby(select(exp_df,Not([:Ts_disSup2])),filter(x -> x != :Ts_expSup,intCol(exp_df)))),resi = prepSys_dic[sys][sSym][expVar].resi)
+			end
+
 		end
 	end
 
