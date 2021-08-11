@@ -44,7 +44,7 @@ end
 function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64, t_int::Int)
 
 	# create and solve model
-	heu_m = anyModel(modOpt_tup.heuIn, modOpt_tup.resultDir, objName = "heuristicModel_" *string(round(redFac,digits = 3)), supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, redStep = redFac)
+	heu_m = anyModel(modOpt_tup.heuIn, modOpt_tup.resultDir, objName = "heuristicModel_" *string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, redStep = redFac)
 	prepareMod!(heu_m,modOpt_tup.opt)
 	set_optimizer_attribute(heu_m.optModel, "Threads", t_int)
 	optimize!(heu_m.optModel)
@@ -138,7 +138,7 @@ end
 function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}=Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}())
 
 	# create top level problem
-	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel", supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp)
+	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp)
 	topFeas_m.subPro = tuple(0,0)
 	prepareMod!(topFeas_m,modOpt_tup.opt)
 
