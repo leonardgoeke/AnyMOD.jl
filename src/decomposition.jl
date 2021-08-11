@@ -454,6 +454,33 @@ function getBendersCut(sub_df::DataFrame, var_df::DataFrame)
 	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual *(collect(keys(x.var.terms))[1] - x.value),eachrow(ben_df)))
 end
 
+
+# ! analyze which linear constraints are binding
+function trackBindingLim(top_m::anyModel)
+	set_optimizer_attribute(top_m.optModel, "Crossover", 1) # add crossover to get an exact solution
+	optimize!(top_m.optModel)
+	set_optimizer_attribute(top_m.optModel, "Crossover", 0)
+
+	# check which constraints are binding by analyzing dual
+	tAll_int = 0
+	tBind_int = 0
+	for sys in (:tech,:exc)
+		part_dic = getfield(top_m.parts,sys)
+		for sSym in keys(part_dic)
+			for limCns in filter(x -> any(occursin.(["BendersUp","BendersLow"],string(x))), keys(part_dic[sSym].cns))
+				# count all limits
+				allLim_df = part_dic[sSym].cns[limCns]
+				tAll_int = tAll_int + size(tAll_int,1)
+				# count binding limits
+				binLim_df = allLim_df |> (w -> w[findall(map(x -> dual(x) > 0.0, w[!,:cns])),:])
+				tBind_int = tBind_int + size(binLim_df,1)
+			end
+		end
+	end
+
+	return [tAll_int, tBind_int]
+end
+
 #endregion
 
 #region # * transfer results between models
@@ -590,4 +617,3 @@ function removeFixStorage(stVar_sym::Symbol,stVar_df::DataFrame,part_obj::TechPa
 end
 
 #endregion
-
