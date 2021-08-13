@@ -405,7 +405,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		# hold cases where undirected capacity is fixed for later error checking
 		if va == :capaExc && :FixDir in namesSym(allLimit_df)
 			allLimit_df[!,:dirFix] .= map(x -> isnothing(x),allLimit_df[!,:FixDir])
-		elseif va == :capaExc && :Fix in limitCol_arr
+		elseif va == :capaExc && :Fix in namesSym(allLimit_df)
 			allLimit_df[!,:dirFix] .= 0
 		end
 
