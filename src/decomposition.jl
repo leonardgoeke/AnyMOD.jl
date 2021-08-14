@@ -21,15 +21,15 @@ mutable struct quadTrust
 	rad::Float64
 	abs::Float64
 	cns::ConstraintRef
-	exp::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}
+	var::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}
 	coef::NamedTuple{(:sca,:pol),Tuple{Float64,Float64}}	
 	opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64,Float64}}	
 
 	function quadTrust(exp_df::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trust_opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64,Float64}})
 		trustReg_obj = new()
 		trustReg_obj.opt = trust_opt
-		trustReg_obj.exp = exp_df
-		trstExpr_arr = vcat(vcat(vcat(map(x -> trustReg_obj.exp[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+		trustReg_obj.var = exp_df
+		trstExpr_arr = vcat(vcat(vcat(map(x -> trustReg_obj.var[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
 		trustReg_obj.abs = sum(trstExpr_arr)
 		trustReg_obj.rad = trustReg_obj.abs * trustReg_obj.opt.startRad
 		return trustReg_obj, size(trstExpr_arr,1)
@@ -44,7 +44,7 @@ end
 function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64, t_int::Int)
 
 	# create and solve model
-	heu_m = anyModel(modOpt_tup.heuIn, modOpt_tup.resultDir, objName = "heuristicModel_" *string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, redStep = redFac)
+	heu_m = anyModel(modOpt_tup.heuIn, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, redStep = redFac)
 	prepareMod!(heu_m,modOpt_tup.opt)
 	set_optimizer_attribute(heu_m.optModel, "Threads", t_int)
 	optimize!(heu_m.optModel)
@@ -145,48 +145,57 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 	# add limits to problem
 	if !isempty(lim_dic) addLinearTrust!(topFeas_m,lim_dic) end
 
-    # create absolute value constraints for capacities or expansion variables
-    for sys in (:tech,:exc)
-        partTop_dic = getfield(topFeas_m.parts,sys)
-        for sSym in keys(fix_dic[sys])
-            part = partTop_dic[sSym]
-            # create variabbles and writes constraints to minimize absolute value of capacity delta
-            for varSym in keys(fix_dic[sys][sSym])
-                exp_boo = occursin("exp",string(varSym))
-                var_df = part.var[varSym] |> (w -> exp_boo ? collapseExp(w) : w)
-                abs_df = deSelectSys(fix_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intersect(intCol(z,:dir),intCol(var_df,:dir)))) |> (y -> y[completecases(y),:])
-                # set variables below threshold to zero and use smallest values possible within tolerances for others
-                lowVal_fl = topFeas_m.options.coefRng.rhs[1]/topFeas_m.options.coefRng.rhs[2]*getfield(topFeas_m.options.scaFac, part.decomm == :none ? :insCapa : :capa)
-                abs_df[!,:value] = map(x -> x.value < lowVal_fl ? 0.0 : x.value, eachrow(abs_df))
-				abs_df[!,:weight] = map(x -> x == 0.0 ? 10.0 : 1.0,abs_df[!,:value])
-                # create variable for absolute value and connect with rest of dataframe again
-                scaFac_fl = exp_boo ? topFeas_m.options.scaFac.insCapa : topFeas_m.options.scaFac.capa 
-                part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),topFeas_m.options.bound.capa,topFeas_m.optModel, topFeas_m.lock,topFeas_m.sets; scaFac = scaFac_fl)
-                abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var] 
-                # create constraints for absolute value
-                abs_df[!,:absLow] = map(x -> x.varAbs - (x.var - x.var.constant) + x.value * scaFac_fl,eachrow(abs_df))
-                abs_df[!,:absUp] = map(x -> x.varAbs  + (x.var - x.var.constant) - x.value * scaFac_fl,eachrow(abs_df)) 
-                # scale and create constraints
-                absLow_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absLow]]),:absLow => :cnsExpr)
-                absUp_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absUp]]),:absUp => :cnsExpr)
-                scaleCnsExpr!(absLow_df,topFeas_m.options.coefRng,topFeas_m.options.checkRng)
-                scaleCnsExpr!(absUp_df,topFeas_m.options.coefRng,topFeas_m.options.checkRng)
-                part.cns[Symbol(varSym,:AbsLow)] = createCns(cnsCont(absLow_df,:greater),topFeas_m.optModel)
-                part.cns[Symbol(varSym,:AbsUp)] = createCns(cnsCont(absUp_df,:greater),topFeas_m.optModel)
-            end
-        end
-    end
-	
-    # change objective of top problem and solve
-	absVar_arr = [:CapaConv,:CapaExc,:CapaStOut,:CapaStIn,:CapaStSize,:ExpConv,:ExpExc,:ExpStOut,:ExpStIn,:ExpStSize]
-    @objective(topFeas_m.optModel, Min, sum(map(x -> sum(getAllVariables(Symbol(:abs,x),topFeas_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])),absVar_arr)))
-    set_optimizer_attribute(topFeas_m.optModel, "Crossover", 1)
-    optimize!(topFeas_m.optModel)
+	# compute feasible capacites
+	topFeas_m = computeFeas(topFeas_m,fix_dic)
 
 	checkIIS(topFeas_m)
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m,[:exp,:capa],false,false)
+    return writeResult(topFeas_m,[:exp,:capa],false,false), topFeas_m
+end
+
+# ! runs top problem again with optimal results
+function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}})
+
+	# create absolute value constraints for capacities or expansion variables
+	for sys in (:tech,:exc)
+		partTop_dic = getfield(top_m.parts,sys)
+		for sSym in keys(capa_dic[sys])
+			part = partTop_dic[sSym]
+			# create variabbles and writes constraints to minimize absolute value of capacity delta
+			for varSym in keys(capa_dic[sys][sSym])
+				exp_boo = occursin("exp",string(varSym))
+				var_df = part.var[varSym] |> (w -> exp_boo ? collapseExp(w) : w)
+				abs_df = deSelectSys(capa_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intersect(intCol(z,:dir),intCol(var_df,:dir)))) |> (y -> y[completecases(y),:])
+				# set variables below threshold to zero and use smallest values possible within tolerances for others
+				lowVal_fl = top_m.options.coefRng.rhs[1]/top_m.options.coefRng.rhs[2]*getfield(top_m.options.scaFac, part.decomm == :none ? :insCapa : :capa)
+				abs_df[!,:value] = map(x -> x.value < lowVal_fl ? 0.0 : x.value, eachrow(abs_df))
+				abs_df[!,:weight] = map(x -> x == 0.0 ? 10.0 : 1.0,abs_df[!,:value])
+				# create variable for absolute value and connect with rest of dataframe again
+				scaFac_fl = exp_boo ? top_m.options.scaFac.insCapa : top_m.options.scaFac.capa 
+				part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),top_m.options.bound.capa,top_m.optModel, top_m.lock,top_m.sets; scaFac = scaFac_fl)
+				abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var] 
+				# create constraints for absolute value
+				abs_df[!,:absLow] = map(x -> x.varAbs - (x.var - x.var.constant) + x.value * scaFac_fl,eachrow(abs_df))
+				abs_df[!,:absUp] = map(x -> x.varAbs  + (x.var - x.var.constant) - x.value * scaFac_fl,eachrow(abs_df)) 
+				# scale and create constraints
+				absLow_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absLow]]),:absLow => :cnsExpr)
+				absUp_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absUp]]),:absUp => :cnsExpr)
+				scaleCnsExpr!(absLow_df,top_m.options.coefRng,top_m.options.checkRng)
+				scaleCnsExpr!(absUp_df,top_m.options.coefRng,top_m.options.checkRng)
+				part.cns[Symbol(varSym,:AbsLow)] = createCns(cnsCont(absLow_df,:greater),top_m.optModel)
+				part.cns[Symbol(varSym,:AbsUp)] = createCns(cnsCont(absUp_df,:greater),top_m.optModel)
+			end
+		end
+	end
+
+	# change objective of top problem and solve
+	absVar_arr = [:CapaConv,:CapaExc,:CapaStOut,:CapaStIn,:CapaStSize,:ExpConv,:ExpExc,:ExpStOut,:ExpStIn,:ExpStSize]
+	@objective(top_m.optModel, Min, sum(map(x -> sum(getAllVariables(Symbol(:abs,x),top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])),absVar_arr)))
+	set_optimizer_attribute(top_m.optModel, "Crossover", 1)
+	optimize!(top_m.optModel)
+
+	return top_m
 end
 
 # ! get variables in top problem subject to limits
@@ -257,11 +266,11 @@ function adjustQuadTrust(top_m::anyModel,expTrust_dic::Dict{Symbol,Dict{Symbol,D
 
 	# re-create trust region
 	if (objTopTrust_fl + objSub_fl) < trustReg_obj.objVal # recenter trust region, if new best solution was obtained
-		trustReg_obj.cns, trustReg_obj.coef  = centerQuadTrust(trustReg_obj.exp,top_m,trustReg_obj.rad)
+		trustReg_obj.cns, trustReg_obj.coef  = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
 		trustReg_obj.objVal = objTopTrust_fl + objSub_fl
 		produceMessage(report_m.options,report_m.report, 1," - Re-centered trust-region!", testErr = false, printErr = false)
 	else
-		trustReg_obj.cns, trustReg_obj.coef = centerQuadTrust(trustReg_obj.exp,top_m,trustReg_obj.rad)
+		trustReg_obj.cns, trustReg_obj.coef = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
 		if abs(1 - lowLimTrust_fl / (objTopTrust_fl + objSub_fl)) < trustReg_obj.opt.extThrs # extend trust region, if constrained top problem converged
 			resizeQuadTrust!(trustReg_obj,1.5)
 			produceMessage(report_m.options,report_m.report, 1," - Extended trust-region!", testErr = false, printErr = false)
@@ -329,7 +338,7 @@ function prepareMod!(mod_m::anyModel,opt_obj::DataType)
 end
 
 # ! run sub-Level problem
-function runSubLevel(sub_m::anyModel,capaData_obj::bendersData)
+function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=false)
 
 	# fixing capacity
 	for sys in (:tech,:exc)
@@ -353,6 +362,12 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData)
 	# set optimizer attributes and solves
 	optimize!(sub_m.optModel)
 	checkIIS(sub_m)
+
+	# write results into files (only used once optimum is obtained)
+	if wrtRes
+		reportResults(:summary,top_m)
+		reportResults(:cost,top_m)
+	end
 
 	# add duals and objective value to capacity data
 	capaData_obj.objVal = objective_value(sub_m.optModel)
@@ -453,7 +468,6 @@ function getBendersCut(sub_df::DataFrame, var_df::DataFrame)
 	ben_df = deSelectSys(sub_df) |> (z -> innerjoin(deSelectSys(var_df),z, on = intCol(z,:dir)))
 	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual *(collect(keys(x.var.terms))[1] - x.value),eachrow(ben_df)))
 end
-
 
 # ! analyze which linear constraints are binding
 function trackBindingLim(top_m::anyModel)
