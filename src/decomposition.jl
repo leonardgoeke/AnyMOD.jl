@@ -251,7 +251,13 @@ end
 function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 	# solve top again with trust region and re-compute bound for soultion
 	delete(mod_m.optModel,trustReg_obj.cns)
-	set_optimizer_attribute(mod_m.optModel, "OutputFlag", 1) 
+	set_optimizer_attribute(mod_m.optModel, "OutputFlag", 1)
+
+	set_optimizer_attribute(mod_m.optModel, "Method", 0)
+	@time optimize!(mod_m.optModel)
+	
+	set_optimizer_attribute(mod_m.optModel, "Method", 1)
+	@time optimize!(mod_m.optModel)
 
 	set_optimizer_attribute(mod_m.optModel, "Crossover", 1) # add crossover to get an exact solution
 	set_optimizer_attribute(mod_m.optModel, "Method", 2)
@@ -259,12 +265,6 @@ function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 
 	set_optimizer_attribute(mod_m.optModel, "Crossover", 0) # add crossover to get an exact solution
 	set_optimizer_attribute(mod_m.optModel, "Method", 2)
-	@time optimize!(mod_m.optModel)
-
-	set_optimizer_attribute(mod_m.optModel, "Method", 0)
-	@time optimize!(mod_m.optModel)
-	
-	set_optimizer_attribute(mod_m.optModel, "Method", 1)
 	@time optimize!(mod_m.optModel)
 
 
