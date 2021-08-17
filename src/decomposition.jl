@@ -251,8 +251,22 @@ end
 function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 	# solve top again with trust region and re-compute bound for soultion
 	delete(mod_m.optModel,trustReg_obj.cns)
-	optimize!(mod_m.optModel)
-	checkIIS(mod_m)
+	set_optimizer_attribute(mod_m.optModel, "OutputFlag", 1) 
+
+	set_optimizer_attribute(mod_m.optModel, "Crossover", 1) # add crossover to get an exact solution
+	set_optimizer_attribute(mod_m.optModel, "Method", 2)
+	@time optimize!(mod_m.optModel)
+
+	set_optimizer_attribute(mod_m.optModel, "Crossover", 0) # add crossover to get an exact solution
+	set_optimizer_attribute(mod_m.optModel, "Method", 2)
+	@time optimize!(mod_m.optModel)
+
+	set_optimizer_attribute(mod_m.optModel, "Method", 0)
+	@time optimize!(mod_m.optModel)
+	
+	set_optimizer_attribute(mod_m.optModel, "Method", 1)
+	@time optimize!(mod_m.optModel)
+
 
 	# obtain different objective values
 	objTop_fl = value(sum(filter(x -> x.name == :cost, mod_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
