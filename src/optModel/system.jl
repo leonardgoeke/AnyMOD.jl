@@ -345,10 +345,9 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 			end
 
 			# ! remove expansion variables that become obsolete because no corresponding capacities exist anymore
-			
 			for expVar in filter(x -> occursin("exp",string(x)),keys(prepSys_dic[sys][sSym]))
 				# gets capacity and expansion variables
-				capa_df = prepSys_dic[sys][sSym][Symbol(replace(string(expVar),"exp" => "capa"))].var
+				capa_df = prepSys_dic[sys][sSym][Symbol(replace(string(expVar),"exp" => "capa"))] |> (w -> mergePrep(w))
 				if isempty(capa_df) delete!(prepSys_dic[sys][sSym],expVar), continue end
 				if isempty(prepSys_dic[sys][sSym][expVar].var) continue end
 				exp_df = flatten(prepSys_dic[sys][sSym][expVar].var,[:Ts_expSup,:Ts_disSup])

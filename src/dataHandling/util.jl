@@ -596,5 +596,4 @@ end
 # ! collapse input expansion dataframe to acutal variables by timestep of expansion instead of superordinate dispatch timesteps
 collapseExp(exp_df::DataFrame) = unique(select(exp_df,Not([:Ts_expSup,:Ts_disSup])))
 
-
 #endregion
