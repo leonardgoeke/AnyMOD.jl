@@ -318,6 +318,7 @@ mutable struct modOptions
 	shortExp::Int
 	redStep::Float64
 	holdFixed::Bool
+	actMissCapa::Bool
 	# managing numerical issues
 	emissionLoss::Bool
 	coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Vararg{Float64,2}}}}
@@ -499,7 +500,7 @@ mutable struct anyModel <: AbstractModel
 	parts::NamedTuple{(:tech,:exc,:bal,:lim,:cost,:obj),Tuple{Dict{Symbol,TechPart},Dict{Symbol,ExcPart},OthPart,OthPart,OthPart,OthPart}}
 
 	graInfo::graInfo
-	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, holdFixed = false, emissionLoss = true,
+	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, holdFixed = false, actMissCapa = true, emissionLoss = true,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e5), rhs = (1e-2,1e2)),
 																											scaFac = (capa = 1e2, insCapa = 1e1, dispConv = 1e3, dispSt = 1e4, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
 																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = NaN)
@@ -515,9 +516,9 @@ mutable struct anyModel <: AbstractModel
 
 		# ! sets whole options object from specified directories TODO arbeite mit kwargs später
 		outStamp_str = string(objName,"_",Dates.format(now(),"yyyymmddHHMM"))
-		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, interCapa = interCapa,
-																					supTsLvl = supTsLvl, shortExp = shortExp, redStep = redStep, holdFixed = holdFixed, emissionLoss = emissionLoss, coefRng = coefRng, scaFac = scaFac, bound = bound,
-																						avaMin = avaMin, checkRng = checkRng, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
+		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, interCapa = interCapa, supTsLvl = supTsLvl, shortExp = shortExp, 
+																										redStep = redStep, holdFixed = holdFixed, actMissCapa = actMissCapa, emissionLoss = emissionLoss, coefRng = coefRng, scaFac = scaFac, bound = bound,
+																											avaMin = avaMin, checkRng = checkRng, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
 
 		anyM.options = modOptions(defOpt_ntup...)
 

@@ -128,7 +128,7 @@ function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple,scaCap
 	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) && (scaCapa_fl*abs(val1_fl - val2_fl) > linPar.thrsAbs) # enfore lower and upper limits, if difference does exceed threshold	
 		val_arr, cns_arr = sort([val1_fl,val2_fl]), [:Low,:Up]
 	else 
-		val_arr, cns_arr = [(val1_fl+val2_fl)/2], [:Fix] # set to mean, if difference does not exceed threshold
+		val_arr, cns_arr = [max(val1_fl,val2_fl)], [:Fix] # set to mean, if difference does not exceed threshold
 	end
 		
 	return val_arr, cns_arr
@@ -138,7 +138,7 @@ end
 function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}=Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}())
 
 	# create top level problem
-	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp)
+	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, actMissCapa = false)
 	topFeas_m.subPro = tuple(0,0)
 	prepareMod!(topFeas_m,modOpt_tup.opt)
 
@@ -151,12 +151,13 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 	checkIIS(topFeas_m)
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m,[:exp,:capa],false,false), topFeas_m
+    return writeResult(topFeas_m,[:exp,:capa],false,false)
 end
 
 # ! runs top problem again with optimal results
 function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}})
 
+	lowVal_fl = top_m.options.coefRng.rhs[1]/(top_m.options.coefRng.mat[2]/maximum(values(top_m.options.scaFac)))
 	# create absolute value constraints for capacities or expansion variables
 	for sys in (:tech,:exc)
 		partTop_dic = getfield(top_m.parts,sys)
@@ -168,11 +169,10 @@ function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 				var_df = part.var[varSym] |> (w -> exp_boo ? collapseExp(w) : w)
 				abs_df = deSelectSys(capa_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intersect(intCol(z,:dir),intCol(var_df,:dir)))) |> (y -> y[completecases(y),:])
 				# set variables below threshold to zero and use smallest values possible within tolerances for others
-				lowVal_fl = top_m.options.coefRng.rhs[1]/top_m.options.coefRng.rhs[2]*getfield(top_m.options.scaFac, part.decomm == :none ? :insCapa : :capa)
-				abs_df[!,:value] = map(x -> x.value < lowVal_fl ? 0.0 : x.value, eachrow(abs_df))
+				scaFac_fl = exp_boo ? top_m.options.scaFac.insCapa : top_m.options.scaFac.capa 
+				abs_df[!,:value] = map(x -> x.value*scaFac_fl < lowVal_fl ? 0.0 : x.value, eachrow(abs_df))
 				abs_df[!,:weight] = map(x -> x == 0.0 ? 10.0 : 1.0,abs_df[!,:value])
 				# create variable for absolute value and connect with rest of dataframe again
-				scaFac_fl = exp_boo ? top_m.options.scaFac.insCapa : top_m.options.scaFac.capa 
 				part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),top_m.options.bound.capa,top_m.optModel, top_m.lock,top_m.sets; scaFac = scaFac_fl)
 				abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var] 
 				# create constraints for absolute value

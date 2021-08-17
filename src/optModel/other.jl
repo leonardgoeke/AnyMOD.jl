@@ -308,10 +308,9 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	#endregion
 
 	#region # * create corresponding constraints
-	
 
 	# ! create variables for missing capacities
-	if :costMissCapa in keys(partBal.par)
+	if :costMissCapa in keys(partBal.par) && anyM.options.actMissCapa
 		# create missing capacity variable
 		var_df = matchSetParameter(allCapa_df,partBal.par[:costMissCapa],anyM.sets)
 		partBal.var[:missCapa] = orderDf(createVar(select(var_df,Not([:val])),"missCapa",anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.insCapa))
@@ -327,26 +326,26 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	# filter cases where residuals already satisfy balance
 	filter!(x -> x.val > x.var.constant,cns_df)
 	
-	
-
 	if !isempty(cns_df)
 		# add column indicating, if capacities other than missing capacity are added, only relevant for benders heuristik
 		cns_df[!,:actCapa] =  .!isempty.(map(x -> x.terms, cns_df[!,:var]))
 
 		# add missing capacity variables
-		if :missCapa in keys(partBal.var)
+		if :missCapa in keys(partBal.var) && anyM.options.actMissCapa
 			add_to_expression!.(cns_df[!,:var], aggDivVar(partBal.var[:missCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets))
 		end
 
 		# ! create constraint
 		# create capacity constraint, small differences between constants can lead to extremely large ranges, to avoid this small differences are set to zero
 		maxRng_fl = anyM.options.coefRng.mat[2]/anyM.options.coefRng.rhs[1]
-		cns_df[!,:cnsExpr] = map(x -> maxRng_fl < maximum(collect(values(x.var.terms)))/ abs(x.val-x.var.constant) ? x.var - x.var.constant : x.var - x.val, eachrow(cns_df))
+		cns_df[!,:cnsExpr] = map(x -> maxRng_fl < (isempty(x.var.terms) ? 1.0 : maximum(collect(values(x.var.terms))) / abs(x.val-x.var.constant)) ? (x.var - x.var.constant) : (x.var - x.val), eachrow(cns_df))
+
 		# presever demand column in case of subproblem
 		if !isempty(anyM.subPro) && anyM.subPro != (0,0) rename!(cns_df,:val => :dem) end
 		cns_df = orderDf(cns_df[!,[intCol(cns_df,[:dem,:actCapa])...,:cnsExpr]])
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
-
+		# filter cases where no actual variables are compared since they were replaced with parameters
+		if !anyM.options.actMissCapa filter!(x -> !isempty(x.cnsExpr.terms), cns_df) end 
 		partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:greater),anyM.optModel)
 	end
 
