@@ -1,4 +1,6 @@
 using Gurobi
+
+# ! compute IIS and print constraints in it
 function printIIS(anyM::anyModel)
 
     # computes iis
@@ -24,4 +26,8 @@ function printIIS(anyM::anyModel)
         end
     end
 end
-export printIIS
+
+# ! checks termination status and computes and prints IIS if infeasible
+checkIIS(mod_m::anyModel) = if termination_status(mod_m.optModel) != MOI.OPTIMAL && termination_status(mod_m.optModel) != MOI.LOCALLY_SOLVED printIIS(mod_m) end
+
+export printIIS, checkIIS

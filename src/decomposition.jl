@@ -41,12 +41,13 @@ end
 #region # * functions for heurstic
 
 # ! run heuristic and return exact capacities plus heuristic cut
-function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64, t_int::Int)
+function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int)
 
 	# create and solve model
 	heu_m = anyModel(modOpt_tup.heuIn, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, redStep = redFac)
-	prepareMod!(heu_m,modOpt_tup.opt)
-	set_optimizer_attribute(heu_m.optModel, "Threads", t_int)
+	prepareMod!(heu_m,modOpt_tup.opt,t_int)
+	set_optimizer_attribute(heu_m.optModel, "Method", 2)
+	set_optimizer_attribute(heu_m.optModel, "Crossover", 0)
 	optimize!(heu_m.optModel)
 
 	# write results to benders object
@@ -135,20 +136,18 @@ function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple,scaCap
 end
 
 # ! returns a feasible as close as possible to the input dictionary
-function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}=Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}())
+function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int)
 
 	# create top level problem
 	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, actMissCapa = false)
 	topFeas_m.subPro = tuple(0,0)
-	prepareMod!(topFeas_m,modOpt_tup.opt)
+	prepareMod!(topFeas_m,modOpt_tup.opt,t_int)
 
 	# add limits to problem
 	if !isempty(lim_dic) addLinearTrust!(topFeas_m,lim_dic) end
 
 	# compute feasible capacites
 	topFeas_m = computeFeas(topFeas_m,fix_dic)
-
-	checkIIS(topFeas_m)
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
     return writeResult(topFeas_m,[:exp,:capa],false,false)
@@ -189,9 +188,11 @@ function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 		end
 	end
 
-	# change objective of top problem and solve
+	# change objective of top problem to minimize absolute values
 	absVar_arr = [:CapaConv,:CapaExc,:CapaStOut,:CapaStIn,:CapaStSize,:ExpConv,:ExpExc,:ExpStOut,:ExpStIn,:ExpStSize]
 	@objective(top_m.optModel, Min, sum(map(x -> sum(getAllVariables(Symbol(:abs,x),top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])),absVar_arr)))
+	# solve problem
+	set_optimizer_attribute(top_m.optModel, "Method", 2)
 	set_optimizer_attribute(top_m.optModel, "Crossover", 1)
 	optimize!(top_m.optModel)
 
@@ -251,22 +252,8 @@ end
 function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 	# solve top again with trust region and re-compute bound for soultion
 	delete(mod_m.optModel,trustReg_obj.cns)
-	set_optimizer_attribute(mod_m.optModel, "OutputFlag", 1)
-
 	set_optimizer_attribute(mod_m.optModel, "Method", 0)
-	@time optimize!(mod_m.optModel)
-	
-	set_optimizer_attribute(mod_m.optModel, "Method", 1)
-	@time optimize!(mod_m.optModel)
-
-	set_optimizer_attribute(mod_m.optModel, "Crossover", 1) # add crossover to get an exact solution
-	set_optimizer_attribute(mod_m.optModel, "Method", 2)
-	@time optimize!(mod_m.optModel)
-
-	set_optimizer_attribute(mod_m.optModel, "Crossover", 0) # add crossover to get an exact solution
-	set_optimizer_attribute(mod_m.optModel, "Method", 2)
-	@time optimize!(mod_m.optModel)
-
+	optimize!(mod_m.optModel)
 
 	# obtain different objective values
 	objTop_fl = value(sum(filter(x -> x.name == :cost, mod_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
@@ -339,16 +326,13 @@ end
 #region # * benders solution algorithm
 
 # ! set optimizer attributes and options, in case gurobi is used (recommended)
-function prepareMod!(mod_m::anyModel,opt_obj::DataType)
+function prepareMod!(mod_m::anyModel,opt_obj::DataType, t_int::Int)
 	# create optimization problem
 	createOptModel!(mod_m)
 	setObjective!(:cost,mod_m)
-	# set optimizer and attributes, if gurobi
+	# set optimizer and attributes
 	set_optimizer(mod_m.optModel,opt_obj)
-	if opt_obj <: Gurobi.Optimizer
-		set_optimizer_attribute(mod_m.optModel, "Method", 2)
-		set_optimizer_attribute(mod_m.optModel, "Crossover", 0)
-	end
+	set_optimizer_attribute(mod_m.optModel, "Threads", t_int)
 end
 
 # ! run sub-Level problem
@@ -374,8 +358,9 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=fals
 	end
 
 	# set optimizer attributes and solves
+	set_optimizer_attribute(sub_m.optModel, "Method", 2)
+	set_optimizer_attribute(sub_m.optModel, "Crossover", 0)
 	optimize!(sub_m.optModel)
-	checkIIS(sub_m)
 
 	# write results into files (only used once optimum is obtained)
 	if wrtRes
@@ -413,8 +398,9 @@ function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bender
 	if !isempty(cutData_dic) addCuts!(top_m,cutData_dic,i) end
 
 	# solve model
+	set_optimizer_attribute(top_m.optModel, "Method", 2)
+	set_optimizer_attribute(top_m.optModel, "Crossover", 0)
 	optimize!(top_m.optModel)
-	checkIIS(top_m)
 
 	# write technology capacites and level of capacity balance to benders object
 	capaData_obj.capa, expTrust_dic = [writeResult(top_m,[x],true) for x in [:capa,:exc]]
@@ -481,32 +467,6 @@ end
 function getBendersCut(sub_df::DataFrame, var_df::DataFrame)
 	ben_df = deSelectSys(sub_df) |> (z -> innerjoin(deSelectSys(var_df),z, on = intCol(z,:dir)))
 	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual *(collect(keys(x.var.terms))[1] - x.value),eachrow(ben_df)))
-end
-
-# ! analyze which linear constraints are binding
-function trackBindingLim(top_m::anyModel)
-	set_optimizer_attribute(top_m.optModel, "Crossover", 1) # add crossover to get an exact solution
-	optimize!(top_m.optModel)
-	set_optimizer_attribute(top_m.optModel, "Crossover", 0)
-
-	# check which constraints are binding by analyzing dual
-	tAll_int = 0
-	tBind_int = 0
-	for sys in (:tech,:exc)
-		part_dic = getfield(top_m.parts,sys)
-		for sSym in keys(part_dic)
-			for limCns in filter(x -> any(occursin.(["BendersUp","BendersLow"],string(x))), keys(part_dic[sSym].cns))
-				# count all limits
-				allLim_df = part_dic[sSym].cns[limCns]
-				tAll_int = tAll_int + size(tAll_int,1)
-				# count binding limits
-				binLim_df = allLim_df |> (w -> w[findall(map(x -> dual(x) > 0.0, w[!,:cns])),:])
-				tBind_int = tBind_int + size(binLim_df,1)
-			end
-		end
-	end
-
-	return [tAll_int, tBind_int]
 end
 
 #endregion
