@@ -596,15 +596,9 @@ function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64
 end
 
 # ! scales expressions in the dataframe to be within the range defined within options
-function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}},checkRng_fl::Float64)
+function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}},checkRng_boo::Bool)
 
 	if isempty(cnsExpr_df) return end
-
-	if !all(isnan.(coefRng.rhs))
-		# scale expression defining constraint so rhs coefficients are within desired range
-		rhs_arr = abs.(getfield.(cnsExpr_df[!,:cnsExpr],:constant))
-		findall(rhs_arr .!= 0.0) |> (x -> cnsExpr_df[x,:cnsExpr] = scaleRng(cnsExpr_df[x,:cnsExpr],rhs_arr[x],coefRng.rhs, true))
-	end
 
 	if !all(isnan.(coefRng.mat))
 		# scale expression defining constraint so matrix coefficients are within desired range
@@ -612,8 +606,14 @@ function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tup
 		findall(map(x -> x != (0.0,0.0),matRng_arr)) |> (x -> cnsExpr_df[x,:cnsExpr] = scaleRng(cnsExpr_df[x,:cnsExpr],matRng_arr[x],coefRng.mat,false))
 	end
 
-	if !isnan(checkRng_fl)
-		checkExprRng(cnsExpr_df[:,:cnsExpr],checkRng_fl)
+	if !all(isnan.(coefRng.rhs))
+		# scale expression defining constraint so rhs coefficients are within desired range
+		rhs_arr = abs.(getfield.(cnsExpr_df[!,:cnsExpr],:constant))
+		findall(rhs_arr .!= 0.0) |> (x -> cnsExpr_df[x,:cnsExpr] = scaleRng(cnsExpr_df[x,:cnsExpr],rhs_arr[x],coefRng.rhs, true))
+	end
+
+	if checkRng_boo
+		checkExprRng(cnsExpr_df[:,:cnsExpr],coefRng)
 	end
 end
 
@@ -621,20 +621,19 @@ end
 function scaleRng(expr_arr::Array{AffExpr,1},rng_arr::Array,rng_tup::Tuple{Float64,Float64}, rhs_boo::Bool)
 	scaRel_arr = rhs_boo ? union(findall(rng_arr .< rng_tup[1]), findall(rng_arr .> rng_tup[2])) : union(findall(getindex.(rng_arr,1) .< rng_tup[1]), findall(getindex.(rng_arr,2) .> rng_tup[2]))
 	if !isempty(scaRel_arr)
-		expr_arr[scaRel_arr] = map(x -> x[1] < rng_tup[1] ? rng_tup[1]/x[1] : rng_tup[2]/x[rhs_boo ? 1 : 2], rng_arr[scaRel_arr]) .* expr_arr[scaRel_arr]
+		expr_arr[scaRel_arr] = map(x -> x[1] < rng_tup[1] ? rng_tup[1]/x[1] : rng_tup[2]/x[rhs_boo ? 1 : 2], rng_arr[scaRel_arr]).* expr_arr[scaRel_arr]
 	end
 	return expr_arr
 end
 
 # ! check range of coefficients in expressions within input array
-function checkExprRng(expr_arr::Array{AffExpr,1},rngThres_fl::Float64)
+function checkExprRng(expr_arr::Array{AffExpr,1},coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}})
 	# obtains range of coefficients for matrix and rhs
 	matRng_arr = map(x -> abs.(values(x.terms)) |> (y -> isempty(y) ? (0.0,0.0) : (minimum(y),maximum(y))), expr_arr)
 	rhs_arr = abs.(getfield.(expr_arr,:constant))
-	both_arr = max.(getindex.(matRng_arr,2),replace(rhs_arr,0.0 => -Inf)) ./ min.(getindex.(matRng_arr,1),replace(rhs_arr,0.0 => Inf))
 
-	# filters rows where reange of coefficients is above threshold
-	aboveThres_arr = findall(both_arr .> rngThres_fl)
+	# filters rows where ranges of coefficients or rhs are above threshold
+	aboveThres_arr = findall((getindex.(matRng_arr,1)  .< coefRng.mat[1]) .| (getindex.(matRng_arr,2)  .> coefRng.mat[2]) .| (map(x -> x != 0.0 && (x < coefRng.rhs[1] || x > coefRng.rhs[2]),rhs_arr)))
 
 	for expr in expr_arr[aboveThres_arr]
 		println(expr)
