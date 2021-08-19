@@ -430,11 +430,6 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 	flh_df[!,:variable] .= :flhExc
 	flh_df[!,:C] .= 0
 
-	filter(x -> ((x.R_from == 38 && x.R_to == 111) || (x.R_from == 111 && x.R_to == 38)) && x.Exc == 6 && x.Ts_disSup == 7,getAllVariables(:exc,anyM))
-	filter(x -> ((x.R_from == 38 && x.R_to == 111) || (x.R_from == 111 && x.R_to == 38)) && x.Exc == 6 && x.Ts_disSup == 7,capa_df)
-
-	filter(x -> round(x.value, digits = 3) == 4380.0,flh_df)
-
 	append!(allData_df,select(flh_df,Not([:from_to,:to_from])))
 
 	# removes scenario column if only one scenario is defined
