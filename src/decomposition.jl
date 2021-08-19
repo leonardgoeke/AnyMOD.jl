@@ -259,8 +259,6 @@ function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 	objTop_fl = value(sum(filter(x -> x.name == :cost, mod_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
 	lowLim_fl = objTop_fl + value(filter(x -> x.name == :benders,mod_m.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
 
-	# TODO check which limits and cuts are binding and write corresponding csv for now
-
 	return objTop_fl, lowLim_fl
 end
 
@@ -289,26 +287,43 @@ end
 # ! add trust region to objective part of model
 function centerQuadTrust(exp_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},top_m::anyModel,rad_fl::Float64)
 
-	# * match capacity values with variables
+	# ! match values with variables
+
 	expExpr_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
 	for sys in (:tech,:exc)
 		expExpr_dic[sys] = Dict{Symbol,Dict{Symbol,DataFrame}}()
 		part_dic = getfield(top_m.parts,sys)
 		for sSym in keys(exp_dic[sys])
 			subExp_dic = exp_dic[sys][sSym]
-			expExpr_dic[sys][sSym] = Dict(deSelectSys(subExp_dic[expSym]) |> (z -> expSym => innerjoin(deSelectSys(unique(select(part_dic[sSym].var[expSym],Not([:Ts_expSup,:Ts_disSup])))),z, on = intCol(z,:dir))) for expSym in filter(x -> occursin("exp",string(x)), keys(subExp_dic)))
+			expExpr_dic[sys][sSym] = Dict(deSelectSys(subExp_dic[expSym]) |> (z -> expSym => unique(select(innerjoin(deSelectSys(part_dic[sSym].var[expSym]),z, on = intCol(z,:dir)),[:var,:value]))) for expSym in keys(subExp_dic))
 		end
 	end
 
-	# * write trust region constraint and save its key parameters
+	# ! write trust region constraint and save its key parameters
+	allVar_df = vcat(vcat(vcat(map(x -> expExpr_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
 	
-	# get quadratic left hand side
-	allExp_df = vcat(vcat(vcat(map(x -> expExpr_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
-	allExp_df[!,:value] = map(x -> x.value < 0.01 / top_m.options.scaFac.capa ? 0.0 : x.value,eachrow(allExp_df)) # set current capacity to zero, if value is small than one megawatt
-	capaSum_expr = sum(map(x -> collect(keys(x.var.terms))[1] |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allExp_df)))
+	# sets values of variables that will viollate range to zero
+	minFac_fl = (2*maximum(allVar_df[!,:value]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
+	allVar_df[!,:value] = map(x -> 2*x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
+
+	# compute possible range of scaling factors with rhs still in range
+	scaRng_fl = top_m.options.coefRng.rhs ./ abs(rad_fl^2 - sum(allVar_df[!,:value].^2))
+
+	# set values of variable to smallest or biggest value possible without scaling violating rhs range
+	for x in eachrow(allVar_df)	
+		if top_m.options.coefRng.mat[1]/(x.value*2) > scaRng_fl[2] # factor requires more up-scaling than possible
+			x[:value] = top_m.options.coefRng.mat[1]/(scaRng_fl[2]*2) # smallest factor possible within range
+		elseif top_m.options.coefRng.mat[2]/(x.value*2) < scaRng_fl[1] # factor requires more down-scaling than possible
+			x[:value] = top_m.options.coefRng.mat[2]/(scaRng_fl[1]*2) # biggest factor possible within range
+		end
+	end
+
+
+	# computes left hand side expression and scaling factor
+	capaSum_expr = sum(map(x -> collect(keys(x.var.terms))[1] |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allVar_df)))
+	cnsInfo_ntup =  (sca = top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)) |> (z -> isempty(z) ? [1.0] : z))), pol = capaSum_expr.aff.constant)
 	
-	# save scaling factor, constant of left hand side and array of capacities values
-	cnsInfo_ntup =  (sca = 10*top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)) |> (z -> isempty(z) ? [1.0] : z))), pol = capaSum_expr.aff.constant)
+	# create final constraint
 	trustRegion_cns = @constraint(top_m.optModel,  capaSum_expr * cnsInfo_ntup.sca <= rad_fl^2  * cnsInfo_ntup.sca)
 
 	return trustRegion_cns, cnsInfo_ntup
@@ -418,7 +433,7 @@ end
 function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},i::Int)
 
 	# create array of expressions with duals for sub-problems
-	cut_df = DataFrame(i = Int[], Ts_disSup = Int[],scr = Int[], limCoef = Bool[], cnsExpr = AffExpr[])
+	cut_df = DataFrame(i = Int[], Ts_disSup = Int[],scr = Int[], limCoef = Bool[], actItr = Array{Int,1}[], cnsExpr = AffExpr[])
 	for sub in keys(cutData_dic)
 		subCut = cutData_dic[sub]
 		cutExpr_arr = Array{GenericAffExpr,1}()
@@ -492,7 +507,7 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 		#endregion
 
 		# add benders variable to cut and push to dataframe of all cuts
-		push!(cut_df,(i = i, Ts_disSup = top_m.supTs.step[sub[1]], scr = sub[2], limCoef = limCoef_boo, cnsExpr = cut_expr - cut_var))
+		push!(cut_df,(i = i, Ts_disSup = top_m.supTs.step[sub[1]], scr = sub[2], limCoef = limCoef_boo, actItr = Array{Int,1}(), cnsExpr = cut_expr - cut_var))
 	end
 
 	# scale cuts and add to dataframe of benders cuts in model
