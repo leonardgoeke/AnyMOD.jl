@@ -308,13 +308,19 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	#endregion
 
 	#region # * create corresponding constraints
+	maxRng_fl = anyM.options.coefRng.mat[2]/anyM.options.coefRng.rhs[1]
+
+	# create slack variable to allow for small derivations when just computing feasible capacities
+	if anyM.options.slackMissCapa 
+		maxTerm_arr = map(x -> isempty(x.terms) ? 0.0 : maximum(collect(values(x.terms))),allCapa_df[!,:var])
+		partBal.var[:slackCapa] = orderDf(createVar(allCapa_df,"slackCapa", maxTerm_arr ./ maxRng_fl,anyM.optModel,anyM.lock,anyM.sets))
+	end
 
 	# ! create variables for missing capacities
-	if :costMissCapa in keys(partBal.par) && anyM.options.actMissCapa
-		# create missing capacity variable
+	if :costMissCapa in keys(partBal.par) 
 		var_df = matchSetParameter(allCapa_df,partBal.par[:costMissCapa],anyM.sets)
 		partBal.var[:missCapa] = orderDf(createVar(select(var_df,Not([:val])),"missCapa",anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.insCapa))
-	end
+	end 
 
 	# ! match with capacity demand
 	cns_df = matchLimitParameter(allCapa_df,par_obj,anyM)
@@ -330,22 +336,26 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 		# add column indicating, if capacities other than missing capacity are added, only relevant for benders heuristik
 		cns_df[!,:actCapa] =  .!isempty.(map(x -> x.terms, cns_df[!,:var]))
 
+		# add slack capacity variables
+		if anyM.options.slackMissCapa
+			add_to_expression!.(cns_df[!,:var], aggDivVar(partBal.var[:slackCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets))
+		end
+
 		# add missing capacity variables
-		if :missCapa in keys(partBal.var) && anyM.options.actMissCapa
+		if :missCapa in keys(partBal.var)
 			add_to_expression!.(cns_df[!,:var], aggDivVar(partBal.var[:missCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets))
 		end
 
-		# ! create constraint
-		# create capacity constraint, small differences between constants can lead to extremely large ranges, to avoid this small differences are set to zero
-		maxRng_fl = anyM.options.coefRng.mat[2]/anyM.options.coefRng.rhs[1]
-		cns_df[!,:cnsExpr] = map(x -> maxRng_fl < (isempty(x.var.terms) ? 1.0 : maximum(collect(values(x.var.terms))) / abs(x.val-x.var.constant)) ? (x.var - x.var.constant) : (x.var - x.val), eachrow(cns_df))
+		# ! create capacity constraints
+		# small differences between constants can lead to extremely large ranges, to avoid this small differences are set to zero
+		cns_df[!,:cnsExpr] = map(x -> maxRng_fl < ((isempty(x.var.terms) ? 1.0 : maximum(abs.(collect(values(x.var.terms))))) / abs(x.val-x.var.constant)) ? (x.var - x.var.constant) : (x.var - x.val), eachrow(cns_df))
 
-		# presever demand column in case of subproblem
+		# preserve demand column in case of subproblem
 		if !isempty(anyM.subPro) && anyM.subPro != (0,0) rename!(cns_df,:val => :dem) end
 		cns_df = orderDf(cns_df[!,[intCol(cns_df,[:dem,:actCapa])...,:cnsExpr]])
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 		# filter cases where no actual variables are compared since they were replaced with parameters
-		if !anyM.options.actMissCapa filter!(x -> !isempty(x.cnsExpr.terms), cns_df) end 
+		filter!(x -> !isempty(x.cnsExpr.terms), cns_df) 
 		partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:greater),anyM.optModel)
 	end
 
@@ -629,11 +639,11 @@ end
 # ! check range of coefficients in expressions within input array
 function checkExprRng(expr_arr::Array{AffExpr,1},coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}})
 	# obtains range of coefficients for matrix and rhs
-	matRng_arr = map(x -> abs.(values(x.terms)) |> (y -> isempty(y) ? (0.0,0.0) : (minimum(y),maximum(y))), expr_arr)
+	matRng_arr = map(x -> abs.(values(x.terms)) |> (y -> isempty(y) ? (coefRng.mat[1],coefRng.mat[2]) : (minimum(y),maximum(y))), expr_arr)
 	rhs_arr = abs.(getfield.(expr_arr,:constant))
 
 	# filters rows where ranges of coefficients or rhs are above threshold
-	aboveThres_arr = findall((getindex.(matRng_arr,1)  .< coefRng.mat[1]) .| (getindex.(matRng_arr,2)  .> coefRng.mat[2]) .| (map(x -> x != 0.0 && (x < coefRng.rhs[1] || x > coefRng.rhs[2]),rhs_arr)))
+	aboveThres_arr = findall(.!((getindex.(matRng_arr,1)  .> coefRng.mat[1]*0.9999) .& (getindex.(matRng_arr,2) .< coefRng.mat[2]*1.0001) .& (map(x -> x == 0.0 || (x > coefRng.rhs[1]*0.9999 && x < coefRng.rhs[2]*1.0001),rhs_arr))))
 
 	for expr in expr_arr[aboveThres_arr]
 		println(expr)

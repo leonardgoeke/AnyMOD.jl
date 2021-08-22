@@ -129,7 +129,7 @@ function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple,scaCap
 	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) && (scaCapa_fl*abs(val1_fl - val2_fl) > linPar.thrsAbs) # enfore lower and upper limits, if difference does exceed threshold	
 		val_arr, cns_arr = sort([val1_fl,val2_fl]), [:Low,:Up]
 	else 
-		val_arr, cns_arr = [max(val1_fl,val2_fl)], [:Fix] # set to mean, if difference does not exceed threshold
+		val_arr, cns_arr = [val1_fl], [:Fix] # set to mean, if difference does not exceed threshold
 	end
 		
 	return val_arr, cns_arr
@@ -139,7 +139,7 @@ end
 function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int)
 
 	# create top level problem
-	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, actMissCapa = false, checkRng = true)
+	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, slackMissCapa = true, checkRng = true)
 	topFeas_m.subPro = tuple(0,0)
 	prepareMod!(topFeas_m,modOpt_tup.opt,t_int)
 
@@ -170,7 +170,8 @@ function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 				# set variables below threshold to zero and use smallest values possible within tolerances for others
 				scaFac_fl = exp_boo ? top_m.options.scaFac.insCapa : top_m.options.scaFac.capa 
 				abs_df[!,:value] = map(x -> x.value*scaFac_fl < lowVal_fl ? 0.0 : x.value, eachrow(abs_df))
-				abs_df[!,:weight] = map(x -> x == 0.0 ? 10.0 : 1.0,abs_df[!,:value])
+				# applies weights to correct for scaling factors and make achieving zero values a priority 
+				abs_df[!,:weight] = map(x -> scaFac_fl * (x == 0.0 ? 10.0 : 1.0),abs_df[!,:value])
 				# create variable for absolute value and connect with rest of dataframe again
 				part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),top_m.options.bound.capa,top_m.optModel, top_m.lock,top_m.sets; scaFac = scaFac_fl)
 				abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var] 
@@ -188,12 +189,19 @@ function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 		end
 	end
 
-	# change objective of top problem to minimize absolute values
+	
+	# get sum of absolute values 
 	absVar_arr = [:CapaConv,:CapaExc,:CapaStOut,:CapaStIn,:CapaStSize,:ExpConv,:ExpExc,:ExpStOut,:ExpStIn,:ExpStSize]
-	@objective(top_m.optModel, Min, sum(map(x -> sum(getAllVariables(Symbol(:abs,x),top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])),absVar_arr)))
+	absVal_expr = sum(map(x -> sum(getAllVariables(Symbol(:abs,x),top_m) |> (w -> isempty(w) ? [AffExpr()] : getindex.(collect.(keys.(getfield.(w[!,:var],:terms))),1) .* w[!,:weight])),absVar_arr))
+	# get some of missing capacities and apply high weight 
+	missCapa_expr = :missCapa in keys(top_m.parts.bal.var) ? sum(top_m.parts.bal.var[:missCapa][!,:var] .* 100) : AffExpr()
+	objExpr_df = DataFrame(cnsExpr = [missCapa_expr + absVal_expr])
+	scaleCnsExpr!(objExpr_df,top_m.options.coefRng,top_m.options.checkRng)
+
+	# change objective of top problem to minimize absolute values and missing capacities
+	@objective(top_m.optModel, Min, objExpr_df[1,:cnsExpr])
 	# solve problem
-	set_optimizer_attribute(top_m.optModel, "Method", 2)
-	set_optimizer_attribute(top_m.optModel, "Crossover", 1)
+	set_optimizer_attribute(top_m.optModel, "Method", 1)
 	optimize!(top_m.optModel)
 
 	return top_m
@@ -307,14 +315,14 @@ function centerQuadTrust(exp_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 	allVar_df[!,:value] = map(x -> 2*x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
-	scaRng_fl = top_m.options.coefRng.rhs ./ abs(rad_fl^2 - sum(allVar_df[!,:value].^2))
+	scaRng_tup = top_m.options.coefRng.rhs ./ abs(rad_fl^2 - sum(allVar_df[!,:value].^2))
 
 	# set values of variable to smallest or biggest value possible without scaling violating rhs range
 	for x in eachrow(allVar_df)	
-		if top_m.options.coefRng.mat[1]/(x.value*2) > scaRng_fl[2] # factor requires more up-scaling than possible
-			x[:value] = top_m.options.coefRng.mat[1]/(scaRng_fl[2]*2) # smallest factor possible within range
-		elseif top_m.options.coefRng.mat[2]/(x.value*2) < scaRng_fl[1] # factor requires more down-scaling than possible
-			x[:value] = top_m.options.coefRng.mat[2]/(scaRng_fl[1]*2) # biggest factor possible within range
+		if top_m.options.coefRng.mat[1]/(x.value*2) > scaRng_tup[2] # factor requires more up-scaling than possible
+			x[:value] = 0 # set value to zero
+		elseif top_m.options.coefRng.mat[2]/(x.value*2) < scaRng_tup[1] # factor requires more down-scaling than possible
+			x[:value] = top_m.options.coefRng.mat[2]/(scaRng_tup[1]*2) # set to biggest factor possible within range
 		end
 	end
 
@@ -458,13 +466,13 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 
 			# ! ensure cut variable complies with limits on rhs
 			cutFac_fl = abs(collect(values(cut_var.terms))[1]) # get scaling factor of cut variable
-			scaRng_fl = top_m.options.coefRng.rhs ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
+			scaRng_tup = top_m.options.coefRng.rhs ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
 				
 			# adjust rhs to avoid violation of range only from cut variable and rhs
-			if top_m.options.coefRng.mat[1]/cutFac_fl > scaRng_fl[2] 
+			if top_m.options.coefRng.mat[1]/cutFac_fl > scaRng_tup[2] 
 				cut_expr.constant = top_m.options.coefRng.rhs[2] / (top_m.options.coefRng.mat[1]/cutFac_fl) # biggest rhs possible within range
 				limCoef_boo = true
-			elseif top_m.options.coefRng.mat[2]/cutFac_fl < scaRng_fl[1]
+			elseif top_m.options.coefRng.mat[2]/cutFac_fl < scaRng_tup[1]
 				cut_expr.constant = top_m.options.coefRng.rhs[1] / (top_m.options.coefRng.mat[2]/cutFac_fl) # smallest rhs possible within range
 				limCoef_boo = true
 			end
@@ -476,31 +484,29 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 			# manipulates factors to stay within range
 			if maxRng_fl < facRng_fl[2]/facRng_fl[1]
 				# compute maximum and minimum factors
-				maxFac_fl = maxRng_fl*facRng_fl[1]
 				minFac_fl = facRng_fl[2]/maxRng_fl
-				# analyze how many factors are manipulated if either small or large values are manipulated  
-				maxFac_int = sum(abs.(collect(values(cut_expr.terms))) .> maxFac_fl)
-				minFac_int = sum(abs.(collect(values(cut_expr.terms))) .< minFac_fl)
 
-				# set factor of terms violating range either to maximum or minimum to avoid changing factor of the cut variable
-				if (maxFac_fl > cutFac_fl && minFac_fl < cutFac_fl)  ? maxFac_int < minFac_int :  cutFac_fl < maxFac_fl # if factor of cut variable is in range, manipulate the smallest number of variables, otherwise manipulate in way that does not have to adjust cut variable 
-					foreach(x -> (abs(cut_expr.terms[x])) > maxFac_fl ? (cut_expr.terms[x] = maxFac_fl * sign(cut_expr.terms[x])) : nothing, collect(keys(cut_expr.terms))) # sets factor to maximum value
-				else
-					foreach(x -> (abs(cut_expr.terms[x])) < minFac_fl ? (cut_expr.terms[x] = minFac_fl * sign(cut_expr.terms[x])) : nothing, collect(keys(cut_expr.terms))) # sets factor to minimum value
+				# removes small factors
+				filter!(x -> abs(x[2]) > minFac_fl,cut_expr.terms)
+
+				# check if the cut also would violate range, limit coefficients in this case
+				if cutFac_fl < minFac_fl
+					limCoef_boo = true
+					maxCoef_fl = cutFac_fl * maxRng_fl # biggest possible coefficient, so cut variable is still in range
+					foreach(x -> abs(cut_expr.terms[x]) > maxCoef_fl ? cut_expr.terms[x] = maxCoef_fl * sign(cut_expr.terms[x]) : nothing, collect(keys(cut_expr.terms))) # limits coefficients to maximum value
 				end
-				limCoef_boo = true
 			end
 
 			# ! ensure scaling of factors does not move rhs out of range
-			scaRng_fl = top_m.options.coefRng.rhs ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
+			scaRng_tup = top_m.options.coefRng.rhs ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
 
-			for x in keys(cut_expr.terms)		
+			for x in keys(cut_expr.terms)
+				println(x)
 				val_fl = abs(cut_expr.terms[x])
-				if top_m.options.coefRng.mat[1]/val_fl > scaRng_fl[2] # factor requires more up-scaling than possible
-					cut_expr.terms[x] = sign(cut_expr.terms[x]) * top_m.options.coefRng.mat[1]/scaRng_fl[2] # smallest factor possible within range
-					limCoef_boo = true
-				elseif top_m.options.coefRng.mat[2]/val_fl < scaRng_fl[1] # factor requires more down-scaling than possible
-					cut_expr.terms[x] = sign(cut_expr.terms[x]) * top_m.options.coefRng.mat[2]/scaRng_fl[1] # biggest factor possible within range
+				if top_m.options.coefRng.mat[1]/val_fl > scaRng_tup[2] # factor requires more up-scaling than possible
+					delete!(cut_expr.terms,x) # removes term
+				elseif top_m.options.coefRng.mat[2]/val_fl < scaRng_tup[1] # factor requires more down-scaling than possible
+					cut_expr.terms[x] = sign(cut_expr.terms[x]) * top_m.options.coefRng.mat[2]/scaRng_tup[1] # set to biggest factor possible within range
 					limCoef_boo = true
 				end
 			end
