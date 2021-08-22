@@ -348,7 +348,7 @@ function addSupTsToExp(expMap_df::DataFrame,part::AbstractModelPart,type_sym::Sy
 		else
 			lftmDel_df = lftm_df; lftmDel_df[!,:del] .= 0.0
 		end
-		lftmDel_df[!,:Ts_disSup] = map(x -> filter(y -> (tsYear_dic[y] >= tsYear_dic[x.Ts_expSup] + x.del) && (tsYear_dic[y] <= tsYear_dic[x.Ts_expSup] + x.life + x.del),collect(anyM.supTs.step)), eachrow(lftmDel_df))
+		lftmDel_df[!,:Ts_disSup] = map(x -> filter(y -> (tsYear_dic[y] >= tsYear_dic[x.Ts_expSup] + x.del) && (tsYear_dic[y] < tsYear_dic[x.Ts_expSup] + x.life + x.del),collect(anyM.supTs.step)), eachrow(lftmDel_df))
 		select!(lftmDel_df,Not([:life,:del]))
 		grpCol_arr = intCol(expMap_df) |> (x -> :ratio in namesSym(expMap_df) ? vcat(:ratio,x...) : x)
 		expMap_df = combine(groupby(lftmDel_df,grpCol_arr), [:Ts_expSup,:Ts_disSup] .=> (x -> [x]) .=> [:Ts_expSup,:Ts_disSup])

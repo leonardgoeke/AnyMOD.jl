@@ -111,7 +111,7 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 			allRetro_df[!,:lifeRetro] = map(x -> ((x.Ts_disSup_last-x.Ts_retro) * anyM.options.shortExp + x.lifeStart % anyM.options.shortExp) * x.credit + x.lifeRetroSys, eachrow(allRetro_df))
 
 			# compute array of superordinate timesteps in lifetime
-			allRetro_df[!,:Ts_disSup] = map(x -> filter(z -> z >= x.Ts_retro && z <= x.Ts_retro + x.lifeRetro/anyM.options.shortExp,collect(anyM.supTs.step)),eachrow(allRetro_df))
+			allRetro_df[!,:Ts_disSup] = map(x -> filter(z -> z >= x.Ts_retro && z < x.Ts_retro + x.lifeRetro/anyM.options.shortExp,collect(anyM.supTs.step)),eachrow(allRetro_df))
 			allRetro_df = orderDf(select!(allRetro_df,Not([:lifeStart,:credit,:lifeRetroSys,:lifeRetro])))
 
 			# add entries for start technology for retrofitting
