@@ -501,7 +501,6 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 			scaRng_tup = top_m.options.coefRng.rhs ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
 
 			for x in keys(cut_expr.terms)
-				println(x)
 				val_fl = abs(cut_expr.terms[x])
 				if top_m.options.coefRng.mat[1]/val_fl > scaRng_tup[2] # factor requires more up-scaling than possible
 					delete!(cut_expr.terms,x) # removes term
