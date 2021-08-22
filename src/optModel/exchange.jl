@@ -39,6 +39,9 @@ function createExc!(eInt::Int,part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple}
 		# create ratio constraints
 		createRatioCns!(part,cns_dic,r_dic,anyM)
 
+		# all constraints are scaled and then written into their respective array position
+		foreach(x -> scaleCnsExpr!(x[2].data,anyM.options.coefRng,anyM.options.checkRng), collect(cns_dic))
+
 		produceMessage(anyM.options,anyM.report, 2," - Created all variables and prepared constraints for exchange $(exc_str)")
 	end
 	
