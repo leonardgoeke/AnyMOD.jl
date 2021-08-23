@@ -262,7 +262,7 @@ function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 	# solve top again with trust region and re-compute bound for soultion
 	delete(mod_m.optModel,trustReg_obj.cns)
 	set_optimizer_attribute(mod_m.optModel, "Method", 0)
-	@suppress optimize!(mod_m.optModel)
+	optimize!(mod_m.optModel)
 
 	# obtain different objective values
 	objTop_fl = value(sum(filter(x -> x.name == :cost, mod_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
@@ -428,7 +428,7 @@ function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bender
 	# solve model
 	set_optimizer_attribute(top_m.optModel, "Method", 2)
 	set_optimizer_attribute(top_m.optModel, "Crossover", 0)
-	@suppress optimize!(top_m.optModel)
+	optimize!(top_m.optModel)
 	checkIIS(top_m)
 
 	# write technology capacites and level of capacity balance to benders object
