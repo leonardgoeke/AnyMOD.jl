@@ -242,6 +242,7 @@ end
 
 # ! adds limits specified by dictionary to problem
 function addLinearTrust!(top_m::anyModel,lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}})
+	limCapa_tup = ((1+1e-10)*top_m.options.coefRng.rhs[1] / top_m.options.coefRng.mat[2], (1-1e-10) * top_m.options.coefRng.rhs[2] / top_m.options.coefRng.mat[1])
 	for sys in (:tech,:exc)
 		part_dic = getfield(top_m.parts,sys)
 		for sSym in keys(lim_dic[sys])
@@ -250,7 +251,7 @@ function addLinearTrust!(top_m::anyModel,lim_dic::Dict{Symbol,Dict{Symbol,Dict{S
 				grpBothCapa_arr = collect(groupby(lim_dic[sys][sSym][trstSym],:limCns))
 				# get variables of top model
 				trstVar_df = filter(x -> !isempty(x.var.terms),part_dic[sSym].var[trstSym])
-				foreach(lim -> limitCapa!(select(rename(lim,:limVal => :value),Not([:limCns])),trstVar_df,trstSym,part_dic[sSym],top_m,lim[1,:limCns]),grpBothCapa_arr)
+				foreach(lim -> limitCapa!(select(rename(lim,:limVal => :value),Not([:limCns])),trstVar_df,trstSym,part_dic[sSym],top_m,limCapa_tup,lim[1,:limCns]),grpBothCapa_arr)
 			end
 		end
 	end
@@ -261,7 +262,7 @@ function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 	# solve top again with trust region and re-compute bound for soultion
 	delete(mod_m.optModel,trustReg_obj.cns)
 	set_optimizer_attribute(mod_m.optModel, "Method", 0)
-	optimize!(mod_m.optModel)
+	@suppress optimize!(mod_m.optModel)
 
 	# obtain different objective values
 	objTop_fl = value(sum(filter(x -> x.name == :cost, mod_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
@@ -363,6 +364,9 @@ end
 # ! run sub-Level problem
 function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=false)
 
+	# compute smallest and biggest capacity that can be enforced
+	limCapa_tup = ((1+1e-10)*sub_m.options.coefRng.rhs[1] / sub_m.options.coefRng.mat[2], (1-1e-10) * sub_m.options.coefRng.rhs[2] / sub_m.options.coefRng.mat[1])
+
 	# fixing capacity
 	for sys in (:tech,:exc)
 		part_dic = getfield(sub_m.parts,sys)
@@ -374,7 +378,7 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=fals
 				if !(sSym in keys(part_dic)) || !(capaSym in keys(part_dic[sSym].var)) || isempty(capaData_obj.capa[sys][sSym][capaSym])
 					delete!(capaData_obj.capa[sys][sSym],capaSym)
 				else
-					limitCapa!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m)
+					limitCapa!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m,limCapa_tup)
 				end
 			end
 			# remove system if no capacities exist
@@ -421,11 +425,10 @@ function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bender
 
 	# add cuts
 	if !isempty(cutData_dic) addCuts!(top_m,cutData_dic,i) end
-
 	# solve model
 	set_optimizer_attribute(top_m.optModel, "Method", 2)
 	set_optimizer_attribute(top_m.optModel, "Crossover", 0)
-	optimize!(top_m.optModel)
+	@suppress optimize!(top_m.optModel)
 	checkIIS(top_m)
 
 	# write technology capacites and level of capacity balance to benders object
@@ -444,6 +447,7 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 	# create array of expressions with duals for sub-problems
 	cut_df = DataFrame(i = Int[], Ts_disSup = Int[],scr = Int[], limCoef = Bool[], actItr = Array{Int,1}[], cnsExpr = AffExpr[])
 	for sub in keys(cutData_dic)
+		println(sub)
 		subCut = cutData_dic[sub]
 		cutExpr_arr = Array{GenericAffExpr,1}()
 		
@@ -606,7 +610,7 @@ function getResult(res_df::DataFrame)
 end
 
 # ! create constraint fixing capacity (or setting a lower limits)
-function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_obj::AbstractModelPart,fix_m::anyModel,lim_sym::Symbol=:Fix)
+function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_obj::AbstractModelPart,fix_m::anyModel,limCapa_tup::Tuple{Float64, Float64},lim_sym::Symbol=:Fix)
 
 	cns_sym = Symbol(:Benders,lim_sym)
 	# join variables with capacity values
@@ -618,9 +622,13 @@ function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_o
 
 	# extract actual variable
 	fix_df[!,:var] = map(x -> collect(keys(x.var.terms))[1], eachrow(fix_df))
+
+	# set values exceeding maxium range to smallest and biggest values possible
+	fix_df[!,:value] = map(x -> x < limCapa_tup[1] ? limCapa_tup[1] : (x > limCapa_tup[2] ? limCapa_tup[2] : x) , fix_df[!,:value])
+
 	# compute scaling factor
-	fix_df[!,:scale] = map(x -> x.value <= fix_m.options.coefRng.rhs[1] ? min(fix_m.options.coefRng.mat[2],1.05* fix_m.options.coefRng.rhs[1]/x.value) : 1.0, eachrow(fix_df))
-	fix_df[!,:scale] = map(x -> x.value >= fix_m.options.coefRng.rhs[2] ? min(fix_m.options.coefRng.mat[1],fix_m.options.coefRng.rhs[2]/x.value) : x.scale, eachrow(fix_df))
+	fix_df[!,:scale] = map(x -> x.value <= fix_m.options.coefRng.rhs[1] ? fix_m.options.coefRng.rhs[1]/x.value : 1.0, eachrow(fix_df))
+	fix_df[!,:scale] = map(x -> x.value >= fix_m.options.coefRng.rhs[2] ? fix_m.options.coefRng.rhs[2]/x.value : x.scale, eachrow(fix_df))
 
 	# compute righ-hand side and factor of variables for constraint
 	slack_fl = lim_sym == :Fix ? 1.0 : (lim_sym == :Up ? 1.0001 : 0.9999) # add "wiggle" room to avoid infeasibility
