@@ -122,11 +122,11 @@ function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple,scaCap
 
 	if (val1_fl <= lowLim_fl && val2_fl <= lowLim_fl) || (any([val1_fl <= lowLim_fl,val2_fl <= lowLim_fl]) && scaCapa_fl*abs(val1_fl - val2_fl) < linPar.thrsAbs) # fix to zero, if both values are zero, or if one is zero and the other is very close to zero
 		val_arr, cns_arr = [0.0], [:Fix]
-	elseif val1_fl >= lowLim_fl && val2_fl <= lowLim_fl # set second value as upper limit, if other is zero
+	elseif val1_fl >= lowLim_fl && val2_fl <= lowLim_fl # set first value as upper limit, if other is zero
 		val_arr, cns_arr = [val1_fl], [:Up]
 	elseif val1_fl <= lowLim_fl && val2_fl >= lowLim_fl # set second value as upper limit, if other zero
 		val_arr, cns_arr = [val2_fl], [:Up]
-	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) && (scaCapa_fl*abs(val1_fl - val2_fl) > linPar.thrsAbs) # enfore lower and upper limits, if difference does exceed threshold	
+	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) # enfore lower and upper limits, if difference does exceed threshold	
 		val_arr, cns_arr = sort([val1_fl,val2_fl]), [:Low,:Up]
 	else 
 		val_arr, cns_arr = [val1_fl], [:Fix] # set to mean, if difference does not exceed threshold
@@ -390,6 +390,7 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=fals
 	set_optimizer_attribute(sub_m.optModel, "Method", 2)
 	set_optimizer_attribute(sub_m.optModel, "Crossover", 0)
 	optimize!(sub_m.optModel)
+	checkIIS(sub_m)
 
 	# write results into files (only used once optimum is obtained)
 	if wrtRes
