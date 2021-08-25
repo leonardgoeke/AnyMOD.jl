@@ -53,27 +53,27 @@ function createObjective!(obj_dic::Dict{Symbol,NamedTuple},anyM::anyModel,minimi
 			error("At least one cost argument returned no variables. Check for typo in name!")
 		end
 		obj_expr = obj[2].fac * sum(allObjVar_df[!,:var])
-		obj_var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, false, NaN, false, NaN, false, NaN, false, false)),string(obj[1]))
+		obj_var = anyM.options.scaFac.obj * JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, false, NaN, false, NaN, false, NaN, false, false)),string(obj[1]))
 		push!(partObj.var[:objVar], (name = obj[1], var = obj_var))
 		push!(partObj.cns[:objEqn], (name = obj[1], cns = @constraint(anyM.optModel, obj_var == obj_expr)))
 	end
 
 	# ! add cut variable for benders
 	if anyM.subPro == (0,0)
-		push!(partObj.var[:objVar],(name = :benders, var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)),"allCut")))
+		push!(partObj.var[:objVar],(name = :benders, var = anyM.options.scaFac.obj * JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)),"allCut")))
 		partObj.cns[:bendersCuts] = DataFrame(i=Int[], Ts_disSup = Int[], scr = Int[], limCoef = Bool[], actItr = Array{Int,1}[], cns = ConstraintRef[])
 	end
 
 	# ! sets overall objective variable with upper limits and according to weights provided in dictionary
-	objBd_flt = anyM.options.bound.obj |> (x -> isnan(x) ? NaN : x / anyM.options.scaFac.obj)
-	obj_var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, !isnan(objBd_flt), objBd_flt, false, NaN, false, NaN, false, false)),"obj") * anyM.options.scaFac.obj
-	obj_eqn = @constraint(anyM.optModel, obj_var == sum(partObj.var[:objVar][!,:var]))
+	objBd_flt = anyM.options.bound.obj |> (x -> isnan(x) ? NaN : x)
+	obj_var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, !isnan(objBd_flt), objBd_flt, false, NaN, false, NaN, false, false)),"obj")
+	obj_eqn = @constraint(anyM.optModel, obj_var == sum(getindex.(collect.(keys.(getfield.(partObj.var[:objVar][!,:var],:terms))),1)))
 	partObj.var[:obj] = DataFrame(var = obj_var)
 
 	if minimize
-		@objective(anyM.optModel, Min, obj_var / anyM.options.scaFac.obj)
+		@objective(anyM.optModel, Min, obj_var)
 	else
-		@objective(anyM.optModel, Max, obj_var / anyM.options.scaFac.obj)
+		@objective(anyM.optModel, Max, obj_var)
 	end
 
 	produceMessage(anyM.options,anyM.report, 1," - Set objective function according to inputs")
