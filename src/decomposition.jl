@@ -188,7 +188,6 @@ function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 			end
 		end
 	end
-
 	
 	# get sum of absolute values 
 	absVar_arr = [:CapaConv,:CapaExc,:CapaStOut,:CapaStIn,:CapaStSize,:ExpConv,:ExpExc,:ExpStOut,:ExpStIn,:ExpStSize]
@@ -262,6 +261,7 @@ function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 	# solve top again with trust region and re-compute bound for soultion
 	delete(mod_m.optModel,trustReg_obj.cns)
 	set_optimizer_attribute(mod_m.optModel, "Method", 0)
+	set_optimizer_attribute(top_m.optModel, "NumericFocus", 0)
 	optimize!(mod_m.optModel)
 
 	# obtain different objective values
@@ -429,6 +429,7 @@ function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bender
 	# solve model
 	set_optimizer_attribute(top_m.optModel, "Method", 2)
 	set_optimizer_attribute(top_m.optModel, "Crossover", 0)
+	set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
 	optimize!(top_m.optModel)
 	checkIIS(top_m)
 
