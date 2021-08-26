@@ -44,7 +44,7 @@ end
 function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int)
 
 	# create and solve model
-	heu_m = anyModel(modOpt_tup.heuIn, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, redStep = redFac, checkRng = true)
+	heu_m = anyModel(modOpt_tup.heuIn, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, redStep = redFac)
 	prepareMod!(heu_m,modOpt_tup.opt,t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
 	set_optimizer_attribute(heu_m.optModel, "Crossover", 0)
@@ -139,7 +139,7 @@ end
 function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int)
 
 	# create top level problem
-	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, slackMissCapa = true, checkRng = true)
+	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, slackMissCapa = false, checkRng = true)
 	topFeas_m.subPro = tuple(0,0)
 	prepareMod!(topFeas_m,modOpt_tup.opt,t_int)
 
@@ -156,7 +156,7 @@ end
 # ! runs top problem again with optimal results
 function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}})
 
-	lowVal_fl = top_m.options.coefRng.rhs[1]/(top_m.options.coefRng.mat[2]/maximum(values(top_m.options.scaFac)))
+	lowVal_fl = round(top_m.options.coefRng.rhs[1]/top_m.options.coefRng.mat[2]*max(top_m.options.scaFac.capa,top_m.options.scaFac.insCapa),digits = 8)
 	# create absolute value constraints for capacities or expansion variables
 	for sys in (:tech,:exc)
 		partTop_dic = getfield(top_m.parts,sys)
@@ -171,13 +171,13 @@ function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 				scaFac_fl = exp_boo ? top_m.options.scaFac.insCapa : top_m.options.scaFac.capa 
 				abs_df[!,:value] = map(x -> x.value*scaFac_fl < lowVal_fl ? 0.0 : x.value, eachrow(abs_df))
 				# applies weights to correct for scaling factors and make achieving zero values a priority 
-				abs_df[!,:weight] = map(x -> scaFac_fl * (x == 0.0 ? 10.0 : 1.0),abs_df[!,:value])
+				abs_df[!,:weight] = map(x -> (x == 0.0 ? 10.0 : 1.0),abs_df[!,:value])
 				# create variable for absolute value and connect with rest of dataframe again
-				part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),top_m.options.bound.capa,top_m.optModel, top_m.lock,top_m.sets; scaFac = scaFac_fl)
+				part.var[Symbol(:abs,makeUp(varSym))] = map(x -> collect(values(x.terms))[1], abs_df[!,:var]) .* createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),top_m.options.bound.capa,top_m.optModel, top_m.lock,top_m.sets)
 				abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var] 
 				# create constraints for absolute value
-				abs_df[!,:absLow] = map(x -> x.varAbs - (x.var - x.var.constant) + x.value * scaFac_fl,eachrow(abs_df))
-				abs_df[!,:absUp] = map(x -> x.varAbs  + (x.var - x.var.constant) - x.value * scaFac_fl,eachrow(abs_df)) 
+				abs_df[!,:absLow] = map(x -> x.varAbs - (x.var - x.var.constant) + collect(values(x.var.terms))[1] * x.value,eachrow(abs_df))
+				abs_df[!,:absUp] = map(x -> x.varAbs  + (x.var - x.var.constant) - collect(values(x.var.terms))[1] * x.value,eachrow(abs_df)) 
 				# scale and create constraints
 				absLow_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absLow]]),:absLow => :cnsExpr)
 				absUp_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absUp]]),:absUp => :cnsExpr)
@@ -191,16 +191,17 @@ function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	
 	# get sum of absolute values 
 	absVar_arr = [:CapaConv,:CapaExc,:CapaStOut,:CapaStIn,:CapaStSize,:ExpConv,:ExpExc,:ExpStOut,:ExpStIn,:ExpStSize]
-	absVal_expr = sum(map(x -> sum(getAllVariables(Symbol(:abs,x),top_m) |> (w -> isempty(w) ? [AffExpr()] : getindex.(collect.(keys.(getfield.(w[!,:var],:terms))),1) .* w[!,:weight])),absVar_arr))
+	absVal_expr = sum(map(x -> sum(getAllVariables(Symbol(:abs,x),top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])),absVar_arr))
 	# get some of missing capacities and apply high weight 
-	missCapa_expr = :missCapa in keys(top_m.parts.bal.var) ? sum(top_m.parts.bal.var[:missCapa][!,:var] .* 100) : AffExpr()
-	objExpr_df = DataFrame(cnsExpr = [missCapa_expr + absVal_expr])
+	missCapa_expr = :missCapa in keys(top_m.parts.bal.var) ? sum(top_m.parts.bal.var[:missCapa][!,:var] ./ top_m.options.scaFac.insCapa .* 100) : AffExpr()
+	objExpr_df = DataFrame(cnsExpr = [(missCapa_expr + absVal_expr) * 1e-2])
 	scaleCnsExpr!(objExpr_df,top_m.options.coefRng,top_m.options.checkRng)
-
+	
 	# change objective of top problem to minimize absolute values and missing capacities
 	@objective(top_m.optModel, Min, objExpr_df[1,:cnsExpr])
 	# solve problem
-	set_optimizer_attribute(top_m.optModel, "Method", 1)
+	set_optimizer_attribute(top_m.optModel, "Method", 2)
+	set_optimizer_attribute(top_m.optModel, "Crossover", 1)
 	optimize!(top_m.optModel)
 
 	return top_m
@@ -261,7 +262,7 @@ function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 	# solve top again with trust region and re-compute bound for soultion
 	delete(mod_m.optModel,trustReg_obj.cns)
 	set_optimizer_attribute(mod_m.optModel, "Method", 0)
-	set_optimizer_attribute(top_m.optModel, "NumericFocus", 0)
+	set_optimizer_attribute(mod_m.optModel, "NumericFocus", 0)
 	optimize!(mod_m.optModel)
 
 	# obtain different objective values
