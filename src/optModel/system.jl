@@ -536,7 +536,7 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 		if occursin("exp",string(expVar)) || occursin("insCapa",string(expVar))
 			scaFac_fl = anyM.options.scaFac.insCapa
 		else
-			scaFac_fl = anyM.options.scaFac.capa
+			scaFac_fl = getfield(anyM.options.scaFac, occursin("StSize",string(expVar)) ? :capaStSize : :capa)
 		end
 
 		# adjusts regions for retrofitting variables (otherwise region in start and target could differ)
