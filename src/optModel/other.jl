@@ -310,10 +310,20 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	#region # * create corresponding constraints
 	maxRng_fl = anyM.options.coefRng.mat[2]/anyM.options.coefRng.rhs[1]
 
-	# create slack variable to allow for small derivations when just computing feasible capacities
+	# create slack variable to allow for small deviations when just computing feasible capacities
 	if anyM.options.slackMissCapa 
-		maxTerm_arr = map(x -> isempty(x.terms) ? 0.0 : maximum(collect(values(x.terms))),allCapa_df[!,:var])
-		partBal.var[:slackCapa] = orderDf(createVar(allCapa_df,"slackCapa", maxTerm_arr ./ maxRng_fl,anyM.optModel,anyM.lock,anyM.sets))
+		# create slack variables
+		slackVar_df = copy(select(allCapa_df,Not([:var])))
+		# computes the precision threshold for missing capacities in the top problem later 
+		slackVar_df[!,:upper] = map(x -> isempty(x.terms) ? 0.0 : maximum(collect(values(x.terms))),allCapa_df[!,:var]) ./ maxRng_fl
+		filter!(x -> x.upper != 0.0, slackVar_df)
+		slackVar_df = createVar(slackVar_df,"slackCapa", anyM.options.bound.capa, anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.insCapa)
+		# impose upper bound on slack 
+		slackVar_df[!,:cnsExpr] = map(x -> x.var - x.upper,eachrow(slackVar_df))
+		scaleCnsExpr!(slackVar_df,anyM.options.coefRng,anyM.options.checkRng)
+		# write bound and variable to container
+		partBal.cns[:slackCapaLim] = createCns(cnsCont(orderDf(select(slackVar_df,Not([:var,:upper]))),:smaller),anyM.optModel)
+		partBal.var[:slackCapa] = orderDf(select(slackVar_df,Not([:cnsExpr,:upper])))
 	end
 
 	# ! create variables for missing capacities
