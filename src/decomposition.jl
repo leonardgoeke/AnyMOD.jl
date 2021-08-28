@@ -146,14 +146,14 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 	if !isempty(lim_dic) addLinearTrust!(topFeas_m,lim_dic) end
 
 	# compute feasible capacites
-	topFeas_m = computeFeas(topFeas_m,fix_dic,zeroThrs_fl)
+	topFeas_m = computeFeas(topFeas_m,fix_dic,zeroThrs_fl,true)
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
     return writeResult(topFeas_m,[:exp,:capa],false,false)
 end
 
 # ! runs top problem again with optimal results
-function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},zeroThrs_fl::Float64)
+function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},zeroThrs_fl::Float64,cutSmall::Bool=false)
 	
 	# create absolute value constraints for capacities or expansion variables
 	for sys in (:tech,:exc)
@@ -168,7 +168,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 				abs_df = deSelectSys(var_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intersect(intCol(z,:dir),intCol(var_df,:dir)))) |> (y -> y[completecases(y),:])
 				abs_df[!,:value] = map(x -> x.value < zeroThrs_fl ? 0.0 : x.value, eachrow(abs_df))
 				# applies weights to make achieving zero values a priority 
-				abs_df[!,:weight] = map(x -> (x == 0.0 ? 10.0 : 1.0),abs_df[!,:value])
+				abs_df[!,:weight] .= 1.0
 				# create variable for absolute value and connect with rest of dataframe again
 				scaFac_fl = getfield(top_m.options.scaFac, occursin("exp",string(varSym)) ? :insCapa : (occursin("StSize",string(varSym)) ? :capa : :capaStSize))
 				part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),top_m.options.bound.capa,top_m.optModel, top_m.lock,top_m.sets,scaFac =scaFac_fl)
@@ -176,13 +176,26 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 				# create constraints for absolute value
 				abs_df[!,:absLow] = map(x -> x.varAbs - scaFac_fl * collect(keys(x.var.terms))[1] + x.value,eachrow(abs_df))
 				abs_df[!,:absUp] = map(x -> x.varAbs  + scaFac_fl * collect(keys(x.var.terms))[1] - x.value,eachrow(abs_df)) 
-				# scale and create constraints
+				# scale and create absolute value constraints
 				absLow_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absLow]]),:absLow => :cnsExpr)
 				absUp_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absUp]]),:absUp => :cnsExpr)
 				scaleCnsExpr!(absLow_df,top_m.options.coefRng,top_m.options.checkRng)
 				scaleCnsExpr!(absUp_df,top_m.options.coefRng,top_m.options.checkRng)
-				part.cns[Symbol(varSym,:AbsLow)] = createCns(cnsCont(absLow_df,:greater),top_m.optModel)
-				part.cns[Symbol(varSym,:AbsUp)] = createCns(cnsCont(absUp_df,:greater),top_m.optModel)
+				part.cns[Symbol(:absLow,makeUp(varSym))] = createCns(cnsCont(absLow_df,:greater),top_m.optModel)
+				part.cns[Symbol(:absUp,makeUp(varSym))] = createCns(cnsCont(absUp_df,:greater),top_m.optModel)
+				# create binary constraint to ensure zero values are either zero or above threshold
+				if cutSmall && 0.0 in abs_df[!,:value]
+					cutSmall_df = rename(select(filter(x -> x.value == 0.0,abs_df),Not([:varAbs,:absLow,:absUp,:weight])),:var => :var_2)
+					# create binary variable
+					cutSmall_df = createVar(cutSmall_df, string("cutSmall",makeUp(varSym)),NaN,top_m.optModel, top_m.lock,top_m.sets,bi = true)
+					# create constraints either enforcing zero or at least zero threshold
+					cutSmall_df[!,:cutSmallZero] = map(x -> x.var * scaFac_fl * collect(keys(x.var_2.terms))[1] ,eachrow(cutSmall_df))
+					cutSmall_df[!,:cutSmallNonZero] = map(x -> scaFac_fl * collect(keys(x.var_2.terms))[1] - zeroThrs_fl * (1 - x.var) ,eachrow(cutSmall_df))
+					cutSmallZero_df = rename(orderDf(cutSmall_df[!,[intCol(cutSmall_df)...,:cutSmallZero]]),:cutSmallZero => :cnsExpr)
+					cutSmallNonZero_df = rename(orderDf(cutSmall_df[!,[intCol(cutSmall_df)...,:cutSmallNonZero]]),:cutSmallNonZero => :cnsExpr)
+					part.cns[Symbol(:cutSmallZero,makeUp(varSym))] = createCns(cnsCont(cutSmallZero_df,:greater),top_m.optModel)
+					part.cns[Symbol(:cutSmallNonZero,makeUp(varSym))] = createCns(cnsCont(cutSmallNonZero_df,:greater),top_m.optModel)
+				end
 			end
 		end
 	end
@@ -200,7 +213,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "Method", 0)
 	set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
-	#set_optimizer_attribute(top_m.optModel, "FeasibilityTol", 1e-9)
+	set_optimizer_attribute(top_m.optModel, "MIPGap", 0)
 	optimize!(top_m.optModel)
 
 	return top_m
