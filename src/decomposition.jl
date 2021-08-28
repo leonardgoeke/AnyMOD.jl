@@ -189,10 +189,12 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 					# create binary variable
 					cutSmall_df = createVar(cutSmall_df, string("cutSmall",makeUp(varSym)),NaN,top_m.optModel, top_m.lock,top_m.sets,bi = true)
 					# create constraints either enforcing zero or at least zero threshold
-					cutSmall_df[!,:cutSmallZero] = map(x -> scaFac_fl * collect(keys(x.var_2.terms))[1] - (1 - x.var) * top_m.options.coefRng.mat[2]/top_m.options.coefRng.mat[1]*zeroThrs_fl,eachrow(cutSmall_df))
+					cutSmall_df[!,:cutSmallZero] = map(x -> scaFac_fl * collect(keys(x.var_2.terms))[1] - (1 - x.var) * 10*zeroThrs_fl,eachrow(cutSmall_df))
 					cutSmall_df[!,:cutSmallNonZero] = map(x -> scaFac_fl * collect(keys(x.var_2.terms))[1] - (1 - x.var) * zeroThrs_fl,eachrow(cutSmall_df))
 					cutSmallZero_df = rename(orderDf(cutSmall_df[!,[intCol(cutSmall_df)...,:cutSmallZero]]),:cutSmallZero => :cnsExpr)
 					cutSmallNonZero_df = rename(orderDf(cutSmall_df[!,[intCol(cutSmall_df)...,:cutSmallNonZero]]),:cutSmallNonZero => :cnsExpr)
+					scaleCnsExpr!(cutSmallZero_df,top_m.options.coefRng,top_m.options.checkRng)
+					scaleCnsExpr!(cutSmallNonZero_df,top_m.options.coefRng,top_m.options.checkRng)
 					part.cns[Symbol(:cutSmallZero,makeUp(varSym))] = createCns(cnsCont(cutSmallZero_df,:smaller),top_m.optModel)
 					part.cns[Symbol(:cutSmallNonZero,makeUp(varSym))] = createCns(cnsCont(cutSmallNonZero_df,:greater),top_m.optModel)
 				end
@@ -200,20 +202,19 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 		end
 	end
 	
-	
 	# get sum of absolute values 
 	absVar_arr = [:CapaConv,:CapaExc,:CapaStOut,:CapaStIn,:CapaStSize,:ExpConv,:ExpExc,:ExpStOut,:ExpStIn,:ExpStSize]
 	absVal_expr = sum(map(x -> sum(getAllVariables(Symbol(:abs,x),top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])),absVar_arr))
 	# get sum of missing capacities and apply high weight 
 	missCapa_expr = :missCapa in keys(top_m.parts.bal.var) ? sum(top_m.parts.bal.var[:missCapa][!,:var] ./ top_m.options.scaFac.insCapa .* 10) : AffExpr()
-	objExpr_df = DataFrame(cnsExpr = [(missCapa_expr + absVal_expr) * 1e-2])
+	objExpr_df = DataFrame(cnsExpr = [missCapa_expr + absVal_expr])
 	scaleCnsExpr!(objExpr_df,top_m.options.coefRng,top_m.options.checkRng)
 	
 	# change objective of top problem to minimize absolute values and missing capacities
 	@objective(top_m.optModel, Min, objExpr_df[1,:cnsExpr])
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
-	set_optimizer_attribute(top_m.optModel, "MIPGapAbs", 0)
+	set_optimizer_attribute(top_m.optModel, "MIPGap", 0)
 	set_optimizer_attribute(top_m.optModel, "FeasibilityTol", 1e-9)
 	optimize!(top_m.optModel)
 
