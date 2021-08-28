@@ -29,9 +29,8 @@ mutable struct quadTrust
 		trustReg_obj = new()
 		trustReg_obj.opt = trust_opt
 		trustReg_obj.var = exp_df
+		trustReg_obj.rad = trust_opt.startRad
 		trstExpr_arr = vcat(vcat(vcat(map(x -> trustReg_obj.var[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
-		trustReg_obj.abs = sum(trstExpr_arr)
-		trustReg_obj.rad = trustReg_obj.abs * trustReg_obj.opt.startRad
 		return trustReg_obj, size(trstExpr_arr,1)
 	end
 end
@@ -154,28 +153,29 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 end
 
 # ! runs top problem again with optimal results
-function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},zeroThrs_fl::Float64)
+function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},zeroThrs_fl::Float64)
 	
 	# create absolute value constraints for capacities or expansion variables
 	for sys in (:tech,:exc)
 		partTop_dic = getfield(top_m.parts,sys)
-		for sSym in keys(capa_dic[sys])
+		for sSym in keys(var_dic[sys])
 			part = partTop_dic[sSym]
-			relVar_arr = filter(x -> any(occursin.(part.decomm == :none ? ["exp"] : ["capa","exp"],string(x))),collect(keys(capa_dic[sys][sSym])))
+			relVar_arr = filter(x -> any(occursin.(part.decomm == :none ? ["exp"] : ["capa","exp"],string(x))),collect(keys(var_dic[sys][sSym])))
 			# create variabbles and writes constraints to minimize absolute value of capacity delta
 			for varSym in relVar_arr
 				var_df = part.var[varSym] |> (w -> occursin("exp",string(varSym)) ? collapseExp(w) : w)
 				# gets variable value and set variables below threshold to zero
-				abs_df = deSelectSys(capa_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intersect(intCol(z,:dir),intCol(var_df,:dir)))) |> (y -> y[completecases(y),:])
+				abs_df = deSelectSys(var_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intersect(intCol(z,:dir),intCol(var_df,:dir)))) |> (y -> y[completecases(y),:])
 				abs_df[!,:value] = map(x -> x.value < zeroThrs_fl ? 0.0 : x.value, eachrow(abs_df))
-				# applies weights to correct for scaling factors and make achieving zero values a priority 
+				# applies weights to make achieving zero values a priority 
 				abs_df[!,:weight] = map(x -> (x == 0.0 ? 10.0 : 1.0),abs_df[!,:value])
 				# create variable for absolute value and connect with rest of dataframe again
-				part.var[Symbol(:abs,makeUp(varSym))] = map(x -> collect(values(x.terms))[1], abs_df[!,:var]) .* createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),top_m.options.bound.capa,top_m.optModel, top_m.lock,top_m.sets)
+				scaFac_fl = getfield(top_m.options.scaFac, occursin("exp",string(varSym)) ? :insCapa : (occursin("StSize",string(varSym)) ? :capa : :capaStSize))
+				part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),top_m.options.bound.capa,top_m.optModel, top_m.lock,top_m.sets,scaFac =scaFac_fl)
 				abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var] 
 				# create constraints for absolute value
-				abs_df[!,:absLow] = map(x -> x.varAbs - (x.var - x.var.constant) + x.value,eachrow(abs_df))
-				abs_df[!,:absUp] = map(x -> x.varAbs  + (x.var - x.var.constant) - x.value,eachrow(abs_df)) 
+				abs_df[!,:absLow] = map(x -> x.varAbs - scaFac_fl * collect(keys(x.var.terms))[1] + x.value,eachrow(abs_df))
+				abs_df[!,:absUp] = map(x -> x.varAbs  + scaFac_fl * collect(keys(x.var.terms))[1] - x.value,eachrow(abs_df)) 
 				# scale and create constraints
 				absLow_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absLow]]),:absLow => :cnsExpr)
 				absUp_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absUp]]),:absUp => :cnsExpr)
@@ -206,24 +206,24 @@ function computeFeas(top_m::anyModel,capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	return top_m
 end
 
-# ! get variables in top problem subject to limits
-function getQtrVar(top_m::anyModel,capaData_obj::bendersData)
+# ! filter values relevant for quadratic trust region
+function filterQtrVar(allVal_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},top_m::anyModel)
 
 	var_dic = Dict(x => Dict{Symbol,Dict{Symbol,DataFrame}}() for x in [:tech,:exc])
 
 	for sys in (:exc,:tech)
 		part_dic = getfield(top_m.parts,sys)
-		for sSym in keys(capaData_obj.capa[sys])
+		for sSym in keys(allVal_dic[sys])
 			var_dic[sys][sSym] = Dict{Symbol,Dict{Symbol,DataFrame}}() # create empty dataframe for values
 			
 			# determine where using expansion rather than capacity is possible and more efficient
 			varNum_dic = Dict(x => size(unique(getfield.(part_dic[sSym].var[x][!,:var],:terms)),1) for x in collect(keys(part_dic[sSym].var))) # number of unique variables
 			trstVar_arr = map(filter(x -> occursin("capa",string(x)),collect(keys(part_dic[sSym].var)))) do x
 				expVar_sym = Symbol(replace(string(x),"capa" => "exp"))
-				return part_dic[sSym].decomm == :none && expVar_sym in keys(varNum_dic) && varNum_dic[expVar_sym] < varNum_dic[x] ? expVar_sym : x
+				return part_dic[sSym].decomm == :none && expVar_sym in keys(varNum_dic) && varNum_dic[expVar_sym] <= varNum_dic[x] ? expVar_sym : x
 			end
 			for trstSym in trstVar_arr
-				var_df = capaData_obj.capa[sys][sSym][trstSym]
+				var_df = allVal_dic[sys][sSym][trstSym]
 				if trstSym == :capaExc && !part_dic[sSym].dir filter!(x -> x.R_from < x.R_to,var_df) end # only get relevant capacity variables of exchange
 				if sys == :tech var_df = removeFixStorage(trstSym,var_df,part_dic[sSym]) end # remove storage variables controlled by ratio
 				# filter cases where acutal variables are defined
@@ -272,15 +272,16 @@ function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
 end
 
 # ! dynamically adjusts the trust region
-function adjustQuadTrust(top_m::anyModel,expTrust_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trustReg_obj::quadTrust,objSub_fl::Float64,objTopTrust_fl::Float64,lowLim_fl::Float64,lowLimTrust_fl::Float64,report_m::anyModel)
+function adjustQuadTrust(top_m::anyModel,allVal_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trustReg_obj::quadTrust,objSub_fl::Float64,objTopTrust_fl::Float64,lowLim_fl::Float64,lowLimTrust_fl::Float64,report_m::anyModel)
 
 	# re-create trust region
 	if (objTopTrust_fl + objSub_fl) < trustReg_obj.objVal # recenter trust region, if new best solution was obtained
-		trustReg_obj.cns, trustReg_obj.coef  = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
+		trustReg_obj.var = filterQtrVar(allVal_dic,top_m)
+		trustReg_obj.cns, trustReg_obj.coef, trustReg_obj.abs  = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
 		trustReg_obj.objVal = objTopTrust_fl + objSub_fl
 		produceMessage(report_m.options,report_m.report, 1," - Re-centered trust-region!", testErr = false, printErr = false)
 	else
-		trustReg_obj.cns, trustReg_obj.coef = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
+		trustReg_obj.cns, trustReg_obj.coef, trustReg_obj.abs  = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
 		if abs(1 - lowLimTrust_fl / (objTopTrust_fl + objSub_fl)) < trustReg_obj.opt.extThrs # extend trust region, if constrained top problem converged
 			resizeQuadTrust!(trustReg_obj,1.5)
 			produceMessage(report_m.options,report_m.report, 1," - Extended trust-region!", testErr = false, printErr = false)
@@ -294,48 +295,52 @@ function adjustQuadTrust(top_m::anyModel,expTrust_dic::Dict{Symbol,Dict{Symbol,D
 end
 
 # ! add trust region to objective part of model
-function centerQuadTrust(exp_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},top_m::anyModel,rad_fl::Float64)
+function centerQuadTrust(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},top_m::anyModel,rad_fl::Float64)
 
 	# ! match values with variables
-
 	expExpr_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
 	for sys in (:tech,:exc)
 		expExpr_dic[sys] = Dict{Symbol,Dict{Symbol,DataFrame}}()
 		part_dic = getfield(top_m.parts,sys)
-		for sSym in keys(exp_dic[sys])
-			subExp_dic = exp_dic[sys][sSym]
-			expExpr_dic[sys][sSym] = Dict(deSelectSys(subExp_dic[expSym]) |> (z -> expSym => unique(select(innerjoin(deSelectSys(part_dic[sSym].var[expSym]),z, on = intCol(z,:dir)),[:var,:value]))) for expSym in keys(subExp_dic))
+		for sSym in keys(var_dic[sys])
+			expExpr_dic[sys][sSym] = Dict{Symbol,DataFrame}()
+			for varSym in keys(var_dic[sys][sSym])
+				val_df = deSelectSys(var_dic[sys][sSym][varSym])
+				# correct scaling and storage values together with corresponding variables
+				val_df[!,:value] = val_df[!,:value] ./ getfield(top_m.options.scaFac, occursin("exp",string(varSym)) ? :insCapa : (occursin("StSize",string(varSym)) ? :capaStSize : :capa))
+				expExpr_dic[sys][sSym][varSym] = unique(select(innerjoin(deSelectSys(part_dic[sSym].var[varSym]),val_df, on = intCol(val_df,:dir)),[:var,:value]))
+			end
 		end
 	end
 
 	# ! write trust region constraint and save its key parameters
 	allVar_df = vcat(vcat(vcat(map(x -> expExpr_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
 	
-	# sets values of variables that will viollate range to zero
+	# sets values of variables that will violate range to zero
 	minFac_fl = (2*maximum(allVar_df[!,:value]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
 	allVar_df[!,:value] = map(x -> 2*x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
 	scaRng_tup = top_m.options.coefRng.rhs ./ abs(rad_fl^2 - sum(allVar_df[!,:value].^2))
 
-	# set values of variable to smallest or biggest value possible without scaling violating rhs range
+	# set values of variable to zero or biggest value possible without scaling violating rhs range
 	for x in eachrow(allVar_df)	
 		if top_m.options.coefRng.mat[1]/(x.value*2) > scaRng_tup[2] # factor requires more up-scaling than possible
 			x[:value] = 0 # set value to zero
 		elseif top_m.options.coefRng.mat[2]/(x.value*2) < scaRng_tup[1] # factor requires more down-scaling than possible
-			x[:value] = top_m.options.coefRng.mat[2]/(scaRng_tup[1]*2) # set to biggest factor possible within range
+			x[:value] = top_m.options.coefRng.mat[2]/(scaRng_tup[1]*2) # set to biggest value possible within range
 		end
 	end
-
 
 	# computes left hand side expression and scaling factor
 	capaSum_expr = sum(map(x -> collect(keys(x.var.terms))[1] |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allVar_df)))
 	cnsInfo_ntup =  (sca = top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)) |> (z -> isempty(z) ? [1.0] : z))), pol = capaSum_expr.aff.constant)
 	
 	# create final constraint
-	trustRegion_cns = @constraint(top_m.optModel,  capaSum_expr * cnsInfo_ntup.sca <= rad_fl^2  * cnsInfo_ntup.sca)
+	abs_fl = sum(allVar_df[!,:value])
+	trustRegion_cns = @constraint(top_m.optModel,  capaSum_expr * cnsInfo_ntup.sca <= (abs_fl * trustReg_obj.rad)^2  * cnsInfo_ntup.sca)
 
-	return trustRegion_cns, cnsInfo_ntup
+	return trustRegion_cns, cnsInfo_ntup, abs_fl
 end
 
 # ! shrings the trust region around the current center according to factor
@@ -344,7 +349,7 @@ function resizeQuadTrust!(trustReg_obj::quadTrust, shrFac_fl::Float64)
 	trustReg_obj.rad = trustReg_obj.rad * shrFac_fl
 	# adjust righ hand side of constraint
 	cnsInfo_tup = trustReg_obj.coef
-	set_normalized_rhs(trustReg_obj.cns,  (trustReg_obj.rad^2   - cnsInfo_tup.pol) * cnsInfo_tup.sca)
+	set_normalized_rhs(trustReg_obj.cns,  ((trustReg_obj.abs * trustReg_obj.rad)^2   - cnsInfo_tup.pol) * cnsInfo_tup.sca)
 end
 
 #endregion
@@ -436,13 +441,13 @@ function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bender
 	checkIIS(top_m)
 
 	# write technology capacites and level of capacity balance to benders object
-	capaData_obj.capa, expTrust_dic = [writeResult(top_m,[x],true) for x in [:capa,:exc]]
+	capaData_obj.capa, allVal_dic = [writeResult(top_m,x,true) for x in [[:capa],[:capa,:exp]]]
 	
 	# get objective value of top problem
 	objTopTrust_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
 	lowLimTrust_fl = objTopTrust_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
 
-	return capaData_obj, expTrust_dic, objTopTrust_fl, lowLimTrust_fl
+	return capaData_obj, allVal_dic, objTopTrust_fl, lowLimTrust_fl
 end
 
 # ! add all cuts from input dictionary to top problem
@@ -553,9 +558,8 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1},rmvFix::Bool = fal
 		part_dic = getfield(in_m.parts,sys)
 		for sSym in filter(x -> part_dic[x].type in (:stock,:mature,:emerging),keys(part_dic))
 			
-			if part_dic[sSym].type == :stock &&  part_dic[sSym].decomm == :none
-				continue
-			end	
+			# continue in case of technology without changing capacites
+			if part_dic[sSym].type == :stock &&  part_dic[sSym].decomm == :none continue end	
 
 			varSym_arr = filter(x -> any(occursin.(string.(var_arr),string(x))), keys(part_dic[sSym].var))
 			var_dic[sys][sSym] = Dict(varSym => getResult(copy(part_dic[sSym].var[varSym])) for varSym in varSym_arr)
@@ -611,7 +615,8 @@ end
 function getResult(res_df::DataFrame)
 	
 	if :Ts_exp in namesSym(res_df) # for expansion filter unique variables
-		res_df = collapseExp(res_df)
+		# aggregates expansion, if spread across different years
+		res_df = combine(groupby(res_df,filter(x -> x != :Ts_expSup, intCol(res_df))), :var => (x -> x[1] * size(x,1)) => :var)
 	else # for expansion filter cases where only residual values exist
 		filter!(x -> !isempty(x.var.terms),res_df)
 	end
@@ -638,11 +643,11 @@ function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_o
 	# extract actual variable
 	fix_df[!,:var] = map(x -> collect(keys(x.var.terms))[1], eachrow(fix_df))
 
-	# set values exceeding maxium range to smallest and biggest values possible
-	fix_df[!,:value] = map(x -> x < limCapa_tup[1] ? limCapa_tup[1] : (x > limCapa_tup[2] ? limCapa_tup[2] : x) , fix_df[!,:value])
+	# set values exceeding maxium range to zero or to biggest values possible
+	fix_df[!,:value] = map(x -> x < limCapa_tup[1] ? 0.0 : (x > limCapa_tup[2] ? limCapa_tup[2] : x) , fix_df[!,:value])
 
 	# compute scaling factor
-	fix_df[!,:scale] = map(x -> x.value <= fix_m.options.coefRng.rhs[1] ? fix_m.options.coefRng.rhs[1]/x.value : 1.0, eachrow(fix_df))
+	fix_df[!,:scale] = map(x -> (x.value <= fix_m.options.coefRng.rhs[1] && x.value != 0.0) ? fix_m.options.coefRng.rhs[1]/x.value : 1.0, eachrow(fix_df))
 	fix_df[!,:scale] = map(x -> x.value >= fix_m.options.coefRng.rhs[2] ? fix_m.options.coefRng.rhs[2]/x.value : x.scale, eachrow(fix_df))
 
 	# compute righ-hand side and factor of variables for constraint
