@@ -311,6 +311,7 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	maxRng_fl = anyM.options.coefRng.mat[2]/anyM.options.coefRng.rhs[1]
 
 	# create slack variable to allow for small deviations when just computing feasible capacities
+	#=
 	if anyM.options.slackMissCapa 
 		# create slack variables
 		slackVar_df = copy(select(allCapa_df,Not([:var])))
@@ -325,6 +326,7 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 		partBal.cns[:slackCapaLim] = createCns(cnsCont(orderDf(select(slackVar_df,Not([:var,:upper]))),:smaller),anyM.optModel)
 		partBal.var[:slackCapa] = orderDf(select(slackVar_df,Not([:cnsExpr,:upper])))
 	end
+	=#
 
 	# ! create variables for missing capacities
 	if :costMissCapa in keys(partBal.par) 
@@ -346,10 +348,12 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 		# add column indicating, if capacities other than missing capacity are added, only relevant for benders heuristik
 		cns_df[!,:actCapa] =  .!isempty.(map(x -> x.terms, cns_df[!,:var]))
 
+		#=
 		# add slack capacity variables
 		if anyM.options.slackMissCapa
 			add_to_expression!.(cns_df[!,:var], aggDivVar(partBal.var[:slackCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets))
 		end
+		=#
 
 		# add missing capacity variables
 		if :missCapa in keys(partBal.var)
