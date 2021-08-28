@@ -136,7 +136,7 @@ end
 # ! returns a feasible as close as possible to the input dictionary
 function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int,zeroThrs_fl::Float64)
 
-	scaFac_tup = (capa = 1e0, capaStSize = 1e1, insCapa = 1e0, dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e0, obj = 1e0)
+	scaFac_tup = (capa = 1e0, capaStSize = 1e1, insCapa = 1e0, dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e0, obj = 1e3)
 	coefRng_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
 	# create top level problem
 	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, scaFac = scaFac_tup, coefRng = coefRng_tup, slackMissCapa = true, checkRng = true)
@@ -378,7 +378,7 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=fals
 				if !(sSym in keys(part_dic)) || !(capaSym in keys(part_dic[sSym].var)) || isempty(capaData_obj.capa[sys][sSym][capaSym])
 					delete!(capaData_obj.capa[sys][sSym],capaSym)
 				else
-					limitCapa!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m,limCapa_tup)
+					limitCapa!(copy(capaData_obj.capa[sys][sSym][capaSym]),part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m,limCapa_tup)
 				end
 			end
 			# remove system if no capacities exist
@@ -407,7 +407,8 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=fals
 		for sSym in keys(capaData_obj.capa[sys])
 			for capaSym in filter(x -> occursin("capa",string(x)), collect(keys(capaData_obj.capa[sys][sSym])))
 				if Symbol(capaSym,:BendersFix) in keys(part_dic[sSym].cns)
-					capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].cns[Symbol(capaSym,:BendersFix)],scaObj_fl)
+					scaCapa_fl = getfield(sub_m.options.scaFac,occursin("StSize",string(capaSym)) ? :capaStSize : :capa)
+					capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].cns[Symbol(capaSym,:BendersFix)],scaObj_fl/scaCapa_fl)
 					# remove capacity if none exists (again necessary because dual can be zero)
 					removeEmptyDic!(capaData_obj.capa[sys][sSym],capaSym)
 				end
@@ -436,7 +437,7 @@ function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bender
 
 	# write technology capacites and level of capacity balance to benders object
 	capaData_obj.capa, expTrust_dic = [writeResult(top_m,[x],true) for x in [:capa,:exc]]
-
+	
 	# get objective value of top problem
 	objTopTrust_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
 	lowLimTrust_fl = objTopTrust_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
@@ -450,7 +451,6 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 	# create array of expressions with duals for sub-problems
 	cut_df = DataFrame(i = Int[], Ts_disSup = Int[],scr = Int[], limCoef = Bool[], actItr = Array{Int,1}[], cnsExpr = AffExpr[])
 	for sub in keys(cutData_dic)
-		println(sub)
 		subCut = cutData_dic[sub]
 		cutExpr_arr = Array{GenericAffExpr,1}()
 		
@@ -458,17 +458,19 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 		for sys in (:tech,:exc)
 			part_dic = getfield(top_m.parts,sys)
 			for sSym in keys(subCut.capa[sys]), capaSym in filter(x -> occursin("capa",string(x)), collect(keys(subCut.capa[sys][sSym])))
-				push!(cutExpr_arr,getBendersCut(subCut.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym]))
+				scaCapa_fl = getfield(top_m.options.scaFac,occursin("StSize",string(capaSym)) ? :capaStSize : :capa)
+				push!(cutExpr_arr,getBendersCut(subCut.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],scaCapa_fl))
 			end
 		end
 		
 		# get cut variable and compute cut expression 
 		cut_var = filter(x -> x.Ts_disSup == top_m.supTs.step[sub[1]] && x.scr == sub[2], top_m.parts.obj.var[:cut])[1,:var]
-		cut_expr = @expression(top_m.optModel, (subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr))) / top_m.options.scaFac.obj)
+		cut_expr = @expression(top_m.optModel, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)))
+		
 		
 		#region # * remove extremely small terms and limit the coefficient of extremely large terms
 		limCoef_boo = false
-		
+
 		if typeof(cut_expr) == AffExpr && !isempty(cut_expr.terms)
 
 			# ! ensure cut variable complies with limits on rhs
@@ -487,7 +489,7 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 			# ! ensure factors remain within overall range
 			maxRng_fl = top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1] # maximum range of coefficients
 			facRng_fl = abs.(collect(values(cut_expr.terms))) |> (w -> (min(minimum(w),cutFac_fl),max(maximum(w),cutFac_fl))) # actual range of coefficients
-
+			
 			# manipulates factors to stay within range
 			if maxRng_fl < facRng_fl[2]/facRng_fl[1]
 				# compute maximum and minimum factors
@@ -504,6 +506,7 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 				end
 			end
 
+
 			# ! ensure scaling of factors does not move rhs out of range
 			scaRng_tup = top_m.options.coefRng.rhs ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
 
@@ -517,6 +520,7 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 				end
 			end
 		end
+
 		#endregion
 
 		# add benders variable to cut and push to dataframe of all cuts
@@ -530,9 +534,9 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 end
 
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
-function getBendersCut(sub_df::DataFrame, var_df::DataFrame)
+function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaCapa_fl::Float64)
 	ben_df = deSelectSys(sub_df) |> (z -> innerjoin(deSelectSys(var_df),z, on = intCol(z,:dir)))
-	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual *(collect(keys(x.var.terms))[1] - x.value),eachrow(ben_df)))
+	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual / scaCapa_fl * (collect(keys(x.var.terms))[1] - x.value / scaCapa_fl),eachrow(ben_df)))
 end
 
 #endregion
@@ -587,13 +591,19 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1},rmvFix::Bool = fal
 						
 					end
 				end
-			end		
+			end
+
+			# removes redundant varibles for undirected exchange capacity
+			if sys == :exc && !part_dic[sSym].dir && :capaExc in keys(var_dic[sys][sSym])
+				filter!(x -> x.R_from < x.R_to,var_dic[sys][sSym][:capaExc])
+			end
 
 			# remove empty fields
 			filter!(x -> !isempty(x[2]),var_dic[sys][sSym])
 			removeEmptyDic!(var_dic[sys],sSym)	
 		end
 	end
+
 	return var_dic
 end
 
@@ -617,7 +627,7 @@ function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_o
 
 	cns_sym = Symbol(:Benders,lim_sym)
 	# correct values with scaling factor
-	value_df[!,:value]  = value_df[!,:value] .* getfield(fix_m.options.scaFac,occursin("StSize",string(var_sym)) ? :capaStSize : :capa)
+	value_df[!,:value]  = value_df[!,:value] ./ getfield(fix_m.options.scaFac,occursin("StSize",string(var_sym)) ? :capaStSize : :capa)
 	# join variables with capacity values
 	fix_df = deSelectSys(value_df) |>  (z -> leftjoin(var_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
 	
@@ -660,9 +670,9 @@ function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_o
 end
 
 # ! adds a dual into the first dataframe based on the matching variable column in the second
-function addDual(dual_df::DataFrame,cns_df::DataFrame,scaObj_fl::Float64)
+function addDual(dual_df::DataFrame,cns_df::DataFrame,scaFac_fl::Float64)
 	new_df = deSelectSys(cns_df) |> (z -> innerjoin(dual_df,z, on = intCol(z,:dir)))
-	new_df[!,:dual] = map(x -> dual(x), new_df[!,:cns]) .* new_df[!,:fac] .* scaObj_fl
+	new_df[!,:dual] = map(x -> dual(x), new_df[!,:cns]) .* new_df[!,:fac] .* scaFac_fl
 	return select(filter(x -> x.dual != 0.0,new_df),Not([:cns,:fac]))
 end
 
