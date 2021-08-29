@@ -40,11 +40,11 @@ end
 #region # * functions for heurstic
 
 # ! run heuristic and return exact capacities plus heuristic cut
-function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int)
+function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_obj::DataType)
 
 	# create and solve model
-	heu_m = anyModel(modOpt_tup.heuIn, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, redStep = redFac)
-	prepareMod!(heu_m,modOpt_tup.opt,t_int)
+	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, redStep = redFac)
+	prepareMod!(heu_m,opt_obj,t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
 	set_optimizer_attribute(heu_m.optModel, "Crossover", 0)
 	optimize!(heu_m.optModel)
@@ -139,14 +139,13 @@ function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple)
 end
 
 # ! returns a feasible as close as possible to the input dictionary
-function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int,zeroThrs_fl::Float64)
+function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int,zeroThrs_fl::Float64,opt_obj::DataType)
 
-	scaFac_tup = (capa = 1e0, capaStSize = 1e1, insCapa = 1e0, dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e0, obj = 1e3)
-	coefRng_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
 	# create top level problem
-	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, scaFac = scaFac_tup, coefRng = coefRng_tup, checkRng = true)
+	topFeas_m = anyModel(modOpt_tup.inputDir,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = true)
+
 	topFeas_m.subPro = tuple(0,0)
-	prepareMod!(topFeas_m,modOpt_tup.opt,t_int)
+	prepareMod!(topFeas_m,opt_obj,t_int)
 
 	# add limits to problem
 	if !isempty(lim_dic) addLinearTrust!(topFeas_m,lim_dic) end
@@ -223,8 +222,34 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0)
 	set_optimizer_attribute(top_m.optModel, "FeasibilityTol", 1e-9)
 	optimize!(top_m.optModel)
+	checkIIS(top_m)
 
 	return top_m
+end
+
+# ! find fixed variables and write to file
+function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},feasFix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},temp_dir::String,heu_m::anyModel)
+	rm(temp_dir; force = true, recursive = true)
+	mkdir(temp_dir) # create directory for fixing files
+	parFix_dic = defineParameter(heu_m.options,heu_m.report) # stores parameter info for fixing
+	# loop over variables
+	for sys in (:tech,:exc), sSym in keys(fix_dic[sys]), varSym in keys(fix_dic[sys][sSym])
+		fix_df = feasFix_dic[sys][sSym][varSym] |> (w -> innerjoin(w,select(fix_dic[sys][sSym][varSym],Not([:value])), on = intersect(intCol(w,:dir),intCol(fix_dic[sys][sSym][varSym],:dir))))
+		# create file name
+		par_sym = Symbol(varSym,:Fix)
+		fileName_str = temp_dir * "/par_Fix" * string(makeUp(sys)) * "_" * string(sSym) * "_" * string(varSym)
+		# set really small values due to remaining solver imprecisions to zero
+		fix_df[!,:value] = map(x -> x < 1e-10 ? 0.0 : x,fix_df[!,:value])
+		if occursin("capa",string(varSym)) # adds residual capacities
+			resVal_df = copy(getfield(heu_m.parts,sys)[sSym].var[varSym])
+			resVal_df[!,:resi] = map(x -> x.constant, resVal_df[!,:var])
+			fix_df = innerjoin(fix_df,select(resVal_df,Not([:var])), on = intCol(fix_df,:dir))
+			fix_df[!,:value] = fix_df[!,:value] .+ fix_df[!,:resi]
+			select!(fix_df,Not([:resi]))	
+		end
+		# writes parameter file
+		writeParameterFile!(heu_m,fix_df,par_sym,parFix_dic[par_sym],fileName_str)
+	end
 end
 
 # ! filter values relevant for quadratic trust region
@@ -243,6 +268,7 @@ function filterQtrVar(allVal_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 				expVar_sym = Symbol(replace(string(x),"capa" => "exp"))
 				return part_dic[sSym].decomm == :none && expVar_sym in keys(varNum_dic) && varNum_dic[expVar_sym] <= varNum_dic[x] ? expVar_sym : x
 			end
+
 			for trstSym in trstVar_arr
 				var_df = allVal_dic[sys][sSym][trstSym]
 				if trstSym == :capaExc && !part_dic[sSym].dir filter!(x -> x.R_from < x.R_to,var_df) end # only get relevant capacity variables of exchange
@@ -262,7 +288,6 @@ end
 
 # ! adds limits specified by dictionary to problem
 function addLinearTrust!(top_m::anyModel,lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}})
-	limCapa_tup = ((1+1e-10)*top_m.options.coefRng.rhs[1] / top_m.options.coefRng.mat[2], (1-1e-10) * top_m.options.coefRng.rhs[2] / top_m.options.coefRng.mat[1])
 	for sys in (:tech,:exc)
 		part_dic = getfield(top_m.parts,sys)
 		for sSym in keys(lim_dic[sys])
@@ -271,7 +296,7 @@ function addLinearTrust!(top_m::anyModel,lim_dic::Dict{Symbol,Dict{Symbol,Dict{S
 				grpBothCapa_arr = collect(groupby(lim_dic[sys][sSym][trstSym],:limCns))
 				# get variables of top model
 				trstVar_df = filter(x -> !isempty(x.var.terms),part_dic[sSym].var[trstSym])
-				foreach(lim -> limitCapa!(select(rename(lim,:limVal => :value),Not([:limCns])),trstVar_df,trstSym,part_dic[sSym],top_m,limCapa_tup,lim[1,:limCns]),grpBothCapa_arr)
+				foreach(lim -> limitCapa!(select(rename(lim,:limVal => :value),Not([:limCns])),trstVar_df,trstSym,part_dic[sSym],top_m,lim[1,:limCns]),grpBothCapa_arr)
 			end
 		end
 	end
@@ -359,7 +384,7 @@ function centerQuadTrust(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 	
 	# create final constraint
 	abs_fl = sum(allVar_df[!,:value])
-	trustRegion_cns = @constraint(top_m.optModel,  capaSum_expr * cnsInfo_ntup.sca <= (abs_fl * trustReg_obj.rad)^2  * cnsInfo_ntup.sca)
+	trustRegion_cns = @constraint(top_m.optModel,  capaSum_expr * cnsInfo_ntup.sca <= (abs_fl * rad_fl)^2  * cnsInfo_ntup.sca)
 
 	return trustRegion_cns, cnsInfo_ntup, abs_fl
 end
@@ -390,9 +415,6 @@ end
 # ! run sub-Level problem
 function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=false)
 
-	# compute smallest and biggest capacity that can be enforced
-	limCapa_tup = ((1+1e-10)*sub_m.options.coefRng.rhs[1] / sub_m.options.coefRng.mat[2], (1-1e-10) * sub_m.options.coefRng.rhs[2] / sub_m.options.coefRng.mat[1])
-
 	# fixing capacity
 	for sys in (:tech,:exc)
 		part_dic = getfield(sub_m.parts,sys)
@@ -404,7 +426,7 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=fals
 				if !(sSym in keys(part_dic)) || !(capaSym in keys(part_dic[sSym].var)) || isempty(capaData_obj.capa[sys][sSym][capaSym])
 					delete!(capaData_obj.capa[sys][sSym],capaSym)
 				else
-					limitCapa!(copy(capaData_obj.capa[sys][sSym][capaSym]),part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m,limCapa_tup)
+					capaData_obj.capa[sys][sSym][capaSym] = limitCapa!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m)
 				end
 			end
 			# remove system if no capacities exist
@@ -475,7 +497,7 @@ end
 function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},i::Int)
 	
 	# create array of expressions with duals for sub-problems
-	cut_df = DataFrame(i = Int[], Ts_disSup = Int[],scr = Int[], limCoef = Bool[], actItr = Array{Int,1}[], cnsExpr = AffExpr[])
+	cut_df = DataFrame(i = Int[], Ts_disSup = Int[],scr = Int[], limCoef = Bool[], actItr = Int[], cnsExpr = AffExpr[])
 	for sub in keys(cutData_dic)
 		subCut = cutData_dic[sub]
 		cutExpr_arr = Array{GenericAffExpr,1}()
@@ -550,7 +572,7 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 		#endregion
 
 		# add benders variable to cut and push to dataframe of all cuts
-		push!(cut_df,(i = i, Ts_disSup = top_m.supTs.step[sub[1]], scr = sub[2], limCoef = limCoef_boo, actItr = Array{Int,1}(), cnsExpr = cut_expr - cut_var))
+		push!(cut_df,(i = i, Ts_disSup = top_m.supTs.step[sub[1]], scr = sub[2], limCoef = limCoef_boo, actItr = i, cnsExpr = cut_expr - cut_var))
 	end
 
 	# scale cuts and add to dataframe of benders cuts in model
@@ -649,31 +671,30 @@ function getResult(res_df::DataFrame)
 end
 
 # ! create constraint fixing capacity (or setting a lower limits)
-function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_obj::AbstractModelPart,fix_m::anyModel,limCapa_tup::Tuple{Float64, Float64},lim_sym::Symbol=:Fix)
+function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_obj::AbstractModelPart,fix_m::anyModel,lim_sym::Symbol=:Fix)
+
+	# compute smallest and biggest capacity that can be enforced
+	rngMat_tup = fix_m.options.coefRng.mat
+	rngRhs_tup = fix_m.options.coefRng.rhs
 
 	cns_sym = Symbol(:Benders,lim_sym)
-	# correct values with scaling factor
-	value_df[!,:value]  = value_df[!,:value] ./ getfield(fix_m.options.scaFac,occursin("StSize",string(var_sym)) ? :capaStSize : :capa)
+
 	# join variables with capacity values
 	fix_df = deSelectSys(value_df) |>  (z -> leftjoin(var_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
+
+	# correct values with scaling factor
+	fix_df[!,:value]  = fix_df[!,:value] ./ getfield(fix_m.options.scaFac,occursin("StSize",string(var_sym)) ? :capaStSize : :capa)
 	
 	# filter cases where no variable exists
 	filter!(x -> !isempty(x.var.terms),fix_df)
-	if isempty(fix_df) return end
+	if isempty(fix_df) return value_df end
 
 	# extract actual variable
 	fix_df[!,:var] = map(x -> collect(keys(x.var.terms))[1], eachrow(fix_df))
 
-	# set values exceeding maxium range to zero or to biggest values possible
-	fix_df[!,:value] = map(x -> x < limCapa_tup[1] ? 0.0 : (x > limCapa_tup[2] ? limCapa_tup[2] : x) , fix_df[!,:value])
-
-	# compute scaling factor
-	fix_df[!,:scale] = map(x -> (x.value <= fix_m.options.coefRng.rhs[1] && x.value != 0.0) ? fix_m.options.coefRng.rhs[1]/x.value : 1.0, eachrow(fix_df))
-	fix_df[!,:scale] = map(x -> x.value >= fix_m.options.coefRng.rhs[2] ? fix_m.options.coefRng.rhs[2]/x.value : x.scale, eachrow(fix_df))
-
-	# compute righ-hand side and factor of variables for constraint
-	fix_df[!,:rhs] = map(x -> x.value * x.scale |> (u -> (u < fix_m.options.coefRng.rhs[1]) ? 0.0 : u), eachrow(fix_df))
-	fix_df[!,:fac] = map(x -> x.rhs == 0.0 ? 1.0 : x.scale, eachrow(fix_df))
+	# comptue factor and rhs, values below enforceable range are set to zero, values are above are set to largest value possible
+	fix_df[!,:fac] = map(x -> x.value < rngRhs_tup[1] ? rngRhs_tup[1]/x.value : (x.value > rngRhs_tup[2] ? rngRhs_tup[2]/x.value : 1.0), eachrow(fix_df))
+	fix_df[!,:rhs], fix_df[!,:fac] = map(x -> x.fac < rngMat_tup[1] ?  [rngRhs_tup[2],rngMat_tup[1]] : (x.fac > rngMat_tup[2] ? [0.0,1.0] : [x.value*x.fac,x.fac]) ,eachrow(fix_df)) |> (w  -> map(x -> getindex.(w,x),[1,2]))
 
 	if !(Symbol(var_sym,cns_sym) in keys(part_obj.cns))
 		# create actual constraint and attach to model part
@@ -691,7 +712,14 @@ function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_o
 		set_normalized_coefficient.(fix_df[!,:cns], fix_df[!,:var], fix_df[!,:fac])	
 	end
 
-	part_obj.cns[Symbol(var_sym,cns_sym)] = select(fix_df,Not([:var,:value,:scale,:rhs]))
+	part_obj.cns[Symbol(var_sym,cns_sym)] = select(fix_df,Not([:var,:value,:rhs]))
+	
+	# correct value_df to values actually enforced
+	value_df = innerjoin(select(value_df,Not([:value])), select(fix_df,Not([:var,:value,:cns])), on = intCol(value_df,:dir))
+	value_df[!,:value] .=  value_df[!,:rhs] ./ value_df[!,:fac] .* getfield(fix_m.options.scaFac,occursin("StSize",string(var_sym)) ? :capaStSize : :capa)
+	select!(value_df,Not([:fac,:rhs]))
+
+	return value_df
 end
 
 # ! adds a dual into the first dataframe based on the matching variable column in the second

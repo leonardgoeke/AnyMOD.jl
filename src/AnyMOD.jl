@@ -50,8 +50,8 @@ module AnyMOD
     export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
 
     export trustRegion, bendersData, quadTrust
-    export prepareMod!, runSubLevel, runTopLevel, addCuts!, computeFeas, writeResult 
-    export heuristicSolve, getFeasResult, evaluateHeu, getQtrVar, addLinearTrust!
+    export prepareMod!, runSubLevel, runTopLevel, addCuts!, computeFeas, writeResult, writeFixToFiles
+    export heuristicSolve, getFeasResult, evaluateHeu, filterQtrVar, addLinearTrust!
     export runTopWithoutQuadTrust, adjustQuadTrust, centerQuadTrust
     
 
