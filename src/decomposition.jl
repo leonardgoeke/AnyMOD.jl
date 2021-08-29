@@ -114,17 +114,23 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 	return fix_dic, lim_dic, cntHeu_arr
 end
 
-# ! get limits imposed on by linear trust region
+# ! get limits imposed on by linear trust region all limits are extended to avoid infeasbilites
 function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple)
 
 	if (val1_fl <= linPar.thrsAbs && val2_fl <= linPar.thrsAbs) || (any([val1_fl <= linPar.thrsAbs,val2_fl <= linPar.thrsAbs]) && abs(val1_fl - val2_fl) < linPar.thrsAbs) # fix to zero, if both values are zero, or if one is zero and the other is very close to zero
 		val_arr, cns_arr = [0.0], [:Fix]
 	elseif val1_fl >= linPar.thrsAbs && val2_fl <= linPar.thrsAbs # set first value as upper limit, if other is zero
-		val_arr, cns_arr = [val1_fl], [:Up]
+		val_arr, cns_arr = [val1_fl+linPar.thrsAbs], [:Up]
 	elseif val1_fl <= linPar.thrsAbs && val2_fl >= linPar.thrsAbs # set second value as upper limit, if other zero
-		val_arr, cns_arr = [val2_fl], [:Up]
-	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) # enfore lower and upper limits, if difference does exceed threshold	
+		val_arr, cns_arr = [val2_fl+linPar.thrsAbs], [:Up]
+	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) # enfore lower and upper limits, if difference does exceed threshold
 		val_arr, cns_arr = sort([val1_fl,val2_fl]), [:Low,:Up]
+		val_arr[2] = val_arr[2] + linPar.thrsAbs
+		if (val_arr[1] > linPar.thrsAbs) 
+			val_arr[1] = val_arr[1] - linPar.thrsAbs
+		else
+			val_arr, cns_arr = [val_arr[2]], [:Up]
+		end
 	else 
 		val_arr, cns_arr = [val1_fl], [:Fix] # set to mean, if difference does not exceed threshold
 	end
@@ -146,7 +152,7 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 	if !isempty(lim_dic) addLinearTrust!(topFeas_m,lim_dic) end
 
 	# compute feasible capacites
-	topFeas_m = computeFeas(topFeas_m,fix_dic,zeroThrs_fl,true)
+	topFeas_m = computeFeas(topFeas_m,fix_dic,zeroThrs_fl,true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
     return writeResult(topFeas_m,[:exp,:capa],false,false)
@@ -666,8 +672,7 @@ function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_o
 	fix_df[!,:scale] = map(x -> x.value >= fix_m.options.coefRng.rhs[2] ? fix_m.options.coefRng.rhs[2]/x.value : x.scale, eachrow(fix_df))
 
 	# compute righ-hand side and factor of variables for constraint
-	slack_fl = lim_sym == :Fix ? 1.0 : (lim_sym == :Up ? 1.0001 : 0.9999) # add "wiggle" room to avoid infeasibility
-	fix_df[!,:rhs] = map(x -> slack_fl * x.value * x.scale |> (u -> (u < fix_m.options.coefRng.rhs[1]) ? 0.0 : u), eachrow(fix_df))
+	fix_df[!,:rhs] = map(x -> x.value * x.scale |> (u -> (u < fix_m.options.coefRng.rhs[1]) ? 0.0 : u), eachrow(fix_df))
 	fix_df[!,:fac] = map(x -> x.rhs == 0.0 ? 1.0 : x.scale, eachrow(fix_df))
 
 	if !(Symbol(var_sym,cns_sym) in keys(part_obj.cns))
