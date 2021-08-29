@@ -310,24 +310,6 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	#region # * create corresponding constraints
 	maxRng_fl = anyM.options.coefRng.mat[2]/anyM.options.coefRng.rhs[1]
 
-	# create slack variable to allow for small deviations when just computing feasible capacities
-	#=
-	if anyM.options.slackMissCapa 
-		# create slack variables
-		slackVar_df = copy(select(allCapa_df,Not([:var])))
-		# computes the precision threshold for missing capacities in the top problem later 
-		slackVar_df[!,:upper] = map(x -> isempty(x.terms) ? 0.0 : maximum(collect(values(x.terms))),allCapa_df[!,:var]) ./ maxRng_fl
-		filter!(x -> x.upper != 0.0, slackVar_df)
-		slackVar_df = createVar(slackVar_df,"slackCapa", anyM.options.bound.capa, anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.insCapa)
-		# impose upper bound on slack 
-		slackVar_df[!,:cnsExpr] = map(x -> x.var - x.upper,eachrow(slackVar_df))
-		scaleCnsExpr!(slackVar_df,anyM.options.coefRng,anyM.options.checkRng)
-		# write bound and variable to container
-		partBal.cns[:slackCapaLim] = createCns(cnsCont(orderDf(select(slackVar_df,Not([:var,:upper]))),:smaller),anyM.optModel)
-		partBal.var[:slackCapa] = orderDf(select(slackVar_df,Not([:cnsExpr,:upper])))
-	end
-	=#
-
 	# ! create variables for missing capacities
 	if :costMissCapa in keys(partBal.par) 
 		var_df = matchSetParameter(allCapa_df,partBal.par[:costMissCapa],anyM.sets)
@@ -347,14 +329,7 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 	if !isempty(cns_df)
 		# add column indicating, if capacities other than missing capacity are added, only relevant for benders heuristik
 		cns_df[!,:actCapa] =  .!isempty.(map(x -> x.terms, cns_df[!,:var]))
-
-		#=
-		# add slack capacity variables
-		if anyM.options.slackMissCapa
-			add_to_expression!.(cns_df[!,:var], aggDivVar(partBal.var[:slackCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets))
-		end
-		=#
-
+		
 		# add missing capacity variables
 		if :missCapa in keys(partBal.var)
 			add_to_expression!.(cns_df[!,:var], aggDivVar(partBal.var[:missCapa], cns_df, tuple(intCol(cns_df)...), anyM.sets))

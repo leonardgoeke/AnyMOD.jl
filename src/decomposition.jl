@@ -144,7 +144,7 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 	scaFac_tup = (capa = 1e0, capaStSize = 1e1, insCapa = 1e0, dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e0, obj = 1e3)
 	coefRng_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
 	# create top level problem
-	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, scaFac = scaFac_tup, coefRng = coefRng_tup, slackMissCapa = true, checkRng = true)
+	topFeas_m = anyModel(modOpt_tup.modIn,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, scaFac = scaFac_tup, coefRng = coefRng_tup, checkRng = true)
 	topFeas_m.subPro = tuple(0,0)
 	prepareMod!(topFeas_m,modOpt_tup.opt,t_int)
 
