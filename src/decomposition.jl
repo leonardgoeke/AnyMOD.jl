@@ -175,7 +175,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 				# applies weights to make achieving zero values a priority 
 				abs_df[!,:weight] .= 1.0
 				# create variable for absolute value and connect with rest of dataframe again
-				scaFac_fl = getfield(top_m.options.scaFac, occursin("exp",string(varSym)) ? :insCapa : (occursin("StSize",string(varSym)) ? :capa : :capaStSize))
+				scaFac_fl = getfield(top_m.options.scaFac, occursin("exp",string(varSym)) ? :insCapa : (occursin("StSize",string(varSym)) ? :capaStSize : :capa))
 				part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),top_m.options.bound.capa,top_m.optModel, top_m.lock,top_m.sets,scaFac =scaFac_fl)
 				abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var] 
 				# create constraints for absolute value
@@ -303,16 +303,16 @@ function addLinearTrust!(top_m::anyModel,lim_dic::Dict{Symbol,Dict{Symbol,Dict{S
 end
 
 # ! solves top problem without trust region and obtains lower limits
-function runTopWithoutQuadTrust(mod_m::anyModel,trustReg_obj::quadTrust)
+function runTopWithoutQuadTrust(top_m::anyModel,trustReg_obj::quadTrust)
 	# solve top again with trust region and re-compute bound for soultion
-	delete(mod_m.optModel,trustReg_obj.cns)
-	set_optimizer_attribute(mod_m.optModel, "Method", 0)
-	set_optimizer_attribute(mod_m.optModel, "NumericFocus", 0)
-	optimize!(mod_m.optModel)
+	delete(top_m.optModel,trustReg_obj.cns)
+	set_optimizer_attribute(top_m.optModel, "Method", 0)
+	set_optimizer_attribute(top_m.optModel, "NumericFocus", 0)
+	optimize!(top_m.optModel)
 
 	# obtain different objective values
-	objTop_fl = value(sum(filter(x -> x.name == :cost, mod_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
-	lowLim_fl = objTop_fl + value(filter(x -> x.name == :benders,mod_m.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
+	objTop_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
+	lowLim_fl = objTop_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
 
 	return objTop_fl, lowLim_fl
 end
@@ -448,7 +448,7 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=fals
 
 	# add duals and objective value to capacity data
 	scaObj_fl = sub_m.options.scaFac.obj
-	capaData_obj.objVal = objective_value(sub_m.optModel) * scaObj_fl
+	capaData_obj.objVal = value(sum(sub_m.parts.obj.var[:objVar][!,:var]))
 
 	for sys in (:tech,:exc)
 		part_dic = getfield(sub_m.parts,sys)
@@ -456,7 +456,7 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=fals
 			for capaSym in filter(x -> occursin("capa",string(x)), collect(keys(capaData_obj.capa[sys][sSym])))
 				if Symbol(capaSym,:BendersFix) in keys(part_dic[sSym].cns)
 					scaCapa_fl = getfield(sub_m.options.scaFac,occursin("StSize",string(capaSym)) ? :capaStSize : :capa)
-					capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].cns[Symbol(capaSym,:BendersFix)],scaObj_fl/scaCapa_fl)
+					capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].cns[Symbol(capaSym,:BendersFix)],scaObj_fl*scaCapa_fl)
 					# remove capacity if none exists (again necessary because dual can be zero)
 					removeEmptyDic!(capaData_obj.capa[sys][sSym],capaSym)
 				end
@@ -579,12 +579,6 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 	scaleCnsExpr!(cut_df,top_m.options.coefRng,top_m.options.checkRng)
 	append!(top_m.parts.obj.cns[:bendersCuts] ,createCns(cnsCont(cut_df,:smaller),top_m.optModel))
 
-end
-
-# ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
-function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaCapa_fl::Float64)
-	ben_df = deSelectSys(sub_df) |> (z -> innerjoin(deSelectSys(var_df),z, on = intCol(z,:dir)))
-	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual / scaCapa_fl * (collect(keys(x.var.terms))[1] - x.value / scaCapa_fl),eachrow(ben_df)))
 end
 
 #endregion
@@ -727,6 +721,12 @@ function addDual(dual_df::DataFrame,cns_df::DataFrame,scaFac_fl::Float64)
 	new_df = deSelectSys(cns_df) |> (z -> innerjoin(dual_df,z, on = intCol(z,:dir)))
 	new_df[!,:dual] = map(x -> dual(x), new_df[!,:cns]) .* new_df[!,:fac] .* scaFac_fl
 	return select(filter(x -> x.dual != 0.0,new_df),Not([:cns,:fac]))
+end
+
+# ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
+function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaCapa_fl::Float64)
+	ben_df = deSelectSys(sub_df) |> (z -> innerjoin(deSelectSys(var_df),z, on = intCol(z,:dir)))
+	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual * scaCapa_fl * (collect(keys(x.var.terms))[1] - x.value / scaCapa_fl),eachrow(ben_df)))
 end
 
 # ! removes cases where storage variables are fixed by a ratio (e.g. storage energy capacity fixed by e/p ratio) 
