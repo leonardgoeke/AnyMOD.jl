@@ -32,7 +32,9 @@ t_int = 4
 method = :all # optins are :all, :fixAndLim, :fixAndQtr :onlyFix and :none
 resHeu = 2
 resMod = 4
-b = "C:/work_in_progress/git/TheModel/"
+trackLimit = false
+
+b = "C:/Users/pacop/Desktop/work/git/TheModel/"
 
 #region # * set and write options
 
@@ -42,11 +44,13 @@ reso_tup = (heu = resHeu, mod = resMod)
 suffix_str = "_" * string(method) * "_" * string(resHeu) * "_" * string(resMod)
 inDir_arr = [[b * "_basis",b * "_full",b * "timeSeries/" * string(x) * "days_2010"] for x in [reso_tup.heu, reso_tup.mod]] # input directories
 
-coefRng_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
+coefRngHeu_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
+coefRngTop_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
+coefRngSub_tup = (mat = (1e-2,1e4), rhs = (1e-2,1e2))
 
 scaFacHeu_tup = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0)
-scaFacTop_tup = (capa = 1e0, capaStSize = 1e1, insCapa = 1e0, dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e0, obj = 1e1)
-scaFacSub_tup = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e1, dispSt = 1e3, dispExc = 1e2, dispTrd = 1e2, costDisp = 1e0, costCapa = 1e2, obj = 1e0)
+scaFacTop_tup = (capa = 1e0, capaStSize = 1e1, insCapa = 1e0, dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e0, obj = 1e3)
+scaFacSub_tup = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e0, dispSt = 1e2, dispExc = 1e1, dispTrd = 1e2, costDisp = 1e0, costCapa = 1e2, obj = 1e0)
 
 # ! general input parameters
 
@@ -56,7 +60,7 @@ opt_obj = Gurobi.Optimizer # solver option
 sub_tup = ((1,0),(2,0),(3,0),(4,0),(5,0),(6,0),(7,0))
 
 # options of solution algorithm
-solOpt_tup = (gap = 0.001, delCut = 30, linPar = (thrsAbs = 0.001, thrsRel = 0.02), quadPar = (startRad = 1e-2, lowRad = 1e-6, shrThrs = 0.001, extThrs = 0.001))
+solOpt_tup = (gap = 0.001, delCut = 30, linPar = (thrsAbs = 0.05, thrsRel = 0.05), quadPar = (startRad = 1e-1, lowRad = 1e-8, shrThrs = 0.001, extThrs = 0.001))
 
 # options for different models
 temp_dir = b * "tempFix" * suffix_str # directory for temporary folder
@@ -64,9 +68,9 @@ temp_dir = b * "tempFix" * suffix_str # directory for temporary folder
 optMod_dic = Dict{Symbol,NamedTuple}()
 
 # options for model generation 
-optMod_dic[:heu] =  (inputDir = inDir_arr[1], resultDir = b * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRng_tup, scaFac = scaFacHeu_tup)
-optMod_dic[:top] =  (inputDir = inDir_arr[2], resultDir = b * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRng_tup, scaFac = scaFacTop_tup)
-optMod_dic[:sub] =  (inputDir = inDir_arr[2], resultDir = b * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRng_tup, scaFac = scaFacSub_tup)
+optMod_dic[:heu] =  (inputDir = inDir_arr[1], resultDir = b * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRngHeu_tup, scaFac = scaFacHeu_tup)
+optMod_dic[:top] =  (inputDir = inDir_arr[2], resultDir = b * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRngTop_tup, scaFac = scaFacTop_tup)
+optMod_dic[:sub] =  (inputDir = inDir_arr[2], resultDir = b * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRngSub_tup, scaFac = scaFacSub_tup)
 
 #endregion
 
@@ -77,12 +81,12 @@ report_m = @suppress anyModel(String[],optMod_dic[:heu].resultDir, objName = "de
 if method in (:all,:fixAndLim,:onlyFix,:fixAndQtr)
 	# ! heuristic solve for re-scaled and compressed time-series
 	produceMessage(report_m.options,report_m.report, 1," - Started heuristic pre-solve", testErr = false, printErr = false)
-	heu_m, heuSca_obj = heuristicSolve(optMod_dic[:heu],1.0,t_int,opt_obj);
-	~, heuCom_obj = heuristicSolve(optMod_dic[:heu],365/reso_tup.heu,t_int,opt_obj)
+	heu_m, heuSca_obj = @suppress heuristicSolve(optMod_dic[:heu],1.0,t_int,opt_obj);
+	~, heuCom_obj = @suppress heuristicSolve(optMod_dic[:heu],365/reso_tup.heu,t_int,opt_obj)
 	# ! write fixes to files and limits to dictionary
-	fix_dic, lim_dic, cntHeu_arr = evaluateHeu(heu_m,heuSca_obj,heuCom_obj,solOpt_tup.linPar) # get fixed and limited variables
+	fix_dic, lim_dic, cntHeu_arr = @suppress evaluateHeu(heu_m,heuSca_obj,heuCom_obj,solOpt_tup.linPar) # get fixed and limited variables
 	produceMessage(report_m.options,report_m.report, 1," - Get an exact feasible solution", testErr = false, printErr = false)
-	feasFix_dic = getFeasResult(optMod_dic[:top],fix_dic,lim_dic,t_int,solOpt_tup.linPar.thrsAbs,opt_obj) # ensure feasiblity with fixed variables
+	feasFix_dic = @suppress getFeasResult(optMod_dic[:top],fix_dic,lim_dic,t_int,solOpt_tup.linPar.thrsAbs,opt_obj) # ensure feasiblity with fixed variables
 	produceMessage(report_m.options,report_m.report, 1," - Heuristic found $(cntHeu_arr[1]) fixed variables and $(cntHeu_arr[2]) limited variables", testErr = false, printErr = false)
 	# ! write fixed variable values to files
 	writeFixToFiles(fix_dic,feasFix_dic,temp_dir,heu_m)
@@ -97,9 +101,9 @@ produceMessage(report_m.options,report_m.report, 1," - Create top model and sub 
 
 modOpt_tup = optMod_dic[:top]
 inputDir_arr = method in (:all,:fixAndLim,:fixAndQtr,:onlyFix) ? vcat(modOpt_tup.inputDir,[temp_dir]) : modOpt_tup.inputDir
-top_m = anyModel(inputDir_arr, modOpt_tup.resultDir, objName = "topModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, reportLvl = 1, holdFixed = true, checkRng = true)
+top_m = @suppress anyModel(inputDir_arr, modOpt_tup.resultDir, objName = "topModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, reportLvl = 1, holdFixed = true)
 top_m.subPro = tuple(0,0)
-prepareMod!(top_m,opt_obj,t_int)
+@suppress prepareMod!(top_m,opt_obj,t_int)
 
 # ! create sub level problems
 
@@ -110,9 +114,9 @@ sub_dic = Dict{Tuple{Int,Int},anyModel}()
 
 for (id,x) in enumerate(sub_tup)
 	# create sub problem
-	s = anyModel(inputDir_arr,modOpt_tup.resultDir, objName = "subModel_" * string(id) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, reportLvl = 1, holdFixed = true, checkRng = true)
+	s = @suppress anyModel(inputDir_arr,modOpt_tup.resultDir, objName = "subModel_" * string(id) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, reportLvl = 1, holdFixed = true)
 	s.subPro = x
-	prepareMod!(s,opt_obj,t_int)
+	@suppress prepareMod!(s,opt_obj,t_int)
 	set_optimizer_attribute(s.optModel, "Threads", t_int)
 	sub_dic[x] = s
 end
@@ -177,7 +181,7 @@ i = 1
 cutData_dic = Dict{Tuple{Int64,Int64},bendersData}()
 currentBest_fl = Inf
 
-if method in (:all,:fixAndLim) 
+if method in (:all,:fixAndLim) && trackLimit
 	# create dataframe of all limits to track binding ones
 	allLimit_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_exp = Int[], R_from = Int[], R_to = Int[], Te = Int[], Exc = Int[], dir = Int[], id = Int[], limCns = Symbol[])
 
@@ -230,7 +234,8 @@ while true
 		# write current best solution
 		global currentBest_fl = min(objTopTrust_fl + objSub_fl,trustReg_obj.objVal)
 
-		#region # * track limits
+		#region # * track binding limits
+		if method in (:all,:fixAndLim) && trackLimit
 		# track binding limits
 		for sys in (:tech,:exc)
 			part_dic = getfield(top_m.parts,sys)
@@ -249,6 +254,7 @@ while true
 			end
 		end
 		CSV.write(modOpt_tup.resultDir * "/limitTracking_$(replace(top_m.options.objName,"topModel" => "")).csv",  allLimit_df)
+		end
 		#endregion
 	else
 		lowLim_fl = lowLimTrust_fl # without quad trust region, lower limit corresponds result of standard top problem

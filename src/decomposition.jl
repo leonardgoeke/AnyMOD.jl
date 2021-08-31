@@ -331,7 +331,7 @@ function adjustQuadTrust(top_m::anyModel,allVal_dic::Dict{Symbol,Dict{Symbol,Dic
 		if abs(1 - lowLimTrust_fl / (objTopTrust_fl + objSub_fl)) < trustReg_obj.opt.extThrs # extend trust region, if constrained top problem converged
 			resizeQuadTrust!(trustReg_obj,1.5)
 			produceMessage(report_m.options,report_m.report, 1," - Extended trust-region!", testErr = false, printErr = false)
-		elseif abs(1 - lowLim_fl / lowLimTrust_fl) < trustReg_obj.opt.shrThrs && trustReg_obj.rad > (trustReg_obj.abs * trustReg_obj.opt.lowRad) # shrink trust region, if it does not constrain the top problem and the lower limit for its size is not yet reached
+		elseif abs(1 - lowLim_fl / lowLimTrust_fl) < trustReg_obj.opt.shrThrs && trustReg_obj.rad > trustReg_obj.opt.lowRad # shrink trust region, if it does not constrain the top problem and the lower limit for its size is not yet reached
 			resizeQuadTrust!(trustReg_obj,0.5)
 			produceMessage(report_m.options,report_m.report, 1," - Shrunk trust-region!", testErr = false, printErr = false)	
 		end
