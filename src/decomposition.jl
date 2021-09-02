@@ -19,13 +19,11 @@ end
 mutable struct quadTrust
 	objVal::Float64
 	rad::Float64
-	abs::Float64
 	cns::ConstraintRef
-	var::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}
-	coef::NamedTuple{(:sca,:pol),Tuple{Float64,Float64}}	
-	opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64,Float64}}	
+	var::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}	
+	opt::NamedTuple{(:startRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64}}	
 
-	function quadTrust(exp_df::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trust_opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64,Float64}})
+	function quadTrust(exp_df::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trust_opt::NamedTuple{(:startRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64}})
 		trustReg_obj = new()
 		trustReg_obj.opt = trust_opt
 		trustReg_obj.var = exp_df
@@ -323,18 +321,18 @@ function adjustQuadTrust(top_m::anyModel,allVal_dic::Dict{Symbol,Dict{Symbol,Dic
 	# re-create trust region
 	if (objTopTrust_fl + objSub_fl) < trustReg_obj.objVal # recenter trust region, if new best solution was obtained
 		trustReg_obj.var = filterQtrVar(allVal_dic,top_m)
-		trustReg_obj.cns, trustReg_obj.coef, trustReg_obj.abs  = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
+		trustReg_obj.cns  = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
 		trustReg_obj.objVal = objTopTrust_fl + objSub_fl
 		produceMessage(report_m.options,report_m.report, 1," - Re-centered trust-region!", testErr = false, printErr = false)
 	else
-		trustReg_obj.cns, trustReg_obj.coef, trustReg_obj.abs  = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
 		if abs(1 - lowLimTrust_fl / (objTopTrust_fl + objSub_fl)) < trustReg_obj.opt.extThrs # extend trust region, if constrained top problem converged
-			resizeQuadTrust!(trustReg_obj,1.5)
+			trustReg_obj.rad = trustReg_obj.rad * 1.5
 			produceMessage(report_m.options,report_m.report, 1," - Extended trust-region!", testErr = false, printErr = false)
-		elseif abs(1 - lowLim_fl / lowLimTrust_fl) < trustReg_obj.opt.shrThrs && trustReg_obj.rad > trustReg_obj.opt.lowRad # shrink trust region, if it does not constrain the top problem and the lower limit for its size is not yet reached
-			resizeQuadTrust!(trustReg_obj,0.5)
+		elseif abs(1 - lowLim_fl / lowLimTrust_fl) < trustReg_obj.opt.shrThrs # shrink trust region
+			trustReg_obj.rad = trustReg_obj.rad * 0.5
 			produceMessage(report_m.options,report_m.report, 1," - Shrunk trust-region!", testErr = false, printErr = false)	
 		end
+		trustReg_obj.cns  = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
 	end
 
 	return trustReg_obj
@@ -359,7 +357,7 @@ function centerQuadTrust(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 		end
 	end
 
-	# ! write trust region constraint and save its key parameters
+	# ! write trust region constraint
 	allVar_df = vcat(vcat(vcat(map(x -> expExpr_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
 	
 	# sets values of variables that will violate range to zero
@@ -367,7 +365,8 @@ function centerQuadTrust(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 	allVar_df[!,:value] = map(x -> 2*x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ abs(rad_fl^2 - sum(allVar_df[!,:value].^2))
+	abs_fl = sum(allVar_df[!,:value])
+	scaRng_tup = top_m.options.coefRng.rhs ./ abs((abs_fl * rad_fl)^2 - sum(allVar_df[!,:value].^2))
 
 	# set values of variable to zero or biggest value possible without scaling violating rhs range
 	for x in eachrow(allVar_df)	
@@ -380,22 +379,12 @@ function centerQuadTrust(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 
 	# computes left hand side expression and scaling factor
 	capaSum_expr = sum(map(x -> collect(keys(x.var.terms))[1] |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allVar_df)))
-	cnsInfo_ntup =  (sca = top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)) |> (z -> isempty(z) ? [1.0] : z))), pol = capaSum_expr.aff.constant)
+	scaFac_fl =  top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)) |> (z -> isempty(z) ? [1.0] : z)))
 	
 	# create final constraint
-	abs_fl = sum(allVar_df[!,:value])
-	trustRegion_cns = @constraint(top_m.optModel,  capaSum_expr * cnsInfo_ntup.sca <= (abs_fl * rad_fl)^2  * cnsInfo_ntup.sca)
+	trustRegion_cns = @constraint(top_m.optModel,  capaSum_expr * scaFac_fl <= (abs_fl * rad_fl)^2  * scaFac_fl)
 
-	return trustRegion_cns, cnsInfo_ntup, abs_fl
-end
-
-# ! shrings the trust region around the current center according to factor
-function resizeQuadTrust!(trustReg_obj::quadTrust, shrFac_fl::Float64)
-	# reduce factor for region
-	trustReg_obj.rad = trustReg_obj.rad * shrFac_fl
-	# adjust righ hand side of constraint
-	cnsInfo_tup = trustReg_obj.coef
-	set_normalized_rhs(trustReg_obj.cns,  ((trustReg_obj.abs * trustReg_obj.rad)^2   - cnsInfo_tup.pol) * cnsInfo_tup.sca)
+	return trustRegion_cns
 end
 
 #endregion
