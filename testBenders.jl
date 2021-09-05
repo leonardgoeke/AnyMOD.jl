@@ -60,7 +60,7 @@ opt_obj = Gurobi.Optimizer # solver option
 sub_tup = ((1,0),(2,0),(3,0),(4,0),(5,0),(6,0),(7,0))
 
 # options of solution algorithm
-solOpt_tup = (gap = 0.001, delCut = 30, linPar = (thrsAbs = 0.05, thrsRel = 0.05), quadPar = (startRad = 1e-1, shrThrs = 0.001, extThrs = 0.001))
+solOpt_tup = (gap = 0.001, gapLim = 0.02, delCut = 30, linPar = (thrsAbs = 0.05, thrsRel = 0.05), quadPar = (startRad = 1e-1, shrThrs = 0.001, extThrs = 0.001))
 
 # options for different models
 temp_dir = b * "tempFix" * suffix_str # directory for temporary folder
@@ -90,6 +90,7 @@ if method in (:all,:fixAndLim,:onlyFix,:fixAndQtr)
 	produceMessage(report_m.options,report_m.report, 1," - Heuristic found $(cntHeu_arr[1]) fixed variables and $(cntHeu_arr[2]) limited variables", testErr = false, printErr = false)
 	# ! write fixed variable values to files
 	writeFixToFiles(fix_dic,feasFix_dic,temp_dir,heu_m)
+	heu_m = nothing
 end
 
 #endregion
@@ -233,29 +234,6 @@ while true
 		objSub_fl = sum(map(x -> x.objVal, values(cutData_dic))) # summed objective of sub-problems # ! hier warten auf subprobleme
 		# write current best solution
 		global currentBest_fl = min(objTopTrust_fl + objSub_fl,trustReg_obj.objVal)
-
-		#region # * track binding limits
-		if method in (:all,:fixAndLim) && trackLimit_boo
-		# track binding limits
-		for sys in (:tech,:exc)
-			part_dic = getfield(top_m.parts,sys)
-			for sSym in keys(part_dic)
-				for limCns in filter(x -> any(occursin.(["BendersUp","BendersLow"],string(x))), keys(part_dic[sSym].cns))
-					# detect binding constraints
-					lim_df = copy(select(part_dic[sSym].cns[limCns],Not([:fac,:cns])))
-					lim_df[!,:limCns] .= occursin("BendersUp",string(limCns)) ? :Low : :Up
-					lim_df[!,:act] = map(x -> dual(x) != 0.0, part_dic[sSym].cns[limCns][!,:cns])
-					# merge info into dataframe for all limits
-					joinLim_df = innerjoin(lim_df,allLimit_df,on = intCol(lim_df,[:limCns,:dir]))
-					joinLim_df[!,:actItr] = map(x -> x.act ? vcat(x.actItr,[i]) : x.actItr,eachrow(joinLim_df))
-					joinLim_df[!,:actBestItr] = map(x -> x.act && (objTopTrust_fl + objSub_fl == currentBest_fl) ? vcat(x.actBestItr,[i]) : x.actBestItr,eachrow(joinLim_df))
-					global allLimit_df = vcat(antijoin(allLimit_df, select(joinLim_df,Not([:act])), on = intCol(joinLim_df,[:limCns,:dir])),select(joinLim_df,Not([:act])))
-				end
-			end
-		end
-		CSV.write(modOpt_tup.resultDir * "/limitTracking_$(replace(top_m.options.objName,"topModel" => "")).csv",  allLimit_df)
-		end
-		#endregion
 	else
 		lowLim_fl = lowLimTrust_fl # without quad trust region, lower limit corresponds result of standard top problem
 		objSub_fl = sum(map(x -> x.objVal, values(cutData_dic))) # summed objective of sub-problems
@@ -273,9 +251,9 @@ while true
 	filter!(x -> (x.actItr + solOpt_tup.delCut > i),top_m.parts.obj.cns[:bendersCuts])
 
 	#endregion
-
-	#region # * reporting on results and convergence check
 	
+	#region # * result reporting 
+
 	global gap_fl = 1 - lowLim_fl/currentBest_fl
 	produceMessage(report_m.options,report_m.report, 1," - Lower: $(round(lowLim_fl, sigdigits = 8)), Upper: $(round(currentBest_fl, sigdigits = 8)), gap: $(round(gap_fl, sigdigits = 4))", testErr = false, printErr = false)
 	produceMessage(report_m.options,report_m.report, 1," - Time for top: $(Dates.toms(timeTop) / Dates.toms(Second(1))) Time for sub: $(Dates.toms(timeSub) / Dates.toms(Second(1)))", testErr = false, printErr = false)
@@ -283,18 +261,30 @@ while true
 	# write to reporting files
 	push!(itrReport_df, (i = i, low = lowLim_fl, best = currentBest_fl, gap = gap_fl, solCur = objTopTrust_fl + objSub_fl, time = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60))
 	CSV.write(modOpt_tup.resultDir * "/iterationBenders$(replace(top_m.options.objName,"topModel" => "")).csv",  itrReport_df)
+	
+	#endregion
+	
+	#region # * check convergence and adjust limits
+	
+	# adjust limits where they are binding
+	if method in (:all,:fixAndLim) && gap_fl < solOpt_tup.gapLim 
+		binLim_boo = checkLinearTrust(top_m)
+		if binLim_boo
+			adjustLinearTrust!(top_m)
+			produceMessage(report_m.options,report_m.report, 1," - Moved binding lower and upper limits!", testErr = false, printErr = false)
+		end
+	end
 
-	if gap_fl < solOpt_tup.gap || i > 700 
+	if gap_fl < solOpt_tup.gap && (!(method in (:all,:fixAndLim)) || !binLim_boo)
 		produceMessage(report_m.options,report_m.report, 1," - Finished iteration!", testErr = false, printErr = false)
 		break
 	elseif method in (:all,:fixAndQtr) # adjust trust region in case algorithm has not converged yet
 		global trustReg_obj = adjustQuadTrust(top_m,allVal_dic,trustReg_obj,objSub_fl,objTopTrust_fl,lowLim_fl,lowLimTrust_fl,report_m)
 	end
+	#endregion
 
 	global i = i + 1
 
-	#endregion
-	
 end
 
 #endregion

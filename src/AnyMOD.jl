@@ -52,7 +52,7 @@ module AnyMOD
     export trustRegion, bendersData, quadTrust
     export prepareMod!, runSubLevel, runTopLevel, addCuts!, computeFeas, writeResult, writeFixToFiles
     export heuristicSolve, getFeasResult, evaluateHeu, filterQtrVar, addLinearTrust!
-    export runTopWithoutQuadTrust, adjustQuadTrust, centerQuadTrust
+    export runTopWithoutQuadTrust, adjustQuadTrust, centerQuadTrust, checkLinearTrust, adjustLinearTrust!
     
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)

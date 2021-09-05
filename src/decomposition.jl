@@ -21,9 +21,9 @@ mutable struct quadTrust
 	rad::Float64
 	cns::ConstraintRef
 	var::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}	
-	opt::NamedTuple{(:startRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64}}	
+	opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64,Float64}}	
 
-	function quadTrust(exp_df::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trust_opt::NamedTuple{(:startRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64}})
+	function quadTrust(exp_df::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trust_opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64,Float64}})
 		trustReg_obj = new()
 		trustReg_obj.opt = trust_opt
 		trustReg_obj.var = exp_df
@@ -300,6 +300,41 @@ function addLinearTrust!(top_m::anyModel,lim_dic::Dict{Symbol,Dict{Symbol,Dict{S
 	end
 end
 
+# ! check for binding limits
+function checkLinearTrust(top_m::anyModel)
+	binLim_boo = false
+	# loop over limits to detect binding ones
+	for sys in (:tech,:exc)
+		part_dic = getfield(top_m.parts,sys)
+		for sSym in keys(part_dic)
+			for limCns in filter(x -> any(occursin.(["BendersUp","BendersLow"],string(x))), keys(part_dic[sSym].cns))
+				# move lower and upper bounds if they are binding
+				lim_df = part_dic[sSym].cns[limCns]
+				lim_df[!,:bind] = map(x -> dual(x.cns) != 0.0, eachrow(lim_df))
+				binLim_boo = binLim_boo || any(lim_df[!,:bind])
+			end
+		end
+	end
+	return binLim_boo
+end
+
+# ! adjust binding limits
+function adjustLinearTrust!(top_m::anyModel)
+	for sys in (:tech,:exc)
+		part_dic = getfield(top_m.parts,sys)
+		for sSym in keys(part_dic)
+			for limCns in filter(x -> any(occursin.(["BendersUp","BendersLow"],string(x))), keys(part_dic[sSym].cns))
+				up_boo = occursin("BendersUp",string(limCns)) ? :true : :false
+				capa_sym = Symbol(replace(string(limCns), up_boo ? "BendersUp" => "" : "BendersLow" => ""))
+				scaCapa_fl = getfield(top_m.options.scaFac,occursin("StSize",string(capa_sym)) ? :capaStSize : :capa)
+				value_df = copy(part_dic[sSym].cns[limCns])
+				value_df[!,:value] = map(x -> scaCapa_fl * normalized_rhs(x.cns)/x.fac |> (w -> x.bind ? (up_boo ? w*1.3 : (w < 0.5 ? 0.0 : w*0.7)) : w),eachrow(value_df))
+				limitCapa!(select(value_df,Not([:fac,:cns,:bind])),part_dic[sSym].var[capa_sym],capa_sym,part_dic[sSym],top_m,up_boo ? :Up : :Low)
+			end
+		end
+	end
+end
+
 # ! solves top problem without trust region and obtains lower limits
 function runTopWithoutQuadTrust(top_m::anyModel,trustReg_obj::quadTrust)
 	# solve top again with trust region and re-compute bound for soultion
@@ -328,7 +363,7 @@ function adjustQuadTrust(top_m::anyModel,allVal_dic::Dict{Symbol,Dict{Symbol,Dic
 		if abs(1 - lowLimTrust_fl / (objTopTrust_fl + objSub_fl)) < trustReg_obj.opt.extThrs # extend trust region, if constrained top problem converged
 			trustReg_obj.rad = trustReg_obj.rad * 1.5
 			produceMessage(report_m.options,report_m.report, 1," - Extended trust-region!", testErr = false, printErr = false)
-		elseif abs(1 - lowLim_fl / lowLimTrust_fl) < trustReg_obj.opt.shrThrs # shrink trust region
+		elseif abs(1 - lowLim_fl / lowLimTrust_fl) < trustReg_obj.opt.shrThrs && trustReg_obj.rad > trustReg_obj.opt.lowRad # shrink trust region, if it does not constrain the top problem and the lower limit for its size is not yet reached
 			trustReg_obj.rad = trustReg_obj.rad * 0.5
 			produceMessage(report_m.options,report_m.report, 1," - Shrunk trust-region!", testErr = false, printErr = false)	
 		end
@@ -694,9 +729,9 @@ function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_o
 		set_normalized_rhs.(fix_df[!,:cns], fix_df[!,:rhs])
 		set_normalized_coefficient.(fix_df[!,:cns], fix_df[!,:var], fix_df[!,:fac])	
 	end
-
-	part_obj.cns[Symbol(var_sym,cns_sym)] = select(fix_df,Not([:var,:value,:rhs]))
 	
+	part_obj.cns[Symbol(var_sym,cns_sym)] = select(fix_df,Not([:var,:value,:rhs]))
+
 	# correct value_df to values actually enforced
 	value_df = innerjoin(select(value_df,Not([:value])), select(fix_df,Not([:var,:value,:cns])), on = intCol(value_df,:dir))
 	value_df[!,:value] .=  value_df[!,:rhs] ./ value_df[!,:fac] .* getfield(fix_m.options.scaFac,occursin("StSize",string(var_sym)) ? :capaStSize : :capa)
