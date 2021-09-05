@@ -605,6 +605,14 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 
 end
 
+function deleteCuts!(top_m::anyModel,delCut_int::Int)
+	# tracking latest binding iteration for cuts
+	top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> dual(x.cns) != 0.0 ? i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
+	# delete cuts that were not binding long enough
+	delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < i,top_m.parts.obj.cns[:bendersCuts])[!,:cns])
+	filter!(x -> (x.actItr + solOpt_tup.delCut > i),top_m.parts.obj.cns[:bendersCuts])
+end
+
 #endregion
 
 #region # * transfer results between models
