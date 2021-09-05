@@ -59,7 +59,7 @@ opt_obj = Gurobi.Optimizer # solver option
 sub_tup = ((1,0),(2,0),(3,0),(4,0),(5,0),(6,0),(7,0))
 
 # options of solution algorithm
-solOpt_tup = (gap = 0.001, gapLim = 0.02, delCut = 30, linPar = (thrsAbs = 0.05, thrsRel = 0.05), quadPar = (startRad = 1e-1, shrThrs = 0.001, extThrs = 0.001))
+solOpt_tup = (gap = 0.001, gapLim = 0.02, delCut = 30, linPar = (thrsAbs = 0.05, thrsRel = 0.05), quadPar = (startRad = 1e-1, lowRad = 1e-6, shrThrs = 0.001, extThrs = 0.001))
 
 # options for different models
 temp_dir = dir_str * "tempFix" * suffix_str # directory for temporary folder
@@ -209,7 +209,7 @@ let i = 1, gap_fl = 1.0, currentBest_fl = Inf
 		end
 
 		# ! delete cuts that not were binding for the defined number of iterations
-		deleteCuts!(top_m,solOpt_tup.delCut) 
+		deleteCuts!(top_m,solOpt_tup.delCut,i) 
 
 		# ! get objective of sub-problems and current best solution
 		objSub_fl = sum(map(x -> x.objVal, values(cutData_dic))) # objective of sub-problems
