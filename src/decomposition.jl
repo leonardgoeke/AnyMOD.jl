@@ -517,6 +517,25 @@ function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bender
 	return capaData_obj, allVal_dic, objTopTrust_fl, lowLimTrust_fl
 end
 
+# ! run all sub-problems when running code distributed
+function runAllSubLevel(sub_tup::Tuple, capaData_obj::bendersData)
+	solvedFut_dic = Dict{Int, Future}()
+	for j in sub_tup
+		solvedFut_dic[j] = @spawnat j+1 runSubProblem(copy(capaData_obj))
+	end
+	return solvedFut_dic
+end
+
+# ! get results of all sub-problems when running code distributed
+function getSubResults(cutData_dic::Dict{Tuple{Int64,Int64},bendersData}, sub_tup::Tuple, solvedFut_dic::Dict{Int, Future})
+	runTime_arr = []
+	for (k,v) in solvedFut_dic
+		t_fl, cutData_dic[sub_tup[k]] = fetch(v)
+		push!(runTime_arr, t_fl)
+	end
+	return maximum(runTime_arr)
+end
+
 # ! add all cuts from input dictionary to top problem
 function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},i::Int)
 	
@@ -605,6 +624,7 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 
 end
 
+# ! delete cuts that have not been binding for a while
 function deleteCuts!(top_m::anyModel,delCut_int::Int,i::Int)
 	# tracking latest binding iteration for cuts
 	top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> dual(x.cns) != 0.0 ? i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))

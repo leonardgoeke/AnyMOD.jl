@@ -46,12 +46,12 @@ module AnyMOD
 
     export anyModel, initializeModel, createOptModel!, setObjective!
     export reportResults, reportTimeSeries, printObject, printDuals, writeParameterFile!
-    export plotTree, plotEnergyFlow, moveNode!, produceMessage
+    export plotTree, plotEnergyFlow, moveNode!, produceMessage, produceMessageShort
     export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
 
     export trustRegion, bendersData, quadTrust
     export prepareMod!, runSubLevel, runTopLevel, addCuts!, deleteCuts!, computeFeas, writeResult, writeFixToFiles
-    export heuristicSolve, getFeasResult, evaluateHeu, filterQtrVar, addLinearTrust!
+    export heuristicSolve, getFeasResult, evaluateHeu, filterQtrVar, addLinearTrust!, runAllSubLevel, getSubResults
     export runTopWithoutQuadTrust, adjustQuadTrust, centerQuadTrust, checkLinearTrust, adjustLinearTrust!
     
 

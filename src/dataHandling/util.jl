@@ -47,6 +47,9 @@ function produceMessage(options::modOptions,report::Array{Tuple,1},currentLvl::I
     if printErr && (options.errCheckLvl >= currentLvl || testErr) errorTest(unique(report),options,write = options.errWrtLvl >= currentLvl) end
 end
 
+# ! abbrevation to produceMessage
+function produceMessageShort(mes_str::String,report_m::anyModel; testErr=false, printErr=false) produceMessage(report_m.options,report_m.report,1,mes_str;testErr=testErr,printErr=printErr) end
+
 #endregion
 
 #region # * miscellaneous data processing
