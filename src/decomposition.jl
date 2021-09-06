@@ -139,7 +139,7 @@ end
 # ! returns a feasible as close as possible to the input dictionary
 function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int,zeroThrs_fl::Float64,opt_obj::DataType)
 
-	# create top level problem
+	# create top-problem
 	topFeas_m = anyModel(modOpt_tup.inputDir,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = true)
 
 	topFeas_m.subPro = tuple(0,0)
@@ -436,8 +436,8 @@ function prepareMod!(mod_m::anyModel,opt_obj::DataType, t_int::Int)
 	set_optimizer_attribute(mod_m.optModel, "Threads", t_int)
 end
 
-# ! run sub-Level problem
-function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=false)
+# ! run sub-problem
+function runSub(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=false)
 
 	# fixing capacity
 	for sys in (:tech,:exc)
@@ -493,8 +493,8 @@ function runSubLevel(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=fals
 	return capaData_obj
 end
 
-# ! run top-Level problem
-function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},i::Int)
+# ! run top-problem
+function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},i::Int)
 
 	capaData_obj = bendersData()
 
@@ -515,25 +515,6 @@ function runTopLevel(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bender
 	lowLimTrust_fl = objTopTrust_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
 
 	return capaData_obj, allVal_dic, objTopTrust_fl, lowLimTrust_fl
-end
-
-# ! run all sub-problems when running code distributed
-function runAllSubLevel(sub_tup::Tuple, capaData_obj::bendersData)
-	solvedFut_dic = Dict{Int, Future}()
-	for j in sub_tup
-		solvedFut_dic[j] = @spawnat j+1 runSubProblem(copy(capaData_obj))
-	end
-	return solvedFut_dic
-end
-
-# ! get results of all sub-problems when running code distributed
-function getSubResults(cutData_dic::Dict{Tuple{Int64,Int64},bendersData}, sub_tup::Tuple, solvedFut_dic::Dict{Int, Future})
-	runTime_arr = []
-	for (k,v) in solvedFut_dic
-		t_fl, cutData_dic[sub_tup[k]] = fetch(v)
-		push!(runTime_arr, t_fl)
-	end
-	return maximum(runTime_arr)
 end
 
 # ! add all cuts from input dictionary to top problem
