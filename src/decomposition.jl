@@ -38,7 +38,7 @@ end
 #region # * functions for heurstic
 
 # ! run heuristic and return exact capacities plus heuristic cut
-function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_obj::DataType)
+function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_obj::DataType,rtrnMod_boo::Bool=true)
 
 	# create and solve model
 	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, redStep = redFac)
@@ -52,7 +52,11 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 	heuData_obj.objVal = sum(map(z -> sum(value.(heu_m.parts.cost.var[z][!,:var])), collect(filter(x -> any(occursin.(["costExp", "costOpr", "costMissCapa", "costRetro"],string(x))), keys(heu_m.parts.cost.var)))))
 	heuData_obj.capa = writeResult(heu_m,[:capa,:exp])
 
-	return heu_m, heuData_obj
+	if rtrnMod_boo
+		return heu_m, heuData_obj
+	else
+		return heuData_obj
+	end
 end
 
 # ! evaluate results of heuristic solution to determine fixed and limited variables
