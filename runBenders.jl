@@ -1,4 +1,4 @@
-using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles
+#=using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles
 using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays
 using DataFrames, JuMP, Suppressor
 
@@ -22,7 +22,7 @@ include("src/dataHandling/mapping.jl")
 include("src/dataHandling/parameter.jl")
 include("src/dataHandling/readIn.jl")
 include("src/dataHandling/tree.jl")
-include("src/dataHandling/util.jl")
+include("src/dataHandling/util.jl")=#
 
 using Gurobi, AnyMOD, CSV
 t_int = 4
@@ -33,7 +33,7 @@ method = :all # optins are :all, :fixAndLim, :fixAndQtr :onlyFix and :none
 resHeu = 2
 resMod = 4
 
-dir_str = "C:/Users/pacop/Desktop/work/git/TheModel/"
+dir_str = ""
 
 #region # * set and write options
 
@@ -94,7 +94,7 @@ end
 
 #endregion
 
-#region # * create top and sublevel problems 
+#region # * create top and sub-problems 
 produceMessage(report_m.options,report_m.report, 1," - Create top model and sub models", testErr = false, printErr = false)
 
 # ! create top-problem
@@ -136,7 +136,7 @@ if method in (:all,:fixAndLim,:fixAndQtr,:onlyFix)
 		# run subproblems and get cut info
 		cutData_dic = Dict{Tuple{Int64,Int64},bendersData}()
 		for x in collect(sub_tup)
-			dual_etr = runSubLevel(sub_dic[x],copy(z))
+			dual_etr = runSub(sub_dic[x],copy(z))
 			# removes entries without dual values
 			for sys in [:exc,:tech]
 				for sSym in keys(dual_etr.capa[sys])
@@ -184,7 +184,7 @@ let i = 1, gap_fl = 1.0, currentBest_fl = Inf
 		#region # * solve top-problem
 
 		startTop = now()
-		capaData_obj, allVal_dic, objTopTrust_fl, lowLimTrust_fl = @suppress runTopLevel(top_m,cutData_dic,i);
+		capaData_obj, allVal_dic, objTopTrust_fl, lowLimTrust_fl = @suppress runTop(top_m,cutData_dic,i);
 		timeTop = now() - startTop
 
 		#endregion
@@ -193,7 +193,7 @@ let i = 1, gap_fl = 1.0, currentBest_fl = Inf
 
 		startSub = now()
 		for x in collect(sub_tup)
-			dual_etr = @suppress runSubLevel(sub_dic[x],copy(capaData_obj))
+			dual_etr = @suppress runSub(sub_dic[x],copy(capaData_obj))
 			cutData_dic[x] = dual_etr
 		end
 		timeSub = now() - startSub
@@ -267,7 +267,7 @@ capaData_obj.capa = writeResult(top_m,[:capa],true)
 
 # run sub-problems with optimal values fixed
 for x in collect(sub_tup)
-	runSubLevel(sub_dic[x],copy(capaData_obj),true)
+	runSub(sub_dic[x],copy(capaData_obj),true)
 end
 
 rm(temp_dir; force = true, recursive = true) # remove temporal files again
