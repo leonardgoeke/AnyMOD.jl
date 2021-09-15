@@ -2,10 +2,10 @@
 # ! set options
 
 method = :all # options are :all, :fixAndLim, :fixAndQtr :onlyFix and :none
-resHeu = 2
-resMod = 4
+resHeu = 96
+resMod = 120
 t_int = 2
-dir_str = ""
+dir_str = "C:/Users/pacop/Desktop/work/git/TheModel/"
 
 #region # * set and write options
 
@@ -13,7 +13,7 @@ dir_str = ""
 
 reso_tup = (heu = resHeu, mod = resMod) 
 suffix_str = "_" * string(method) * "_" * string(resHeu) * "_" * string(resMod)
-inDir_arr = [[dir_str * "_basis",dir_str * "_full",dir_str * "timeSeries/" * string(x) * "days_2010"] for x in [reso_tup.heu, reso_tup.mod]] # input directories
+inDir_arr = [[dir_str * "_basis",dir_str * "_full",dir_str * "timeSeries/" * string(x) * "hours_2010"] for x in [reso_tup.heu, reso_tup.mod]] # input directories
 
 coefRngHeu_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
 coefRngTop_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
@@ -29,7 +29,7 @@ scaFacSub_tup = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e1, di
 sub_tup = ((1,0),(2,0),(3,0),(4,0),(5,0),(6,0),(7,0))
 
 # options of solution algorithm
-solOpt_tup = (gap = 0.001, gapLim = 0.02, delCut = 30, linPar = (thrsAbs = 0.05, thrsRel = 0.05), quadPar = (startRad = 1e-1, lowRad = 1e-6, shrThrs = 0.001, extThrs = 0.001))
+solOpt_tup = (gap = 0.001, gapLim = 0.005, delCut = 30, linPar = (thrsAbs = 0.05, thrsRel = 0.05), quadPar = (startRad = 1e-1, lowRad = 1e-6, shrThrs = 5e-4, extThrs = 5e-4))
 
 # options for different models
 temp_dir = dir_str * "tempFix" * suffix_str # directory for temporary folder
@@ -238,7 +238,7 @@ end
 itrReport_df = DataFrame(i = Int[], low = Float64[], best = Float64[], gap = Float64[], solCur = Float64[], time = Float64[])
 cutData_dic = Dict{Tuple{Int64,Int64},bendersData}()
 
-let i = 1, gap_fl = 1.0, currentBest_fl = Inf
+let i = 1, gap_fl = 1.0, currentBest_fl = Inf, rmvLim_boo = false
 	while true
 		produceMessageShort(" - Started iteration $i",report_m)
 
@@ -282,22 +282,23 @@ let i = 1, gap_fl = 1.0, currentBest_fl = Inf
 		
 		#endregion
 		
-		#region # * check convergence and adjust limits
+		#region # * check convergence and adjust limits	
 		
-		# ! adjust limits where they are binding
-		if method in (:all,:fixAndLim) && gap_fl < solOpt_tup.gapLim 
+		if method in (:all,:fixAndLim) && gap_fl < solOpt_tup.gapLim && !rmvLim_boo
+			# ! remove limits if they are binding anywhere
 			binLim_boo = checkLinearTrust(top_m)
 			if binLim_boo
-				adjustLinearTrust!(top_m)
-				produceMessage(report_m.options,report_m.report, 1," - Moved binding lower and upper limits!", testErr = false, printErr = false)
+				deleteLinearTrust!(top_m)	
+				produceMessage(report_m.options,report_m.report, 1," - Removed lower and upper limits!", testErr = false, printErr = false)
 			end
-		end
-
-		# ! terminate or adjust quadratic trust region
-		if gap_fl < solOpt_tup.gap && (!(method in (:all,:fixAndLim)) || !binLim_boo)
+			rmvLim_boo = true
+		elseif gap_fl < solOpt_tup.gap
+			# ! terminate or adjust quadratic trust region
 			produceMessage(report_m.options,report_m.report, 1," - Finished iteration!", testErr = false, printErr = false)
 			break
-		elseif method in (:all,:fixAndQtr) # adjust trust region in case algorithm has not converged yet
+		end
+
+		if method in (:all,:fixAndQtr) # adjust trust region in case algorithm has not converged yet
 			global trustReg_obj = adjustQuadTrust(top_m,allVal_dic,trustReg_obj,objSub_fl,objTopTrust_fl,lowLim_fl,lowLimTrust_fl,report_m)
 		end
 		#endregion

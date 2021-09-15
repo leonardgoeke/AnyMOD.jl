@@ -532,7 +532,7 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 		# remove unrequired nodes from trees of scenarios
 		foreach(y ->  delete!(anyM.sets[:scr].nodes,y),rmvId_tup.scr)
 
-		# rewrite information an superordinate time-steps
+		# rewrite information on superordinate time-steps
 		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(supTs_int,), sca = filter(x -> x[1][1] == supTs_int,anyM.supTs.sca),
 																	scr = Dict(supTs_int => [subPro[2],]), scrProp = filter(x -> x[1] == (supTs_int,subPro[2]), anyM.supTs.scrProp))
 

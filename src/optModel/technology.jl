@@ -502,7 +502,7 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 		facConv_df = DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], scr = Int[], id = Int[], eff = Float64[], mustOut = Float64[], ava = Float64[])
 	end
 
-	#  computes overall mustrun factor in relation to input capacity for each timestep and mode
+	#  computes overall must-run factor in relation to input capacity for each timestep and mode
 	allFac_df = vcat(facConv_df,facSt_df)
 	allFac_df = combine(x -> (run = maximum(x.eff .* x.ava ./ x.mustOut), mustOut = x.mustOut[1]),groupby(allFac_df,filter(x -> x != :M,intCol(allFac_df))))
 	allFac_df[!,:Ts_disSup] = map(x -> yTs_dic[x],allFac_df[!,:Ts_dis])

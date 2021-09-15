@@ -322,18 +322,13 @@ function checkLinearTrust(top_m::anyModel)
 	return binLim_boo
 end
 
-# ! adjust binding limits
-function adjustLinearTrust!(top_m::anyModel)
+# ! remove linear trust region
+function deleteLinearTrust!(top_m::anyModel)
 	for sys in (:tech,:exc)
 		part_dic = getfield(top_m.parts,sys)
 		for sSym in keys(part_dic)
 			for limCns in filter(x -> any(occursin.(["BendersUp","BendersLow"],string(x))), keys(part_dic[sSym].cns))
-				up_boo = occursin("BendersUp",string(limCns)) ? :true : :false
-				capa_sym = Symbol(replace(string(limCns), up_boo ? "BendersUp" => "" : "BendersLow" => ""))
-				scaCapa_fl = getfield(top_m.options.scaFac,occursin("StSize",string(capa_sym)) ? :capaStSize : :capa)
-				value_df = copy(part_dic[sSym].cns[limCns])
-				value_df[!,:value] = map(x -> scaCapa_fl * normalized_rhs(x.cns)/x.fac |> (w -> x.bind ? (up_boo ? w*1.3 : (w < 0.5 ? 0.0 : w*0.7)) : w),eachrow(value_df))
-				limitCapa!(select(value_df,Not([:fac,:cns,:bind])),part_dic[sSym].var[capa_sym],capa_sym,part_dic[sSym],top_m,up_boo ? :Up : :Low)
+				delete.(top_m.optModel,part_dic[sSym].cns[limCns][!,:cns])
 			end
 		end
 	end
@@ -356,7 +351,6 @@ end
 
 # ! dynamically adjusts the trust region
 function adjustQuadTrust(top_m::anyModel,allVal_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trustReg_obj::quadTrust,objSub_fl::Float64,objTopTrust_fl::Float64,lowLim_fl::Float64,lowLimTrust_fl::Float64,report_m::anyModel)
-
 	# re-create trust region
 	if (objTopTrust_fl + objSub_fl) < trustReg_obj.objVal # recenter trust region, if new best solution was obtained
 		trustReg_obj.var = filterQtrVar(allVal_dic,top_m)
