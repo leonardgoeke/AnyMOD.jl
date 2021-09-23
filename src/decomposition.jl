@@ -171,6 +171,8 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 			# create variabbles and writes constraints to minimize absolute value of capacity delta
 			for varSym in relVar_arr
 				var_df = part.var[varSym] |> (w -> occursin("exp",string(varSym)) ? collapseExp(w) : w)
+				if sys == :tech var_df = removeFixStorage(varSym,var_df,part) end # remove storage variables controlled by ratio
+				if isempty(var_df) continue end
 				# gets variable value and set variables below threshold to zero
 				abs_df = deSelectSys(var_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df,z,on = intersect(intCol(z,:dir),intCol(var_df,:dir)))) |> (y -> y[completecases(y),:])
 				abs_df[!,:value] = map(x -> x.value < zeroThrs_fl ? 0.0 : x.value, eachrow(abs_df))
