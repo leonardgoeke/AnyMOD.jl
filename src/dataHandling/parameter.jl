@@ -1018,7 +1018,14 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
                 if isempty(paraMatch_df)
                     paraMatch_df = defaultMatch_df 
                 else
-                    append!(paraMatch_df,defaultMatch_df)
+                    try
+                        append!(paraMatch_df,defaultMatch_df)
+                    catch
+                        println(par_obj.name)
+                        println(paraMatch_df)
+                        println(defaultMatch_df)
+                        error()
+                    end
                 end
             end
         end
