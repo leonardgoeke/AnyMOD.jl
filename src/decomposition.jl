@@ -224,7 +224,6 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0)
-	set_optimizer_attribute(top_m.optModel, "FeasibilityTol", 1e-9)
 	optimize!(top_m.optModel)
 	checkIIS(top_m)
 
