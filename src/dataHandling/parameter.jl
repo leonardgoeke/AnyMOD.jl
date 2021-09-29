@@ -499,7 +499,7 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:cycStOutFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_dis, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :scr => :up, :id => :up, :Te => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any), part = :techSt)
 
     # parameters to enforce a fixed production profile
-    parDef_dic[:mustOut] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :C, :scr),   problem = :both,  defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :carrierOut, mode = (:convOut,)))
+    parDef_dic[:mustOut] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :C, :scr), problem = :both,  defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :carrierBoth, mode = (:convOut,)))
 
     # ! further dispatch parameters
 
@@ -716,11 +716,13 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 		specMode_boo = !isempty(part.modes) && !isempty(filter(y -> :M in namesSym(part.par[y].data), keys(filter(x -> x[2] == preType,parPre_dic))))
 
         # creates table of relevant capacity resolutions and the level of pre-setting
-        preCapa_sym = preType != :carrierSt ? :capaConv : :capaStSize
-        if preCapa_sym in keys(prepTech_dic)
-            capaLvl_df = unique(vcat(map(x -> select(x,intCol(x)),values(prepTech_dic[preCapa_sym]))...)) |> (x -> select(copy(x),intCol(x)))
+        preCapa_arr = intersect(preType in (:carrierSt,:carrierBoth) ? (preType == :carrierSt ? [:capaStSize] : [:capaStSize,:capaConv]) : [:capaConv], collect(keys(prepTech_dic)))
+
+        if !isempty(preCapa_arr)
+            capaLvl_df = unique(vcat(map(z -> unique(vcat(map(x -> select(x,preType == :carrierBoth ? filter(x -> x != :id, intCol(x)) : intCol(x)),values(prepTech_dic[z]))...)) |> (x -> select(copy(x),intCol(x))),preCapa_arr)...))
         else # do not no any presetting, if no capacities relevant for parameter will exist (example: stock technology with conversion part, but not conversion capacities are defined)
-            continue
+            foreach(x -> delete!(part.par,x), keys(filter(x -> x[2] == preType,parPre_dic)))
+            continue   
         end
         if isempty(capaLvl_df) continue end
 
@@ -733,14 +735,14 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 			ref_tup = part.balLvl.ref
 			if isempty(ref_tup) continue end
             capaLvl_df[!,:lvlTs] .= ref_tup[1]; capaLvl_df[!,:lvlR] .= ref_tup[2];
-		elseif preType == :carrierIn || preType == :carrierOut || preType == :carrierSt
-
-			if preType == :carrierIn || preType == :carrierOut
-				car_arr = (preType == :carrierIn ? :use : :gen) |> (y -> haskey(part.carrier,y) ? collect(getfield(part.carrier,y)) : Int[])
+		elseif preType in  (:carrierIn, :carrierOut, :carrierSt, :carrierBoth)
+            
+			if preType in (:carrierIn, :carrierOut, :carrierBoth) # extend with capacities relevant for conversion
+				car_arr = unique(vcat(map(x -> collect(getfield(part.carrier,x)...),intersect(preType == :carrierIn ? (:use,) : (preType == :carrierOut ? (:gen,) : (:gen,:stExtOut,:stIntOut)),keys(part.carrier)))...))
 				if isempty(car_arr) continue end
                 capaLvl_df[!,:C] = map(x -> car_arr, 1:size(capaLvl_df,1))
                 capaLvl_df = flatten(capaLvl_df,:C)
-            else
+            else # extend with capacities relevant for storage or both
                 # gets array of carriers defined for each group of storage
                 subField_arr = intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(part.carrier))
                 idC_dic = Dict(y => union(map(x -> getfield(part.carrier,x)[y],subField_arr)...) for y in 1:length(part.carrier[subField_arr[1]]))
@@ -749,6 +751,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
                 capaLvl_df = flatten(capaLvl_df,:C)
                 car_arr = union(values(idC_dic)...)
 			end
+
 			resC_dic = Dict(x => anyM.cInfo[x] |> (y -> [getfield(y,:tsDis), part.disAgg ? part.balLvl.exp[2] : getfield(y,:rDis)]) for x in car_arr)
             capaLvl_df = combine(x -> resC_dic[x.C[1]] |> (y -> (lvlTs = y[1], lvlR = y[2])), groupby(capaLvl_df, namesSym(capaLvl_df)))
 		elseif preType == :minUse || preType == :minGen
@@ -1018,14 +1021,7 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
                 if isempty(paraMatch_df)
                     paraMatch_df = defaultMatch_df 
                 else
-                    try
-                        append!(paraMatch_df,defaultMatch_df)
-                    catch
-                        println(par_obj.name)
-                        println(paraMatch_df)
-                        println(defaultMatch_df)
-                        error()
-                    end
+                    append!(paraMatch_df,defaultMatch_df)
                 end
             end
         end

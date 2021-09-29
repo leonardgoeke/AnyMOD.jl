@@ -31,7 +31,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 	if !isempty(part.var) || part.type == :unrestricted 
 
 		# prepare must-run parameters
-		if :mustOut in keys(part.par) && (:capaConv in keys(prepTech_dic) || :capaStIn in keys(prepTech_dic))
+		if :mustOut in keys(part.par)
 			if part.type == :unrestricted
 				push!(anyM.report,(3,"must output","","must-run parameter for technology '$(tech_str)' ignored, because technology is unrestricted,"))
 			else
@@ -224,7 +224,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 
 		# filter entries where availability is zero
 		for avaPar in relAva_dic[va]
-			if !isempty(part.par[avaPar].data) && 0.0 in part.par[avaPar].data[!,:val]
+			if avaPar in keys(part.par) && !isempty(part.par[avaPar].data) && 0.0 in part.par[avaPar].data[!,:val]
 				allVar_df = filter(x -> x.val != 0.0,  matchSetParameter(allVar_df,part.par[avaPar],anyM.sets))[!,Not(:val)]
 			end
 		end
@@ -416,7 +416,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},prep
 
 	end
 
-	# add missing capacity variables for storage in case of subproblems (otherwise infeasibility is possible, if storage cannot be charged sufficiently)
+	# add missing capacity variables in case of subproblems (otherwise infeasibility is possible, if storage cannot be charged sufficiently)
 	if !isempty(anyM.subPro) && anyM.subPro != (0,0) && :costMissCapa in keys(anyM.parts.bal.par)
 		stCapa_df = filter(x -> x.id != 0,part.par[:desFac].data)
 		if !isempty(stCapa_df)
@@ -453,7 +453,7 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 
 	# split into conversion and storage capacities
 	if isempty(capa)
-		if :capaStOut in keys(part.var)
+		if :capaStOut in keys(part.var) # only if capacities exist and storage can be charged internally or externally
 			facSt_df = allFac_df
 			facSt_df[!,:id] = fill(unique(part.var[:capaStOut][!,:id]),size(facSt_df,1))
 			facSt_df = flatten(facSt_df,:id)
@@ -472,7 +472,7 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 		facSt_df = filter(x -> x.id != 0,allFac_df)
 	end
 
-	# get availability and efficiency for storage capacities
+	# get availability and efficiency for storage capacities, # TODO here 
 	if !isempty(facSt_df)
 		facSt_df = matchSetParameter(facSt_df,part.par[:avaStOut],anyM.sets; newCol = :ava)
 		facSt_df = orderDf(matchSetParameter(facSt_df,part.par[:effStOut],anyM.sets; newCol = :eff))
@@ -514,7 +514,6 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 		part.par[:desFac] = ParElement(DataFrame(),parDef_ntup,:desFac,anyM.report)
 		part.par[:desFac].data = rename(allFac_df,:desFac => :val)
 	end
-
 end
 
 # ! returns type of variable and corrects with energy content
