@@ -738,7 +738,8 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 		elseif preType in  (:carrierIn, :carrierOut, :carrierSt, :carrierBoth)
             
 			if preType in (:carrierIn, :carrierOut, :carrierBoth) # extend with capacities relevant for conversion
-				car_arr = unique(vcat(map(x -> collect(getfield(part.carrier,x)...),intersect(preType == :carrierIn ? (:use,) : (preType == :carrierOut ? (:gen,) : (:gen,:stExtOut,:stIntOut)),keys(part.carrier)))...))
+                relDisp_arr = intersect(preType == :carrierIn ? (:use,) : (preType == :carrierOut ? (:gen,) : (:gen,:stExtOut,:stIntOut)),keys(part.carrier))
+				car_arr = unique(vcat(map(x -> x in (:gen,:use) ? collect(getfield(part.carrier,x)) : collect(getfield(part.carrier,x)...),relDisp_arr)...))
 				if isempty(car_arr) continue end
                 capaLvl_df[!,:C] = map(x -> car_arr, 1:size(capaLvl_df,1))
                 capaLvl_df = flatten(capaLvl_df,:C)
