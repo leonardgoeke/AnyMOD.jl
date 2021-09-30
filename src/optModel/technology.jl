@@ -53,13 +53,13 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 			produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
 
 			# create conversion balance for conversion technologies
-			if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && (:capaConv in keys(part.var) || part.type == :unrestricted)
+			if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && (:capaConv in keys(part.var) || part.type == :unrestricted) && part.balSign.conv != :none
 				cns_dic[:convBal] = createConvBal(part,anyM)
 				produceMessage(anyM.options,anyM.report, 3," - Prepared conversion balance for technology $(tech_str)")
 			end
 
 			# create storage balance for storage technologies
-			if :stLvl in keys(part.var)
+			if :stLvl in keys(part.var) && part.balSign.st != :none
 				cns_dic[:stBal] = createStBal(part,anyM)
 				produceMessage(anyM.options,anyM.report, 3," - Prepared storage balance for technology $(tech_str)")
 			end
@@ -283,7 +283,7 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	aggCol!(cns_df,out_arr)
 	
 	cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[in_arr[1]] .* cns_df[:eff] .- cns_df[out_arr[1]])
-	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),:equal)
+	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]), part.balSign.conv == :eq ? :equal : :greater)
 end
 
 # ! create storage balance
@@ -382,7 +382,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 	end
 
 	cns_df =  vcat(cCns_arr...)
-	return cnsCont(orderDf(cns_df[!,[cnsDim_arr...,:cnsExpr]]),:equal)
+	return cnsCont(orderDf(cns_df[!,[cnsDim_arr...,:cnsExpr]]),part.balSign.st == :eq ? :equal : :greater)
 end
 
 # ! computes design factors and create specific variables plus corresponding contraint for must run capacities where sensible

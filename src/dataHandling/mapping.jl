@@ -8,7 +8,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     resCol_tup =  (:timestep_dispatch, :timestep_expansion, :region_dispatch, :region_expansion)
     resLongShort_tup = Dict(:timestep_dispatch => :lvlTsDis, :timestep_expansion => :lvlTsExp, :region_dispatch => :lvlRDis, :region_expansion => :lvlRExp)
 
-    anyM.cInfo = Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:bal),Tuple{Int,Int,Int,Int,Symbol}}}()
+    anyM.cInfo = Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign),Tuple{Int,Int,Int,Int,Symbol}}}()
 
     # loops over rows in carrier file and writes specific resolutions
     for row in eachrow(setData_dic[:C])
@@ -20,8 +20,10 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
 
 		# check, if carrier got an equality constraint or not
 		if :carrier_balance in namesSym(row)
-			if !(row[:carrier_balance] in ("eq","ineq","none"))
+			if !(row[:carrier_balance] in ("eq","ineq","none",""))
 				push!(anyM.report,(2,"carrier mapping","","column carrier_equality can only contain keywords 'eq', 'ineq', or 'none', assumed 'ineq'"))
+				bal_sym = :ineq
+			elseif row[:carrier_balance] == ""
 				bal_sym = :ineq
 			else
 				bal_sym = Symbol(row[:carrier_balance])
@@ -44,7 +46,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     		push!(anyM.report,(3,"carrier mapping","","spatial resolution of expansion must be at least as detailed as dispatch for '$(createFullString(car_int,anyM.sets[:C]))'"))
     		continue
     	else
-    		anyM.cInfo[car_int] = (tsDis = res_dic[:lvlTsDis],tsExp = res_dic[:lvlTsExp],rDis = res_dic[:lvlRDis],rExp = res_dic[:lvlRExp], bal = bal_sym)
+    		anyM.cInfo[car_int] = (tsDis = res_dic[:lvlTsDis],tsExp = res_dic[:lvlTsExp],rDis = res_dic[:lvlRDis],rExp = res_dic[:lvlRExp], balSign = bal_sym)
     	end
     end
 
@@ -277,12 +279,37 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 	end
 	part.decomm = Symbol(type_str)
 
-	# ! writes modes for technologies
+	# ! writes specific info for technologies
 	if sys == :Te
+		# writes modes
 		if :mode in namesSym(row_df) && length(anyM.sets[:M].nodes) > 1
 			part.modes = tuple(collect(lookupTupleTree(tuple(string(x),),anyM.sets[:M],1)[1] for x in filter(x -> x != "",split(replace(row_df[:mode]," " => ""),";")))...)
 		else
 			part.modes = tuple()
+		end
+
+		# writes types of conversion and storage balance
+		for bal in (:conv,:st)
+			# extracts value
+			bal_sym = Symbol(:technology_,bal,:Balance)
+			if bal_sym in namesSym(row_df)
+				if !(row_df[bal_sym] in ("eq","ineq","none",""))
+					push!(anyM.report,(2,"technology mapping","","column carrier_equality can only contain keywords 'eq', 'ineq', or 'none', assumed 'ineq'"))
+					bal_sym = :ineq
+				elseif row_df[bal_sym] == ""
+					bal_sym = :ineq
+				else
+					bal_sym = Symbol(row_df[bal_sym])
+				end
+			else
+				bal_sym = :ineq
+			end
+			# writes to object
+			if bal == :conv
+				part.balSign = (conv = bal_sym, st = :ineq)
+			else
+				part.balSign = (conv = part.balSign.conv, st = bal_sym)
+			end
 		end
 	end
 
