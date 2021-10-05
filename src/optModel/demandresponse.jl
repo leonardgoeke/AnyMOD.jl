@@ -1,4 +1,11 @@
-using DataStructures
+# comments lgo
+# 1) added a specific function to aggregate dsmDo and save aggregation as stExtOut again => Eq. 9 from Zerrahn is automatically created as a capacity restriction and code in createDrCapExpBal is not needed anymore    
+# 2) some of your data processing methods are not robust and only work, if the order of rows in processed dataframes are the same 
+#   a) columns should be joined to table using join commands not just taking the column of dataframe a and adding it to the right side of dataframe b like in line 137, this will fail as soon as the order of rows in a and b is different
+#   b) "grouby" should be paid with "combine" for aggregating like in line 188, afterwards you can perform a join command to add the aggregated data to another dataframe 
+# 3) dont think get_tt works right when considering the modelled year is a circle, for example dsmDo for Ts_dis = h0001 should not only got into the future and include Ts_dis2 = h0001 to h0004, but also back including h0048 and so on
+#    implementing this is not straightforward and must not be a priority, but you can try to have look at the createStBal in line 319 and onwards of technology.jl
+# 4) i would advise to move all the dsm functions called in createTech! into a single function and create comments and foldable regions like in the other scripts to organize that function
 
 function get_tt(anyM::anyModel,setData_df::DataFrame)
     nodes_ordered = []
@@ -105,7 +112,8 @@ function createDrCapExpBal(part::TechPart,anyM::anyModel)
     # Zerrahn Constraint 8: DSM_up [t] - C_up <= 0  for t
     "constraint is equal to original part.cns[:stInRestr].cns, make sure it is created."
 
-    # Zerrahn constraint 9 
+    # Zerrahn constraint 9
+    #=
     var_df = rename(part.var[:dsmDo],:var => :dsmDo)
     gr = groupby(var_df, filter(x -> x != [:Ts_dis,:Ts_dis2], intCol(var_df)))
     
@@ -124,10 +132,11 @@ function createDrCapExpBal(part::TechPart,anyM::anyModel)
     cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:dsmDo] .- cns_df[!,:capaStOut])
     cns_cont = cnsCont(orderDf(cns_df),:smaller)
     part.cns[:drCRed] = createCns(cns_cont,anyM.optModel)
+    =#
 
     
     # Zerrahn constraint 10.
-    cns_df = cns_df[!,Not(:cnsExpr)]
+    cns_df = rename(copy(part.var[:stExtOut]),:var => :stExtOut)
     cns_df.stExtIn = rename(part.var[:stExtIn],:var => :stExtIn).stExtIn
     
     val_df = rename(part.var[:capaStIn],:R_exp => :R_dis)
@@ -137,7 +146,7 @@ function createDrCapExpBal(part::TechPart,anyM::anyModel)
     sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
     cns_df[!,:capaStIn] = cns_df[!,:capaStIn] .* sca_arr
     
-    cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:stExtIn] + cns_df[!,:dsmDo].- cns_df[!,:capaStIn])
+    cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:stExtIn] + cns_df[!,:stExtOut].- cns_df[!,:capaStIn])
     cns_cont = cnsCont(orderDf(cns_df),:smaller)
     part.cns[:drCMax] = createCns(cns_cont,anyM.optModel)
     
@@ -177,3 +186,8 @@ function createDrRecoveryCns(part::TechPart,anyM::anyModel)
         part.cns[:drRecovery] = createCns(cns_cont,anyM.optModel)
     end
 end    
+
+function createDrstExtOut!(part::TechPart,anyM::anyModel)
+    grpData_df = orderDf(combine(groupby(part.var[:dsmDo], filter(x -> x != :Ts_dis2, intCol(part.var[:dsmDo]))), :var => (x -> sum(x)) => :var))
+    part.var[:stExtOut] = grpData_df
+end

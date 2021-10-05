@@ -10,6 +10,11 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
     # presets all dispatch parameter and obtains mode-dependant variables
 	modeDep_dic = presetDispatchParameter!(part,prepTech_dic,parDef_dic,newHerit_dic,ts_dic,r_dic,anyM)
 
+	# TODO temporary workaround for stroage size in case of demand response technology
+	if :drTime in collectKeys(keys(part.par))
+		foreach(x -> delete!(prepTech_dic,x), intersect(keys(prepTech_dic),(:capaStSize,:expStSize,:insCapaStSize)))
+	end
+
 	# create investment variables and constraints
 	if part.type != :unrestricted
 		# creates capacity, expansion, and retrofitting variables
@@ -53,8 +58,9 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 			produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
 
 			# create demand response variables and constraints
-			if :drTime in collectKeys(keys(part.par)) 
+			if :drTime in collectKeys(keys(part.par))
 				createDrDoVar!(part,anyM)
+				createDrstExtOut!(part,anyM)
 				createDrBalCns(part,anyM)
 				createDrCapExpBal(part,anyM)
 				createDrRecoveryCns(part,anyM)
@@ -194,9 +200,10 @@ end
 function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},prepTech_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,))
-	hasSt_boo = :capaStSize in keys(prepTech_dic)
-
-	for va in collectKeys(keys(part.carrier)) |> (x -> hasSt_boo  ? [:stLvl,x...]  : x) # loop over all relevant kind of variables
+	hasSt_boo = any(map(x -> x in keys(prepTech_dic),[:capaStSize,:capaStIn,:capaStOut]))
+	asStLvl_boo = :capaStSize in keys(prepTech_dic)
+	
+	for va in collectKeys(keys(part.carrier)) |> (x -> asStLvl_boo  ? [:stLvl,x...]  : x) # loop over all relevant kind of variables
 		conv_boo = va in (:gen,:use) && :capaConv in keys(prepTech_dic)
 		# obtains relevant capacity variable
 		if conv_boo
@@ -205,7 +212,8 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
 		elseif hasSt_boo && !(va in (:gen,:use))
-			basis_df = orderDf(copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[:capaStSize]))...))))
+			stCapa_str = va == :stLvl ? :capaStSize : replace(replace(replace(string(va),"st" => "capaSt"),"Ext" => ""),"Int" => "")
+			basis_df = orderDf(copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[Symbol(stCapa_str)]))...))))
 			if isempty(basis_df) continue end
 			# gets array of carriers defined for each group of storage
 			subField_arr = intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),keys(part.carrier))
@@ -244,10 +252,10 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			scaFac_fl = anyM.options.scaFac.dispSt
 		end
 		
-		if va in (:stLvl, :stExtOut) && :drTime in collectKeys(keys(part.par)) 
+		if va == :stExtOut && :drTime in collectKeys(keys(part.par)) 
 			allVar_df = antijoin(allVar_df, part.par[:drTime].data, on = intCol( part.par[:drTime].data))
 		else
-		part.var[va] = orderDf(createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / scaFac_fl,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = scaFac_fl))
+			part.var[va] = orderDf(createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / scaFac_fl,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = scaFac_fl))
 		end
 	end
 end
