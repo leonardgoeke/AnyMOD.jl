@@ -814,33 +814,28 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 
 	#region # * create graph and map edges
 	
-	# ! get arrays of ids to filter relevant carriers and technologies
-	allTe_arr = collect(values(anyM.graInfo.graph.nodeTe))
+	# ! get relevant model and graph ids for carriers and technologies
+	
+	# graph and model ids of carriers
+	graC_arr = isempty(relC) ? collect(values(anyM.graInfo.graph.nodeC)) : map(x -> anyM.graInfo.graph.nodeC[sysInt(x,anyM.sets[:C])],collect(relC))
+	modC_arr = isempty(relC) ? collect(keys(anyM.sets[:C].nodes)) : map(x -> sysInt(x,anyM.sets[:C]),collect(relC))
 
-	if isempty(relC)
-		relC_arr = Int[]
-	else
-		relC_arr = map(x -> anyM.graInfo.graph.nodeC[sysInt(x,anyM.sets[:C])],collect(relC))
-	end
-
-	if isempty(relTe)
-		relTe_arr = Int[]
-	else
-		relTe_arr = map(x -> anyM.graInfo.graph.nodeTe[sysInt(x,anyM.sets[:Te])],collect(relTe))
-	end
+	# graph and model ids of technologies connected to relevant carriers
+	actTe_arr = unique(map(x -> sysSym(x,anyM.sets[:Te]) in keys(anyM.parts.tech) ? x : getDescendants(x,anyM.sets[:Te],true)[end], collect(values(anyM.graInfo.graph.nodeTe)))) # not all actual technologies are represented in graph, e.g. to avoid 3 different solar 
+	modTe_arr = filter(x -> sysSym(x,anyM.sets[:Te]) |> (u -> u in keys(anyM.parts.tech) && !isempty(intersect(modC_arr,union(map(w -> union(w...),values(anyM.parts.tech[u].carrier))...)))), actTe_arr) # check actual technology for carriers
+	modTe_arr = map(x -> x in keys(anyM.graInfo.graph.nodeTe) ? x : maximum(map(y -> y in keys(anyM.graInfo.graph.nodeTe) ? y : 0,getAncestors(x,anyM.sets[:Te],:int))), modTe_arr) # convert to technology in graph again
+	graTe_arr = map(x -> anyM.graInfo.graph.nodeTe[x], modTe_arr) # get technology id in graph
 
 	# ! create relevant edges for carriers and technologies
 
     graph_obj = netw.DiGraph()
     flowGrap_obj = anyM.graInfo.graph
 
-	bla = false; blub = false
-	cEdge_arr = filter(x -> isempty(relC_arr) ? true : (x[1] in relC_arr || x[2] in relC_arr),collect.(flowGrap_obj.edgeC))
-	teEdge_arr = filter(x -> x[1] in allTe_arr ? (isempty(relTe_arr) ? (isempty(relC_arr) ? true : x[2] in relC_arr) : x[1] in relTe_arr) : (isempty(relTe_arr) ? (isempty(relC_arr) ? true : x[1] in relC_arr) : x[2] in relTe_arr),flowGrap_obj.edgeTe)
-	
-	addTeEdge_arr = (bla || blub) ? union(teEdge_arr...) |> (z -> filter(x -> !(x in teEdge_arr) && ((bla && x[1] in z) || (blub && x[2] in z)),flowGrap_obj.edgeTe)) : Pair[]
+	cEdge_arr = filter(x -> x[1] in graC_arr || x[2] in graC_arr,collect.(flowGrap_obj.edgeC))
+	#teEdge_arr = filter(x -> x[1] in allTe_arr ? (isempty(relTe_arr) ? (isempty(relC_arr) ? true : x[2] in relC_arr) : x[1] in relTe_arr) : (isempty(relTe_arr) ? (isempty(relC_arr) ? true : x[1] in relC_arr) : x[2] in relTe_arr),flowGrap_obj.edgeTe)
+	teEdge_arr = filter(x -> x[1] in graTe_arr || x[2] in graTe_arr, flowGrap_obj.edgeTe)
 
-    edges_arr =  vcat(cEdge_arr,collect.(teEdge_arr),collect.(addTeEdge_arr))
+    edges_arr =  vcat(cEdge_arr,collect.(teEdge_arr))
     for x in edges_arr
         graph_obj.add_edge(x[1],x[2])
     end
