@@ -37,8 +37,6 @@ function getRecoveryTime(anyM::anyModel,cns_df::DataFrame)
     end  
 end
 
-
-
 function createDrDoVar!(part::TechPart,anyM::anyModel)
 
     basis_df = orderDf(copy(part.var[:stExtIn][!,Not(:var)]))
@@ -55,7 +53,6 @@ function createDrDoVar!(part::TechPart,anyM::anyModel)
     basis_df[!,:name] = map(x -> replace(x.name, "]" => string.(", ", anyM.sets[:Ts].nodes[x.Ts_dis2].val)), eachrow(basis_df))
     basis_df[!,:name] = map(x -> x.name* "]", eachrow(basis_df))
 
-
     setData_df = basis_df
     scaFac = anyM.options.scaFac.dispSt
 
@@ -64,7 +61,6 @@ function createDrDoVar!(part::TechPart,anyM::anyModel)
     bi = false
     optModel = anyM.optModel
     lock_ = anyM.lock
-
 
     arr_boo = typeof(upBd_fl) <: Array
     if arr_boo
@@ -84,58 +80,43 @@ function createDrDoVar!(part::TechPart,anyM::anyModel)
     unlock(lock_)
 
     part.var[:dsmDo] = orderDf(setData_df[!,Not(:name)])
-
 end
-
-
-function createDrstExtOut!(part::TechPart,anyM::anyModel)
-    setData_df = part.var[:stExtIn]
-    groups = groupby(part.var[:dsmDo], filter(x -> x != :Ts_dis2, intCol(part.var[:dsmDo])))
-    for i in 1:length(groups)
-        setData_df[i,:var] = sum(groups[i].var)
-    end
-    part.var[:stExtOut] = orderDf(setData_df)
-end
-
 
 
 function createDrBalCns(part::TechPart,anyM::anyModel)
-    # Zehrran constraint 7'
+    # Zerrahn constraint 7'
     cns_df = rename(part.var[:stExtIn],:var => :stExtIn)
 
-    cns_df[!,:stExtOut] .= rename(part.var[:stExtOut], :var => :stExtOut).stExtOut
+    cns_df.dsmDo = copy(cns_df[!,:stExtIn])
+    groups = groupby(part.var[:dsmDo], filter(x -> x != :Ts_dis2, intCol(part.var[:dsmDo])))
+    for i in 1:length(groups)
+        cns_df[i,:dsmDo] = sum(groups[i].var)
+    end
+    
     cns_df = matchSetParameter(cns_df, part.par[:effStIn], anyM.sets)
     cns_df = rename(cns_df, :val => :effStIn)
 
-    cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:effStIn].*cns_df[!,:stExtIn] .- cns_df[!,:stExtOut])
+    cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:effStIn].*cns_df[!,:stExtIn] .- cns_df[!,:dsmDo])
     cns_cont = cnsCont(orderDf(cns_df),:equal)
     part.cns[:drBal] = createCns(cns_cont,anyM.optModel)
 end
 
-
-
-
-
 function createDrCapExpBal(part::TechPart,anyM::anyModel)
-    # Zehrran Constraint 8
-    # DSM_up [t] - C_up <= 0  for t
-    "constraint is equal to original part.cns[:stInRestr].cns"
-    " make sure it is created!"
+    # Zerrahn Constraint 8: DSM_up [t] - C_up <= 0  for t
+    "constraint is equal to original part.cns[:stInRestr].cns, make sure it is created."
 
-    # Zehrran constraint 9 
+    # Zerrahn constraint 9 
+    var_df = rename(part.var[:dsmDo],:var => :dsmDo)
+    gr = groupby(var_df, filter(x -> x != [:Ts_dis,:Ts_dis2], intCol(var_df)))
     
-    cns_df = rename(part.var[:dsmDo],:var => :dsmDo)
-    gr = groupby(cns_df, filter(x -> x != [:Ts_dis,:Ts_dis2], intCol(cns_df)))
-    
-    cns_df = rename(part.var[:stExtOut],:var => :dsmDo)
-    
+    cns_df = rename(part.var[:stExtIn],:var => :dsmDo)
     for i in 1:length(gr)
         cns_df[i,:dsmDo] = sum(gr[i].dsmDo)
     end
         
     val_df = rename(part.var[:capaStOut],:R_exp => :R_dis)
-    merg = innerjoin(cns_df, val_df, on=[:Ts_disSup, :R_dis, :Ts_expSup, :Te, :id])
-    cns_df = rename(merg, :var => :capaStOut)
+    merge = innerjoin(cns_df, val_df, on=[:Ts_disSup, :R_dis, :Ts_expSup, :Te, :id])
+    cns_df = rename(merge, :var => :capaStOut)
     
     sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
     cns_df[!,:capaStOut] = cns_df[!,:capaStOut] .* sca_arr
@@ -145,29 +126,15 @@ function createDrCapExpBal(part::TechPart,anyM::anyModel)
     part.cns[:drCRed] = createCns(cns_cont,anyM.optModel)
 
     
-    ### Zehrran constraint 10.
-    cns_df = rename(part.var[:dsmDo],:var => :dsmDo)
-    gr = groupby(cns_df, filter(x -> x != [:Ts_dis,:Ts_dis2], intCol(cns_df)))
-
-    cns_df = rename(part.var[:stExtIn],:var => :stExtIn)
-    cns_df.stExtOut = rename(part.var[:stExtOut],:var => :stExtOut).stExtOut
-
-    for i in 1:length(gr)
-        cns_df[i,:stExtOut] = sum(gr[i].dsmDo)
-    end
-
-    cns_df = rename(cns_df,:stExtOut => :dsmDo)
-
-    val_df = rename(part.var[:capaStOut],:R_exp => :R_dis)
-    merg = innerjoin(cns_df, val_df, on = [:Ts_disSup, :R_dis, :Ts_expSup, :Te, :id])
-    cns_df = rename(merg, :var => :capaStOut)
+    # Zerrahn constraint 10.
+    cns_df = cns_df[!,Not(:cnsExpr)]
+    cns_df.stExtIn = rename(part.var[:stExtIn],:var => :stExtIn).stExtIn
     
     val_df = rename(part.var[:capaStIn],:R_exp => :R_dis)
     merg = innerjoin(cns_df, val_df, on = [:Ts_disSup, :R_dis, :Ts_expSup, :Te, :id])
     cns_df = rename(merg, :var => :capaStIn)
     
     sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
-    cns_df[!,:capaStOut] = cns_df[!,:capaStOut] .* sca_arr
     cns_df[!,:capaStIn] = cns_df[!,:capaStIn] .* sca_arr
     
     cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:stExtIn] + cns_df[!,:dsmDo].- cns_df[!,:capaStIn])
@@ -175,12 +142,11 @@ function createDrCapExpBal(part::TechPart,anyM::anyModel)
     part.cns[:drCMax] = createCns(cns_cont,anyM.optModel)
     
     "used capaStIn instead of max(capaStIn, capaStOut)"
-    
 end
 
 
 function createDrRecoveryCns(part::TechPart,anyM::anyModel)
-    ### Zehrran constraint 11
+    ### Zerrahn constraint 11
 
     cns_df = rename(part.var[:stExtIn],:var => :stExtIn)
     cns_df = matchSetParameter(cns_df, part.par[:drTime], anyM.sets)
@@ -197,13 +163,9 @@ function createDrRecoveryCns(part::TechPart,anyM::anyModel)
         cns_df[!,:capaStIn] = cns_df[!,:capaStIn] .* sca_arr
         
         cns_df = insertcols!(cns_df, :Ts_dis2 => Ref([]))
-        
-        # sat it to 2 when testing, because it was not defined in input files
-        # cns_df.drRecoveryTime .= 2 
-        
         getRecoveryTime(anyM, cns_df)
         
-        df_copy = cns_df
+        df_copy = copy(cns_df)
         for row in eachrow(cns_df)
             arr = row.Ts_dis2
             row.stExtIn = sum(cns_df[(df_copy[:R_dis].==row.R_dis).& ∈(arr).(df_copy.Ts_dis), :].stExtIn)
