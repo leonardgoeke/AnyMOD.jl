@@ -52,6 +52,16 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 			createDispVar!(part,modeDep_dic,ts_dic,r_dic,prepTech_dic,anyM)
 			produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
 
+			# create demand response variables and constraints
+			if :drTime in collectKeys(keys(part.par)) 
+				createDrDoVar!(part,anyM)
+				createDrstExtOut!(part,anyM)
+
+				createDrBalCns(part,anyM)
+				createDrCapExpBal(part,anyM)
+				createDrRecoveryCns(part,anyM)
+			end
+			
 			# create conversion balance for conversion technologies
 			if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && (:capaConv in keys(part.var) || part.type == :unrestricted) && part.balSign.conv != :none
 				cns_dic[:convBal] = createConvBal(part,anyM)
@@ -235,7 +245,12 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		else
 			scaFac_fl = anyM.options.scaFac.dispSt
 		end
+		
+		if va in (:stLvl, :stExtOut) && :drTime in collectKeys(keys(part.par)) 
+			allVar_df = antijoin(allVar_df, part.par[:drTime].data, on = intCol( part.par[:drTime].data))
+		else
 		part.var[va] = orderDf(createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / scaFac_fl,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = scaFac_fl))
+		end
 	end
 end
 

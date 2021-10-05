@@ -10,6 +10,10 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     # ! general discount rate
     parDef_dic[:rateDisc]  = (dim = (:Ts_disSup, :R_exp), problem = :both, defVal = 0.02, herit = (:Ts_disSup => :up, :R_exp => :up, :R_exp => :avg_any, :Ts_disSup => :avg_any), part = :cost)
 
+    # specific Demand response parameters
+    parDef_dic[:drTime] =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :id => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :C => :up), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
+    parDef_dic[:drRecoveryTime] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :id => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :C => :up), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn,:stOut,:stLvl)))
+    
     # ! technology and exchange expansion
     convExp_tup = (:Te => :up, :Ts_expSup => :up, :R_exp => :up, :Ts_expSup => :avg_any, :R_exp => :avg_any)
     stExp_tup = (:Te => :up, :Ts_expSup => :up, :id => :up, :R_exp => :up,  :Ts_expSup => :avg_any, :R_exp => :avg_any)
