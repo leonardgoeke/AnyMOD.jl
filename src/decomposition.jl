@@ -460,8 +460,10 @@ function runSub(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=false)
 	end
 
 	# set optimizer attributes and solves
-	set_optimizer_attribute(sub_m.optModel, "Method", 2)
-	set_optimizer_attribute(sub_m.optModel, "Crossover", 0)
+	set_optimizer_attribute(sub_m.optModel, "Method", 1)
+	set_optimizer_attribute(sub_m.optModel, "OptimalityTol", 1e-9)
+	set_optimizer_attribute(sub_m.optModel, "Threads", 1)
+	set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
 	optimize!(sub_m.optModel)
 	checkIIS(sub_m)
 
