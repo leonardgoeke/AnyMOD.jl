@@ -325,7 +325,7 @@ mutable struct modOptions
 	scaFac::NamedTuple{(:capa,:capaStSize,:insCapa,:dispConv,:dispSt,:dispExc, :dispTrd, :costDisp,:costCapa,:obj),Tuple{Vararg{Float64,10}}}
 	bound::NamedTuple{(:capa,:disp,:obj),Tuple{Vararg{Float64,3}}}
 	avaMin::Float64
-	checkRng::Bool
+	checkRng::NamedTuple{(:print,:all),Tuple{Bool,Bool}}
 	# reporting related options
 	reportLvl::Int
 	errCheckLvl::Int
@@ -503,7 +503,7 @@ mutable struct anyModel <: AbstractModel
 	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, holdFixed = false, emissionLoss = true,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e4), rhs = (1e-2,1e2)),
 																											scaFac = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
-																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = false)
+																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true))
 		anyM = new()
 
 		#region # * initialize report and options

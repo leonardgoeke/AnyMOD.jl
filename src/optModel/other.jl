@@ -595,7 +595,7 @@ function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64
 end
 
 # ! scales expressions in the dataframe to be within the range defined within options
-function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}},checkRng_boo::Bool)
+function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}},checkRng_ntup::NamedTuple{(:print,:all),Tuple{Bool,Bool}})
 
 	if isempty(cnsExpr_df) return end
 
@@ -611,8 +611,8 @@ function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tup
 		findall(rhs_arr .!= 0.0) |> (x -> cnsExpr_df[x,:cnsExpr] = scaleRng(cnsExpr_df[x,:cnsExpr],rhs_arr[x],coefRng.rhs, true))
 	end
 
-	if checkRng_boo
-		checkExprRng(cnsExpr_df[:,:cnsExpr],coefRng)
+	if checkRng_ntup.print
+		checkExprRng(cnsExpr_df[:,:cnsExpr],coefRng,checkRng_ntup.all)
 	end
 end
 
@@ -626,16 +626,26 @@ function scaleRng(expr_arr::Array{AffExpr,1},rng_arr::Array,rng_tup::Tuple{Float
 end
 
 # ! check range of coefficients in expressions within input array
-function checkExprRng(expr_arr::Array{AffExpr,1},coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}})
+function checkExprRng(expr_arr::Array{AffExpr,1},coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}},printAll_boo::Bool)
 	# obtains range of coefficients for matrix and rhs
 	matRng_arr = map(x -> abs.(values(x.terms)) |> (y -> isempty(y) ? (coefRng.mat[1],coefRng.mat[2]) : (minimum(y),maximum(y))), expr_arr)
 	rhs_arr = abs.(getfield.(expr_arr,:constant))
 
-	# filters rows where ranges of coefficients or rhs are above threshold
 	aboveThres_arr = findall(.!((getindex.(matRng_arr,1)  .> coefRng.mat[1]*0.9999) .& (getindex.(matRng_arr,2) .< coefRng.mat[2]*1.0001) .& (map(x -> x == 0.0 || (x > coefRng.rhs[1]*0.9999 && x < coefRng.rhs[2]*1.0001),rhs_arr))))
-
-	for expr in expr_arr[aboveThres_arr]
-		println(expr)
+	if !isempty(aboveThres_arr)
+		if printAll_boo # filters row where ranges of coefficients or rhs are furthest above the threshold and prints it
+			# get relative violation for lower and upper bound of coefficients and rhs
+			matLow_arr = coefRng.mat[1] ./ getindex.(matRng_arr,1)
+			matUp_arr = getindex.(matRng_arr,2) ./ coefRng.mat[2]
+			rhsLow_arr = coefRng.rhs[1] ./ rhs_arr
+			rhsUp_arr = rhs_arr ./ coefRng.rhs[2]
+			# get biggest violation across lower and upper upper bound and coefficients and rhs
+			maxVio_arr = max.(matLow_arr,matUp_arr,rhsLow_arr,rhsUp_arr)
+			# print constraint with biggest violation
+			println(expr_arr[findall(maxVio_arr .== maximum(maxVio_arr))[1]])
+		else # filters all rows where ranges of coefficients or rhs are above threshold and prints them
+			for expr in expr_arr[aboveThres_arr[1]] println(expr) end
+		end
 	end
 end
 
