@@ -460,7 +460,7 @@ function runSub(sub_m::anyModel,capaData_obj::bendersData,sol::Symbol,wrtRes::Bo
 	end
 
 	# set optimizer attributes and solves
-	if sol == :barrier || true  
+	if sol == :barrier
 		set_optimizer_attribute(sub_m.optModel, "Method", 2)
 		set_optimizer_attribute(sub_m.optModel, "Crossover", 0)
 		set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
