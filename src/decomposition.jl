@@ -438,7 +438,7 @@ function prepareMod!(mod_m::anyModel,opt_obj::DataType, t_int::Int)
 end
 
 # ! run sub-problem
-function runSub(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=false)
+function runSub(sub_m::anyModel,capaData_obj::bendersData,sol::Symbol,wrtRes::Bool=false)
 
 	# fixing capacity
 	for sys in (:tech,:exc)
@@ -460,10 +460,18 @@ function runSub(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=false)
 	end
 
 	# set optimizer attributes and solves
-	set_optimizer_attribute(sub_m.optModel, "Method", 1)
-	set_optimizer_attribute(sub_m.optModel, "OptimalityTol", 1e-9)
-	set_optimizer_attribute(sub_m.optModel, "Threads", 1)
-	set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
+	if sol == :barrier || true  
+		set_optimizer_attribute(sub_m.optModel, "Method", 2)
+		set_optimizer_attribute(sub_m.optModel, "Crossover", 0)
+		set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
+		set_optimizer_attribute(sub_m.optModel, "BarConvTol", 1e-4)
+	elseif sol == :simplex
+		set_optimizer_attribute(sub_m.optModel, "Method", 1)
+		set_optimizer_attribute(sub_m.optModel, "Threads", 1)
+		set_optimizer_attribute(sub_m.optModel, "OptimalityTol", 1e-9)
+		set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
+	end
+
 	optimize!(sub_m.optModel)
 	checkIIS(sub_m)
 
