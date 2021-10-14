@@ -817,7 +817,12 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 	# ! get relevant model and graph ids for carriers and technologies
 	
 	# graph and model ids of carriers
-	graC_arr = isempty(relC) ? collect(values(anyM.graInfo.graph.nodeC)) : map(x -> anyM.graInfo.graph.nodeC[sysInt(x,anyM.sets[:C])],collect(relC))
+	graC_arr = Array{Int,1}()
+	try
+		graC_arr = isempty(relC) ? collect(values(anyM.graInfo.graph.nodeC)) : map(x -> anyM.graInfo.graph.nodeC[sysInt(x,anyM.sets[:C])],collect(relC))
+	catch
+		error("Entered wrong carrier name!")
+	end
 	modC_arr = isempty(relC) ? collect(keys(anyM.sets[:C].nodes)) : map(x -> sysInt(x,anyM.sets[:C]),collect(relC))
 
 	# graph and model ids of technologies connected to relevant carriers
