@@ -8,7 +8,7 @@
 # 4) i would advise to move all the dsm functions called in createTech! into a single function and create comments and foldable regions like in the other scripts to organize that function
 
 function get_tt(anyM::anyModel,setData_df::DataFrame)
-    nodes_ordered = []
+    nodes_ordered = Int[]
     for startNode_int in anyM.supTs.step
         append!(nodes_ordered, getDescendants(startNode_int,anyM.sets[:Ts]))
     end
@@ -53,7 +53,7 @@ function createDrDoVar!(part::TechPart,anyM::anyModel)
     basis_df[!,:name] = string.("dsmDo","[",map(x -> join(map(y -> col_dic[y] != :id ? anyM.sets[col_dic[y]].nodes[x[y]].val : x[y],1:dim_int),", "),eachrow(basis_df)),"]")
 
     basis_df = matchSetParameter(basis_df, part.par[:drTime], anyM.sets)
-    basis_df = insertcols!(basis_df, :Ts_dis2 => Ref([]))
+    basis_df = insertcols!(basis_df, :Ts_dis2 => Ref(Int[]))
     get_tt(anyM,basis_df)
     basis_df = flatten(basis_df, :Ts_dis2)
     
@@ -188,6 +188,6 @@ function createDrRecoveryCns(part::TechPart,anyM::anyModel)
 end    
 
 function createDrstExtOut!(part::TechPart,anyM::anyModel)
-    grpData_df = orderDf(combine(groupby(part.var[:dsmDo], filter(x -> x != :Ts_dis2, intCol(part.var[:dsmDo]))), :var => (x -> sum(x)) => :var))
+    grpData_df = rename(orderDf(combine(groupby(part.var[:dsmDo], filter(x -> x != :Ts_dis, intCol(part.var[:dsmDo]))), :var => (x -> sum(x)) => :var)),:Ts_dis2 => :Ts_dis)
     part.var[:stExtOut] = grpData_df
 end

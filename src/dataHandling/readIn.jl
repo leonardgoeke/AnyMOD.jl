@@ -403,8 +403,8 @@ end
 # ! create specific node on branch
 function createNodes!(upToLow_dic::Dict{Int64,SubArray{String,1,Array{String,1},Tuple{Array{Int64,1}},false}},tree_obj::Tree,i::Int)
 	upToLowSort_dic = Dict(map(x -> x => upToLow_dic[x] ,sort(collect(keys(upToLow_dic)))))
-	up_arr =  collect(keys(upToLowSort_dic))
-	for upperNodeId in (i == 2 ? sort(up_arr) : sortSiblings(up_arr,tree_obj))
+	up_arr =  sort(collect(keys(upToLowSort_dic)))
+	for upperNodeId in (i == 2 ? up_arr : sortSiblings(up_arr,tree_obj))
 		numRow_int = length(tree_obj.nodes) -1
 		exUp_int = length(tree_obj.nodes[upperNodeId].down)
 		for (idx, lowerNode) in enumerate(sort(upToLowSort_dic[upperNodeId]))
