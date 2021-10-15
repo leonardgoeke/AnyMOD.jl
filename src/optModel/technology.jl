@@ -59,11 +59,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 
 			# create demand response variables and constraints
 			if :drTime in collectKeys(keys(part.par))
-				createDrDoVar!(part,anyM)
-				createDrstExtOut!(part,anyM)
-				createDrBalCns(part,anyM)
-				createDrCapExpBal(part,anyM)
-				createDrRecoveryCns(part,anyM)
+				createDR(part,anyM)
 			end
 			
 			# create conversion balance for conversion technologies
