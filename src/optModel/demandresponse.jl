@@ -1,46 +1,62 @@
-# comments lgo
-# 1) added a specific function to aggregate dsmDo and save aggregation as stExtOut again => Eq. 9 from Zerrahn is automatically created as a capacity restriction and code in createDrCapExpBal is not needed anymore    
-# 2) some of your data processing methods are not robust and only work, if the order of rows in processed dataframes are the same 
-#   a) columns should be joined to table using join commands not just taking the column of dataframe a and adding it to the right side of dataframe b like in line 137, this will fail as soon as the order of rows in a and b is different
-#   b) "grouby" should be paid with "combine" for aggregating like in line 188, afterwards you can perform a join command to add the aggregated data to another dataframe 
-# 3) dont think get_tt works right when considering the modelled year is a circle, for example dsmDo for Ts_dis = h0001 should not only got into the future and include Ts_dis2 = h0001 to h0004, but also back including h0048 and so on
-#    implementing this is not straightforward and must not be a priority, but you can try to have look at the createStBal in line 319 and onwards of technology.jl
-# 4) i would advise to move all the dsm functions called in createTech! into a single function and create comments and foldable regions like in the other scripts to organize that function
+
+function createDR(part::TechPart,anyM::anyModel)
+    #region # * Create all related variables and constraints for demand response technologies
+
+    # create DSM downward load shift variable
+    createDrDoVar!(part,anyM)
+
+    # create stExtOut variable as the sum of DSM downward load shift variable for every tt
+    createDrstExtOut!(part,anyM)
+
+    # create balance constraint of DSM downward and upward load shifting    
+    createDrBalCns(part,anyM)
+    
+    # create a maximum constraint for DSM upward + sum of DSM downward for every tt
+    createDrCapExpBal(part,anyM)
+    
+    # create recovery constraint for DSM upward if recovery time R is given as a parameter
+    if !iszero(part.par[:drRecoveryTime].data.val)
+        createDrRecoveryCns(part,anyM)
+    end
+    #endregion
+end
 
 function get_tt(anyM::anyModel,setData_df::DataFrame)
-    nodes_ordered = Int[]
-    for startNode_int in anyM.supTs.step
-        append!(nodes_ordered, getDescendants(startNode_int,anyM.sets[:Ts]))
-    end
-
     for row in eachrow(setData_df)
+        family = getDescendants(row.Ts_disSup,anyM.sets[:Ts])
         delayTime_int = Int64(row.val)
-        index_t = first(findall(x -> x == row.Ts_dis, nodes_ordered))
+
+        index_t = first(findall(x -> x == row.Ts_dis, family))
         ind = index_t-delayTime_int:index_t+ delayTime_int |> collect
-        ind = collect(Iterators.dropwhile(<(1),ind))
-        
-        if last(ind) > last(1:length(nodes_ordered))
-            index_f = Base.findall(x->x <=last(1:length(nodes_ordered)), ind)
-            ind = ind[index_f]
+
+        # Begin at end of cycle
+        if any(x->x < 1, ind)
+            ind_pos = filter(x -> x >= 1, ind)
+            ind_neg = length(family) .+ filter(x -> x < 1, ind)
+            ind = vcat(ind_neg,ind_pos)
         end
-        row.Ts_dis2 = nodes_ordered[ind]
+
+        # Begin at start of cycle again
+        if any(x->x > length(family), ind)
+             ind = vcat(filter(x -> x <= length(family), ind),filter(x -> x > length(family), ind) .- length(family))
+        end
+        row.Ts_dis2 = family[ind]
     end  
 end
 
 function getRecoveryTime(anyM::anyModel,cns_df::DataFrame)
-    nodes_ordered = []
-    for startNode_int in anyM.supTs.step
-        append!(nodes_ordered, getDescendants(startNode_int,anyM.sets[:Ts]))
-    end
     for row in eachrow(cns_df)
-        index_t = first(findall(x -> x == row.Ts_dis, nodes_ordered))
+        family = getDescendants(row.Ts_disSup,anyM.sets[:Ts])
+    
+        index_t = first(findall(x -> x == row.Ts_dis, family))
         ind = index_t:index_t+ Int64(row.drRecoveryTime) -1 |> collect
-        ind = collect(Iterators.dropwhile(<(1),ind))
-        if last(ind) > last(1:length(nodes_ordered))
-            index_f = Base.findall(x->x <=last(1:length(nodes_ordered)), ind)
-            ind = ind[index_f]
+
+        # Begin at start of cycle again
+        if any(x->x > length(family), ind)
+            ind = vcat(filter(x -> x <= length(family), ind),filter(x -> x > length(family), ind) .- length(family))
         end
-        row.Ts_dis2 = nodes_ordered[ind]
+
+        row.Ts_dis2 = family[ind]
     end  
 end
 
@@ -89,16 +105,10 @@ function createDrDoVar!(part::TechPart,anyM::anyModel)
     part.var[:dsmDo] = orderDf(setData_df[!,Not(:name)])
 end
 
-
 function createDrBalCns(part::TechPart,anyM::anyModel)
     # Zerrahn constraint 7'
     cns_df = rename(part.var[:stExtIn],:var => :stExtIn)
-
-    cns_df.dsmDo = copy(cns_df[!,:stExtIn])
-    groups = groupby(part.var[:dsmDo], filter(x -> x != :Ts_dis2, intCol(part.var[:dsmDo])))
-    for i in 1:length(groups)
-        cns_df[i,:dsmDo] = sum(groups[i].var)
-    end
+    cns_df.dsmDo = orderDf(combine(groupby(part.var[:dsmDo], filter(x -> x != :Ts_dis2, intCol(part.var[:dsmDo]))), :var => (x -> sum(x)) => :dsmDo)).dsmDo
     
     cns_df = matchSetParameter(cns_df, part.par[:effStIn], anyM.sets)
     cns_df = rename(cns_df, :val => :effStIn)
@@ -108,48 +118,22 @@ function createDrBalCns(part::TechPart,anyM::anyModel)
     part.cns[:drBal] = createCns(cns_cont,anyM.optModel)
 end
 
-function createDrCapExpBal(part::TechPart,anyM::anyModel)
-    # Zerrahn Constraint 8: DSM_up [t] - C_up <= 0  for t
-    "constraint is equal to original part.cns[:stInRestr].cns, make sure it is created."
-
-    # Zerrahn constraint 9
-    #=
-    var_df = rename(part.var[:dsmDo],:var => :dsmDo)
-    gr = groupby(var_df, filter(x -> x != [:Ts_dis,:Ts_dis2], intCol(var_df)))
-    
-    cns_df = rename(part.var[:stExtIn],:var => :dsmDo)
-    for i in 1:length(gr)
-        cns_df[i,:dsmDo] = sum(gr[i].dsmDo)
-    end
-        
-    val_df = rename(part.var[:capaStOut],:R_exp => :R_dis)
-    merge = innerjoin(cns_df, val_df, on=[:Ts_disSup, :R_dis, :Ts_expSup, :Te, :id])
-    cns_df = rename(merge, :var => :capaStOut)
-    
-    sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
-    cns_df[!,:capaStOut] = cns_df[!,:capaStOut] .* sca_arr
-    
-    cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:dsmDo] .- cns_df[!,:capaStOut])
-    cns_cont = cnsCont(orderDf(cns_df),:smaller)
-    part.cns[:drCRed] = createCns(cns_cont,anyM.optModel)
-    =#
-
-    
+function createDrCapExpBal(part::TechPart,anyM::anyModel)   
     # Zerrahn constraint 10.
     cns_df = rename(copy(part.var[:stExtOut]),:var => :stExtOut)
-    cns_df.stExtIn = rename(part.var[:stExtIn],:var => :stExtIn).stExtIn
+    cns_df = leftjoin(cns_df, rename(part.var[:stExtIn],:var => :stExtIn), on= intCol(cns_df))
     
-    val_df = rename(part.var[:capaStIn],:R_exp => :R_dis)
-    merg = innerjoin(cns_df, val_df, on = [:Ts_disSup, :R_dis, :Ts_expSup, :Te, :id])
-    cns_df = rename(merg, :var => :capaStIn)
-    
+    cns_df = rename(innerjoin(cns_df, rename(part.var[:capaStIn],:R_exp => :R_dis), on = intCol(rename(part.var[:capaStIn],:R_exp => :R_dis))), :var => :capaStIn)
+    cns_df = rename(innerjoin(cns_df, rename(part.var[:capaStOut],:R_exp => :R_dis), on = intCol(rename(part.var[:capaStOut],:R_exp => :R_dis))), :var => :capaStOut)
+
     sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
     cns_df[!,:capaStIn] = cns_df[!,:capaStIn] .* sca_arr
+    cns_df[!,:capaStOut] = cns_df[!,:capaStOut] .* sca_arr
     
     cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:stExtIn] + cns_df[!,:stExtOut].- cns_df[!,:capaStIn])
     cns_cont = cnsCont(orderDf(cns_df),:smaller)
     part.cns[:drCMax] = createCns(cns_cont,anyM.optModel)
-    
+    #TODO fix the max in accordance to the original constraint 
     "used capaStIn instead of max(capaStIn, capaStOut)"
 end
 
@@ -158,34 +142,26 @@ function createDrRecoveryCns(part::TechPart,anyM::anyModel)
     ### Zerrahn constraint 11
 
     cns_df = rename(part.var[:stExtIn],:var => :stExtIn)
-    cns_df = matchSetParameter(cns_df, part.par[:drTime], anyM.sets)
-    cns_df = rename(cns_df,:val => :drTime)
-    cns_df = matchSetParameter(cns_df, part.par[:drRecoveryTime], anyM.sets)
-    cns_df = rename(cns_df,:val => :drRecoveryTime)
+    cns_df = rename(matchSetParameter(cns_df, part.par[:drRecoveryTime], anyM.sets),:val => :drRecoveryTime)
+
+    cns_df = insertcols!(cns_df, :Ts_dis2 => Ref(Int[]))
+    getRecoveryTime(anyM, cns_df)
+         
+    cns_df[!,:Ts_dis3] = map(x -> unique(sort(filter(y -> x.Ts_dis in y.Ts_dis2, cns_df)[!,:Ts_dis])), eachrow(cns_df) )
+    cns_df_fl = flatten(cns_df, :Ts_dis3)
+    # TODO, check if the sum is correct
+    grpData_df = orderDf(combine(groupby(cns_df_fl, filter(x -> x != :Ts_dis, intCol(cns_df_fl))), :stExtIn => (x -> sum(x)) => :stExtIn))   
+
+    cns_df = rename(matchSetParameter(grpData_df, part.par[:drTime], anyM.sets),:val => :drTime)
+    cns_df = rename(innerjoin(cns_df, rename(part.var[:capaStIn],:R_exp => :R_dis), on = intCol(rename(part.var[:capaStIn],:R_exp => :R_dis))), :var => :capaStIn)
     
-    if !iszero(cns_df.drRecoveryTime)
-        val_df = rename(part.var[:capaStIn],:R_exp => :R_dis)
-        merg = innerjoin(cns_df, val_df, on = [:Ts_disSup, :R_dis, :Ts_expSup, :Te, :id])
-        cns_df = rename(merg, :var => :capaStIn)
-        
-        sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
-        cns_df[!,:capaStIn] = cns_df[!,:capaStIn] .* sca_arr
-        
-        cns_df = insertcols!(cns_df, :Ts_dis2 => Ref([]))
-        getRecoveryTime(anyM, cns_df)
-        
-        df_copy = copy(cns_df)
-        for row in eachrow(cns_df)
-            arr = row.Ts_dis2
-            row.stExtIn = sum(cns_df[(df_copy[:R_dis].==row.R_dis).& ∈(arr).(df_copy.Ts_dis), :].stExtIn)
-        end
-        cns_df.stExtIn = df_copy.stExtIn
-        
-        cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:stExtIn] - cns_df[!,:capaStIn].*cns_df[!,:drTime])
-        cns_cont = cnsCont(orderDf(cns_df),:smaller)
-        part.cns[:drRecovery] = createCns(cns_cont,anyM.optModel)
-    end
-end    
+    sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
+    cns_df[!,:capaStIn] = cns_df[!,:capaStIn] .* sca_arr
+
+    cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:stExtIn] - cns_df[!,:capaStIn].*cns_df[!,:drTime])
+    cns_cont = cnsCont(orderDf(cns_df),:smaller)
+    part.cns[:drRecovery] = createCns(cns_cont,anyM.optModel)
+end      
 
 function createDrstExtOut!(part::TechPart,anyM::anyModel)
     grpData_df = rename(orderDf(combine(groupby(part.var[:dsmDo], filter(x -> x != :Ts_dis, intCol(part.var[:dsmDo]))), :var => (x -> sum(x)) => :var)),:Ts_dis2 => :Ts_dis)
