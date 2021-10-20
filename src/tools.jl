@@ -805,7 +805,7 @@ Plots the energy flow in a model. Set `plotType` to `:graph` for a qualitative n
 plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
 
 # ! plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
-function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = false, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, relC::Tuple = (), relTe::Tuple = ())
+function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = false, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, relC::Tuple = ())
 
     # ! import python function
     netw = pyimport("networkx")
@@ -837,7 +837,6 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
     flowGrap_obj = anyM.graInfo.graph
 
 	cEdge_arr = filter(x -> x[1] in graC_arr || x[2] in graC_arr,collect.(flowGrap_obj.edgeC))
-	#teEdge_arr = filter(x -> x[1] in allTe_arr ? (isempty(relTe_arr) ? (isempty(relC_arr) ? true : x[2] in relC_arr) : x[1] in relTe_arr) : (isempty(relTe_arr) ? (isempty(relC_arr) ? true : x[1] in relC_arr) : x[2] in relTe_arr),flowGrap_obj.edgeTe)
 	teEdge_arr = filter(x -> x[1] in graTe_arr || x[2] in graTe_arr, flowGrap_obj.edgeTe)
 
     edges_arr =  vcat(cEdge_arr,collect.(teEdge_arr))
