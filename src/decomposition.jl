@@ -222,9 +222,8 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 	# change objective of top problem to minimize absolute values and missing capacities
 	@objective(top_m.optModel, Min, objExpr_df[1,:cnsExpr])
 	# solve problem
-	set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
-	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
-	set_optimizer_attribute(top_m.optModel, "TimeLimit", 1800)
+	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.01)
+	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
 	
 	optimize!(top_m.optModel)
 	checkIIS(top_m)
