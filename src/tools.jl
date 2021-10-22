@@ -1311,6 +1311,93 @@ end
 
 #endregion
 
+# ! plot energy flow graph from yaml file
+"""
+```julia
+plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12)
+```
+
+"""
+function plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12)
+
+    # ! import python function
+    netw = pyimport("networkx")
+    plt = pyimport("matplotlib.pyplot")
+    PyCall.fixqtpath()
+
+    # extract node data from yaml file
+    graph_dic = YAML.load_file(inFile)
+
+    cData_arr, techData_arr = [filter(x -> x["type"] == z,graph_dic["vertices"]) for z in ["carrier","technology"]]
+    nodeC_arr, nodeTe_arr = [map(x -> tuple(x["color"]...),z) for z in [cData_arr,techData_arr]]
+
+    cNum_int = length(cData_arr)
+    nodePos_dic = vcat(cData_arr,techData_arr) |> (w -> Dict(x => w[x]["position"] |> (u -> [(u[1]*2-1)*plotSize[1]/plotSize[2],u[2]+2-1]) for x in 1:length(w))) # assign positions to nodes
+
+    # assign names to nodes
+    nameC_dic = Dict(y => cData_arr[y]["name"] for y in 1:length(cData_arr))
+    nameTe_dic = Dict(cNum_int+y => techData_arr[y]["name"] for y in 1:length(techData_arr))
+    revName_dic = merge(Dict(v => k for (k, v) in nameC_dic),Dict(v => k for (k, v) in nameTe_dic))
+
+    # assign labels to nodes
+    labC_dic = Dict(y => cData_arr[y]["label"] for y in 1:length(cData_arr))
+    labTe_dic = Dict(cNum_int+y => techData_arr[y]["label"] for y in 1:length(techData_arr))
+
+    # assign colors to nodes
+    colC_dic = Dict(y => cData_arr[y]["color"] for y in 1:length(cData_arr))
+    colTe_dic = Dict(cNum_int+y => techData_arr[y]["color"] for y in 1:length(techData_arr))
+
+    # prepare edges
+    allEdges_arr = map(x -> revName_dic[string(x[1])] => revName_dic[x[2]], getindex.(collect.(graph_dic["edges"]),1))
+    ordC_arr = collect(keys(nameC_dic)) 
+
+    # separate into edges between technologies and carriers and between carriers, then get respective colors
+    cEdges_arr = filter(x -> x[1] in ordC_arr && x[2] in ordC_arr, allEdges_arr)
+    edgeColC_arr = map(x -> colC_dic[x[1]], cEdges_arr)
+
+    teEdges_arr = collect(keys(labTe_dic)) |> (w -> filter(x -> x[1] in w || x[2] in w, allEdges_arr))
+    edgeColTe_arr = map(x -> x[1] in ordC_arr ? colTe_dic[x[2]] : colTe_dic[x[1]], teEdges_arr)
+
+    # create graph and draw nodes and edges
+    graph_obj = netw.DiGraph()
+    plt.clf()
+
+    netw.draw_networkx_nodes(graph_obj, nodePos_dic, nodelist = collect(1:length(cData_arr)), node_shape="s", node_size = 300, node_color = nodeC_arr)
+    netw.draw_networkx_nodes(graph_obj, nodePos_dic, nodelist = collect((1+cNum_int):(cNum_int+length(techData_arr))), node_shape="o", node_size = 185,node_color = nodeTe_arr)
+
+    netw.draw_networkx_edges(graph_obj, nodePos_dic, edgelist = cEdges_arr, edge_color = edgeColC_arr, arrowsize  = 16.2, width = 1.62)
+    netw.draw_networkx_edges(graph_obj, nodePos_dic, edgelist = teEdges_arr, edge_color = edgeColTe_arr)
+
+    # add labels and adjust their position
+    posLabC_dic = netw.draw_networkx_labels(graph_obj, nodePos_dic, font_size = fontSize, labels = labC_dic, font_weight = "bold", font_family = "arial")
+    posLabTe_dic = netw.draw_networkx_labels(graph_obj, nodePos_dic, font_size = fontSize, font_family = "arial", labels = labTe_dic)
+
+    # adjusts position of carrier labels so that they are right from node, uses code provided by ImportanceOfBeingErnest from here https://stackoverflow.com/questions/43894987/networkx-node-labels-relative-position
+    figure = plt.gcf()
+    figure.set_size_inches(plotSize[1],plotSize[2])
+
+
+    r = figure.canvas.get_renderer()
+    trans = plt.gca().transData.inverted()
+    for x in vcat(collect(posLabC_dic),collect(posLabTe_dic))
+        cNode_boo = x[1] in ordC_arr
+        bb = x[2].get_window_extent(renderer=r)
+        bbdata = bb.transformed(trans)
+        # computes offset of label for leaves and non-leaves by first moving according to size auf letters itself (bbdata) and then by size of the nodeteEdges_arr
+
+        # (node-size in pixel is devided by dpi and plot size to get relative offset)
+        offset_arr = [cNode_boo ? (bbdata.width/2.0 + (500/plotSize[1]/600)) : 0.0, cNode_boo ? 0.0 : (bbdata.height/2.0 + 200/plotSize[2]/600)]
+        x[2].set_position([x[2]."_x" + offset_arr[1],x[2]."_y" + offset_arr[2]])
+        x[2].set_clip_on(false)
+    end
+
+    plt.axis("off")
+
+    # size plot and save
+    plt.savefig(replace(inFile,".yml" => ".png"), dpi = 600)
+    graph_obj = nothing
+end
+
 # ! dummy function just do provide a docstring for printIIS (docstring in printIIS wont work, because read-in is conditional)
 """
 ```julia
