@@ -1161,7 +1161,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 				cns_df = rename(matchExcParameter(Symbol(par,lim),cns_df,part,anyM.sets,part.dir),:var => :denom)
 			end
 
-			# get variables for nominator
+			# get variables for numerator
 			rlvTop_arr =  intersect(keys(part.var),limVa[2] in keys(va_dic) ? intersect(keys(part.carrier),va_dic[limVa[2]]) : (limVa[2],))
 
 			# use out instead of in for flh of conversion technologies, if technology has no conversion input
@@ -1176,14 +1176,14 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 			# rename column for aggregation
 			if !capaRatio_boo cns_df = rename(cns_df,:Ts_disSup => :Ts_dis) end
 
-			# connect denominator and nominator
-			cns_df[!,:nom] =  aggDivVar(top_df, cns_df, tuple(intCol(cns_df)...), anyM.sets)
+			# connect denominator and numerator
+			cns_df[!,:num] =  aggDivVar(top_df, cns_df, tuple(intCol(cns_df)...), anyM.sets)
 
 			# name column back again
 			if !capaRatio_boo cns_df = rename(cns_df,:Ts_dis => :Ts_disSup) end
 
 			# create constraint
-			cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[!,:val] .* cns_df[!,:denom] .- cns_df[!,:nom])
+			cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[!,:val] .* cns_df[!,:denom] .- cns_df[!,:num])
 
 			# filter cases without variables
 			filter!(x -> !isempty(x.cnsExpr.terms), cns_df)
