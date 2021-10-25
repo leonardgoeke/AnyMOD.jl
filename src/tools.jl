@@ -1325,7 +1325,7 @@ function plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0)
     plt = pyimport("matplotlib.pyplot")
     PyCall.fixqtpath()
 
-    # extract node data from yaml file
+    # ! extract node data from yaml file and convert
     graph_dic = YAML.load_file(inFile)
 
     cData_arr, techData_arr = [filter(x -> x["type"] == z,graph_dic["vertices"]) for z in ["carrier","technology"]]
@@ -1358,6 +1358,7 @@ function plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0)
     teEdges_arr = collect(keys(labTe_dic)) |> (w -> filter(x -> x[1] in w || x[2] in w, allEdges_arr))
     edgeColTe_arr = map(x -> x[1] in ordC_arr ? colTe_dic[x[2]] : colTe_dic[x[1]], teEdges_arr)
 
+	# ! create actual graph
     # create graph and draw nodes and edges
     graph_obj = netw.DiGraph()
     plt.clf()
@@ -1375,7 +1376,6 @@ function plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0)
     # adjusts position of carrier labels so that they are right from node, uses code provided by ImportanceOfBeingErnest from here https://stackoverflow.com/questions/43894987/networkx-node-labels-relative-position
     figure = plt.gcf()
     figure.set_size_inches(plotSize[1],plotSize[2])
-
 
     r = figure.canvas.get_renderer()
     trans = plt.gca().transData.inverted()
