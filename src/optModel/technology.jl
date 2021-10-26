@@ -118,7 +118,6 @@ end
 function prepareTeExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::Dict{Int,Int},part::AbstractModelPart,tInt::Int,anyM::anyModel)
 
 	# extract tech info
-	carGrp_ntup = part.carrier
 	balLvl_ntup = part.balLvl
 
 	tsExp_arr, rExp_arr   = [getfield.(getNodesLvl(anyM.sets[x[2]], balLvl_ntup.exp[x[1]]),:idx) for x in enumerate([:Ts,:R])]
@@ -128,10 +127,10 @@ function prepareTeExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::D
 	expDim_arr = vcat(collect(Iterators.product(Iterators.zip(tsExp_arr,tsExpSup_arr),rExp_arr))...)
 	allMap_df =  getindex.(expDim_arr,1) |> (x -> DataFrame(Ts_exp = getindex.(x,1), Ts_expSup = getindex.(x,2), R_exp = getindex.(expDim_arr,2), Te = fill(tInt,length(expDim_arr))))
 
-	stCar_arr::Array{Int,1} = intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut)) |> (z -> isempty(z) ? Int[] : unique(union(union(map(x -> getproperty(carGrp_ntup,x),z)...)...)))
-	convCar_arr::Array{Int,1} = unique(vcat(collect.(map(x -> getproperty(carGrp_ntup,x),intersect(keys(carGrp_ntup),(:use,:gen))))...))
+	stCar_arr = getCarrierFields(part.carrier,(:stExtIn,:stExtOut,:stIntIn,:stIntOut))
+	convCar_arr=  getCarrierFields(part.carrier,(:use,:gen))
 
-
+	
 	# loops over type of capacities to specify dimensions of capacity variables
 	for exp in (:Conv, :StIn, :StOut, :StSize)
 		
@@ -139,7 +138,7 @@ function prepareTeExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::D
 		if exp == :Conv && !isempty(convCar_arr)
 			prepTech_dic[Symbol(:exp,exp)] =  (var = addSupTsToExp(allMap_df,part,exp,tsYear_dic,anyM), resi = DataFrame())
 		elseif exp != :Conv && !isempty(stCar_arr)
-			prepTech_dic[Symbol(:exp,exp)] =  (var = addSupTsToExp(combine(groupby(allMap_df,namesSym(allMap_df)), :Te => (x -> collect(1:countStGrp(carGrp_ntup))) => :id),part,exp,tsYear_dic,anyM), resi = DataFrame())
+			prepTech_dic[Symbol(:exp,exp)] =  (var = addSupTsToExp(combine(groupby(allMap_df,namesSym(allMap_df)), :Te => (x -> collect(1:countStGrp(part.carrier))) => :id),part,exp,tsYear_dic,anyM), resi = DataFrame())
 		else
 			continue
 		end
@@ -150,8 +149,7 @@ end
 # ! add entries with residual capacities for technologies
 function addResidualCapaTe!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart,tInt::Int,anyM::anyModel)
 
-	carGrp_ntup = part.carrier
-	stCar_arr = intersect(keys(carGrp_ntup),(:stExtIn,:stExtOut,:stIntIn,:stIntOut)) |> (z -> isempty(z) ? Int[] : unique(union(union(map(x -> getproperty(carGrp_ntup,x),z)...)...)))
+	stCar_arr = getCarrierFields(part.carrier,(:stExtIn,:stExtOut,:stIntIn,:stIntOut))
 
 	for resi in (:Conv, :StIn, :StOut, :StSize)
 
@@ -160,7 +158,7 @@ function addResidualCapaTe!(prepTech_dic::Dict{Symbol,NamedTuple},part::TechPart
 			permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step))...),i) for i in (1,2)]
 			potCapa_df = DataFrame(Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], Te = fill(tInt,length(permutDim_arr[1])))
 		elseif !isempty(stCar_arr)
-			permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step,collect(1:countStGrp(carGrp_ntup))))...),i) for i in (1,2,3)]
+			permutDim_arr = [getindex.(vcat(collect(Iterators.product(getfield.(getNodesLvl(anyM.sets[:R], part.balLvl.exp[2]),:idx), anyM.supTs.step,collect(1:countStGrp(part.carrier))))...),i) for i in (1,2,3)]
 			potCapa_df = DataFrame(Ts_disSup = permutDim_arr[2], R_exp = permutDim_arr[1], Te = fill(tInt,length(permutDim_arr[1])), id = permutDim_arr[3])
 		else
 			continue
@@ -400,7 +398,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},prep
 			else # if also non must-run carriers are output of storage
 				var_df = filter(x -> !isempty(setdiff(cMust_arr,part.carrier.stExtOut[x.id])),capa[2])
 			end
-		elseif capa[1] == :capaConv && (!isempty(setdiff(cMust_arr,collect(part.carrier.gen))) || !isempty(modeDep_dic[:gen])) # if non must-run carriers are generated or generation is mode dependant
+		elseif capa[1] == :capaConv && (!isempty(setdiff(collect(part.carrier.gen),cMust_arr)) || !isempty(modeDep_dic[:gen])) # if non must-run carriers are generated or generation is mode dependant
 			var_df = capa[2]
 		else
 			var_df = DataFrame()

@@ -345,7 +345,7 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 		# filter cases where no actual variables are compared since they were replaced with parameters
 		filter!(x -> !isempty(x.cnsExpr.terms), cns_df) 
-		partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:greater),anyM.optModel)
+		partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:equal),anyM.optModel)
 	end
 
 	produceMessage(anyM.options,anyM.report, 2," - Created capacity balances")
