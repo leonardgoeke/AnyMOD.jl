@@ -226,8 +226,6 @@ end
 
 #region # * functions and sub-functions to aggregate variables
 
-
-
 # ! aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if all entries of search have the same resolution (all entries in a relevant column are on the same level)
 function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Symbol,1},srcRes_tup::NamedTuple,sets_dic::Dict{Symbol,Tree})
 	if isempty(aggEtr_df) return map(x -> AffExpr(), 1:size(srcEtr_df,1)) end
@@ -591,6 +589,13 @@ function getRelTech(c::Int,tech_dic::Dict{Symbol,TechPart},c_tree::Tree)
 	end
 
 	return filter(x -> x[2] in keys(tech_dic[x[1]].var), relTech_arr)
+end
+
+# ! get all carriers auf input carrier tuple that relate to fields specified in second input
+function getCarrierFields(car_ntup::NamedTuple,field_tup::Tuple)
+    extFields_arr = intersect(keys(car_ntup),field_tup)
+	allCar_arr = [getproperty(car_ntup,u) |> (p -> u in (:use,:gen) ? collect(p) : collect(p...))  for u in extFields_arr]
+    return isempty(allCar_arr) ? Int[] : union(allCar_arr...)
 end
 
 # ! collapse input expansion dataframe to acutal variables by timestep of expansion instead of superordinate dispatch timesteps
