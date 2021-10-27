@@ -130,10 +130,15 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:expExcLowDir] = (dim = (:Ts_exp, :R_from, :R_to, :Exc, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :Exc => :sum_any,  :id => :sum_any),  part = :lim)
     parDef_dic[:expExcFixDir] = (dim = (:Ts_exp, :R_from, :R_to, :Exc, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :Exc => :sum_full, :id => :sum_full), part = :lim)
 
+    # relative limits on expansion of technologies subject to a capacity balance
+    parDef_dic[:shareExpOutUp]  = (dim = (:Ts_expSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up, :Ts_expSup => :avg_full), part = :bal)
+    parDef_dic[:shareExpOutLow] = (dim = (:Ts_expSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up, :Ts_expSup => :avg_full), part = :bal)
+    parDef_dic[:shareExpOutFix] = (dim = (:Ts_expSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up, :Ts_expSup => :avg_full), part = :bal)
+
     # retrofitting limits on conversion, storage and exchange
-    parDef_dic[:retroConvUp]  = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = (:Ts_retro => :sum_full, :R_exp => :sum_full, :Ts_expSup_i => :sum_full, :Te_i => :sum_full, :Ts_expSup_j => :sum_full, :Te_j => :sum_full), part = :lim)
-    parDef_dic[:retroConvLow] = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = (:Ts_retro => :sum_any,  :R_exp => :sum_any,  :Ts_expSup_i => :sum_any,  :Te_i => :sum_any,  :Ts_expSup_j => :sum_any,  :Te_j => :sum_any),  part = :lim)
-    parDef_dic[:retroConvFix] = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = (:Ts_retro => :sum_full, :R_exp => :sum_full, :Ts_expSup_i => :sum_full, :Te_i =>:sum_full,  :Ts_expSup_j => :sum_full, :Te_j => :sum_full), part = :lim)
+    parDef_dic[:retroConvUp]  = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = (:Ts_retro => :sum_full, :R_exp => :sum_full, :Ts_expSup_i => :sum_full, :Te_i => :sum_full, :Ts_expSup_j => :sum_full, :Te_j => :sum_full),  part = :lim)
+    parDef_dic[:retroConvLow] = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = (:Ts_retro => :sum_any,  :R_exp => :sum_any,  :Ts_expSup_i => :sum_any,  :Te_i => :sum_any,  :Ts_expSup_j => :sum_any,  :Te_j => :sum_any),   part = :lim)
+    parDef_dic[:retroConvFix] = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = (:Ts_retro => :sum_full, :R_exp => :sum_full, :Ts_expSup_i => :sum_full, :Te_i => :sum_full, :Ts_expSup_j => :sum_full, :Te_j => :sum_full), part = :lim)
 
     parDef_dic[:retroStInUp]  = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = nothing, herit = (:Ts_retro => :sum_full, :R_exp => :sum_full, :id_i => :sum_full, :Ts_expSup_i => :sum_full, :Te_i => :sum_full, :id_j => :sum_full, :Ts_expSup_j => :sum_full, :Te_j => :sum_full), part = :lim)
     parDef_dic[:retroStInLow] = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = nothing, herit = (:Ts_retro => :sum_any,  :R_exp => :sum_any, :id_i =>  :sum_any,  :Ts_expSup_i => :sum_any,  :Te_i => :sum_any,  :id_j => :sum_any,  :Ts_expSup_j => :sum_any,  :Te_j => :sum_any),  part = :lim)
@@ -506,10 +511,11 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     # probability of dispatch scenarios
     parDef_dic[:scrProp] = (dim = (:Ts_sup, :scr), problem = :sub, defVal = nothing, herit = (:scr => :up, :Ts_sup => :up, :Ts_sup => :avg_any), part = :obj)
 
-    # demand related parameters
+    # output capacity related parameters
     parDef_dic[:capaDem] =      (dim = (:Ts_disSup, :R_dis, :C), problem = :both, defVal = nothing, herit = (:R_dis => :sum_any, :Ts_disSup => :avg_any), part = :bal)
     parDef_dic[:costMissCapa] = (dim = (:Ts_disSup, :R_dis, :C), problem = :both, defVal = nothing, herit = (:Ts_disSup => :up, :R_dis => :up, :C => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any, :C => :avg_any), part = :bal)
 
+    # energy demand related parameters
     parDef_dic[:dem]     = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = 0.0,     herit = (:Ts_dis => :avg_any, :R_dis  => :sum_any, :scr => :up),             					part = :bal)
     parDef_dic[:costCrt] = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
     parDef_dic[:costLss] = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
@@ -765,7 +771,6 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
             reso_tup = map(x -> anyM.cInfo[x],car_arr) |> (y -> [minimum(getfield.(y,:tsDis)), part.disAgg ? part.balLvl.exp[2] : minimum(getfield.(y,:rDis))])
             capaLvl_df[!,:lvlTs] .= reso_tup[1]; capaLvl_df[!,:lvlR] .= reso_tup[2];
 		end
-
        
         # expand based on code above to full table for pre-setting of dispatch paramters
 		dispReso_df = expandExpToDisp(capaLvl_df,ts_dic,r_dic,anyM.supTs.scr)
@@ -779,6 +784,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 
         # loops over all parameters of specific pre-setting type
         for parItr in keys(filter(x -> x[2] == preType,parPre_dic))
+
             parPef_ntup = parDef_dic[parItr]
 			newPar_obj = resetParameter(:M in namesSym(part.par[parItr].data) ? dispResoM_df : dispReso_df, part.par[parItr], part.name[end], anyM, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
 
@@ -789,33 +795,36 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
             elseif :M in namesSym(newPar_obj.data)
                 mode_df = unique(filter(x -> x.M != 0, newPar_obj.data)[!,Not([:val,:M])])
 
-                # loops over all types of relevant variables (:gen, :use etc.) that have to be mode specific
-                for va in intersect(union(map(x -> typeVar_dic[x], parPef_ntup.techPre.mode)...),keys(part.carrier) |> (y -> isempty(intersect(y,(:stExtIn,:stIntIn))) ? y : [:stLvl,y...]))
-                    modeItr_df = copy(mode_df)
-                    # determines relevant carriers of variables
-                    if :C in parPef_ntup.dim # carrier is already specified within parameter data
-                        car_arr = unique(modeItr_df[!,:C])
-                    else # carrier is not in parameter data, all possible carriers of respective variable need to be obtained
-                        car_arr = collect(getfield(part.carrier,va))
-                        modeItr_df[!,:C] .= [car_arr]
-                        modeItr_df = flatten(modeItr_df,:C)
+                if !isempty(mode_df)
+                    # loops over all types of relevant variables (:gen, :use etc.) that have to be mode specific
+                    for va in intersect(union(map(x -> typeVar_dic[x], parPef_ntup.techPre.mode)...),keys(part.carrier) |> (y -> isempty(intersect(y,(:stExtIn,:stIntIn))) ? y : [:stLvl,y...]))
+                        
+                        modeItr_df = copy(mode_df)
+                        # determines relevant carriers of variables
+                        if :C in parPef_ntup.dim # carrier is already specified within parameter data
+                            car_arr = unique(modeItr_df[!,:C])
+                        else # carrier is not in parameter data, all possible carriers of respective variable need to be obtained
+                            car_arr = collect(getfield(part.carrier,va))
+                            modeItr_df[!,:C] .= [car_arr]
+                            modeItr_df = flatten(modeItr_df,:C)
+                        end
+
+                        # adds temporal and spatial level to dataframe
+                        cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[x].rDis) for x in car_arr)
+                        modeItr_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],modeItr_df[!,:C])
+                        modeItr_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],modeItr_df[!,:C])
+
+                        # expands dataframe along spatial and temporal level according to resolution of respective carriers
+                        for dim in (:R,:Ts)
+                            dimCol = Symbol(dim,:_dis); lvl = Symbol(:lvl,dim)
+                            dim_dic = Dict((x[dimCol],x[lvl]) =>  getDescendants(x[dimCol], anyM.sets[dim],false,x[lvl]) |> (y -> isempty(y) ? getAncestors(x[dimCol],anyM.sets[dim],:int,x[lvl])[end] : y)
+                                                                                                                                                            for x in eachrow(unique(modeItr_df[!,[dimCol,lvl]])))
+                            modeItr_df[!,dimCol] = map(x -> dim_dic[(x[dimCol],x[lvl])],eachrow(modeItr_df[!,[dimCol,lvl]]))
+                            modeItr_df = flatten(modeItr_df[!,Not(lvl)],dimCol)
+                        end
+
+                        modeDep_dic[va] = unique(vcat(modeDep_dic[va],modeItr_df))
                     end
-
-                    # adds temporal and spatial level to dataframe
-                    cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[x].rDis) for x in car_arr)
-                    modeItr_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],modeItr_df[!,:C])
-                    modeItr_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],modeItr_df[!,:C])
-
-                    # expands dataframe along spatial and temporal level according to resolution of respective carriers
-                    for dim in (:R,:Ts)
-                        dimCol = Symbol(dim,:_dis); lvl = Symbol(:lvl,dim)
-                        dim_dic = Dict((x[dimCol],x[lvl]) =>  getDescendants(x[dimCol], anyM.sets[dim],false,x[lvl]) |> (y -> isempty(y) ? getAncestors(x[dimCol],anyM.sets[dim],:int,x[lvl])[end] : y)
-                                                                                                                                                        for x in eachrow(unique(modeItr_df[!,[dimCol,lvl]])))
-                        modeItr_df[!,dimCol] = map(x -> dim_dic[(x[dimCol],x[lvl])],eachrow(modeItr_df[!,[dimCol,lvl]]))
-                        modeItr_df = flatten(modeItr_df[!,Not(lvl)],dimCol)
-                    end
-
-                    modeDep_dic[va] = unique(vcat(modeDep_dic[va],modeItr_df))
                 end
             end
             # set lower limit for availabilities to avoid really small but non-zero values
@@ -835,8 +844,6 @@ end
 function resetParameter(newData_df::DataFrame, par_obj::ParElement, tStr::String, anyM::anyModel, cntM_int::Int = 0, newHerit_tup::Tuple = ())
     # gets dimension of search tables and parameter without mode
     newData_df = select(newData_df,intersect(namesSym(newData_df),par_obj.dim))
-    # creates empty report, that entries are written to within subprocess
-    report = Array{Tuple,1}()
 
     if !(:M in namesSym(newData_df))
         # in case modes are not being searched for just directly set data
