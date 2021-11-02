@@ -872,7 +872,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			# resize capacity variables
 			capaVar_df[!,:capa]  = capaVar_df[!,:capa] .* map(x -> anyM.supTs.sca[(x,anyM.cInfo[m.car[1]].tsDis)],	capaVar_df[!,:Ts_disSup])
 
-			# get must-run parameters 
+			# get must-run parameter 
 			mustOut_df = filter(x -> x.C == m.car[1],rename(part.par[:mustOut].data,:val => :mustOut))
 		
 			# match must-run with capacity variables

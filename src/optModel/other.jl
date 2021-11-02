@@ -50,7 +50,6 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	partBal = anyM.parts.bal
 	c_arr = filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx))
 	allDim_df = createPotDisp(c_arr,ts_dic,anyM)
-	bal_tup = (:C,:Ts_dis)
 	agg_arr = [:Ts_dis, :R_dis, :C, :scr]
 
 	#region # * create potential curtailment and loss loss load variables
@@ -241,7 +240,7 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 end
 
 # ! create balance on output capacity for must-out capacity
-function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic::Dict{Int64,Int64},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
+function createCapaBal!(r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 	
 	partBal = anyM.parts.bal
 	par_obj = partBal.par[:capaDem]
@@ -384,13 +383,13 @@ function createExpShareCns!(anyM::anyModel)
 			mustOut_df[!,:Ts_disSup] = map(x -> supTs_dic[x], mustOut_df[!,:Ts_dis])
 
 			# aggregate mustOut for each dispatch year
-			mustOut_df = select(mustOut_df,Not([:Ts_dis])) |> (w -> combine(groupby(w,intCol(w)), :val => (x -> sum(x)) => :val)) 
+			mustOut_df = select(mustOut_df,Not([:Ts_dis])) |> (w -> combine(groupby(w,intCol(w)), :val => (x -> sum(x)) => :val))
 
 			# replace dispatch with expansion regions
 			mustOut_df[!,:R_exp] = map(x -> getDescendants(x.R_dis, anyM.sets[:R],false,anyM.cInfo[x.C].rExp)[end], eachrow(mustOut_df))
 			select!(mustOut_df,Not([:R_dis]))
 
-			# compute mean of mustOut across scenarios
+			# compute mean of mustOut across scenarios 
 			mustOut_df = orderDf(combine(groupby(mustOut_df,filter(x -> x != :scr,intCol(mustOut_df))), :val => (x -> mean(x)) => :val))
 
 			# add design factor
@@ -401,7 +400,8 @@ function createExpShareCns!(anyM::anyModel)
 
 			# add years for non-emerging technologies
 			if anyM.parts.tech[sysSym(t,anyM.sets[:Te])] != :emerging
-				mustOut_df[!,:Ts_expSup] .= map(x -> collect(anyM.supTs.step), 1:size(mustOut_df,1))
+				y_dic = Dict(x => filter(y -> x <= y, collect(anyM.supTs.step)) for x in unique(mustOut_df[!,:Ts_disSup]))
+				mustOut_df[!,:Ts_expSup] .= map(x -> y_dic[x], mustOut_df[!,:Ts_disSup])
 				mustOut_df = flatten(mustOut_df,:Ts_expSup)
 			end
 
@@ -410,7 +410,7 @@ function createExpShareCns!(anyM::anyModel)
 		end
 
 		# join expansion variables with output values
-		allExp_df = innerjoin(allExp_df,allMustOut_df,on = intCol(allMustOut_df))
+		allExp_df = unique(innerjoin(allExp_df,allMustOut_df,on = intCol(allMustOut_df)))
 		allExp_df[!,:var] .= allExp_df[!,:var] .* allExp_df[!,:val]
 
     	# ! loop to create actual constraints
