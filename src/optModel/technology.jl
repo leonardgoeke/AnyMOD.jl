@@ -21,9 +21,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 			createCapaCns!(part,anyM.sets,prepTech_dic,cns_dic,anyM.optModel,anyM.options.holdFixed)
 
 			# control operated capacity variables
-			if part.decomm != :none
-				createOprVarCns!(part,cns_dic,anyM)
-			end
+			if part.decomm != :none createOprVarCns!(part,cns_dic,anyM) end
 		end
 	end
 
@@ -384,21 +382,10 @@ function createStBal(part::TechPart,anyM::anyModel)
 end
 
 # ! compute design factors, either based on defined must run parameters or for all capacities in input dataframe
-function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel,ts::Dict{Tuple{Int64,Int64},Array{Int64,1}}=Dict{Tuple{Int64,Int64},Array{Int64,1}}(), capa::DataFrame=DataFrame())
+function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel)
 
 	# obtain all dispatch entries (either uses or defined must run or input dataframe of capacities)
-	if isempty(capa)
-		allFac_df = rename(part.par[:mustOut].data,:val => :mustOut)
-	else
-		allFac_df = capa
-		# add dispatch timesteps and scenarios
-		allFac_df[!,:Ts_dis] = map(x -> ts[(x.Ts_disSup,anyM.cInfo[x.C].tsDis)], eachrow(allFac_df))
-		allFac_df[!,:scr] = map(x -> anyM.supTs.scr[x], allFac_df[!,:Ts_disSup])
-		allFac_df = flatten(allFac_df,:scr)
-		allFac_df = flatten(select(allFac_df,Not([:Ts_disSup])),:Ts_dis)
-		# add must run factor of 1 to ensure consistency with other case
-		allFac_df[!,:mustOut] .= 1.0
-	end
+	allFac_df = rename(part.par[:mustOut].data,:val => :mustOut)
 
 	# add all operational modes
 	if !isempty(part.modes)
@@ -409,25 +396,21 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 	end
 
 	# split into conversion and storage capacities
-	if isempty(capa)
-		if :capaStOut in keys(part.var) # only if capacities exist and storage can be charged internally or externally
-			facSt_df = allFac_df
-			facSt_df[!,:id] = fill(unique(part.var[:capaStOut][!,:id]),size(facSt_df,1))
-			facSt_df = flatten(facSt_df,:id)
-		else
-			facSt_df = DataFrame()
-		end
-
-		if :capaConv in keys(part.var)
-			facConv_df = allFac_df
-			facConv_df[!,:id] .= 0
-		else
-			facConv_df = DataFrame()
-		end
+	if :capaStOut in keys(part.var) # only if capacities exist and storage can be charged internally or externally
+		facSt_df = allFac_df
+		facSt_df[!,:id] = fill(unique(part.var[:capaStOut][!,:id]),size(facSt_df,1))
+		facSt_df = flatten(facSt_df,:id)
 	else
-		facConv_df = filter(x -> x.id == 0,allFac_df)
-		facSt_df = filter(x -> x.id != 0,allFac_df)
+		facSt_df = DataFrame()
 	end
+
+	if :capaConv in keys(part.var)
+		facConv_df = allFac_df
+		facConv_df[!,:id] .= 0
+	else
+		facConv_df = DataFrame()
+	end
+
 
 	# get availability and efficiency for storage capacities to compute ratio between input capacity and maximum output
 	if !isempty(facSt_df)
@@ -464,7 +447,14 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 				otherRatio_dic = Dict(x => Symbol(:ratioConvOut,x) |> (u -> u in keys(part.par) ? rename(part.par[u].data,:val => x) : DataFrame()) for x in [:Fix,:Low])
 
 				if !isempty(otherRatio_dic[:Fix]) && !isempty(otherRatio_dic[:Low])
-					joinRatio_df = joinMissing(otherRatio_dic[:Fix], otherRatio_dic[:Low], intCol(otherRatio_dic[:Low]), :left, Dict(:Fix => 0.0, :Low => 0.0))
+					# ensures either both or none of the dataframes are mode specific so they can be joines
+					for l in ((:Fix,:Low),(:Low,:Fix))
+						if !(:M in namesSym(otherRatio_dic[l[1]])) && :M in namesSym(otherRatio_dic[l[2]])
+							otherRatio_dic[l[1]][!,:M] .= unique(otherRatio_dic[l[2]][!,:M]) |> (w -> map(x -> w, 1:size(otherRatio_dic[l[1]],1)))
+							otherRatio_dic[l[1]] = flatten(otherRatio_dic[l[1]],:M)
+						end
+					end
+					joinRatio_df = joinMissing(otherRatio_dic[:Fix], otherRatio_dic[:Low], intCol(otherRatio_dic[:Low]), :outer, Dict(:Fix => 0.0, :Low => 0.0))
 				elseif isempty(otherRatio_dic[:Fix])
 					joinRatio_df = otherRatio_dic[:Low]
 					joinRatio_df[!,:Fix] .= 0.0
@@ -533,41 +523,90 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},cns_
 		
 		if capa == :capaStOut # specific variables for must-out of storage
 			if !isempty(modeDep_dic[:stExtOut]) # storage output is mode dependant
-				var_df = capa[2]
+				capa_df = capa[2]
 			else # non must-out carriers are output of storage too
-				var_df = filter(x -> !isempty(setdiff(cMust_arr,part.carrier.stExtOut[x.id])),capa[2])
+				capa_df = filter(x -> !isempty(setdiff(cMust_arr,part.carrier.stExtOut[x.id])),capa[2])
 			end
 		elseif capa[1] == :capaConv && (!isempty(setdiff(collect(part.carrier.gen),cMust_arr)) || !isempty(modeDep_dic[:gen])) # if non must-run carriers are generated or generation is mode dependant
-			var_df = capa[2]
+			capa_df = capa[2]
 		else
-			var_df = DataFrame()
+			capa_df = DataFrame()
 		end
 
-		if isempty(var_df) continue end
+		if isempty(capa_df) continue end
 
 		# create capacity variables for must-out and match them with general capacity variables
-		part.var[Symbol("must",makeUp(capa[1]))] = createVar(var_df[!,Not(:var)],string("must",makeUp(capa[1])),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
-		bothVar_df = innerjoin(rename(var_df,:var => :capa),part.var[Symbol("must",makeUp(capa[1]))],on = intCol(var_df))
-		bothVar_df[!,:cnsExpr] = @expression(anyM.optModel, bothVar_df[:var] .- bothVar_df[:capa])
-		cns_dic[Symbol("must",makeUp(capa[1]),"Up")] = cnsCont(select(bothVar_df,Not([:var,:capa])),:smaller)
+		mustCapa_df = capa_df[!,Not(:var)]
+		if anyM.options.holdFixed # replace fixed variables with a parameter, if holdFixed is active
+			# get relevant parameter data
+			fixMust_df = getFix(mustCapa_df,getLimPar(anyM.parts.lim,Symbol("must",makeUp(capa[1]),:Fix),anyM.sets[:Te], sys = sysInt(Symbol(part.name[end]),anyM.sets[:Te])),anyM)
+			if !(:val in namesSym(fixMust_df)) fixMust_df[!,:val] .= 0.0 end; fixMust_df = rename(fixMust_df,:val => :var)
+			# get all cases where variables are fixed
+			varMust_df = createVar(antijoin(mustCapa_df,fixMust_df, on = intCol(fixMust_df)),string("must",makeUp(capa[1])),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
+			part.var[Symbol("must",makeUp(capa[1]))] = orderDf(vcat(fixMust_df,varMust_df))
+		else
+			part.var[Symbol("must",makeUp(capa[1]))] = createVar(capa_df[!,Not(:var)],string("must",makeUp(capa[1])),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.capa)
+		end
+		
+		decom_boo = part.decomm != :none
 
+		# ensure must-out capacity complies with operated capacity in case of decommisiong
+		if decom_boo
+			bothVar_df = innerjoin(rename(capa_df,:var => :capa),part.var[Symbol("must",makeUp(capa[1]))],on = intCol(capa_df))
+			bothVar_df[!,:cnsExpr] = @expression(anyM.optModel, bothVar_df[:var] .- bothVar_df[:capa])
+			cns_dic[Symbol("must",makeUp(capa[1]),"Opr")] = cnsCont(select(bothVar_df,Not([:var,:capa])),:smaller)
+		end
 
 		# create separate variable for expansion of must-out
 		exp_sym = Symbol(replace(String(capa[1]),"capa" => "exp"))
 		if exp_sym in keys(part.var)
-			# create expansion variables for must output and match them with general expansion variables
-			expVar_df = capa == :capaStOut ? filter(x -> x.id in unique(var_df[!,:id]), part.var[exp_sym]) : part.var[exp_sym]
-			part.var[Symbol("must",makeUp(exp_sym))] = createVar(expVar_df[!,Not(:var)],string("must",makeUp(exp_sym)),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.insCapa)
+			# create expansion variables for must-out
+			expVar_df = capa == :capaStOut ? filter(x -> x.id in unique(capa_df[!,:id]), part.var[exp_sym]) : part.var[exp_sym]
+			mustExp_df = expVar_df[!,Not(:var)] 
+			if anyM.options.holdFixed # replace fixed variables with a parameter, if holdFixed is active
+				# get all cases where variables are fixed
+				fixMust_df = getFix(mustExp_df,getLimPar(anyM.parts.lim,Symbol("must",makeUp(exp_sym),:Fix),anyM.sets[:Te], sys = sysInt(Symbol(part.name[end]),anyM.sets[:Te])),anyM)
+				if !(:val in intCol(fixMust_df)) fixMust_df[!,:val] .= 0.0 end; fixMust_df = rename(fixMust_df,:val => :var)
+				varMust_df = createVar(antijoin(mustExp_df,fixMust_df, on = intCol(fixMust_df)),string("must",makeUp(capa[1])),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.insCapa)
+				part.var[Symbol("must",makeUp(exp_sym))] = orderDf(vcat(fixMust_df,varMust_df))
+			else
+				part.var[Symbol("must",makeUp(exp_sym))] = createVar(expVar_df[!,Not(:var)],string("must",makeUp(exp_sym)),anyM.options.bound.capa,anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.insCapa)
+			end
+			
+			# match expansion variable for must-out with general expansion variables
 			bothVar_df = innerjoin(select(rename(expVar_df,:var => :exp),Not([:Ts_disSup])),select(part.var[Symbol("must",makeUp(exp_sym))],Not([:Ts_disSup])),on = intCol(expVar_df))
 			bothVar_df[!,:cnsExpr] = @expression(anyM.optModel, bothVar_df[:var] .- bothVar_df[:exp])
+			filter!(x -> !(isempty(x.cnsExpr.terms)), bothVar_df)
 			cns_dic[Symbol("must",makeUp(exp_sym))] = cnsCont(select(bothVar_df,Not([:var,:exp])),:smaller)
+	
 			# connect must-out capacity and expansion variables
 			cns_df = rename(part.var[Symbol("must",makeUp(capa[1]))],:var => :capa)
 			expVar_df = flatten(part.var[Symbol("must",makeUp(exp_sym))],:Ts_disSup)
 			join_arr = intCol(cns_df) |> (w -> part.type != :mature ? w : filter(x -> x != :Ts_expSup,collect(w)))
 			cns_df = innerjoin(cns_df, combine(groupby(expVar_df,join_arr), :var => (x -> sum(x)) => :exp), on = join_arr)
-			cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[:capa] .- cns_df[:exp])	
-			cns_dic[Symbol("must",makeUp(capa[1]),"Low")] = cnsCont(select(cns_df,intCol(cns_df,:cnsExpr)),:greater)
+			
+			# add residual capacities to dataframe
+			insCapa_df = copy(part.var[decom_boo ? Symbol(:ins,makeUp(capa[1])) : capa[1]])
+			insCapa_df[!,:resi] = map(x -> x.constant,insCapa_df[!,:var])
+			cns_df = innerjoin(cns_df, select(insCapa_df,vcat(join_arr,[:resi])), on = join_arr)
+			
+			# create upper and lower limits on must-out capacity where there is residual capacity, otherwise just create on equality constraint
+			cnsEq_df, cnsNoEq_df = [filter(z,cns_df) for z in (x -> x.resi == 0.0, x -> x.resi != 0.0)]
+			if !isempty(cnsEq_df)
+				cnsEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsEq_df[:capa] .- cnsEq_df[:exp])	
+				filter!(x -> !(isempty(x.cnsExpr.terms)), cnsEq_df)
+				cns_dic[Symbol("must",makeUp(capa[1]),"Eq")] = cnsCont(select(cnsEq_df,intCol(cnsEq_df,:cnsExpr)),:equal)
+			end
+			if !isempty(cnsNoEq_df)
+				# set lower limit based on expansion
+				cnsNoEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsNoEq_df[:capa] .- cnsNoEq_df[:exp])
+				filter!(x -> !(isempty(x.cnsExpr.terms)), cnsNoEq_df)
+				cns_dic[Symbol("must",makeUp(capa[1]),"Gr")] = cnsCont(select(cnsNoEq_df,intCol(cnsNoEq_df,:cnsExpr)),:greater)
+				# set upper limit based on expansion plus residuals
+				cnsNoEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsNoEq_df[:capa] .- cnsNoEq_df[:exp] - cnsNoEq_df[:resi])
+				filter!(x -> !(isempty(x.cnsExpr.terms)), cnsNoEq_df)
+				cns_dic[Symbol("must",makeUp(capa[1]),"Sm")] = cnsCont(select(cnsNoEq_df,intCol(cnsNoEq_df,:cnsExpr)),:smaller)
+			end
 		end
 	end
 
