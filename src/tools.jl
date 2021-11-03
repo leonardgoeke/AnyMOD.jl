@@ -29,11 +29,11 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
 			print_df[!,i] = string.(print_df[!,i])
 		elseif lookUp_sym == :dir
 			print_df[!,i] = map(x -> x == 1 ? "yes" : "no",print_df[!,i])
-        elseif lookUp_sym in keys(sets)
+        elseif lookUp_sym in keys(sets) && eltype(print_df[i]) <: Int
 			print_df[!,i] = map(x -> createFullString(x,sets[lookUp_sym]),print_df[!,i])
         end
     end
-
+	
 	# rename columns
 	colName_dic = Dict(:Ts_dis => :timestep_dispatch, :Ts_exp => :timestep_expansion, :Ts_expSup => :timestep_superordinate_expansion, :Ts_disSup => :timestep_superordinate_dispatch,
 															:R => :region, :R_tech => :region, :R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Sys => :system, :Te => :technology, :Exc => :exchange,
