@@ -496,7 +496,6 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 
 	# ! adds all technology related variables
 	cBalRes_tup = anyM.cInfo[c_int] |> (x -> (x.tsDis, x.rDis))
-	relType_tup = map(x -> x in signVar ? (x == :in ? (:use, :stExtIn) : (:gen,:stExtOut)) : tuple(),(:in,:out)) |> (x -> tuple(vcat(collect.(x)...)...))
 
 	for c in relC_arr
 		# gets technologies relevant for respective filterCarrier
@@ -507,13 +506,14 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		for x in relTech_arr
 
 			# gets resolution and adjusts add_df in case of an agggregated technology
-			add_df = select(filter(r -> r.C == c,anyM.parts.tech[x[1]].var[x[2]]),[:Ts_disSup,:Ts_dis,:R_dis,:scr,:var])
+			add_df = select(filter(r -> r.C == c,anyM.parts.tech[x[1]].var[x[2]]),[:Ts_disSup,:Ts_dis,:R_dis,:Te,:scr,:var])
+			filter!(filterFunc,add_df); select!(add_df,Not([:Te])) # ensure filtering can include technologies	
 			tRes_tup = anyM.parts.tech[x[1]].disAgg ? (cRes_tup[1], anyM.parts.tech[x[1]].balLvl.exp[2]) : (cRes_tup[1], cRes_tup[2])
 			checkTechReso!(tRes_tup,cBalRes_tup,add_df,anyM.sets)
 
 			# filter values based on filter function and minimum value reported
 			add_df = combine(groupby(add_df,[:Ts_disSup,:Ts_dis,:R_dis,:scr]), :var => (x -> sum(x)) => :var)
-			filter!(filterFunc,add_df)
+			
             if isempty(add_df) continue end
 			add_df[!,:value] = value.(add_df[!,:var]) .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
 			add_df[!,:variable] .= Symbol(x[2],"; ", x[1])
