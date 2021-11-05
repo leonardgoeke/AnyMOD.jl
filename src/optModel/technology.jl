@@ -383,12 +383,6 @@ end
 
 # ! compute design factors, either based on defined must run parameters or for all capacities in input dataframe
 function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel)
-
-	# normalize must-out to maximum of 1 in each year/scenario
-	maxMust_df = part.par[:mustOut].data |> (w -> combine(groupby(w,filter(x -> !(x in (:Ts_dis,:scr)),intCol(w))),:val => (x -> maximum(x)) => :max))
-	normMust_df = innerjoin(part.par[:mustOut].data,maxMust_df,on = intCol(maxMust_df))
-	normMust_df[!,:val] = normMust_df[!,:val] ./ normMust_df[!,:max]
-	part.par[:mustOut].data = select(normMust_df,Not([:max]))
 	
 	# obtain all dispatch entries (either uses or defined must run or input dataframe of capacities)
 	allFac_df = rename(part.par[:mustOut].data,:val => :mustOut)
@@ -416,7 +410,6 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 	else
 		facConv_df = DataFrame()
 	end
-
 
 	# get availability and efficiency for storage capacities to compute ratio between input capacity and maximum output
 	if !isempty(facSt_df)
@@ -509,7 +502,7 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 	allFac_df = vcat(facConv_df,facSt_df)
 	allFac_df = combine(x -> (run = maximum(x.eff .* x.ava ./ x.mustOut), mustOut = x.mustOut[1]),groupby(allFac_df,filter(x -> x != :M,intCol(allFac_df))))
 	allFac_df[!,:Ts_disSup] = map(x -> yTs_dic[x],allFac_df[!,:Ts_dis])
-	allFac_df = combine(x -> (desFac = minimum(x.run),),groupby(allFac_df,filter(x -> !(x in [:Ts_dis,:scr]),intCol(allFac_df))))
+	allFac_df = combine(x -> (desFac = minimum(x.run) * maximum(x.mustOut),),groupby(allFac_df,filter(x -> !(x in [:Ts_dis,:scr]),intCol(allFac_df))))
 
 	# add computed factors to parameter data
 	if !isempty(allFac_df)

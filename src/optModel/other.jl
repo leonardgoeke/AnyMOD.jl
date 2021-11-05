@@ -182,7 +182,7 @@ end
 
 # ! aggregate all technology variables for energy balance
 function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,tech_dic::Dict{Symbol,TechPart},
-																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign),Tuple{Int,Int,Int,Int,Symbol}}},sets_dic::Dict{Symbol,Tree})
+																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign,:stBalCapa),Tuple{Int,Int,Int,Int,Symbol,Symbol}}},sets_dic::Dict{Symbol,Tree})
 	techVar_arr = Array{Array{AffExpr,1}}(undef,length(subC_arr))
 
 	# get temporal and spatial resolution for carrier being balanced
@@ -257,6 +257,9 @@ function createCapaBal!(r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::any
 
 	allCapa_df = vcat(conv_df,st_df)
 	allCapa_df = flatten(allCapa_df,:C)
+
+	# filter storage variables, where they are not to be part of balance
+	filter!(x -> anyM.cInfo[x.C].stBalCapa == :yes || x.id == 0,allCapa_df)
 
 	# filter capacity variables that will not be part due to carrier dimension
 	if :C in namesSym(par_obj.data)
