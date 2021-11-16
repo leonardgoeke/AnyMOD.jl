@@ -96,7 +96,7 @@ function evaluateReso!(startIdx_int::Int,anyM::anyModel)
 			return anyM.cInfo
 		else
 			newReso_dic = Dict(y => minimum([getfield(anyM.cInfo[x],y) for x in allChildIdx_arr]) for y in (:tsDis,:tsExp,:rDis,:rExp))
-			anyM.cInfo[startIdx_int] = (tsDis = newReso_dic[:tsDis],tsExp = newReso_dic[:tsExp],rDis = newReso_dic[:rDis],rExp = newReso_dic[:rExp], bal = :ineq)
+			anyM.cInfo[startIdx_int] = (tsDis = newReso_dic[:tsDis],tsExp = newReso_dic[:tsExp],rDis = newReso_dic[:rDis],rExp = newReso_dic[:rExp], balSign = :ineq, stBalCapa = :no)
 			push!(anyM.report,(1,"carrier mapping","","carrier '$(carName_str)' inherited resolution from children"))
 			return anyM.cInfo
 		end
