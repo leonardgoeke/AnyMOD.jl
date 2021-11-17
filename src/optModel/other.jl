@@ -50,7 +50,6 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	partBal = anyM.parts.bal
 	c_arr = filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx))
 	allDim_df = createPotDisp(c_arr,ts_dic,anyM)
-	bal_tup = (:C,:Ts_dis)
 	agg_arr = [:Ts_dis, :R_dis, :C, :scr]
 
 	#region # * create potential curtailment and loss loss load variables
@@ -183,7 +182,7 @@ end
 
 # ! aggregate all technology variables for energy balance
 function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,tech_dic::Dict{Symbol,TechPart},
-																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign),Tuple{Int,Int,Int,Int,Symbol}}},sets_dic::Dict{Symbol,Tree})
+																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign,:stBalCapa),Tuple{Int,Int,Int,Int,Symbol,Symbol}}},sets_dic::Dict{Symbol,Tree})
 	techVar_arr = Array{Array{AffExpr,1}}(undef,length(subC_arr))
 
 	# get temporal and spatial resolution for carrier being balanced
@@ -240,8 +239,8 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 	return map(x -> sum(x),eachrow(hcat(techVar_arr...))), unEtr_arr
 end
 
-# ! create balance on output capacity (in particular relevant in combination with must run)
-function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic::Dict{Int64,Int64},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
+# ! create balance on output capacity for must-out capacity
+function createCapaBal!(r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 	
 	partBal = anyM.parts.bal
 	par_obj = partBal.par[:capaDem]
@@ -258,6 +257,9 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 
 	allCapa_df = vcat(conv_df,st_df)
 	allCapa_df = flatten(allCapa_df,:C)
+
+	# filter storage variables, where they are not to be part of balance
+	filter!(x -> anyM.cInfo[x.C].stBalCapa == :yes || x.id == 0,allCapa_df)
 
 	# filter capacity variables that will not be part due to carrier dimension
 	if :C in namesSym(par_obj.data)
@@ -277,29 +279,10 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 
 	# loop over technologies and write match of capacity and design factors to array
 	capa_itr = collect(enumerate(grpCapa_gdf))
-	@threads for (idx,teCapa) in capa_itr
-
+	for (idx,teCapa) in capa_itr
 		teCapa_df = DataFrame(teCapa)
 		part = anyM.parts.tech[sysSym(teCapa_df[1,:Te],anyM.sets[:Te])]
-
-		# if design factor already defined, match with it, otherwise create an empty parameter object for design factor
-		if :desFac in keys(part.par)
-			hasDesFac_df = matchSetParameter(teCapa_df,part.par[:desFac],anyM.sets; newCol = :desFac)
-		else 
-			parDef_ntup = (dim = (:Ts_expSup, :Ts_disSup, :R_dis, :C, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :C => :up, :Te => :up), part = :techConv)
-			part.par[:desFac] = ParElement(DataFrame(),parDef_ntup,:desFac,anyM.report)
-			part.par[:desFac].data = DataFrame(Ts_expSup = Int[],Ts_disSup = Int[],R_dis = Int[],C = Int[],Te = Int[], id = Int[], val = Float64[])
-			hasDesFac_df = DataFrame(Ts_expSup = Int[],Ts_disSup = Int[],R_dis = Int[],C = Int[],Te = Int[], id = Int[], desFac = Float64[], var = AffExpr[])
-		end
-
-		# compute missing design factors, match with capacity and merge everything 
-		noDesFac_df = antijoin(teCapa_df,hasDesFac_df,on = intCol(hasDesFac_df))
-		if !isempty(noDesFac_df)
-			computeDesFac!(part,yTs_dic,anyM,ts_dic,select(noDesFac_df,Not([:var])))
-			allDesFac_arr[idx] = vcat(hasDesFac_df,matchSetParameter(noDesFac_df,part.par[:desFac],anyM.sets; newCol = :desFac))
-		else
-			allDesFac_arr[idx] = hasDesFac_df
-		end
+		allDesFac_arr[idx] = matchSetParameter(teCapa_df,part.par[:desFac],anyM.sets; newCol = :desFac)
 	end
 
 	# merge all capacity variables with design factors
@@ -345,7 +328,7 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 		# filter cases where no actual variables are compared since they were replaced with parameters
 		filter!(x -> !isempty(x.cnsExpr.terms), cns_df) 
-		partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:greater),anyM.optModel)
+		partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:equal),anyM.optModel)
 	end
 
 	produceMessage(anyM.options,anyM.report, 2," - Created capacity balances")
@@ -354,7 +337,101 @@ function createCapaBal!(ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},yTs_dic:
 
 end
 
-# ! create constarints that enforce any type of limit (Up/Low/Fix) on any type of variable
+# ! create constraints to limit the share certain technologies have on overall expansion of must-out (e.g. bev can only account for up to 30% of new cars)
+function createExpShareCns!(anyM::anyModel)
+
+    # ! get capacity balances and replace dispatch regions with expansion regions
+    allCapaBal_df = select(filter(x -> x.actCapa, anyM.parts.bal.cns[:capaBal]),Not([:cns,:actCapa]))
+    allCapaBal_df[!,:R_exp] = map(x -> getDescendants(x.R_dis, anyM.sets[:R],false,anyM.cInfo[x.C].rExp)[end], eachrow(allCapaBal_df))
+    select!(allCapaBal_df,Not([:R_dis]))
+
+	for lim in (:Fix,:Low,:Up)
+
+		share_sym = Symbol(:shareExpOut,lim)
+        if !(share_sym in keys(anyM.parts.bal.par)) continue end
+		
+		# ! extend all balances with possible technologies
+		# assign carriers in balance to technologies appearing in parameter data
+		allShareTe_arr = unique(anyM.parts.bal.par[share_sym].data[!,:Te])
+		techToCar_arr = [x => union(map(y -> getCarrierFields(anyM.parts.tech[sysSym(y,anyM.sets[:Te])].carrier,(:gen, :stExtOut)),getDescendants(x, anyM.sets[:Te], true))...) for x in allShareTe_arr]
+		carToTe_dic = Dict(c => filter(x -> c in x[2],techToCar_arr) |> (u -> isempty(u) ? Int[] : getindex.(u,1)) for c in unique(allCapaBal_df[!,:C]))
+
+		# expand dataframe with technologies
+		allCapaBal_df[!,:Te] .= map(x -> carToTe_dic[x], allCapaBal_df[!,:C])
+		allCapaBal_df = unique(flatten(allCapaBal_df,:Te))
+
+		# ! get relevant expansion variables
+		conv_df, st_df = [getAllVariables(Symbol(:mustExp,z),anyM) |> (x -> isempty(x) ? getAllVariables(Symbol(:exp,z),anyM) : vcat(x,antijoin(getAllVariables(Symbol(:exp,z),anyM),x,on = intCol(x)))) for z in (:Conv,:StOut)]
+		conv_df[!,:id] .= 0
+
+		# extends expansion with generated carriers and merges them
+		conv_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier.gen) , eachrow(conv_df))
+		st_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier.stExtOut[x.id]) , eachrow(st_df))
+
+		allExp_df = vcat(conv_df,st_df)
+		allExp_df = flatten(allExp_df,:C)
+
+		# filter capacities with irrelevant carriers
+		filter!(x -> x.C in unique(allCapaBal_df[!,:C]),allExp_df)
+
+		# compute and collect aggregated output for all relevant technologies
+		allMustOut_df = DataFrame(Ts_expSup = Int[], R_exp = Int[], C = Int[], Te = Int[], id = Int[], val = Float64[])
+
+		for t in unique(allExp_df[!,:Te])
+
+			mustOut_df = copy(anyM.parts.tech[sysSym(t,anyM.sets[:Te])].par[:mustOut].data)
+
+			# add column for superordinate dispatch timestep
+			supTs_dic =  Dict(x => getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(mustOut_df[!,:Ts_dis]))
+			mustOut_df[!,:Ts_disSup] = map(x -> supTs_dic[x], mustOut_df[!,:Ts_dis])
+
+			# aggregate mustOut for each dispatch year
+			mustOut_df = select(mustOut_df,Not([:Ts_dis])) |> (w -> combine(groupby(w,intCol(w)), :val => (x -> sum(x)) => :val))
+
+			# replace dispatch with expansion regions
+			mustOut_df[!,:R_exp] = map(x -> getDescendants(x.R_dis, anyM.sets[:R],false,anyM.cInfo[x.C].rExp)[end], eachrow(mustOut_df))
+			select!(mustOut_df,Not([:R_dis]))
+
+			# compute mean of mustOut across scenarios 
+			mustOut_df = orderDf(combine(groupby(mustOut_df,filter(x -> x != :scr,intCol(mustOut_df))), :val => (x -> mean(x)) => :val))
+
+			# add design factor
+			desFac_df = rename(copy(anyM.parts.tech[sysSym(t,anyM.sets[:Te])].par[:desFac].data),:val => :desFac)
+			desFac_df[!,:R_exp] = map(x -> getDescendants(x.R_dis, anyM.sets[:R],false,anyM.cInfo[x.C].rExp)[end], eachrow(desFac_df))
+			mustOut_df =  innerjoin(select(desFac_df,Not([:R_dis])),mustOut_df, on = intCol(mustOut_df))
+			mustOut_df[!,:val] = mustOut_df[!,:val] .* mustOut_df[!,:desFac]
+
+			# add years for non-emerging technologies
+			if anyM.parts.tech[sysSym(t,anyM.sets[:Te])] != :emerging
+				y_dic = Dict(x => filter(y -> x <= y, collect(anyM.supTs.step)) for x in unique(mustOut_df[!,:Ts_disSup]))
+				mustOut_df[!,:Ts_expSup] .= map(x -> y_dic[x], mustOut_df[!,:Ts_disSup])
+				mustOut_df = flatten(mustOut_df,:Ts_expSup)
+			end
+
+			# add mustOuts to all  
+			append!(allMustOut_df,select(mustOut_df,Not([:Ts_disSup,:desFac])))
+		end
+
+		# join expansion variables with output values
+		allExp_df = unique(innerjoin(allExp_df,allMustOut_df,on = intCol(allMustOut_df)))
+		allExp_df[!,:var] .= allExp_df[!,:var] .* allExp_df[!,:val]
+
+    	# ! loop to create actual constraints
+
+        # match all capacity balances with existing shares on parameters
+        cns_df = orderDf(matchSetParameter(allCapaBal_df,anyM.parts.bal.par[share_sym],anyM.sets, newCol = :share))
+
+        # add denominator and numerator to dataframe
+        cns_df[!,:denom] = aggDivVar(allExp_df, cns_df, (:Ts_expSup,:R_exp,:C), anyM.sets)
+        cns_df[!,:num] = aggDivVar(allExp_df, cns_df, (:Ts_expSup,:R_exp,:C,:Te), anyM.sets)
+
+        cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[:denom] .* cns_df[:share] .- cns_df[:num])
+        anyM.parts.bal.cns[share_sym] = createCns(cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),Dict(:Up => :greater, :Low => :smaller, :Fix => :equal)[lim]),anyM.optModel)
+    end
+
+end
+
+# ! create constraints that enforce any type of limit (Up/Low/Fix) on any type of variable
 function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 	parLim_arr = String.(collectKeys(keys(partLim.par)))
@@ -591,11 +668,11 @@ function createVar(setData_df::DataFrame,name_str::String,upBd_fl::Union{Float64
 	end
 	unlock(lock_)
 
-	return setData_df[!,Not(:name)]
+	return orderDf(setData_df[!,Not(:name)])
 end
 
 # ! scales expressions in the dataframe to be within the range defined within options
-function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}},checkRng_boo::Bool)
+function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}},checkRng_ntup::NamedTuple{(:print,:all),Tuple{Bool,Bool}})
 
 	if isempty(cnsExpr_df) return end
 
@@ -611,8 +688,8 @@ function scaleCnsExpr!(cnsExpr_df::DataFrame,coefRng::NamedTuple{(:mat,:rhs),Tup
 		findall(rhs_arr .!= 0.0) |> (x -> cnsExpr_df[x,:cnsExpr] = scaleRng(cnsExpr_df[x,:cnsExpr],rhs_arr[x],coefRng.rhs, true))
 	end
 
-	if checkRng_boo
-		checkExprRng(cnsExpr_df[:,:cnsExpr],coefRng)
+	if checkRng_ntup.print
+		checkExprRng(cnsExpr_df[:,:cnsExpr],coefRng,checkRng_ntup.all)
 	end
 end
 
@@ -626,16 +703,26 @@ function scaleRng(expr_arr::Array{AffExpr,1},rng_arr::Array,rng_tup::Tuple{Float
 end
 
 # ! check range of coefficients in expressions within input array
-function checkExprRng(expr_arr::Array{AffExpr,1},coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}})
+function checkExprRng(expr_arr::Array{AffExpr,1},coefRng::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}},printAll_boo::Bool)
 	# obtains range of coefficients for matrix and rhs
 	matRng_arr = map(x -> abs.(values(x.terms)) |> (y -> isempty(y) ? (coefRng.mat[1],coefRng.mat[2]) : (minimum(y),maximum(y))), expr_arr)
 	rhs_arr = abs.(getfield.(expr_arr,:constant))
 
-	# filters rows where ranges of coefficients or rhs are above threshold
 	aboveThres_arr = findall(.!((getindex.(matRng_arr,1)  .> coefRng.mat[1]*0.9999) .& (getindex.(matRng_arr,2) .< coefRng.mat[2]*1.0001) .& (map(x -> x == 0.0 || (x > coefRng.rhs[1]*0.9999 && x < coefRng.rhs[2]*1.0001),rhs_arr))))
-
-	for expr in expr_arr[aboveThres_arr]
-		println(expr)
+	if !isempty(aboveThres_arr)
+		if printAll_boo # filters row where ranges of coefficients or rhs are furthest above the threshold and prints it
+			# get relative violation for lower and upper bound of coefficients and rhs
+			matLow_arr = coefRng.mat[1] ./ getindex.(matRng_arr,1)
+			matUp_arr = getindex.(matRng_arr,2) ./ coefRng.mat[2]
+			rhsLow_arr = coefRng.rhs[1] ./ rhs_arr
+			rhsUp_arr = rhs_arr ./ coefRng.rhs[2]
+			# get biggest violation across lower and upper upper bound and coefficients and rhs
+			maxVio_arr = max.(matLow_arr,matUp_arr,rhsLow_arr,rhsUp_arr)
+			# print constraint with biggest violation
+			println(expr_arr[findall(maxVio_arr .== maximum(maxVio_arr))[1]])
+		else # filters all rows where ranges of coefficients or rhs are above threshold and prints them
+			for expr in expr_arr[aboveThres_arr[1]] println(expr) end
+		end
 	end
 end
 

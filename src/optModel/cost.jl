@@ -448,7 +448,7 @@ end
 
 # ! transfers provided cost dataframe into dataframe of overall objective variables and equations (and scales them)
 function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symbol,optModel::Model,lock_::ReentrantLock,sets_dic::Dict{Symbol,Tree},
-	coefRng_tup::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}, scaCost_fl::Float64, checkRng_boo::Bool, anyM::anyModel,lowBd::Float64 = 0.0)
+	coefRng_tup::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}, scaCost_fl::Float64, checkRng_ntup::NamedTuple{(:print,:all),Tuple{Bool,Bool}}, anyM::anyModel,lowBd::Float64 = 0.0)
 
 	# create variables for cost entry and builds corresponding expression for equations controlling them
 	cost_df = createVar(cost_df,string(costPar_sym),NaN,optModel,lock_,sets_dic, scaFac = scaCost_fl, lowBd = lowBd)
@@ -456,7 +456,7 @@ function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symb
 	select!(cost_df,Not(:expr))
 
 	# scales cost expression
-	scaleCnsExpr!(cost_df,coefRng_tup,checkRng_boo)
+	scaleCnsExpr!(cost_df,coefRng_tup,checkRng_ntup)
 
 	# writes equations and variables
 	partObj.cns[costPar_sym] = createCns(cnsCont(select(cost_df,Not(:var)),:equal),optModel)

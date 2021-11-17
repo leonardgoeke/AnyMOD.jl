@@ -667,7 +667,6 @@ function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep
 
 		if !exp_boo && !retro_boo continue end
 
-
 		# creates final constraint object
 		cns_df[!,:cnsExpr] = @expression(optModel,cns_df[:capa] .-  getfield.(cns_df[:capa],:constant) .+ (exp_boo ? .- cns_df[:exp] : 0.0) .+ (retro_boo ? .- cns_df[:retro_j] : 0.0))	
 		if holdFixed filter!(x -> !isempty(x.cnsExpr.terms), cns_df) end # filter cases where no actual variables are compared since they were replaced with parameters
@@ -873,10 +872,10 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			# resize capacity variables
 			capaVar_df[!,:capa]  = capaVar_df[!,:capa] .* map(x -> anyM.supTs.sca[(x,anyM.cInfo[m.car[1]].tsDis)],	capaVar_df[!,:Ts_disSup])
 
-			# get must-run parameters 
+			# get must-run parameter 
 			mustOut_df = filter(x -> x.C == m.car[1],rename(part.par[:mustOut].data,:val => :mustOut))
 		
-			# match must run with capacity variables
+			# match must-run with capacity variables
 			mustOut_df[!,:Ts_disSup] = map(x -> yTs_dic[x],mustOut_df[!,:Ts_dis])
 			mustOut_df = innerjoin(mustOut_df,capaVar_df,on = intCol(capaVar_df))
 			select!(mustOut_df,Not([:Ts_disSup]))
@@ -1045,7 +1044,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 	va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :convIn => (:use,:stIntOut), :convOut => (:gen,:stIntIn))
 
 	# loop over all variables that are subject to any type of limit (except emissions)
-	signLim_dic = Dict(:Up => :greater, :Low => :smaller, :Fix => :equal, :Up => :greater)
+	signLim_dic = Dict(:Up => :greater, :Low => :smaller, :Fix => :equal)
 
 	# loop over parameters for conversion and exchange ratios
 	if isempty(anyM.subPro) || anyM.subPro != (0,0)
@@ -1105,7 +1104,6 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 					# create corresponding constraint
 					subCns_df[!,:cnsExpr] = @expression(anyM.optModel,subCns_df[:allVar] .* subCns_df[:ratio] .- subCns_df[:ratioVar])
 					allCns_arr[idx] = subCns_df
-
 				end
 
 				cns_df = vcat(allCns_arr...)
@@ -1161,7 +1159,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 				cns_df = rename(matchExcParameter(Symbol(par,lim),cns_df,part,anyM.sets,part.dir),:var => :denom)
 			end
 
-			# get variables for nominator
+			# get variables for numerator
 			rlvTop_arr =  intersect(keys(part.var),limVa[2] in keys(va_dic) ? intersect(keys(part.carrier),va_dic[limVa[2]]) : (limVa[2],))
 
 			# use out instead of in for flh of conversion technologies, if technology has no conversion input
@@ -1176,14 +1174,14 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 			# rename column for aggregation
 			if !capaRatio_boo cns_df = rename(cns_df,:Ts_disSup => :Ts_dis) end
 
-			# connect denominator and nominator
-			cns_df[!,:nom] =  aggDivVar(top_df, cns_df, tuple(intCol(cns_df)...), anyM.sets)
+			# connect denominator and numerator
+			cns_df[!,:num] =  aggDivVar(top_df, cns_df, tuple(intCol(cns_df)...), anyM.sets)
 
 			# name column back again
 			if !capaRatio_boo cns_df = rename(cns_df,:Ts_dis => :Ts_disSup) end
 
 			# create constraint
-			cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[!,:val] .* cns_df[!,:denom] .- cns_df[!,:nom])
+			cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[!,:val] .* cns_df[!,:denom] .- cns_df[!,:num])
 
 			# filter cases without variables
 			filter!(x -> !isempty(x.cnsExpr.terms), cns_df)

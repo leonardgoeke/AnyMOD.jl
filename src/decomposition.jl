@@ -41,7 +41,7 @@ end
 function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_obj::DataType,rtrnMod_boo::Bool=true)
 
 	# create and solve model
-	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, redStep = redFac)
+	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, redStep = redFac, checkRng = (print = true, all = false))
 	prepareMod!(heu_m,opt_obj,t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
 	set_optimizer_attribute(heu_m.optModel, "Crossover", 0)
@@ -144,7 +144,7 @@ end
 function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int,zeroThrs_fl::Float64,opt_obj::DataType)
 
 	# create top-problem
-	topFeas_m = anyModel(modOpt_tup.inputDir,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = true)
+	topFeas_m = anyModel(modOpt_tup.inputDir,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false))
 
 	topFeas_m.subPro = tuple(0,0)
 	prepareMod!(topFeas_m,opt_obj,t_int)
@@ -222,9 +222,8 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 	# change objective of top problem to minimize absolute values and missing capacities
 	@objective(top_m.optModel, Min, objExpr_df[1,:cnsExpr])
 	# solve problem
-	set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
-	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
-	set_optimizer_attribute(top_m.optModel, "TimeLimit", 1800)
+	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.01)
+	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
 	
 	optimize!(top_m.optModel)
 	checkIIS(top_m)
@@ -438,7 +437,7 @@ function prepareMod!(mod_m::anyModel,opt_obj::DataType, t_int::Int)
 end
 
 # ! run sub-problem
-function runSub(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=false)
+function runSub(sub_m::anyModel,capaData_obj::bendersData,sol::Symbol,wrtRes::Bool=false)
 
 	# fixing capacity
 	for sys in (:tech,:exc)
@@ -460,8 +459,18 @@ function runSub(sub_m::anyModel,capaData_obj::bendersData,wrtRes::Bool=false)
 	end
 
 	# set optimizer attributes and solves
-	set_optimizer_attribute(sub_m.optModel, "Method", 2)
-	set_optimizer_attribute(sub_m.optModel, "Crossover", 0)
+	if sol == :barrier
+		set_optimizer_attribute(sub_m.optModel, "Method", 2)
+		set_optimizer_attribute(sub_m.optModel, "Crossover", 0)
+		set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
+		set_optimizer_attribute(sub_m.optModel, "BarConvTol", 1e-4)
+	elseif sol == :simplex
+		set_optimizer_attribute(sub_m.optModel, "Method", 1)
+		set_optimizer_attribute(sub_m.optModel, "Threads", 1)
+		set_optimizer_attribute(sub_m.optModel, "OptimalityTol", 1e-9)
+		set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
+	end
+
 	optimize!(sub_m.optModel)
 	checkIIS(sub_m)
 

@@ -325,7 +325,7 @@ mutable struct modOptions
 	scaFac::NamedTuple{(:capa,:capaStSize,:insCapa,:dispConv,:dispSt,:dispExc, :dispTrd, :costDisp,:costCapa,:obj),Tuple{Vararg{Float64,10}}}
 	bound::NamedTuple{(:capa,:disp,:obj),Tuple{Vararg{Float64,3}}}
 	avaMin::Float64
-	checkRng::Bool
+	checkRng::NamedTuple{(:print,:all),Tuple{Bool,Bool}}
 	# reporting related options
 	reportLvl::Int
 	errCheckLvl::Int
@@ -340,6 +340,7 @@ mutable struct flowGraph
 	edgeC::Array{Pair{Int,Int},1}
 	edgeTe::Array{Pair{Int,Int},1}
 	nodePos::Dict{Int,Array{Float64,1}}
+	plotSize::Tuple{Int,Int}
 
 	function flowGraph(anyM::AbstractModel)
 
@@ -456,7 +457,7 @@ mutable struct anyModel <: AbstractModel
 	optModel::Model
 	lock::ReentrantLock
 	supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}}
-	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign),Tuple{Int,Int,Int,Int,Symbol}}}
+	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign,stBalCapa),Tuple{Int,Int,Int,Int,Symbol,Symbol}}}
 	sets::Dict{Symbol,Tree}
 	parts::NamedTuple{(:tech,:exc,:bal,:lim,:costs,:obj),Tuple{Dict{Symbol,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart,OthPart}}
 	graInfo::graInfo
@@ -494,7 +495,7 @@ mutable struct anyModel <: AbstractModel
 
 	supTs::NamedTuple{(:lvl,:step,:sca,:scr,:scrProp),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64},Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
 	subPro::Union{Tuple{},Tuple{Int,Int}}
-	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign),Tuple{Int,Int,Int,Int,Symbol}}}
+	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign,:stBalCapa),Tuple{Int,Int,Int,Int,Symbol,Symbol}}}
 
 	sets::Dict{Symbol,Tree}
 	parts::NamedTuple{(:tech,:exc,:bal,:lim,:cost,:obj),Tuple{Dict{Symbol,TechPart},Dict{Symbol,ExcPart},OthPart,OthPart,OthPart,OthPart}}
@@ -503,7 +504,7 @@ mutable struct anyModel <: AbstractModel
 	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, holdFixed = false, emissionLoss = true,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e4), rhs = (1e-2,1e2)),
 																											scaFac = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
-																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = false)
+																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true))
 		anyM = new()
 
 		#region # * initialize report and options

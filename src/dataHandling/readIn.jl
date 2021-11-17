@@ -16,6 +16,7 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 		setLong_sym = getindex(setFile[findfirst("set_",setFile)[1]+4:end-4] |> (y -> filter(x -> occursin(string(x),y),collectKeys(keys(setLngShrt_dic)))),1)
 		setShort_sym = get!(setLngShrt_dic,setLong_sym,setLong_sym)
 
+		# check for erros
 		if setShort_sym in keys(anyM.sets)
 			push!(anyM.report,(3,"set read-in",string(setLong_sym),"multiple input files provided for set"))
 		end
@@ -41,6 +42,8 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 				continue
 			end
 		end
+
+		# write tree
 		anyM.sets[setShort_sym] = createTree(setData_dic[setShort_sym],setLong_sym,anyM.report)
 
 	    produceMessage(anyM.options,anyM.report, 3," - Read-in set file: ",setFile)

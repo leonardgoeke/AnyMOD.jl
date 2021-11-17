@@ -8,7 +8,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     resCol_tup =  (:timestep_dispatch, :timestep_expansion, :region_dispatch, :region_expansion)
     resLongShort_tup = Dict(:timestep_dispatch => :lvlTsDis, :timestep_expansion => :lvlTsExp, :region_dispatch => :lvlRDis, :region_expansion => :lvlRExp)
 
-    anyM.cInfo = Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign),Tuple{Int,Int,Int,Int,Symbol}}}()
+    anyM.cInfo = Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign, :stBalCapa),Tuple{Int,Int,Int,Int,Symbol,Symbol}}}()
 
     # loops over rows in carrier file and writes specific resolutions
     for row in eachrow(setData_dic[:C])
@@ -32,6 +32,20 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
 			bal_sym = :ineq
 		end
 
+		# check if capacity balance of carrier should include storage
+		if :carrier_strCapaBal in namesSym(row)
+			if !(row[:carrier_strCapaBal] in ("no","yes",""))
+				push!(anyM.report,(2,"carrier mapping","","column carrier_strCapaBal can only contain keywords 'no' or 'yes', assumed 'no'"))
+				st_sym = :no
+			elseif row[:carrier_strCapaBal] == ""
+				st_sym = :no
+			else
+				st_sym = Symbol(row[:carrier_strCapaBal])
+			end
+		else
+			st_sym = :no
+		end
+
     	# check if level values can be converted to integers
     	if any(map(x -> tryparse(Int,x), values(resVal_dic)) .== nothing)
     		push!(anyM.report,(2,"carrier mapping","","no resolutions written for '$(createFullString(car_int,anyM.sets[:C]))', provide as integer, carrier was skipped"))
@@ -46,7 +60,7 @@ function createCarrierMapping!(setData_dic::Dict,anyM::anyModel)
     		push!(anyM.report,(3,"carrier mapping","","spatial resolution of expansion must be at least as detailed as dispatch for '$(createFullString(car_int,anyM.sets[:C]))'"))
     		continue
     	else
-    		anyM.cInfo[car_int] = (tsDis = res_dic[:lvlTsDis],tsExp = res_dic[:lvlTsExp],rDis = res_dic[:lvlRDis],rExp = res_dic[:lvlRExp], balSign = bal_sym)
+    		anyM.cInfo[car_int] = (tsDis = res_dic[:lvlTsDis],tsExp = res_dic[:lvlTsExp],rDis = res_dic[:lvlRDis],rExp = res_dic[:lvlRExp], balSign = bal_sym, stBalCapa = st_sym)
     	end
     end
 
@@ -82,7 +96,7 @@ function evaluateReso!(startIdx_int::Int,anyM::anyModel)
 			return anyM.cInfo
 		else
 			newReso_dic = Dict(y => minimum([getfield(anyM.cInfo[x],y) for x in allChildIdx_arr]) for y in (:tsDis,:tsExp,:rDis,:rExp))
-			anyM.cInfo[startIdx_int] = (tsDis = newReso_dic[:tsDis],tsExp = newReso_dic[:tsExp],rDis = newReso_dic[:rDis],rExp = newReso_dic[:rExp], bal = :ineq)
+			anyM.cInfo[startIdx_int] = (tsDis = newReso_dic[:tsDis],tsExp = newReso_dic[:tsExp],rDis = newReso_dic[:rDis],rExp = newReso_dic[:rExp], balSign = :ineq, stBalCapa = :no)
 			push!(anyM.report,(1,"carrier mapping","","carrier '$(carName_str)' inherited resolution from children"))
 			return anyM.cInfo
 		end
