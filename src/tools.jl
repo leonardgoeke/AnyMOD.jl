@@ -87,7 +87,11 @@ Writes results to `.csv` file with content depending on `reportType`. Available 
 reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{reportType}(),anyM::anyModel; kwargs...)
 
 # ! summary of all capacity and dispatch results
-function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true)
+function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = tuple())
+
+	if !isempty(setdiff(addRep,(:cyc, :flh, :effConv, :capaConvOut)))
+		error("Provided unsupported keywords for addRep argument. Supported are :cyc, :flh, :effConv, and :capaConvOut.")
+	end
 
     techSym_arr = collect(keys(anyM.parts.tech))
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], id = Int[], variable = Symbol[], value = Float64[])
@@ -232,83 +236,119 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	    append!(allData_df,filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),vcat(excFrom_df,excTo_df)))
 	end
 	
-	flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
+	# ! comptue full load hours
+	if :flh in addRep
+		flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
 
-	for flhCapa in collect(keys(flh_dic))
-		# get capacities relevant for full load hours
-		capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
-		capaFlh_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaFlh_df[!,:Ts_disSup])
-		capaFlh_df = flatten(capaFlh_df,:scr)
-		
-		# get dispatch quantities relevant for full load hours
-		if flhCapa == :capaConv
-			var_arr = [:use,:gen,:stIntIn,:stIntOut]
-		elseif flhCapa  == :capaStIn
-			var_arr = [:stIntIn,:stExtIn]
-		elseif flhCapa  == :capaStOut
-			var_arr = [:stIntOut,:stExtOut]
+		for flhCapa in collect(keys(flh_dic))
+			# get capacities relevant for full load hours
+			capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
+			capaFlh_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaFlh_df[!,:Ts_disSup])
+			capaFlh_df = flatten(capaFlh_df,:scr)
+			
+			# get dispatch quantities relevant for full load hours
+			if flhCapa == :capaConv
+				var_arr = [:use,:gen,:stIntIn,:stIntOut]
+			elseif flhCapa  == :capaStIn
+				var_arr = [:stIntIn,:stExtIn]
+			elseif flhCapa  == :capaStOut
+				var_arr = [:stIntOut,:stExtOut]
+			end
+			
+			relDisp_df = filter(x -> x.variable in var_arr,allData_df)
+			if isempty(relDisp_df) continue end
+			if flhCapa == :capaConv
+				rename_dic = Dict(:use => :in, :gen => :out, :stIntIn => :out, :stIntOut => :in)
+				relDisp_df[!,:variable] = map(x -> rename_dic[x], relDisp_df[!,:variable])
+			else
+				relDisp_df[!,:variable] .= :st
+			end
+
+			# group dispatch quantities and match with capacity data
+			aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr,:variable]), :value => (x -> sum(abs.(x))) => :value),:variable => :variable2, :value => :value2)
+			
+			if flhCapa == :capaConv
+				# match with input quantities where they are defined, otherwise check of output quantities
+				convIn_df = innerjoin(capaFlh_df,filter(x -> x.variable2 == :in,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
+				contOut_df = innerjoin(antijoin(capaFlh_df,convIn_df,on = [:Ts_disSup,:R_dis,:Te,:scr]),filter(x -> x.variable2 == :out,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
+				capaFlh_df = vcat(convIn_df,contOut_df)
+			else
+				capaFlh_df = innerjoin(capaFlh_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
+			end
+
+			capaFlh_df[!,:value] = capaFlh_df[!,:value2] ./ capaFlh_df[!,:value] .* 1000
+			capaFlh_df[!,:variable] .= flh_dic[flhCapa]
+
+			append!(allData_df,select(capaFlh_df,Not([:variable2,:value2])))
 		end
-		
-		relDisp_df = filter(x -> x.variable in var_arr,allData_df)
-		if isempty(relDisp_df) continue end
-		if flhCapa == :capaConv
-			rename_dic = Dict(:use => :in, :gen => :out, :stIntIn => :out, :stIntOut => :in)
-			relDisp_df[!,:variable] = map(x -> rename_dic[x], relDisp_df[!,:variable])
-		else
-			relDisp_df[!,:variable] .= :st
-		end
-
-		# group dispatch quantities and match with capacity data
-		aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr,:variable]), :value => (x -> sum(abs.(x))) => :value),:variable => :variable2, :value => :value2)
-		
-		if flhCapa == :capaConv
-			# match with input quantities where they are defined, otherwise check of output quantities
-			convIn_df = innerjoin(capaFlh_df,filter(x -> x.variable2 == :in,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
-			contOut_df = innerjoin(antijoin(capaFlh_df,convIn_df,on = [:Ts_disSup,:R_dis,:Te,:scr]),filter(x -> x.variable2 == :out,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
-			capaFlh_df = vcat(convIn_df,contOut_df)
-		else
-			capaFlh_df = innerjoin(capaFlh_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
-		end
-
-		capaFlh_df[!,:value] = capaFlh_df[!,:value2] ./ capaFlh_df[!,:value] .* 1000
-		capaFlh_df[!,:variable] .= flh_dic[flhCapa]
-
-		append!(allData_df,select(capaFlh_df,Not([:variable2,:value2])))
 	end
 
 	# ! comptue storage cycles
-	cyc_dic = Dict(:capaStIn => :cycStIn, :capaStOut => :cycStOut)
+	if :cyc in addRep
+		cyc_dic = Dict(:capaStIn => :cycStIn, :capaStOut => :cycStOut)
 
-	for cycCapa in collect(keys(cyc_dic))
-		capaCyc_df = filter(x -> x.variable == :capaStSize, allData_df)
-		capaCyc_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaCyc_df[!,:Ts_disSup])
-		capaCyc_df = flatten(capaCyc_df,:scr)
-		
-		# get dispatch quantities relevant for cycling
-		if cycCapa  == :capaStIn
-			var_arr = [:stIntIn,:stExtIn]
-		elseif cycCapa  == :capaStOut
-			var_arr = [:stIntOut,:stExtOut]
+		for cycCapa in collect(keys(cyc_dic))
+			capaCyc_df = filter(x -> x.variable == :capaStSize, allData_df)
+			capaCyc_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaCyc_df[!,:Ts_disSup])
+			capaCyc_df = flatten(capaCyc_df,:scr)
+			
+			# get dispatch quantities relevant for cycling
+			if cycCapa  == :capaStIn
+				var_arr = [:stIntIn,:stExtIn]
+			elseif cycCapa  == :capaStOut
+				var_arr = [:stIntOut,:stExtOut]
+			end
+			
+			relDisp_df = filter(x -> x.variable in var_arr,allData_df)
+			if isempty(relDisp_df) continue end
+			# group dispatch quantities and match with capacity data
+			aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr]), :value => (x -> sum(abs.(x))) => :value), :value => :value2)
+
+			capaCyc_df = innerjoin(capaCyc_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
+			
+			# get relevant dispatch variables for respective group
+			capaCyc_df[!,:value] = capaCyc_df[!,:value2] ./ capaCyc_df[!,:value] .* 1000
+			capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
+
+			append!(allData_df,select(capaCyc_df,Not([:value2])))
 		end
-		
-		relDisp_df = filter(x -> x.variable in var_arr,allData_df)
-		if isempty(relDisp_df) continue end
-		# group dispatch quantities and match with capacity data
-		aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr]), :value => (x -> sum(abs.(x))) => :value), :value => :value2)
+	end
 
-		capaCyc_df = innerjoin(capaCyc_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
-		
-		# get relevant dispatch variables for respective group
-		capaCyc_df[!,:value] = capaCyc_df[!,:value2] ./ capaCyc_df[!,:value] .* 1000
-		capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
+	# ! comptue conversion efficiencies
 
-		append!(allData_df,select(capaCyc_df,Not([:value2])))
+	if :effConv in addRep || :capaConvOut in addRep
+
+		# get sum of input and output plus carrier-specific output
+		in_df =  filter(x -> x.variable in (:use,:stIntIn), allData_df) |> (w -> combine(groupby(w,filter(u -> !(u in (:C,:scr)), intCol(w))),:value => (x -> abs(sum(x))) => :in))
+		out_df = filter(x -> x.variable in (:gen,:stOutIn), allData_df) |> (w -> combine(groupby(w,filter(u -> u != :scr, intCol(w))),:value => (x -> abs(sum(x))) => :out))
+		
+		# compute carrier specific efficiencies
+		eff_df = innerjoin(out_df,in_df, on = intCol(in_df))
+		eff_df[!,:eff] = map(x -> x.out/x.in,eachrow(eff_df))
+		select!(eff_df,Not([:in,:out]))
+		eff_df[!,:scr] .= 0
+
+		# add output capacities to output
+		if :capaConvOut in addRep
+			outCapa_df = select(rename(filter(x -> x.variable == :capaConv, allData_df),:value => :capa),Not([:variable,:C,:scr])) |> (w -> innerjoin(eff_df,w,on = intCol(w)))
+			outCapa_df[!,:value] = outCapa_df[!,:capa] .* outCapa_df[!,:eff]
+			outCapa_df[!,:variable] .= :capaConvOut
+			append!(allData_df,select(outCapa_df,Not([:capa,:eff])))
+		end
+
+		# add efficiencies to output
+		if :effConv in addRep
+			eff_df[!,:variable] .= :effConv
+			append!(allData_df,rename(eff_df,:eff => :value))
+		end
+
 	end
 
 	# removes scenario column if only one scenario is defined
 	if length(unique(allData_df[!,:scr])) == 1
 		select!(allData_df,Not(:scr))
 	end
+	
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
@@ -328,7 +368,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 end
 
 # ! results for costs
-function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true)
+function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	# prepare empty dataframe
 	allData_df = DataFrame(Ts_disSup = Int[], R_tech = Int[], R_from = Int[], R_to = Int[], Te = Int[], Exc = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
@@ -375,7 +415,7 @@ function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{S
 end
 
 # ! results for exchange
-function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true)
+function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc) error("No exchange data found") end
 
@@ -452,6 +492,114 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 		if :rawDf in rtnOpt return allData_df end
 		if :csvDf in rtnOpt return csvData_df end
 	end
+end
+
+# ! merges reported results according to external yml file
+function mergeResults(ymlFile::String,anyM::anyModel,addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),)
+
+    # ! read in mappings and prepare variables
+    allMapping_dic = YAML.load_file(ymlFile)
+
+    varMap_dic = allMapping_dic["variables"]
+    setMap_dic = allMapping_dic["sets"]
+    agg_arr = allMapping_dic["aggregations"]
+
+    # get relevant variables and filter which are specific
+    relVar_arr = Symbol.(union(map(x -> map(y -> y["variable"], collect(values(x))), collect(values(allMapping_dic["variables"])))...))
+    relFile_arr = Symbol.(union(map(x -> map(y -> y["file"], collect(values(x))), collect(values(allMapping_dic["variables"])))...))
+    optVar_tup = tuple(intersect(relVar_arr,(:cyc, :flh, :effConv, :capaConvOut))...)
+
+    if !isempty(setdiff(relFile_arr,(:summary, :cost, :exchange)))
+		error("Provided unsupported file names in YAML file. Supported are :summary, :exchange, :cost.")
+	end
+
+    # ! prepare all summary output files
+    allVar_df = DataFrame(timestep = String[], region = String[], variable = String[], value = Float64[])
+    
+    repData_dic = Dict{String,DataFrame}()
+    for repFile in relFile_arr
+    
+        repData_df = filter(x -> x.variable in relVar_arr, reportResults(repFile,anyM,rtnOpt = (:csvDf,), addRep = optVar_tup))
+        # renames columns to match set names
+        if repFile == :summary
+            rename!(repData_df,"region_dispatch" => "region","timestep_superordinate_dispatch" => "timestep")
+        elseif repFile == :exchange
+            rename!(repData_df,"region_from" => "region","timestep_superordinate_dispatch" => "timestep")
+        else
+            rename!(repData_df,"timestep_superordinate_dispatch" => "timestep")
+        end
+        
+        # replaces set names with names in mapping
+        for set in keys(setMap_dic)
+            repData_df[!,set] .= map(x -> setMap_dic[set][x],repData_df[!,set])
+        end
+        
+        # write variable names as string for correct string comparision below
+        repData_df[!,:variable] = string.(repData_df[!,:variable])
+        repData_dic[string(repFile)] = combine(groupby(repData_df,filter(x -> x != "value",names(repData_df))),:value => (x -> sum(x)) => :value)
+    end
+
+    # ! loop over reporting variables that have to be created
+    for reportVar in keys(varMap_dic)
+
+        mapInfo_arr = varMap_dic[reportVar]
+        reportVar_df = DataFrame(timestep = String[], region = String[], value = Float64[])
+
+        # loop over elements aggregated for reporting variable
+        for aggCase in mapInfo_arr
+
+            # load dataframe and filter relevant columns
+            loadCsv_df = repData_dic[aggCase["file"]]
+            filtCol_arr = intersect(collect(keys(aggCase)),names(loadCsv_df))
+            fltCsv_df = filter(x -> all(map(y -> occursin(aggCase[y],x[Symbol(y)]),filtCol_arr)),loadCsv_df)
+            if isempty(fltCsv_df) continue end
+
+            # apply correction factor and add to dataframe for variable
+            fltCsv_df[!,:value] .= fltCsv_df[!,:value] * aggCase["factor"]
+
+            append!(reportVar_df,combine(groupby(fltCsv_df,["timestep", "region"]),:value => (x -> sum(x)) => :value))
+        end
+
+        # aggregate all entries for regions and timesteps
+        reportVar_df = combine(groupby(reportVar_df,["timestep", "region"]),:value => (x -> sum(x)) => :value)
+
+        # add variable column
+        reportVar_df[!,:variable] .= reportVar
+        append!(allVar_df,reportVar_df)
+    end
+    noAggVar_df = copy(allVar_df)
+
+    # ! obtain variables that can be aggregated from others
+    if !isnothing(agg_arr)
+        for aggVar in agg_arr
+            aggVar_df = select(filter(x -> occursin(aggVar,x.variable) ,noAggVar_df),Not([:variable]))
+            aggVar_df = combine(groupby(aggVar_df,["timestep", "region"]),:value => (x -> sum(x)) => :value)
+            aggVar_df[!,:variable] .= aggVar
+            append!(allVar_df,aggVar_df)
+        end
+    end
+
+    if addObjName
+        allVar_df[!,:objName] .= anyM.options.objName
+    end
+
+
+	# ! return dataframes and write csv files based on specified inputs
+	if :csv in rtnOpt || :csvDf in rtnOpt
+		csvData_df = printObject(allVar_df,anyM, fileName = string(split(ymlFile,".")[end-1]), rtnDf = rtnOpt, filterFunc = rmvZero ? x -> abs(x.value) > 1e-5 : x -> true)
+	end
+
+	if :raw in rtnOpt
+		CSV.write("$(anyM.options.outDir)/$(split(ymlFile,".")[end-1])_$(anyM.options.outStamp).csv", allVar_df)
+	end
+
+	if :rawDf in rtnOpt && :csvDf in rtnOpt
+		return allVar_df, csvData_df
+	else
+		if :rawDf in rtnOpt return allVar_df end
+		if :csvDf in rtnOpt return csvData_df end
+	end
+
 end
 
 # ! print time series for in and out into separate tables
