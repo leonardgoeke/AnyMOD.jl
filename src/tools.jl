@@ -495,7 +495,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 end
 
 # ! merges reported results according to external yml file
-function mergeResults(ymlFile::String,anyM::anyModel,addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),)
+function computeResults(ymlFile::String,anyM::anyModel,addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),)
 
     # ! read in mappings and prepare variables
     allMapping_dic = YAML.load_file(ymlFile)
