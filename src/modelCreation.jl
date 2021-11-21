@@ -111,7 +111,7 @@ function createOptModel!(anyM::anyModel)
 
 	if :capaDem in keys(anyM.parts.bal.par) && (isempty(anyM.subPro) || anyM.subPro == (0,0))
 		createCapaBal!(r_dic,anyM)
-		createExpShareCns!(anyM)
+		if :capaBal in keys(anyM.parts.bal.cns) createExpShareCns!(anyM) end
 	end
 	
 	createLimitCns!(anyM.parts.lim,anyM)
