@@ -6,7 +6,7 @@ function createDR(part::TechPart,anyM::anyModel)
     createDrDoVar!(part,anyM)
 
     # create stExtOut variable as the sum of DSM downward load shift variable for every tt
-    createDrstExtOut!(part,anyM)
+    createDrstExtOut!(part)
 
     # create balance constraint of DSM downward and upward load shifting    
     createDrBalCns(part,anyM)
@@ -22,26 +22,24 @@ function createDR(part::TechPart,anyM::anyModel)
 end
 
 function get_tt(anyM::anyModel,setData_df::DataFrame)
-    for row in eachrow(setData_df)
-        family = getDescendants(row.Ts_disSup,anyM.sets[:Ts])
-        delayTime_int = Int64(row.val)
 
-        index_t = first(findall(x -> x == row.Ts_dis, family))
-        ind = index_t-delayTime_int:index_t+ delayTime_int |> collect
+    setData_df[!,:fam] = map(x -> getDescendants(x,anyM.sets[:Ts]), setData_df.Ts_disSup)
+    setData_df[!,:index_t] = map( (x,y) -> first(findall(z -> z == x, y)) , setData_df.Ts_dis, setData_df.fam)
+    setData_df[!,:ind] = map((x,y) -> x-y:x+ y |> collect, 
+                        setData_df.index_t, setData_df.val)
+    setData_df[!,:ind] = map(x -> convert(Vector{Int64}, x), setData_df.ind)
+    
+    setData_df[!,:ind] =   map((x,z) -> any(y ->y <1, x) == true ?  
+                            vcat(length(z) .+ filter(a -> a < 1, x), filter(a -> a >= 1, x)) : x , 
+                            setData_df.ind, setData_df.fam)
+        
+    setData_df[!,:ind] = map((x,z) -> any(y -> y > length(z), x) == true ?
+                            vcat(filter(y -> y <= length(z), x),filter(y -> y > length(z), x) .- length(z))
+                            : x , setData_df.ind, setData_df.fam)
 
-        # Begin at end of cycle
-        if any(x->x < 1, ind)
-            ind_pos = filter(x -> x >= 1, ind)
-            ind_neg = length(family) .+ filter(x -> x < 1, ind)
-            ind = vcat(ind_neg,ind_pos)
-        end
+    setData_df[!,:Ts_dis2] = map((x,y) -> y[x], setData_df.ind, setData_df.fam)
 
-        # Begin at start of cycle again
-        if any(x->x > length(family), ind)
-             ind = vcat(filter(x -> x <= length(family), ind),filter(x -> x > length(family), ind) .- length(family))
-        end
-        row.Ts_dis2 = family[ind]
-    end  
+    return setData_df[!,Not([:fam,:index_t,:ind])]  
 end
 
 function getRecoveryTime(anyM::anyModel,cns_df::DataFrame)
@@ -62,24 +60,25 @@ end
 
 function createDrDoVar!(part::TechPart,anyM::anyModel)
 
-    basis_df = orderDf(copy(part.var[:stExtIn][!,Not(:var)]))
+    setData_df = orderDf(copy(part.var[:stExtIn][!,Not(:var)]))
 
-    dim_int = length(intCol(basis_df))
-    col_dic = Dict(x => Symbol(split(String(intCol(basis_df)[x]),"_")[1]) for x in 1:dim_int)
-    basis_df[!,:name] = string.("dsmDo","[",map(x -> join(map(y -> col_dic[y] != :id ? anyM.sets[col_dic[y]].nodes[x[y]].val : x[y],1:dim_int),", "),eachrow(basis_df)),"]")
+    dim_int = length(intCol(setData_df))
+    col_dic = Dict(x => Symbol(split(String(intCol(setData_df)[x]),"_")[1]) for x in 1:length(intCol(setData_df)))
+    setData_df[!,:name] = string.("dsmDo","[",map(x -> join(map(y -> col_dic[y] != :id ? anyM.sets[col_dic[y]].nodes[x[y]].val : x[y],1:dim_int),", "),eachrow(setData_df)),"]")
 
-    basis_df = matchSetParameter(basis_df, part.par[:drTime], anyM.sets)
-    basis_df = insertcols!(basis_df, :Ts_dis2 => Ref(Int[]))
-    get_tt(anyM,basis_df)
-    basis_df = flatten(basis_df, :Ts_dis2)
+    setData_df = matchSetParameter(setData_df, part.par[:drTime], anyM.sets)
+    setData_df = insertcols!(setData_df, :Ts_dis2 => Ref(Int[]))
+    setData_df = get_tt(anyM,setData_df)
+
+    setData_df = flatten(setData_df, :Ts_dis2)
     
-    basis_df[!,:name] = map(x -> replace(x.name, "]" => string.(", ", anyM.sets[:Ts].nodes[x.Ts_dis2].val)), eachrow(basis_df))
-    basis_df[!,:name] = map(x -> x.name* "]", eachrow(basis_df))
+    setData_df[!,:name] = map(x -> replace(x.name, "]" => string.(", ", anyM.sets[:Ts].nodes[x.Ts_dis2].val)), eachrow(setData_df))
+    setData_df[!,:name] = map(x -> x.name* "]", eachrow(setData_df))
 
-    setData_df = basis_df
+
     scaFac = anyM.options.scaFac.dispSt
 
-    upBd_fl = getUpBound(basis_df,anyM.options.bound.disp / scaFac,anyM.supTs,anyM.sets[:Ts])
+    upBd_fl = getUpBound(setData_df,anyM.options.bound.disp / scaFac,anyM.supTs,anyM.sets[:Ts])
     lowBd = 0.0
     bi = false
     optModel = anyM.optModel
@@ -103,6 +102,11 @@ function createDrDoVar!(part::TechPart,anyM::anyModel)
     unlock(lock_)
 
     part.var[:dsmDo] = orderDf(setData_df[!,Not(:name)])
+end
+
+function createDrstExtOut!(part::TechPart)
+    grpData_df = rename(orderDf(combine(groupby(part.var[:dsmDo], filter(x -> x != :Ts_dis, intCol(part.var[:dsmDo]))), :var => (x -> sum(x)) => :var)),:Ts_dis2 => :Ts_dis)
+    part.var[:stExtOut] = grpData_df
 end
 
 function createDrBalCns(part::TechPart,anyM::anyModel)
@@ -133,8 +137,6 @@ function createDrCapExpBal(part::TechPart,anyM::anyModel)
     cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:stExtIn] + cns_df[!,:stExtOut].- cns_df[!,:capaStIn])
     cns_cont = cnsCont(orderDf(cns_df),:smaller)
     part.cns[:drCMax] = createCns(cns_cont,anyM.optModel)
-    #TODO fix the max in accordance to the original constraint 
-    "used capaStIn instead of max(capaStIn, capaStOut)"
 end
 
 
@@ -146,24 +148,71 @@ function createDrRecoveryCns(part::TechPart,anyM::anyModel)
 
     cns_df = insertcols!(cns_df, :Ts_dis2 => Ref(Int[]))
     getRecoveryTime(anyM, cns_df)
-         
-    cns_df[!,:Ts_dis3] = map(x -> unique(sort(filter(y -> x.Ts_dis in y.Ts_dis2, cns_df)[!,:Ts_dis])), eachrow(cns_df) )
-    cns_df_fl = flatten(cns_df, :Ts_dis3)
-    # TODO, check if the sum is correct
-    grpData_df = orderDf(combine(groupby(cns_df_fl, filter(x -> x != :Ts_dis, intCol(cns_df_fl))), :stExtIn => (x -> sum(x)) => :stExtIn))   
 
-    cns_df = rename(matchSetParameter(grpData_df, part.par[:drTime], anyM.sets),:val => :drTime)
+    cns_df[!,:sum_stExtIn] =  map(x -> (map(z -> cns_df[cns_df[:Ts_dis].== z, :stExtIn] , x)), cns_df.Ts_dis2)
+    cns_df[!,:sum_stExtIn] = map(x -> sum(reduce(vcat, x)), cns_df.sum_stExtIn)
+
+    cns_df = rename(matchSetParameter(cns_df, part.par[:drTime], anyM.sets),:val => :drTime)
     cns_df = rename(innerjoin(cns_df, rename(part.var[:capaStIn],:R_exp => :R_dis), on = intCol(rename(part.var[:capaStIn],:R_exp => :R_dis))), :var => :capaStIn)
     
     sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
     cns_df[!,:capaStIn] = cns_df[!,:capaStIn] .* sca_arr
 
-    cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:stExtIn] - cns_df[!,:capaStIn].*cns_df[!,:drTime])
+    cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:sum_stExtIn] .- cns_df[!,:capaStIn] .* cns_df[!,:drTime])
+
     cns_cont = cnsCont(orderDf(cns_df),:smaller)
     part.cns[:drRecovery] = createCns(cns_cont,anyM.optModel)
-end      
+end     
 
-function createDrstExtOut!(part::TechPart,anyM::anyModel)
-    grpData_df = rename(orderDf(combine(groupby(part.var[:dsmDo], filter(x -> x != :Ts_dis, intCol(part.var[:dsmDo]))), :var => (x -> sum(x)) => :var)),:Ts_dis2 => :Ts_dis)
-    part.var[:stExtOut] = grpData_df
+
+
+function getRecoveryTime(anyM::anyModel,cns_df::DataFrame)
+    cns_df[!,:fam] = map(x -> getDescendants(x,anyM.sets[:Ts]), cns_df.Ts_disSup)
+    cns_df[!,:index_t] = map( (x,y) -> first(findall(z -> z == x, y)) , cns_df.Ts_dis, cns_df.fam)
+    cns_df[!,:ind] = map((x,y) -> x : x + Int64(y) -1 |> collect, cns_df.index_t, cns_df.drRecoveryTime)
+    cns_df[!,:ind] = map(x -> convert(Vector{Int64}, x), cns_df.ind)
+    cns_df[!,:ind] =   map((x,z) -> any(y -> y > length(z), x) == true ?  
+                        vcat(filter(a -> a <= length(z), x), filter(a -> a > length(z) , x) .- length(z)) : x , 
+                        cns_df.ind, cns_df.fam)
+    cns_df[!,:Ts_dis2] = map((x,y) -> y[x], cns_df.ind, cns_df.fam)
+    return cns_df[!,Not([:fam,:index_t,:ind])]
 end
+
+
+
+# function getRecoveryTime(anyM::anyModel,cns_df::DataFrame)
+#     for row in eachrow(cns_df)
+#         family = getDescendants(row.Ts_disSup,anyM.sets[:Ts])
+    
+#         index_t = first(findall(x -> x == row.Ts_dis, family))
+#         ind = index_t:index_t+ Int64(row.drRecoveryTime) -1 |> collect
+
+#         # Begin at start of cycle again
+#         if any(x->x > length(family), ind)
+#             ind = vcat(filter(x -> x <= length(family), ind),filter(x -> x > length(family), ind) .- length(family))
+#         end
+
+#         row.Ts_dis2 = family[ind]
+#     end  
+# end
+
+# function get_tt(anyM::anyModel,setData_df::DataFrame)
+    # for row in eachrow(setData_df)
+    #     family = getDescendants(row.Ts_disSup,anyM.sets[:Ts])
+    #     delayTime_int = Int64(row.val)
+
+    #     index_t = first(findall(x -> x == row.Ts_dis, family))
+    #     ind = index_t-delayTime_int:index_t+ delayTime_int |> collect 
+
+    #     # Begin at end of cycle
+    #     if any(x->x < 1, ind)
+    #         ind = vcat(length(family) .+ filter(x -> x < 1, ind),filter(x -> x >= 1, ind))
+    #     end
+
+    #     # Begin at start of cycle again
+    #     if any(x->x > length(family), ind)
+    #          ind = vcat(filter(x -> x <= length(family), ind),filter(x -> x > length(family), ind) .- length(family))
+    #     end
+    #     row.Ts_dis2 = family[ind]
+    # end
+# end
