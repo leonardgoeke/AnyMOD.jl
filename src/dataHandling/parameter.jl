@@ -131,9 +131,9 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:expExcFixDir] = (dim = (:Ts_exp, :R_from, :R_to, :Exc, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :Exc => :sum_full, :id => :sum_full), part = :lim)
 
     # relative limits on expansion of technologies subject to a capacity balance
-    parDef_dic[:shareExpOutUp]  = (dim = (:Ts_expSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up, :Ts_expSup => :avg_full), part = :bal)
-    parDef_dic[:shareExpOutLow] = (dim = (:Ts_expSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up, :Ts_expSup => :avg_full), part = :bal)
-    parDef_dic[:shareExpOutFix] = (dim = (:Ts_expSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up, :Ts_expSup => :avg_full), part = :bal)
+    parDef_dic[:shareExpOutUp]  = (dim = (:Ts_disSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_disSup => :up, :R_exp => :up, :Ts_disSup => :avg_full), part = :bal)
+    parDef_dic[:shareExpOutLow] = (dim = (:Ts_disSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_disSup => :up, :R_exp => :up, :Ts_disSup => :avg_full), part = :bal)
+    parDef_dic[:shareExpOutFix] = (dim = (:Ts_disSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_disSup => :up, :R_exp => :up, :Ts_disSup => :avg_full), part = :bal)
 
     # limits on retrofitting for conversion, storage and exchange
     parDef_dic[:retroConvUp]  = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = (:Ts_retro => :sum_full, :R_exp => :sum_full, :Ts_expSup_i => :sum_full, :Te_i => :sum_full, :Ts_expSup_j => :sum_full, :Te_j => :sum_full),  part = :lim)

@@ -346,7 +346,7 @@ function createExpShareCns!(anyM::anyModel)
     select!(allCapaBal_df,Not([:R_dis]))
 
 	for lim in (:Fix,:Low,:Up)
-
+	
 		share_sym = Symbol(:shareExpOut,lim)
         if !(share_sym in keys(anyM.parts.bal.par)) continue end
 		
@@ -419,11 +419,11 @@ function createExpShareCns!(anyM::anyModel)
     	# ! loop to create actual constraints
 
         # match all capacity balances with existing shares on parameters
-        cns_df = rename(orderDf(matchSetParameter(allCapaBal_df,anyM.parts.bal.par[share_sym],anyM.sets, newCol = :share)),:Ts_disSup => :Ts_expSup)
-
+        cns_df = orderDf(matchSetParameter(allCapaBal_df,anyM.parts.bal.par[share_sym],anyM.sets, newCol = :share))
+		
         # add denominator and numerator to dataframe
-        cns_df[!,:denom] = aggDivVar(allExp_df, cns_df, (:Ts_expSup,:R_exp,:C), anyM.sets)
-        cns_df[!,:num] = aggDivVar(allExp_df, cns_df, (:Ts_expSup,:R_exp,:C,:Te), anyM.sets)
+        cns_df[!,:denom] = aggDivVar(rename(select(allExp_df,Not([:Ts_disSup])), :Ts_expSup => :Ts_disSup), cns_df, (:Ts_disSup,:R_exp,:C), anyM.sets)
+        cns_df[!,:num] = aggDivVar(rename(select(allExp_df,Not([:Ts_disSup])), :Ts_expSup => :Ts_disSup), cns_df, (:Ts_disSup,:R_exp,:C,:Te), anyM.sets)
 
         cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[:denom] .* cns_df[:share] .- cns_df[:num])
         anyM.parts.bal.cns[share_sym] = createCns(cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),Dict(:Up => :greater, :Low => :smaller, :Fix => :equal)[lim]),anyM.optModel)
