@@ -39,7 +39,7 @@ mutable struct ParElement
         # ! check consistency of rows in input dataframe and definition of set and rename columns according to set defintion
         # assigns array of used suffixes according to parameter defintion to each set
         splitDim_arr = map(x -> map(y -> Symbol(y), split(String(x),"_")),collect(paraDef_ntup.dim))
-        setSuf_dic = Dict(x => map(y -> length(y) == 1 ? Symbol() : y[end],filter(z -> z[1] == x,splitDim_arr)) for x in unique(map(x -> x[1],splitDim_arr)))
+        setSuf_dic = Dict(x => map(y -> length(y) == 1 ? Symbol() : (length(y) == 2  ? y[end] : Symbol(y[end-1],"_",y[end])),filter(z -> z[1] == x,splitDim_arr)) for x in unique(map(x -> x[1],splitDim_arr)))
 
         # loops over set columns in input dataframe and assigns them to the sets defined for the parameter
         newCol_dic = Dict(:val => :val)

@@ -93,11 +93,11 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:rateRetroStSize] = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = nothing, herit = stRetro_tup, part = :cost)
     parDef_dic[:rateRetroExc]    = (dim = (:Ts_retro, :R_from, :R_to, :Ts_expSup_i, :Exc_i, :Ts_expSup_j, :Exc_j),     problem = :top, defVal = nothing, herit = excRetro_tup, part = :cost)
 
-    parDef_dic[:facRetroConv]   = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j),               problem = :top, defVal = 0.0, herit = convRetro_tup, part = :cost)
-    parDef_dic[:facRetroStIn]   = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 0.0, herit = stRetro_tup, part = :cost)
-    parDef_dic[:facRetroStOut]  = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 0.0, herit = stRetro_tup, part = :cost)
-    parDef_dic[:facRetroStSize] = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 0.0, herit = stRetro_tup, part = :cost)
-    parDef_dic[:facRetroExc]    = (dim = (:Ts_retro, :R_from, :R_to, :Ts_expSup_i, :Exc_i, :Ts_expSup_j, :Exc_j),     problem = :top, defVal = 0.0, herit = excRetro_tup, part = :cost)
+    parDef_dic[:facRetroConv]   = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j),               problem = :top, defVal = 1.0, herit = convRetro_tup, part = :cost)
+    parDef_dic[:facRetroStIn]   = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :cost)
+    parDef_dic[:facRetroStOut]  = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :cost)
+    parDef_dic[:facRetroStSize] = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :cost)
+    parDef_dic[:facRetroExc]    = (dim = (:Ts_retro, :R_from, :R_to, :Ts_expSup_i, :Exc_i, :Ts_expSup_j, :Exc_j),     problem = :top, defVal = 1.0, herit = excRetro_tup, part = :cost)
 
     #endregion
 

@@ -419,7 +419,7 @@ function createExpShareCns!(anyM::anyModel)
     	# ! loop to create actual constraints
 
         # match all capacity balances with existing shares on parameters
-        cns_df = orderDf(matchSetParameter(allCapaBal_df,anyM.parts.bal.par[share_sym],anyM.sets, newCol = :share))
+        cns_df = rename(orderDf(matchSetParameter(allCapaBal_df,anyM.parts.bal.par[share_sym],anyM.sets, newCol = :share)),:Ts_disSup => :Ts_expSup)
 
         # add denominator and numerator to dataframe
         cns_df[!,:denom] = aggDivVar(allExp_df, cns_df, (:Ts_expSup,:R_exp,:C), anyM.sets)

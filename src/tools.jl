@@ -1504,7 +1504,7 @@ function plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0)
     edgeColC_arr = map(x -> colC_dic[x[1]], cEdges_arr)
 
     teEdges_arr = collect(keys(labTe_dic)) |> (w -> filter(x -> x[1] in w || x[2] in w, allEdges_arr))
-    edgeColTe_arr = map(x -> x[1] in ordC_arr ? colTe_dic[x[2]] : colTe_dic[x[1]], teEdges_arr)
+    edgeColTe_arr = map(x -> x[1] in ordC_arr ? colC_dic[x[1]] : colC_dic[x[2]], teEdges_arr)
 
 	# ! create actual graph
     # create graph and draw nodes and edges
