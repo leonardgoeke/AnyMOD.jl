@@ -495,7 +495,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 end
 
 # ! merges reported results according to external yml file
-function computeResults(ymlFile::String,anyM::anyModel,addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),)
+function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),)
 
     # ! read in mappings and prepare variables
     allMapping_dic = YAML.load_file(ymlFile)
@@ -586,7 +586,7 @@ function computeResults(ymlFile::String,anyM::anyModel,addObjName::Bool=true, rt
 
 	# ! return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allVar_df,anyM, fileName = string(split(ymlFile,".")[end-1]), rtnDf = rtnOpt, filterFunc = rmvZero ? x -> abs(x.value) > 1e-5 : x -> true)
+		csvData_df = printObject(allVar_df,anyM, fileName = string(split(ymlFile,".")[end-1]), rtnDf = (:csvDf,))
 	end
 
 	if :raw in rtnOpt
@@ -1466,7 +1466,7 @@ plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0), fontSiz
 ```
 
 """
-function plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12)
+function plotGraphYML(inFile::String; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12)
 
     # ! import python function
     netw = pyimport("networkx")
