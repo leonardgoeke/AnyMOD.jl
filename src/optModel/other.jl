@@ -347,6 +347,7 @@ function createExpShareCns!(anyM::anyModel)
 
 	for lim in (:Fix,:Low,:Up)
 	
+		capaBal = copy(allCapaBal_df)
 		share_sym = Symbol(:shareExpOut,lim)
         if !(share_sym in keys(anyM.parts.bal.par)) continue end
 		
@@ -354,11 +355,11 @@ function createExpShareCns!(anyM::anyModel)
 		# assign carriers in balance to technologies appearing in parameter data
 		allShareTe_arr = unique(anyM.parts.bal.par[share_sym].data[!,:Te])
 		techToCar_arr = [x => union(map(y -> getCarrierFields(anyM.parts.tech[sysSym(y,anyM.sets[:Te])].carrier,(:gen, :stExtOut)),getDescendants(x, anyM.sets[:Te], true))...) for x in allShareTe_arr]
-		carToTe_dic = Dict(c => filter(x -> c in x[2],techToCar_arr) |> (u -> isempty(u) ? Int[] : getindex.(u,1)) for c in unique(allCapaBal_df[!,:C]))
+		carToTe_dic = Dict(c => filter(x -> c in x[2],techToCar_arr) |> (u -> isempty(u) ? Int[] : getindex.(u,1)) for c in unique(capaBal[!,:C]))
 
 		# expand dataframe with technologies
-		allCapaBal_df[!,:Te] .= map(x -> carToTe_dic[x], allCapaBal_df[!,:C])
-		allCapaBal_df = unique(flatten(allCapaBal_df,:Te))
+		capaBal[!,:Te] .= map(x -> carToTe_dic[x], capaBal[!,:C])
+		capaBal = unique(flatten(capaBal,:Te))
 
 		# ! get relevant expansion variables
 		conv_df, st_df = [getAllVariables(Symbol(:mustExp,z),anyM) |> (x -> isempty(x) ? getAllVariables(Symbol(:exp,z),anyM) : vcat(x,antijoin(getAllVariables(Symbol(:exp,z),anyM),x,on = intCol(x)))) for z in (:Conv,:StOut)]
@@ -372,7 +373,7 @@ function createExpShareCns!(anyM::anyModel)
 		allExp_df = flatten(allExp_df,:C)
 
 		# filter capacities with irrelevant carriers
-		filter!(x -> x.C in unique(allCapaBal_df[!,:C]),allExp_df)
+		filter!(x -> x.C in unique(capaBal[!,:C]),allExp_df)
 
 		# compute and collect aggregated output for all relevant technologies
 		allMustOut_df = DataFrame(Ts_expSup = Int[], R_exp = Int[], C = Int[], Te = Int[], id = Int[], val = Float64[])
@@ -419,13 +420,14 @@ function createExpShareCns!(anyM::anyModel)
     	# ! loop to create actual constraints
 
         # match all capacity balances with existing shares on parameters
-        cns_df = orderDf(matchSetParameter(allCapaBal_df,anyM.parts.bal.par[share_sym],anyM.sets, newCol = :share))
+        cns_df = orderDf(matchSetParameter(capaBal,anyM.parts.bal.par[share_sym],anyM.sets, newCol = :share))
 		
         # add denominator and numerator to dataframe
         cns_df[!,:denom] = aggDivVar(rename(select(allExp_df,Not([:Ts_disSup])), :Ts_expSup => :Ts_disSup), cns_df, (:Ts_disSup,:R_exp,:C), anyM.sets)
         cns_df[!,:num] = aggDivVar(rename(select(allExp_df,Not([:Ts_disSup])), :Ts_expSup => :Ts_disSup), cns_df, (:Ts_disSup,:R_exp,:C,:Te), anyM.sets)
 
         cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[:denom] .* cns_df[:share] .- cns_df[:num])
+	
         anyM.parts.bal.cns[share_sym] = createCns(cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),Dict(:Up => :greater, :Low => :smaller, :Fix => :equal)[lim]),anyM.optModel)
     end
 
