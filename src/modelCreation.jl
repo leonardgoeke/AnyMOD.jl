@@ -63,6 +63,7 @@ function createOptModel!(anyM::anyModel)
 	tech_itr = collect(enumerate(techSym_arr))
 
 	@threads for (idx,tSym) in tech_itr
+		println(tSym)
 		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,yTs_dic,r_dic,anyM)
 	end
 
@@ -71,7 +72,9 @@ function createOptModel!(anyM::anyModel)
 
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
     for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
-        anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
+        if !isempty(cnsDic[cnsSym].data)
+			anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
+		end
 	end
 
     produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all technologies")

@@ -369,7 +369,8 @@ function createExpShareCns!(anyM::anyModel)
 		conv_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier.gen) , eachrow(conv_df))
 		st_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier.stExtOut[x.id]) , eachrow(st_df))
 
-		allExp_df = vcat(conv_df,st_df)
+		allExp_df = isempty(st_df) ? conv_df : vcat(conv_df,st_df)
+		if isempty(allExp_df) continue end
 		allExp_df = flatten(allExp_df,:C)
 
 		# filter capacities with irrelevant carriers

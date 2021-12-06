@@ -198,7 +198,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 		sysSym_arr = filter(x -> getfield(anyM.parts, sys == :Te ? :tech : :exc)[x].type in (:stock,:mature,:emerging), collect(keys(prepSys_dic[sys])))
 
 		for sSym in sysSym_arr
-			
+
 			sys_int = sysInt(sSym,anyM.sets[sys])
 			part_obj = getfield(anyM.parts,sys == :Te ? :tech : :exc)[sSym]
 			# ! find entries where variables are already fixed to zero and remove them
@@ -241,7 +241,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 						else
 							retro_df = rename(select(prepSys_dic[sys][sSym][retro_sym].var,Not([:Ts_retro,:Ts_disSup_last,:Ts_expSup_i, :R_from_i, :R_to_i, :Exc_i])),:Exc_j => :Exc, :R_from_j => :R_from, :R_to_j => :R_to, :Ts_expSup_j => :Ts_expSup)
 						end
-						potCapa_df = unique(vcat(potCapa_df,flatten(retro_df,:Ts_disSup)))
+						if !isempty(retro_df) potCapa_df = unique(vcat(potCapa_df,flatten(retro_df,:Ts_disSup))) end
 					end
 
 					# groups by expansion time steps in case of mature technologies
@@ -301,28 +301,34 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 						else
 							retro_df = rename(select(prepSys_dic[sys][sSym][retro_sym].var,Not([:Ts_retro,:Ts_expSup_i, :R_from_i, :R_to_i, :Exc_i])),:Exc_j => :Exc, :R_from_j => :R_from, :R_to_j => :R_to, :Ts_expSup_j => :Ts_expSup)
 						end
-						retro_df = filter(x -> x[sys] == sys_int,flatten(retro_df,:Ts_disSup))
-						potCapa_df = unique(retro_df) |> (x -> isempty(potCapa_df) ? x : joinMissing(potCapa_df,x,intCol(potCapa_df),:outer,Dict()))
+						if !isempty(retro_df)
+							retro_df = filter(x -> x[sys] == sys_int,flatten(retro_df,:Ts_disSup))
+							potCapa_df = unique(retro_df) |> (x -> isempty(potCapa_df) ? x : joinMissing(potCapa_df,x,intCol(potCapa_df),:outer,Dict()))
+						end
 					end
 
-					join_arr = type_sym == :Conv ? [:Ts_expSup,:R_exp,:Te] : ( type_sym == :Exc ? [:Ts_expSup,:R_from,:R_to,:Exc] : [:Ts_expSup,:R_exp,:Te,:id])
+					if isempty(potCapa_df) # delete corresponding entries if retrofitting cannot occur
+						delete!(prepSys_dic[sys][sSym],grpSym)
+						delete!(prepSys_dic[sys][sSym],Symbol(:retro,type_sym))
+					else
+						join_arr = type_sym == :Conv ? [:Ts_expSup,:R_exp,:Te] : ( type_sym == :Exc ? [:Ts_expSup,:R_from,:R_to,:Exc] : [:Ts_expSup,:R_exp,:Te,:id])
+						prepSys_dic[sys][sSym][grpSym] = (var = orderDf(potCapa_df), resi = potResi_df)
 
-					prepSys_dic[sys][sSym][grpSym] = (var = orderDf(potCapa_df), resi = potResi_df)
+						# expand retrofitting entries, filter unrequired entries and group again
+						allRetro_df = flatten(rename(prepSys_dic[sys][sSym][Symbol(:retro,type_sym)].var, Symbol.(string.(join_arr,"_i")) .=> join_arr),:Ts_disSup)
+						startRetro_df, targetRetro_df = [filter(z -> y ? z[sys] == sys_int : z[sys] != sys_int,allRetro_df) for y in [true,false]]
+						allRetro_df = isempty(potCapa_df) ? targetRetro_df : vcat(targetRetro_df,innerjoin(startRetro_df,potCapa_df,on =  intCol(potCapa_df)))
 
-					# expand retrofitting entries, filter unrequired entries and group again
-					allRetro_df = flatten(rename(prepSys_dic[sys][sSym][Symbol(:retro,type_sym)].var, Symbol.(string.(join_arr,"_i")) .=> join_arr),:Ts_disSup)
-					startRetro_df, targetRetro_df = [filter(z -> y ? z[sys] == sys_int : z[sys] != sys_int,allRetro_df) for y in [true,false]]
-					allRetro_df = isempty(potCapa_df) ? targetRetro_df : vcat(targetRetro_df,innerjoin(startRetro_df,potCapa_df,on =  intCol(potCapa_df)))
+						allRetro_df = rename(combine(groupby(allRetro_df,filter(x -> x != :Ts_disSup,intCol(allRetro_df))),:Ts_disSup => (x -> [x]) => :Ts_disSup), join_arr .=> Symbol.(string.(join_arr,"_i")))
+						allRetro_df[!,:Ts_disSup] = map(x -> collect(x),allRetro_df[!,:Ts_disSup])
+						# remove retrofitting entries
+						prepSys_dic[sys][sSym][Symbol(:retro,type_sym)] = (var = allRetro_df, resi = DataFrame())
 
-					allRetro_df = rename(combine(groupby(allRetro_df,filter(x -> x != :Ts_disSup,intCol(allRetro_df))),:Ts_disSup => (x -> [x]) => :Ts_disSup), join_arr .=> Symbol.(string.(join_arr,"_i")))
-					allRetro_df[!,:Ts_disSup] = map(x -> collect(x),allRetro_df[!,:Ts_disSup])
-					# remove retrofitting entries
-					prepSys_dic[sys][sSym][Symbol(:retro,type_sym)] = (var = allRetro_df, resi = DataFrame())
-
-					# ! replace entries for target technology
-					for s in unique(allRetro_df[!,Symbol(sys,"_j")])
-						nonRel_df  = filter(x -> x[Symbol(sys,"_j")] != s, prepSys_dic[sys][sysSym(s,anyM.sets[sys])][Symbol(:retro,type_sym)].var)
-						prepSys_dic[sys][sysSym(s,anyM.sets[sys])][Symbol(:retro,type_sym)] = (var = orderDf(vcat(nonRel_df,filter(x -> x[Symbol(sys,"_j")] == s, allRetro_df))), resi = DataFrame())
+						# ! replace entries for target technology
+						for s in unique(allRetro_df[!,Symbol(sys,"_j")])
+							nonRel_df  = filter(x -> x[Symbol(sys,"_j")] != s, prepSys_dic[sys][sysSym(s,anyM.sets[sys])][Symbol(:retro,type_sym)].var)
+							prepSys_dic[sys][sysSym(s,anyM.sets[sys])][Symbol(:retro,type_sym)] = (var = orderDf(vcat(nonRel_df,filter(x -> x[Symbol(sys,"_j")] == s, allRetro_df))), resi = DataFrame())
+						end
 					end
 				end
 			end
@@ -1105,7 +1111,6 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 					subCns_df[!,:cnsExpr] = @expression(anyM.optModel,subCns_df[:allVar] .* subCns_df[:ratio] .- subCns_df[:ratioVar])
 					allCns_arr[idx] = subCns_df
 				end
-
 				cns_df = vcat(allCns_arr...)
 				cns_dic[Symbol(par,lim)] = cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),signLim_dic[lim])
 			end
