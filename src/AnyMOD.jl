@@ -45,7 +45,7 @@ module AnyMOD
     include("dataHandling/util.jl")
 
     export anyModel, initializeModel, createOptModel!, setObjective!
-    export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!
+    export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML
     export plotTree, plotEnergyFlow, moveNode!, produceMessage, produceMessageShort
     export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
 
