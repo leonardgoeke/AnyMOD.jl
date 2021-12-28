@@ -913,7 +913,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			end
 		end
 
-		cns_dic[:mustOut] = cnsCont(vcat(allMustCns_arr...),:equal)
+		cns_dic[:mustOut] = cnsCont(vcat(allMustCns_arr...),:mustCapaConv in keys(part.var) ? :smaller : :equal)
 	end
 
 	# ! create all other capacity restrictions

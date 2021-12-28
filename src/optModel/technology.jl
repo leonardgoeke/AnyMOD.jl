@@ -521,14 +521,18 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},cns_
 	for capa in collect(filter(x ->x[1] in (:capaConv,:capaStOut),part.var))
 		
 		#region # * create variable for must capacity
+		demC_arr = union(map(x -> getDescendants(x,anyM.sets[:C],true,0) ,unique(anyM.parts.bal.par[:dem].data[!,:C]))...) # gets all carrier with demand defined
 
-		if capa == :capaStOut # specific variables for must-out of storage
+		if capa == :capaStOut# specific variables for must-out of storage
 			if !isempty(modeDep_dic[:stExtOut]) # storage output is mode dependant
 				capa_df = capa[2]
 			else # non must-out carriers are output of storage too
 				capa_df = filter(x -> !isempty(setdiff(cMust_arr,part.carrier.stExtOut[x.id])),capa[2])
 			end
-		elseif capa[1] == :capaConv && (!isempty(setdiff(collect(part.carrier.gen),cMust_arr)) || !isempty(modeDep_dic[:gen])) # if non must-run carriers are generated or generation is mode dependant
+			# filter carriers where storage capacity is even allowed to appear in capacity balance
+			idCar_dic = Dict(x => filter(y -> anyM.cInfo[y].stBalCapa == :yes,collect(part.carrier.stExtOut[x])) for x in 1:length(part.carrier.stExtOut))
+			filter!(x -> !isempty(idCar_dic[x.id]), capa_df)
+		elseif capa[1] == :capaConv && (!isempty(setdiff(collect(part.carrier.gen),cMust_arr)) || !isempty(modeDep_dic[:gen]) || !isempty(intersect(demC_arr, part.carrier.gen))) # if non must-run carriers are generated, generation is mode dependant or there is demand defined for the carrier
 			capa_df = capa[2]
 		else
 			capa_df = DataFrame()
