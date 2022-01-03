@@ -565,7 +565,7 @@ function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, r
 
         # add variable column
         reportVar_df[!,:variable] .= reportVar
-        append!(allVar_df,reportVar_df)
+		if !isempty(reportVar_df) append!(allVar_df,reportVar_df) end
     end
     noAggVar_df = copy(allVar_df)
 
