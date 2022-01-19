@@ -953,7 +953,7 @@ Plots the energy flow in a model. Set `plotType` to `:graph` for a qualitative n
 plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
 
 # ! plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
-function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, wrtYML::Bool = false, relC::Tuple = ())
+function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, wrtYML::Bool = false, wrtGEXF::Bool = false, relC::Tuple = ())
 
     # ! import python function
     netw = pyimport("networkx")
@@ -974,7 +974,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 	modC_arr = isempty(relC) ? collect(keys(anyM.sets[:C].nodes)) : map(x -> sysInt(x,anyM.sets[:C]),collect(relC))
 
 	# graph and model ids of technologies connected to relevant carriers
-	actTe_arr = unique(map(x -> sysSym(x,anyM.sets[:Te]) in keys(anyM.parts.tech) ? x : getDescendants(x,anyM.sets[:Te],true)[end], collect(values(anyM.graInfo.graph.nodeTe)))) # not all actual technologies are represented in graph, e.g. to avoid 3 different solar 
+	actTe_arr = unique(map(x -> sysSym(x,anyM.sets[:Te]) in keys(anyM.parts.tech) ? x : getDescendants(x,anyM.sets[:Te],true)[end], collect(keys(anyM.graInfo.graph.nodeTe)))) # not all actual technologies are represented in graph, e.g. to avoid 3 different solar 
 	modTe_arr = filter(x -> sysSym(x,anyM.sets[:Te]) |> (u -> u in keys(anyM.parts.tech) && !isempty(intersect(modC_arr,union(map(w -> union(w...),values(anyM.parts.tech[u].carrier))...)))), actTe_arr) # check actual technology for carriers
 	modTe_arr = map(x -> x in keys(anyM.graInfo.graph.nodeTe) ? x : maximum(map(y -> y in keys(anyM.graInfo.graph.nodeTe) ? y : 0,getAncestors(x,anyM.sets[:Te],:int))), modTe_arr) # convert to technology in graph again
 	graTe_arr = map(x -> anyM.graInfo.graph.nodeTe[x], modTe_arr) # get technology id in graph
@@ -1057,6 +1057,9 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
     posLabC_dic = netw.draw_networkx_labels(graph_obj, actNodePos_dic, font_size = fontSize, labels = cLab_dic, font_weight = "bold", font_family = "arial")
     posLabTe_dic = netw.draw_networkx_labels(graph_obj, actNodePos_dic, font_size = fontSize, font_family = "arial", labels = teLab_dic)
 
+	# export graph as gexf file 
+	if wrtGEXF netw.write_gexf(graph_obj, "$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).gexf") end
+
     # adjusts position of carrier labels so that they are right from node, uses code provided by ImportanceOfBeingErnest from here https://stackoverflow.com/questions/43894987/networkx-node-labels-relative-position
 	figure = plt.gcf()
 	figure.set_size_inches(plotSize[1],plotSize[2])
@@ -1078,7 +1081,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 	plt.axis("off")
     plt.savefig("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp)", dpi = 600)
 
-	# write plot information to yaml file as well, *16/9 plotSize[2]/plotSize[1]
+	# write plot information to yaml file as well
 	if wrtYML
 		adjPos_dic = Dict(x[1] => (x[2] .+ 1) ./ 2 for x in collect(flowGrap_obj.nodePos))
 		techNode_arr = [Dict("label" => teLab_dic[n], "name" => string(n), "color" => collect(nodeTe_arr[length(nodeTe_arr) == 1 ? 1 : id]), "position" => adjPos_dic[n], "type" => "technology") for (id,n) in enumerate(ordTe_arr)]
@@ -1466,7 +1469,7 @@ plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0), fontSiz
 ```
 
 """
-function plotGraphYML(inFile::String; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12)
+function plotGraphYML(inFile::String; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, wrtGEXF::Bool = false)
 
     # ! import python function
     netw = pyimport("networkx")
@@ -1493,7 +1496,6 @@ function plotGraphYML(inFile::String; plotSize::Tuple{Number,Number} = (16.0,9.0
 
     # assign colors to nodes
     colC_dic = Dict(y => cData_arr[y]["color"] for y in 1:length(cData_arr))
-    colTe_dic = Dict(cNum_int+y => techData_arr[y]["color"] for y in 1:length(techData_arr))
 
     # prepare edges
     allEdges_arr = map(x -> revName_dic[string(x[1])] => revName_dic[x[2]], getindex.(collect.(graph_dic["edges"]),1))
@@ -1534,7 +1536,7 @@ function plotGraphYML(inFile::String; plotSize::Tuple{Number,Number} = (16.0,9.0
         # computes offset of label for leaves and non-leaves by first moving according to size auf letters itself (bbdata) and then by size of the nodeteEdges_arr
 
         # (node-size in pixel is devided by dpi and plot size to get relative offset)
-        offset_arr = [cNode_boo ? (bbdata.width/2.0 + (500/plotSize[1]/600)) : 0.0, cNode_boo ? 0.0 : (bbdata.height/2.0 + 200/plotSize[2]/600)]
+        offset_arr = [cNode_boo ? (bbdata.width/2.0 + (500/plotSize[1]/600)) : 0.0, cNode_boo ? 0.0 : (165/plotSize[2]/600)]
         x[2].set_position([x[2]."_x" + offset_arr[1],x[2]."_y" + offset_arr[2]])
         x[2].set_clip_on(false)
     end
