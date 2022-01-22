@@ -58,6 +58,7 @@ function prepareExc!(excSym_arr::Array{Symbol,1},prepAllExc_dic::Dict{Symbol,Dic
 	partLim = anyM.parts.lim
 
 	for excSym in excSym_arr
+		println(excSym)
 
 		excInt = sysInt(excSym,anyM.sets[:Exc])
 		part = anyM.parts.exc[excSym]
@@ -114,7 +115,7 @@ function prepareExcExpansion!(excInt::Int,part::ExcPart,partLim::OthPart,prepExc
 		matchCost_df = select(matchSetParameter(exExp_df,anyM.parts.cost.par[:costExpExc],anyM.sets),Not([:val]))
 		noMatchCost_df = antijoin(exExp_df,matchCost_df, on = intCol(exExp_df))
 		noMatchCost_df[!,:id] .= 0
-		exExp_df = vcat(matchCost_df,noMatchCost_df)
+		exExp_df = vcat(noMatchCost_df,unique(select(matchCost_df,intCol(noMatchCost_df))))
 	else
 		exExp_df[!,:id] .= 0
 	end
