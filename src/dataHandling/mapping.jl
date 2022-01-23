@@ -308,10 +308,10 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 			bal_sym = Symbol(:technology_,bal,:Balance)
 			if bal_sym in namesSym(row_df)
 				if !(row_df[bal_sym] in ("eq","ineq","none",""))
-					push!(anyM.report,(2,"technology mapping","","column carrier_equality can only contain keywords 'eq', 'ineq', or 'none', assumed 'ineq'"))
-					bal_sym = :ineq
+					push!(anyM.report,(2,"technology mapping","","column carrier_equality can only contain keywords 'eq', 'ineq', or 'none', assumed 'eq'"))
+					bal_sym = :eq
 				elseif row_df[bal_sym] == ""
-					bal_sym = :ineq
+					bal_sym = :eq
 				else
 					bal_sym = Symbol(row_df[bal_sym])
 				end

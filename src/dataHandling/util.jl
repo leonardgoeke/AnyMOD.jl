@@ -430,9 +430,10 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 		end
 
 		# aggregate variables if different types where obtained
-		if va in keys(va_dic) && !isempty(allVar_df)
+		if !isempty(allVar_df) && va in keys(va_dic)
 			allVar_df = combine(groupby(allVar_df, intCol(allVar_df)), :var => (x -> sum(x)) => :var)
 		end
+
 	elseif va in (:crt,:lss,:trdBuy,:trdSell) # get variables from balance part
 		if va in keys(anyM.parts.bal.var)
 			allVar_df = copy(anyM.parts.bal.var[va])
@@ -499,21 +500,30 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 				emTe_arr = Array{Int64,1}()
 			end
 
-			# get use variables
-			allVar_df = getAllVariables(:use,anyM, filterFunc = x -> x.C in emC_arr || x.Te in emTe_arr)
-			allVar_df[!,:Exc] .= 0
+			# get use variables from technologies
+			allTechVar_df = getAllVariables(:use,anyM, filterFunc = x -> x.C in emC_arr || x.Te in emTe_arr)
+			#allTechVar_df[!,:Exc] .= 0
 
-			# get expressions for storage and exchange losses, if this is enabled
+			allVar_df = allTechVar_df
+			# get use expression from exchange
+			#=
+			allExcVar_df = getAllVariables(:useExc,anyM, filterFunc = x -> x.C in emC_arr)
+			allExcVar_df[!,:var] = allExcVar_df[!,:var] .* 0.5 # attributes energy use equally to exporting and importing region
+			allExcVar_df = vcat(select(rename(allExcVar_df,:R_from => :R_dis),Not([:R_to])),select(rename(allExcVar_df,:R_to => :R_dis),Not([:R_from])))
+			allExcVar_df[!,:Te] .= 0; allExcVar_df[!,:M] .= 0
+	
+			allVar_df = vcat(allTechVar_df,allExcVar_df)
+			=#
+
+			# # add expressions for storage losses, if this is enabled
 			if anyM.options.emissionLoss
-
-				# add expressions for storage losses
 				allSt_arr = union(union(union(map(x -> map(y -> collect(x.carrier[y]),intersect(keys(x.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))),values(anyM.parts.tech))...)...)...)
 				if !isempty(intersect(emC_arr,allSt_arr))
 					# get all storage variables where storage losses can lead to emissions
 					stVar_dic = Dict((string(st) |> (y -> Symbol(uppercase(y[1]),y[2:end]))) => getAllVariables(st,anyM, filterFunc = x -> x.C in emC_arr || x.Te in emTe_arr) for st in (:stIn,:stOut))
 					stLvl_df = getAllVariables(:stLvl,anyM, filterFunc = x -> x.C in emC_arr)
 
-					# loop over relevant storage technologies to obtain loss vallues
+					# loop over relevant storage technologies to obtain loss values
 					tSt_arr = unique(stLvl_df[!,:Te])
 					for tInt in tSt_arr
 						part = anyM.parts.tech[sysSym(tInt,anyM.sets[:Te])]
@@ -537,22 +547,6 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 						end
 					end
 				end
-
-				# add expressions for exchange losses
-				relExc_arr = collect(filter(x -> !isempty(intersect(emC_arr,anyM.parts.exc[x].carrier)) && :exc in keys(anyM.parts.exc[x].var), keys(anyM.parts.exc)))
-				if !isempty(relExc_arr)
-					exc_df = vcat(map(z -> anyM.parts.exc[z] |> (u -> addLossesExc(filter(x -> x.C in emC_arr,u.var[:exc]),u,anyM.sets,true)),relExc_arr)...)
-
-					# exchange losses are equally split between import and export region
-					if !isempty(exc_df)
-						exc_df[!,:var] = exc_df[!,:var] .* 0.5
-						exc_df = rename(combine(groupby(flipExc(exc_df),filter(x -> x != :R_to,intCol(exc_df))),:var => (x -> sum(x)) => :var),:R_from => :R_dis)
-						# dimensions not relevant for exchange are set to 0
-						exc_df[!,:Te] .= 0;  exc_df[!,:M] .= 0
-						append!(allVar_df,exc_df)
-					end
-				end
-
 			end
 
 			allVar_df = matchSetParameter(allVar_df,anyM.parts.lim.par[:emissionFac],anyM.sets)

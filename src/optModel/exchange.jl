@@ -28,6 +28,8 @@ function createExc!(eInt::Int,part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple}
 		if isempty(anyM.subPro) || anyM.subPro != (0,0)
 			# create dispatch variables
 			createExcVar!(part,ts_dic,r_dic,prepExc_dic,anyM) 
+			# create variables for energy use of exchange
+			#if !isempty(intersect([:useExc,:useExcDir], keys(part.par))) && :exc in keys(part.var) createUseExcVar!(part,ts_dic,r_dic,anyM) end
 			produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for exchange $(exc_str)")
 			# create capacity restrictions
 			if part.type != :unrestricted
@@ -112,7 +114,7 @@ function prepareExcExpansion!(excInt::Int,part::ExcPart,partLim::OthPart,prepExc
 		matchCost_df = select(matchSetParameter(exExp_df,anyM.parts.cost.par[:costExpExc],anyM.sets),Not([:val]))
 		noMatchCost_df = antijoin(exExp_df,matchCost_df, on = intCol(exExp_df))
 		noMatchCost_df[!,:id] .= 0
-		exExp_df = vcat(matchCost_df,noMatchCost_df)
+		exExp_df = vcat(noMatchCost_df,unique(select(matchCost_df,intCol(noMatchCost_df))))
 	else
 		exExp_df[!,:id] .= 0
 	end
@@ -236,25 +238,13 @@ end
 
 # ! create exchange variables
 function createExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},prepExc_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
+	
 	# ! extend capacity variables to dispatch variables
 	capa_df = unique(flipExc(vcat(prepExc_dic[:capaExc].var,select(prepExc_dic[:capaExc].resi,Not([:var])))[!,Not([:dir])]))
 	
 	# add carriers to capacity variables
 	capa_df[!,:C] .= fill(collect(part.carrier),size(capa_df,1))
-	capa_df = flatten(capa_df,:C)
-
-	# add levels for dispatch variables and extend
-	cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, anyM.cInfo[x].rDis) for x in unique(capa_df[!,:C]))
-	capa_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],capa_df[!,:C])
-	capa_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],capa_df[!,:C])
-	capa_df[!,:R_from] = map(x -> r_dic[x.R_from,x.lvlR],eachrow(capa_df[!,[:R_from,:lvlR]]))
-	capa_df[!,:R_to] = map(x -> r_dic[x.R_to,x.lvlR],eachrow(capa_df[!,[:R_to,:lvlR]]))
-	capa_df = flatten(select(capa_df,Not(:lvlR)),:R_from); capa_df = unique(flatten(capa_df,:R_to))
-
-	capa_df[!,:scr] = map(x -> anyM.supTs.scr[x],capa_df[!,:Ts_disSup])
-	capa_df = flatten(capa_df,:scr)
-
-	disp_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],),groupby(capa_df,namesSym(capa_df)))[!,Not(:lvlTs)]
+	disp_df = getDispExc(capa_df,ts_dic,r_dic,anyM)
 
 	# filter entries where availability is zero
 	if !isempty(part.par[:avaExc].data) && 0.0 in part.par[:avaExc].data[!,:val]
@@ -263,13 +253,86 @@ function createExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r
 
 	# computes value to scale up the global limit on dispatch variable that is provied per hour and create variables
 	part.var[:exc] = orderDf(createVar(disp_df,"exc",getUpBound(disp_df,anyM.options.bound.disp / anyM.options.scaFac.dispExc,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispExc))
+
+end
+
+# ! createn expressions for use of exchange
+function createUseExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
+	
+	# filter relevant carriers
+	relPar_arr = getUseExcPar(part)
+	if isempty(relPar_arr) return end
+
+	#region # * create variables for use exchange
+
+
+	# anderer ansatz: match exchange variablen mit parametern => dann erweiterung auf carrier auflösung
+
+	# get potential use of exchange from capacity variables
+	capa_df = unique(flipExc(vcat(prepExc_dic[:capaExc].var,select(prepExc_dic[:capaExc].resi,Not([:var])))[!,Not([:dir])]))
+	relC_arr = union(map(x -> unique(part.par[x].data[!,:C]),relPar_arr)...)
+	capa_df[!,:C] .= relC_arr
+	useExc_df = getDispExc(capa_df,ts_dic,r_dic,anyM)
+
+	# match potential use with triggering parameter and create variable
+	useExc_df = matchExcParameter(:useExc,flatten(useExc_df,:C),part,anyM.sets)
+	useExc_df = orderDf(createVar(useExc_df,"useExc",getUpBound(useExc_df,anyM.options.bound.disp / anyM.options.scaFac.dispExc,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispExc))
+	part.var[:useExc] = select(useExc_df,Not([:val]))
+
+	#endregion
+
+	#region # * preapre constraint matching use with exchange
+
+	# prepare dimensions of constraint
+	allC_arr = union(unique(part.var[:useExc][!,:C]),unique(part.var[:exc][!,:C]))
+	refTs_int, refR_int = [minimum([getproperty(anyM.cInfo[z],u) for z in allC_arr]) for u in [:tsDis,:rDis]]
+	cns_df = copy(capa_df)
+	cns_df[!,:lvlTs] .= refTs_int; cns_df[!,:lvlR] .= refR_int
+	cns_df = expLvlDispExc(cns_df,ts_dic,r_dic,anyM.supTs.scr)
+
+	# correct useExc for actual use relative to exchange
+	useExc_df[!,:var] .= useExc_df[!,:var] .* useExc_df[!,:val]
+	select!(useExc_df,Not([:val]))
+	
+	# aggregate both variables to constraint entries
+	agg_arr = filter(x -> x != :Exc && (part.type == :emerging || x != :Ts_expSup), intCol(cns_df))
+	cns_df[!,:use] = aggUniVar(useExc_df, select(cns_df,intCol(cns_df)), agg_arr, (Ts_expSup = anyM.supTs.lvl, Ts_dis = refTs_int, R_from = refR_int, R_to = refR_int), anyM.sets)
+	cns_df[!,:exc] = aggUniVar(part.var[:exc] , select(cns_df,intCol(cns_df)), filter(x -> x != :C, agg_arr), (Ts_expSup = anyM.supTs.lvl, Ts_dis = refTs_int, R_dis = refR_int), anyM.sets)
+
+	#endregion
+
 end
 
 #endregion
 
 #region # * utility functions for exchange
 
-# matches exchange variables with directed and undirected parameters
+# ! get dispatch variables for exchange based on input capacity dataframe
+function getDispExc(capa_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
+
+	capa_df = flatten(capa_df,:C)
+
+	# add levels for dispatch variables and extend
+	cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, anyM.cInfo[x].rDis) for x in unique(capa_df[!,:C]))
+	capa_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],capa_df[!,:C])
+	capa_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],capa_df[!,:C])
+
+	return expLvlDispExc(capa_df,ts_dic,r_dic,anyM.supTs.scr)
+end
+
+# ! further expands dispatch entries once levels are defined
+function expLvlDispExc(capa_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},scr_dic::Dict{Int64,Array{Int64,1}})
+	capa_df[!,:R_from] = map(x -> r_dic[x.R_from,x.lvlR],eachrow(capa_df[!,[:R_from,:lvlR]]))
+	capa_df[!,:R_to] = map(x -> r_dic[x.R_to,x.lvlR],eachrow(capa_df[!,[:R_to,:lvlR]]))
+	capa_df = flatten(select(capa_df,Not(:lvlR)),:R_from); capa_df = unique(flatten(capa_df,:R_to))
+
+	capa_df[!,:scr] = map(x -> scr_dic[x],capa_df[!,:Ts_disSup])
+	capa_df = flatten(capa_df,:scr)
+
+	return combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],),groupby(capa_df,namesSym(capa_df)))[!,Not(:lvlTs)]
+end
+
+# ! matches exchange variables with directed and undirected parameters
 function matchExcParameter(par_sym::Symbol,var_df::DataFrame,part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},dir_boo::Bool=true,unDir_obj::Union{ParElement,Nothing}=nothing,dir_obj::Union{ParElement,Nothing}=nothing)
 
 	unDir_obj = isnothing(unDir_obj) && Symbol(par_sym) in keys(part.par) ? part.par[Symbol(par_sym)] : unDir_obj
@@ -324,10 +387,13 @@ function addLossesExc(exc_df::DataFrame,partExc::ExcPart,sets_dic::Dict{Symbol,T
 	return select(exc_df,Not([:val]))
 end
 
-# converts dataframe where exchange regions are given as "a -> b" or "from -> to" to other way round
+# ! converts dataframe where exchange regions are given as "a -> b" or "from -> to" to other way round
 switchExcCol(in_df::DataFrame) = rename(in_df, replace(namesSym(in_df),:R_from => :R_to, :R_to => :R_from))
 
-# appends input dataframe to version of itself with from and to column exchanged
+# ! gets paramters relevant for use of exchange
+getUseExcPar(part::AbstractModelPart) = filter(x -> :C in namesSym(part.par[x].data), intersect([:useExc,:useExcDir], keys(part.par)))
+
+# ! appends input dataframe to version of itself with from and to column exchanged
 function flipExc(in_df::DataFrame)
 	sw_df = switchExcCol(in_df)
 

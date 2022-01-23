@@ -97,11 +97,11 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:rateRetroStSize] = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = nothing, herit = stRetro_tup, part = :cost)
     parDef_dic[:rateRetroExc]    = (dim = (:Ts_retro, :R_from, :R_to, :Ts_expSup_i, :Exc_i, :Ts_expSup_j, :Exc_j),     problem = :top, defVal = nothing, herit = excRetro_tup, part = :cost)
 
-    parDef_dic[:facRetroConv]   = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j),               problem = :top, defVal = 0.0, herit = convRetro_tup, part = :cost)
-    parDef_dic[:facRetroStIn]   = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 0.0, herit = stRetro_tup, part = :cost)
-    parDef_dic[:facRetroStOut]  = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 0.0, herit = stRetro_tup, part = :cost)
-    parDef_dic[:facRetroStSize] = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 0.0, herit = stRetro_tup, part = :cost)
-    parDef_dic[:facRetroExc]    = (dim = (:Ts_retro, :R_from, :R_to, :Ts_expSup_i, :Exc_i, :Ts_expSup_j, :Exc_j),     problem = :top, defVal = 0.0, herit = excRetro_tup, part = :cost)
+    parDef_dic[:facRetroConv]   = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j),               problem = :top, defVal = 1.0, herit = convRetro_tup, part = :cost)
+    parDef_dic[:facRetroStIn]   = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :cost)
+    parDef_dic[:facRetroStOut]  = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :cost)
+    parDef_dic[:facRetroStSize] = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j, :id_i, :id_j), problem = :top, defVal = 1.0, herit = stRetro_tup, part = :cost)
+    parDef_dic[:facRetroExc]    = (dim = (:Ts_retro, :R_from, :R_to, :Ts_expSup_i, :Exc_i, :Ts_expSup_j, :Exc_j),     problem = :top, defVal = 1.0, herit = excRetro_tup, part = :cost)
 
     #endregion
 
@@ -135,9 +135,9 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:expExcFixDir] = (dim = (:Ts_exp, :R_from, :R_to, :Exc, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :Exc => :sum_full, :id => :sum_full), part = :lim)
 
     # relative limits on expansion of technologies subject to a capacity balance
-    parDef_dic[:shareExpOutUp]  = (dim = (:Ts_expSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up, :Ts_expSup => :avg_full), part = :bal)
-    parDef_dic[:shareExpOutLow] = (dim = (:Ts_expSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up, :Ts_expSup => :avg_full), part = :bal)
-    parDef_dic[:shareExpOutFix] = (dim = (:Ts_expSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :R_exp => :up, :Ts_expSup => :avg_full), part = :bal)
+    parDef_dic[:shareExpOutUp]  = (dim = (:Ts_disSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_disSup => :up, :R_exp => :up, :Ts_disSup => :avg_full), part = :bal)
+    parDef_dic[:shareExpOutLow] = (dim = (:Ts_disSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_disSup => :up, :R_exp => :up, :Ts_disSup => :avg_full), part = :bal)
+    parDef_dic[:shareExpOutFix] = (dim = (:Ts_disSup, :R_exp, :Te, :C), problem = :top, defVal = nothing, herit = (:Ts_disSup => :up, :R_exp => :up, :Ts_disSup => :avg_full), part = :bal)
 
     # limits on retrofitting for conversion, storage and exchange
     parDef_dic[:retroConvUp]  = (dim = (:Ts_retro, :R_exp, :Ts_expSup_i, :Te_i, :Ts_expSup_j, :Te_j), problem = :top, defVal = nothing, herit = (:Ts_retro => :sum_full, :R_exp => :sum_full, :Ts_expSup_i => :sum_full, :Te_i => :sum_full, :Ts_expSup_j => :sum_full, :Te_j => :sum_full),  part = :lim)
@@ -311,6 +311,14 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:excUpDir]   =  (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full, :Exc => :sum_full, :scr => :up), part = :lim)
     parDef_dic[:excLowDir]  =  (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_any,  :Ts_expSup => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any,  :Exc => :sum_any, :scr => :up),  part = :lim)
     parDef_dic[:excFixDir]  =  (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full, :Exc => :sum_full, :scr => :up), part = :lim)
+
+    parDef_dic[:useExcUp]   =  (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full, :Exc => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:useExcLow]  =  (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_any,  :Ts_expSup => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any,  :Exc => :sum_any, :scr => :up),  part = :lim)
+    parDef_dic[:useExcFix]  =  (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full, :Exc => :sum_full, :scr => :up), part = :lim)
+
+    parDef_dic[:useExcUpDir]   =  (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full, :Exc => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:useExcLowDir]  =  (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_any,  :Ts_expSup => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :C => :sum_any,  :Exc => :sum_any, :scr => :up),  part = :lim)
+    parDef_dic[:useExcFixDir]  =  (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full, :Exc => :sum_full, :scr => :up), part = :lim)
 
     parDef_dic[:crtUp]   =  (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
     parDef_dic[:crtLow]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
@@ -549,14 +557,17 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
 
     # exchange (=exchange between explicit regions) parameters
     excHerit_tup = (:Ts_expSup => :up, :Ts_dis => :up, :R_from => :up, :R_to => :up, :scr => :up, :R_from => :avg_any, :R_to => :avg_any, :Exc => :up, :Ts_dis => :avg_any, :C => :up)
+    excHeritUse_tup = (:Ts_expSup => :up, :Ts_dis => :up, :R_from => :up, :R_to => :up, :scr => :up, :R_from => :avg_any, :R_to => :avg_any, :Exc => :up, :Ts_dis => :avg_any)
     
-    parDef_dic[:avaExc]     = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = 1.0,     herit = excHerit_tup, part = :exc)
-    parDef_dic[:lossExc]    = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = 0.0,     herit = excHerit_tup, part = :exc)
-    parDef_dic[:costVarExc] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :cost)
+    parDef_dic[:avaExc]     = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = 1.0,     herit = excHerit_tup,    part = :exc)
+    parDef_dic[:lossExc]    = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = 0.0,     herit = excHerit_tup,    part = :exc)
+    parDef_dic[:useExc]     = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHeritUse_tup, part = :exc)
+    parDef_dic[:costVarExc] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup,    part = :cost)
 
-    parDef_dic[:avaExcDir]     = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
-    parDef_dic[:lossExcDir]    = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
-    parDef_dic[:costVarExcDir] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :cost)
+    parDef_dic[:avaExcDir]     = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup,    part = :exc)
+    parDef_dic[:lossExcDir]    = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup,    part = :exc)
+    parDef_dic[:useExcDir]     = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHeritUse_tup, part = :exc)
+    parDef_dic[:costVarExcDir] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup,    part = :cost)
 
     parDef_dic[:ratioExcUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)
     parDef_dic[:ratioExcLow] = (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = excHerit_tup, part = :exc)

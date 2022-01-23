@@ -18,7 +18,7 @@ module AnyMOD
         ENV["PYTHON"] = envPy
     end
 
-    using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles
+    using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles, YAML
     using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays, Suppressor
     @reexport using DataFrames, JuMP, Dates, Suppressor
 
@@ -45,7 +45,7 @@ module AnyMOD
     include("dataHandling/util.jl")
 
     export anyModel, initializeModel, createOptModel!, setObjective!
-    export reportResults, reportTimeSeries, printObject, printDuals, writeParameterFile!
+    export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML
     export plotTree, plotEnergyFlow, moveNode!, produceMessage, produceMessageShort
     export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
 

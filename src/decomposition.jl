@@ -46,11 +46,12 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
 	set_optimizer_attribute(heu_m.optModel, "Crossover", 0)
 	optimize!(heu_m.optModel)
+	checkIIS(heu_m)
 
 	# write results to benders object
 	heuData_obj = bendersData()
 	heuData_obj.objVal = sum(map(z -> sum(value.(heu_m.parts.cost.var[z][!,:var])), collect(filter(x -> any(occursin.(["costExp", "costOpr", "costMissCapa", "costRetro"],string(x))), keys(heu_m.parts.cost.var)))))
-	heuData_obj.capa = writeResult(heu_m,[:capa,:exp])
+	heuData_obj.capa = writeResult(heu_m,[:capa,:exp,:mustCapa,:mustExp])
 
 	if rtrnMod_boo
 		return heu_m, heuData_obj
@@ -73,7 +74,8 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 		for sSym in keys(heuSca_obj.capa[sys])
 			fix_dic[sys][sSym] = Dict{Symbol,DataFrame}()
 			lim_dic[sys][sSym] = Dict{Symbol,DataFrame}()		
-			for varSym in filter(x -> occursin("capa",string(x)), collect(keys(heuSca_obj.capa[sys][sSym])))
+			for varSym in filter(x -> occursin("capa",lowercase(string(x))), collect(keys(heuSca_obj.capa[sys][sSym])))
+				must_boo = occursin("must",string(varSym))
 				# match results from two different heuristic models
 				bothCapa_df = rename(heuSca_obj.capa[sys][sSym][varSym],:value => :value_1) |> (x -> innerjoin(x, rename(heuCom_obj.capa[sys][sSym][varSym],:value => :value_2), on = intCol(x,:dir)))
 				# determine cases for fix and limit
@@ -95,11 +97,12 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 				if !isempty(fix_df)
 					fix_dic[sys][sSym][varSym] = rename(fix_df,:limVal => :value)
 					# find related expansion variables and fix as well
-					for expVar in filter(x -> string(x) in replace.(string(varSym),["capa" => "exp"]),keys(heuSca_obj.capa[sys][sSym]))
+					for expVar in filter(x -> string(x) in replace.(string(varSym),must_boo ? ["Capa" => "Exp"] : ["capa" => "exp"]),keys(heuSca_obj.capa[sys][sSym]))
 						# gets relevant expansion variables
 						exp_df = heuSca_obj.capa[sys][sSym][expVar] |> (w -> innerjoin(w,select(part_dic[sSym].var[expVar],Not([:Ts_expSup,:var])), on = intCol(w)))
 						# only fix expansion variables that relate to a fixed capacity
-						fix_dic[sys][sSym][expVar] = unique(select(select(fix_df,Not(part_dic[sSym].decomm == :emerging ? [:limVal] : [:Ts_expSup,:limVal])) |> (w -> innerjoin(flatten(exp_df,:Ts_disSup),w, on = intCol(w))),Not([:Ts_disSup])))
+						relExp_df = unique(select(select(fix_df,Not(part_dic[sSym].decomm == :emerging ? [:limVal] : [:Ts_expSup,:limVal])) |> (w -> innerjoin(flatten(exp_df,:Ts_disSup),w, on = intCol(w))),Not([:Ts_disSup])))
+						if !isempty(relExp_df) fix_dic[sys][sSym][expVar] = relExp_df end	
 					end
 					# report on fixed variables
 					rep_df = fix_df
@@ -156,7 +159,7 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 	topFeas_m = computeFeas(topFeas_m,fix_dic,zeroThrs_fl,true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m,[:exp,:capa],false,false)
+    return writeResult(topFeas_m,[:exp,:mustExp,:capa,:mustCapa],false,false)
 end
 
 # ! runs top problem again with optimal results
@@ -167,7 +170,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 		partTop_dic = getfield(top_m.parts,sys)
 		for sSym in keys(var_dic[sys])
 			part = partTop_dic[sSym]
-			relVar_arr = filter(x -> any(occursin.(part.decomm == :none ? ["exp"] : ["capa","exp"],string(x))),collect(keys(var_dic[sys][sSym])))
+			relVar_arr = filter(x -> any(occursin.(part.decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(var_dic[sys][sSym])))
 			# create variabbles and writes constraints to minimize absolute value of capacity delta
 			for varSym in relVar_arr
 				var_df = part.var[varSym] |> (w -> occursin("exp",string(varSym)) ? collapseExp(w) : w)
@@ -179,7 +182,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 				# applies weights to make achieving zero values a priority 
 				abs_df[!,:weight] .= 1.0
 				# create variable for absolute value and connect with rest of dataframe again
-				scaFac_fl = getfield(top_m.options.scaFac, occursin("exp",string(varSym)) ? :insCapa : (occursin("StSize",string(varSym)) ? :capaStSize : :capa))
+				scaFac_fl = getfield(top_m.options.scaFac, occursin("exp",lowercase(string(varSym))) ? :insCapa : (occursin("StSize",string(varSym)) ? :capaStSize : :capa))
 				part.var[Symbol(:abs,makeUp(varSym))] = createVar(select(abs_df,Not([:var,:value])), string(:abs,makeUp(varSym)),top_m.options.bound.capa,top_m.optModel, top_m.lock,top_m.sets,scaFac =scaFac_fl)
 				abs_df[!,:varAbs] .= part.var[Symbol(:abs,makeUp(varSym))][!,:var] 
 				# create constraints for absolute value
@@ -213,7 +216,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 	
 	# get sum of absolute values 
 	absVar_arr = [:CapaConv,:CapaExc,:CapaStOut,:CapaStIn,:CapaStSize,:ExpConv,:ExpExc,:ExpStOut,:ExpStIn,:ExpStSize]
-	absVal_expr = sum(map(x -> sum(getAllVariables(Symbol(:abs,x),top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])),absVar_arr))
+	absVal_expr = sum(map(x -> sum(getAllVariables(Symbol(:abs,x),top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])),vcat(absVar_arr,Symbol.(:Must, absVar_arr))))
 	# get sum of missing capacities and apply high weight 
 	missCapa_expr = :missCapa in keys(top_m.parts.bal.var) ? sum(top_m.parts.bal.var[:missCapa][!,:var] ./ top_m.options.scaFac.insCapa .* 10) : AffExpr()
 	objExpr_df = DataFrame(cnsExpr = [missCapa_expr + absVal_expr])
@@ -443,7 +446,7 @@ function runSub(sub_m::anyModel,capaData_obj::bendersData,sol::Symbol,wrtRes::Bo
 	for sys in (:tech,:exc)
 		part_dic = getfield(sub_m.parts,sys)
 		for sSym in keys(capaData_obj.capa[sys])
-			for capaSym in filter(x -> occursin("capa",string(x)), collect(keys(capaData_obj.capa[sys][sSym])))
+			for capaSym in sort(filter(x -> occursin("capa",lowercase(string(x))), collect(keys(capaData_obj.capa[sys][sSym]))),rev = true)
 				# filter capacity data for respective year
 				filter!(x -> x.Ts_disSup == sub_m.supTs.step[1], capaData_obj.capa[sys][sSym][capaSym])
 				# removes entry from capacity data, if capacity does not exist in respective year, otherwise fix to value
@@ -487,7 +490,7 @@ function runSub(sub_m::anyModel,capaData_obj::bendersData,sol::Symbol,wrtRes::Bo
 	for sys in (:tech,:exc)
 		part_dic = getfield(sub_m.parts,sys)
 		for sSym in keys(capaData_obj.capa[sys])
-			for capaSym in filter(x -> occursin("capa",string(x)), collect(keys(capaData_obj.capa[sys][sSym])))
+			for capaSym in filter(x -> occursin("capa",lowercase(string(x))), collect(keys(capaData_obj.capa[sys][sSym])))
 				if Symbol(capaSym,:BendersFix) in keys(part_dic[sSym].cns)
 					scaCapa_fl = getfield(sub_m.options.scaFac,occursin("StSize",string(capaSym)) ? :capaStSize : :capa)
 					capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].cns[Symbol(capaSym,:BendersFix)],scaObj_fl/scaCapa_fl)
@@ -518,7 +521,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData
 	checkIIS(top_m)
 
 	# write technology capacites and level of capacity balance to benders object
-	capaData_obj.capa, allVal_dic = [writeResult(top_m,x,true) for x in [[:capa],[:capa,:exp]]]
+	capaData_obj.capa, allVal_dic = [writeResult(top_m,x,true) for x in [[:capa,:mustCapa],[:capa,:exp]]]
 	
 	# get objective value of top problem
 	objTopTrust_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
@@ -539,7 +542,7 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 		# compute cut element for each capacity
 		for sys in (:tech,:exc)
 			part_dic = getfield(top_m.parts,sys)
-			for sSym in keys(subCut.capa[sys]), capaSym in filter(x -> occursin("capa",string(x)), collect(keys(subCut.capa[sys][sSym])))
+			for sSym in keys(subCut.capa[sys]), capaSym in filter(x -> occursin("capa",lowercase(string(x))), collect(keys(subCut.capa[sys][sSym])))
 				scaCapa_fl = getfield(top_m.options.scaFac,occursin("StSize",string(capaSym)) ? :capaStSize : :capa)
 				push!(cutExpr_arr,getBendersCut(subCut.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],scaCapa_fl))
 			end
@@ -654,7 +657,8 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1},rmvFix::Bool = fal
 			# removes variables that are fixed from output
 			if rmvFix
 				for varSym in varSym_arr
-					fixVar_sym = part_dic[sSym].decomm == :none ? Symbol(replace(string(varSym),"capa" => "exp")) : varSym
+					must_boo = occursin("must",string(varSym))
+					fixVar_sym = part_dic[sSym].decomm == :none ? Symbol(replace(string(varSym),must_boo ? "Capa" => "Exp" : "capa" => "exp")) : varSym
 					if Symbol(fixVar_sym,"BendersFix") in collect(keys(part_dic[sSym].cns))
 						var_df = var_dic[sys][sSym][varSym]
 						expCns_df = select(part_dic[sSym].cns[Symbol(fixVar_sym,"BendersFix")],Not([:cns,:fac,]))
@@ -729,9 +733,19 @@ function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_o
 	# extract actual variable
 	fix_df[!,:var] = map(x -> collect(keys(x.var.terms))[1], eachrow(fix_df))
 
+	# find cases where capa cannot be set to zero, because it is linked to a non-zero mustCapa
+	if occursin("capa",string(var_sym)) && Symbol(replace(string(var_sym),"capa" => "mustCapa"),"BendersFix") in keys(part_obj.cns)
+		nonZero_df = part_obj.cns[Symbol(replace(string(var_sym),"capa" => "mustCapa"),"BendersFix")]
+		nonZero_df = filter(x -> normalized_rhs(x.cns) != 0.0, nonZero_df)
+		nonZero_df[!,:setZero] .= false
+		fix_df = joinMissing(fix_df,select(nonZero_df,Not([:cns,:fac])), intCol(fix_df), :left,Dict(:setZero => :true))
+	else
+		fix_df[!,:setZero] .= true
+	end
+
 	# comptue factor and rhs, values below enforceable range are set to zero, values are above are set to largest value possible
 	fix_df[!,:fac] = map(x -> x.value < rngRhs_tup[1] ? rngRhs_tup[1]/x.value : (x.value > rngRhs_tup[2] ? rngRhs_tup[2]/x.value : 1.0), eachrow(fix_df))
-	fix_df[!,:rhs], fix_df[!,:fac] = map(x -> x.fac < rngMat_tup[1] ?  [rngRhs_tup[2],rngMat_tup[1]] : (x.fac > rngMat_tup[2] ? [0.0,1.0] : [x.value*x.fac,x.fac]) ,eachrow(fix_df)) |> (w  -> map(x -> getindex.(w,x),[1,2]))
+	fix_df[!,:rhs], fix_df[!,:fac] = map(x -> x.fac < rngMat_tup[1] ?  [rngRhs_tup[2],rngMat_tup[1]] : (x.fac > rngMat_tup[2] && x.setZero ? [0.0,1.0] : [x.value*x.fac,x.fac]) ,eachrow(fix_df)) |> (w  -> map(x -> getindex.(w,x),[1,2]))
 
 	if !(Symbol(var_sym,cns_sym) in keys(part_obj.cns))
 		# create actual constraint and attach to model part
@@ -749,10 +763,10 @@ function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_o
 		set_normalized_coefficient.(fix_df[!,:cns], fix_df[!,:var], fix_df[!,:fac])	
 	end
 	
-	part_obj.cns[Symbol(var_sym,cns_sym)] = select(fix_df,Not([:var,:value,:rhs]))
+	part_obj.cns[Symbol(var_sym,cns_sym)] = select(fix_df,Not([:var,:value,:rhs,:setZero]))
 
 	# correct value_df to values actually enforced
-	value_df = innerjoin(select(value_df,Not([:value])), select(fix_df,Not([:var,:value,:cns])), on = intCol(value_df,:dir))
+	value_df = innerjoin(select(value_df,Not([:value])), select(fix_df,Not([:var,:value,:cns,:setZero])), on = intCol(value_df,:dir))
 	value_df[!,:value] .=  value_df[!,:rhs] ./ value_df[!,:fac] .* getfield(fix_m.options.scaFac,occursin("StSize",string(var_sym)) ? :capaStSize : :capa)
 	select!(value_df,Not([:fac,:rhs]))
 

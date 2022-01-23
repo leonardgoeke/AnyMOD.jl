@@ -115,6 +115,8 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 	return paraTemp_dic
 end
 
+
+
 # ! read inputs folders for all 'csv' or 'jl' files starting with 'set', 'par', 'var' and 'eqn'
 function readInputFolder(inputFolders::Array{String,1},files_dic::Dict{String,Array{String,1}} = Dict(b => String[] for b in ("set","par","var","eqn")))
 	# loops over main folders provides in constructor
@@ -259,7 +261,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 		grpCol_dic = Dict(x => map(z -> z[2:end],filter(y -> String(x) == y[1],splitCol_arr)) for x in setCol_arr)
 
 		# loop over dictionary to check for irregular names and two sets having two columns assigned
-		letters_arr = ("b","c","d","e","f","g","h")
+		letters_arr = ("b","c","d","e","f","g","h","i","j")
 
 		for set in keys(grpCol_dic)
 			newCol_dic = Dict{Symbol,Symbol}()
@@ -272,7 +274,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 			end
 
 			# get the unique number of "_" that appear in columns assigned to the respective set
-			# if the csv file has several columns of the same name JULIA adds a "_1" to the second column when reading in as a dataframe => so this checks if set is defined for multiple instances
+			# if the csv file has several columns of the same name the CSV read-in adds a "_1" to the second column when reading it in as a dataframe => so this checks if set is defined for multiple instances
 			uniLen_arr = unique(map(x -> length(x),grpCol_dic[set]))
 			if  length(uniLen_arr) == 2
 				setNumbers_arr = map(x -> parse(Int,x[1]),grpCol_dic[set])
@@ -295,7 +297,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 					end
 				end
 
-				DataFrames.rename!(readIn_df,newCol_dic)
+				rename!(readIn_df,newCol_dic)
 			end
 		end
 	end

@@ -87,7 +87,11 @@ Writes results to `.csv` file with content depending on `reportType`. Available 
 reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{reportType}(),anyM::anyModel; kwargs...)
 
 # ! summary of all capacity and dispatch results
-function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true)
+function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = tuple())
+
+	if !isempty(setdiff(addRep,(:cyc, :flh, :effConv, :capaConvOut)))
+		error("Provided unsupported keywords for addRep argument. Supported are :cyc, :flh, :effConv, and :capaConvOut.")
+	end
 
     techSym_arr = collect(keys(anyM.parts.tech))
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], id = Int[], variable = Symbol[], value = Float64[])
@@ -232,83 +236,119 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	    append!(allData_df,filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),vcat(excFrom_df,excTo_df)))
 	end
 	
-	flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
+	# ! comptue full load hours
+	if :flh in addRep
+		flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
 
-	for flhCapa in collect(keys(flh_dic))
-		# get capacities relevant for full load hours
-		capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
-		capaFlh_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaFlh_df[!,:Ts_disSup])
-		capaFlh_df = flatten(capaFlh_df,:scr)
-		
-		# get dispatch quantities relevant for full load hours
-		if flhCapa == :capaConv
-			var_arr = [:use,:gen,:stIntIn,:stIntOut]
-		elseif flhCapa  == :capaStIn
-			var_arr = [:stIntIn,:stExtIn]
-		elseif flhCapa  == :capaStOut
-			var_arr = [:stIntOut,:stExtOut]
+		for flhCapa in collect(keys(flh_dic))
+			# get capacities relevant for full load hours
+			capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
+			capaFlh_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaFlh_df[!,:Ts_disSup])
+			capaFlh_df = flatten(capaFlh_df,:scr)
+			
+			# get dispatch quantities relevant for full load hours
+			if flhCapa == :capaConv
+				var_arr = [:use,:gen,:stIntIn,:stIntOut]
+			elseif flhCapa  == :capaStIn
+				var_arr = [:stIntIn,:stExtIn]
+			elseif flhCapa  == :capaStOut
+				var_arr = [:stIntOut,:stExtOut]
+			end
+			
+			relDisp_df = filter(x -> x.variable in var_arr,allData_df)
+			if isempty(relDisp_df) continue end
+			if flhCapa == :capaConv
+				rename_dic = Dict(:use => :in, :gen => :out, :stIntIn => :out, :stIntOut => :in)
+				relDisp_df[!,:variable] = map(x -> rename_dic[x], relDisp_df[!,:variable])
+			else
+				relDisp_df[!,:variable] .= :st
+			end
+
+			# group dispatch quantities and match with capacity data
+			aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr,:variable]), :value => (x -> sum(abs.(x))) => :value),:variable => :variable2, :value => :value2)
+			
+			if flhCapa == :capaConv
+				# match with input quantities where they are defined, otherwise check of output quantities
+				convIn_df = innerjoin(capaFlh_df,filter(x -> x.variable2 == :in,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
+				contOut_df = innerjoin(antijoin(capaFlh_df,convIn_df,on = [:Ts_disSup,:R_dis,:Te,:scr]),filter(x -> x.variable2 == :out,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
+				capaFlh_df = vcat(convIn_df,contOut_df)
+			else
+				capaFlh_df = innerjoin(capaFlh_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
+			end
+
+			capaFlh_df[!,:value] = capaFlh_df[!,:value2] ./ capaFlh_df[!,:value] .* 1000
+			capaFlh_df[!,:variable] .= flh_dic[flhCapa]
+
+			append!(allData_df,select(capaFlh_df,Not([:variable2,:value2])))
 		end
-		
-		relDisp_df = filter(x -> x.variable in var_arr,allData_df)
-		if isempty(relDisp_df) continue end
-		if flhCapa == :capaConv
-			rename_dic = Dict(:use => :in, :gen => :out, :stIntIn => :out, :stIntOut => :in)
-			relDisp_df[!,:variable] = map(x -> rename_dic[x], relDisp_df[!,:variable])
-		else
-			relDisp_df[!,:variable] .= :st
-		end
-
-		# group dispatch quantities and match with capacity data
-		aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr,:variable]), :value => (x -> sum(abs.(x))) => :value),:variable => :variable2, :value => :value2)
-		
-		if flhCapa == :capaConv
-			# match with input quantities where they are defined, otherwise check of output quantities
-			convIn_df = innerjoin(capaFlh_df,filter(x -> x.variable2 == :in,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
-			contOut_df = innerjoin(antijoin(capaFlh_df,convIn_df,on = [:Ts_disSup,:R_dis,:Te,:scr]),filter(x -> x.variable2 == :out,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
-			capaFlh_df = vcat(convIn_df,contOut_df)
-		else
-			capaFlh_df = innerjoin(capaFlh_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
-		end
-
-		capaFlh_df[!,:value] = capaFlh_df[!,:value2] ./ capaFlh_df[!,:value] .* 1000
-		capaFlh_df[!,:variable] .= flh_dic[flhCapa]
-
-		append!(allData_df,select(capaFlh_df,Not([:variable2,:value2])))
 	end
 
 	# ! comptue storage cycles
-	cyc_dic = Dict(:capaStIn => :cycStIn, :capaStOut => :cycStOut)
+	if :cyc in addRep
+		cyc_dic = Dict(:capaStIn => :cycStIn, :capaStOut => :cycStOut)
 
-	for cycCapa in collect(keys(cyc_dic))
-		capaCyc_df = filter(x -> x.variable == :capaStSize, allData_df)
-		capaCyc_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaCyc_df[!,:Ts_disSup])
-		capaCyc_df = flatten(capaCyc_df,:scr)
-		
-		# get dispatch quantities relevant for cycling
-		if cycCapa  == :capaStIn
-			var_arr = [:stIntIn,:stExtIn]
-		elseif cycCapa  == :capaStOut
-			var_arr = [:stIntOut,:stExtOut]
+		for cycCapa in collect(keys(cyc_dic))
+			capaCyc_df = filter(x -> x.variable == :capaStSize, allData_df)
+			capaCyc_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaCyc_df[!,:Ts_disSup])
+			capaCyc_df = flatten(capaCyc_df,:scr)
+			
+			# get dispatch quantities relevant for cycling
+			if cycCapa  == :capaStIn
+				var_arr = [:stIntIn,:stExtIn]
+			elseif cycCapa  == :capaStOut
+				var_arr = [:stIntOut,:stExtOut]
+			end
+			
+			relDisp_df = filter(x -> x.variable in var_arr,allData_df)
+			if isempty(relDisp_df) continue end
+			# group dispatch quantities and match with capacity data
+			aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr]), :value => (x -> sum(abs.(x))) => :value), :value => :value2)
+
+			capaCyc_df = innerjoin(capaCyc_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
+			
+			# get relevant dispatch variables for respective group
+			capaCyc_df[!,:value] = capaCyc_df[!,:value2] ./ capaCyc_df[!,:value] .* 1000
+			capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
+
+			append!(allData_df,select(capaCyc_df,Not([:value2])))
 		end
-		
-		relDisp_df = filter(x -> x.variable in var_arr,allData_df)
-		if isempty(relDisp_df) continue end
-		# group dispatch quantities and match with capacity data
-		aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr]), :value => (x -> sum(abs.(x))) => :value), :value => :value2)
+	end
 
-		capaCyc_df = innerjoin(capaCyc_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
-		
-		# get relevant dispatch variables for respective group
-		capaCyc_df[!,:value] = capaCyc_df[!,:value2] ./ capaCyc_df[!,:value] .* 1000
-		capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
+	# ! comptue conversion efficiencies
 
-		append!(allData_df,select(capaCyc_df,Not([:value2])))
+	if :effConv in addRep || :capaConvOut in addRep
+
+		# get sum of input and output plus carrier-specific output
+		in_df =  filter(x -> x.variable in (:use,:stIntIn), allData_df) |> (w -> combine(groupby(w,filter(u -> !(u in (:C,:scr)), intCol(w))),:value => (x -> abs(sum(x))) => :in))
+		out_df = filter(x -> x.variable in (:gen,:stOutIn), allData_df) |> (w -> combine(groupby(w,filter(u -> u != :scr, intCol(w))),:value => (x -> abs(sum(x))) => :out))
+		
+		# compute carrier specific efficiencies
+		eff_df = innerjoin(out_df,in_df, on = intCol(in_df))
+		eff_df[!,:eff] = map(x -> x.out/x.in,eachrow(eff_df))
+		select!(eff_df,Not([:in,:out]))
+		eff_df[!,:scr] .= 0
+
+		# add output capacities to output
+		if :capaConvOut in addRep
+			outCapa_df = select(rename(filter(x -> x.variable == :capaConv, allData_df),:value => :capa),Not([:variable,:C,:scr])) |> (w -> innerjoin(eff_df,w,on = intCol(w)))
+			outCapa_df[!,:value] = outCapa_df[!,:capa] .* outCapa_df[!,:eff]
+			outCapa_df[!,:variable] .= :capaConvOut
+			append!(allData_df,select(outCapa_df,Not([:capa,:eff])))
+		end
+
+		# add efficiencies to output
+		if :effConv in addRep
+			eff_df[!,:variable] .= :effConv
+			append!(allData_df,rename(eff_df,:eff => :value))
+		end
+
 	end
 
 	# removes scenario column if only one scenario is defined
 	if length(unique(allData_df[!,:scr])) == 1
 		select!(allData_df,Not(:scr))
 	end
+	
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
@@ -328,7 +368,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 end
 
 # ! results for costs
-function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true)
+function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	# prepare empty dataframe
 	allData_df = DataFrame(Ts_disSup = Int[], R_tech = Int[], R_from = Int[], R_to = Int[], Te = Int[], Exc = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
@@ -375,7 +415,7 @@ function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{S
 end
 
 # ! results for exchange
-function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true)
+function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc) error("No exchange data found") end
 
@@ -452,6 +492,114 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 		if :rawDf in rtnOpt return allData_df end
 		if :csvDf in rtnOpt return csvData_df end
 	end
+end
+
+# ! merges reported results according to external yml file
+function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),)
+
+    # ! read in mappings and prepare variables
+    allMapping_dic = YAML.load_file(ymlFile)
+
+    varMap_dic = allMapping_dic["variables"]
+    setMap_dic = allMapping_dic["sets"]
+    agg_arr = allMapping_dic["aggregations"]
+
+    # get relevant variables and filter which are specific
+    relVar_arr = Symbol.(union(map(x -> map(y -> y["variable"], collect(values(x))), collect(values(allMapping_dic["variables"])))...))
+    relFile_arr = Symbol.(union(map(x -> map(y -> y["file"], collect(values(x))), collect(values(allMapping_dic["variables"])))...))
+    optVar_tup = tuple(intersect(relVar_arr,(:cyc, :flh, :effConv, :capaConvOut))...)
+
+    if !isempty(setdiff(relFile_arr,(:summary, :cost, :exchange)))
+		error("Provided unsupported file names in YAML file. Supported are :summary, :exchange, :cost.")
+	end
+
+    # ! prepare all summary output files
+    allVar_df = DataFrame(timestep = String[], region = String[], variable = String[], value = Float64[])
+    
+    repData_dic = Dict{String,DataFrame}()
+    for repFile in relFile_arr
+    
+        repData_df = filter(x -> x.variable in relVar_arr, reportResults(repFile,anyM,rtnOpt = (:csvDf,), addRep = optVar_tup))
+        # renames columns to match set names
+        if repFile == :summary
+            rename!(repData_df,"region_dispatch" => "region","timestep_superordinate_dispatch" => "timestep")
+        elseif repFile == :exchange
+            rename!(repData_df,"region_from" => "region","timestep_superordinate_dispatch" => "timestep")
+        else
+            rename!(repData_df,"timestep_superordinate_dispatch" => "timestep")
+        end
+        
+        # replaces set names with names in mapping
+        for set in keys(setMap_dic)
+            repData_df[!,set] .= map(x -> setMap_dic[set][x],repData_df[!,set])
+        end
+        
+        # write variable names as string for correct string comparision below
+        repData_df[!,:variable] = string.(repData_df[!,:variable])
+        repData_dic[string(repFile)] = combine(groupby(repData_df,filter(x -> x != "value",names(repData_df))),:value => (x -> sum(x)) => :value)
+    end
+
+    # ! loop over reporting variables that have to be created
+    for reportVar in keys(varMap_dic)
+
+        mapInfo_arr = varMap_dic[reportVar]
+        reportVar_df = DataFrame(timestep = String[], region = String[], value = Float64[])
+
+        # loop over elements aggregated for reporting variable
+        for aggCase in mapInfo_arr
+
+            # load dataframe and filter relevant columns
+            loadCsv_df = repData_dic[aggCase["file"]]
+            filtCol_arr = intersect(collect(keys(aggCase)),names(loadCsv_df))
+            fltCsv_df = filter(x -> all(map(y -> occursin(aggCase[y],x[Symbol(y)]),filtCol_arr)),loadCsv_df)
+            if isempty(fltCsv_df) continue end
+
+            # apply correction factor and add to dataframe for variable
+            fltCsv_df[!,:value] .= fltCsv_df[!,:value] * aggCase["factor"]
+
+            append!(reportVar_df,combine(groupby(fltCsv_df,["timestep", "region"]),:value => (x -> sum(x)) => :value))
+        end
+
+        # aggregate all entries for regions and timesteps
+        reportVar_df = combine(groupby(reportVar_df,["timestep", "region"]),:value => (x -> sum(x)) => :value)
+
+        # add variable column
+        reportVar_df[!,:variable] .= reportVar
+		if !isempty(reportVar_df) append!(allVar_df,reportVar_df) end
+    end
+    noAggVar_df = copy(allVar_df)
+
+    # ! obtain variables that can be aggregated from others
+    if !isnothing(agg_arr)
+        for aggVar in agg_arr
+            aggVar_df = select(filter(x -> occursin(aggVar,x.variable) ,noAggVar_df),Not([:variable]))
+            aggVar_df = combine(groupby(aggVar_df,["timestep", "region"]),:value => (x -> sum(x)) => :value)
+            aggVar_df[!,:variable] .= aggVar
+            append!(allVar_df,aggVar_df)
+        end
+    end
+
+    if addObjName
+        allVar_df[!,:objName] .= anyM.options.objName
+    end
+
+
+	# ! return dataframes and write csv files based on specified inputs
+	if :csv in rtnOpt || :csvDf in rtnOpt
+		csvData_df = printObject(allVar_df,anyM, fileName = string(split(ymlFile,".")[end-1]), rtnDf = (:csvDf,))
+	end
+
+	if :raw in rtnOpt
+		CSV.write("$(anyM.options.outDir)/$(split(ymlFile,".")[end-1])_$(anyM.options.outStamp).csv", allVar_df)
+	end
+
+	if :rawDf in rtnOpt && :csvDf in rtnOpt
+		return allVar_df, csvData_df
+	else
+		if :rawDf in rtnOpt return allVar_df end
+		if :csvDf in rtnOpt return csvData_df end
+	end
+
 end
 
 # ! print time series for in and out into separate tables
@@ -805,7 +953,7 @@ Plots the energy flow in a model. Set `plotType` to `:graph` for a qualitative n
 plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
 
 # ! plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
-function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, wrtYML::Bool = false, relC::Tuple = ())
+function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, wrtYML::Bool = false, wrtGEXF::Bool = false, relC::Tuple = ())
 
     # ! import python function
     netw = pyimport("networkx")
@@ -826,7 +974,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 	modC_arr = isempty(relC) ? collect(keys(anyM.sets[:C].nodes)) : map(x -> sysInt(x,anyM.sets[:C]),collect(relC))
 
 	# graph and model ids of technologies connected to relevant carriers
-	actTe_arr = unique(map(x -> sysSym(x,anyM.sets[:Te]) in keys(anyM.parts.tech) ? x : getDescendants(x,anyM.sets[:Te],true)[end], collect(values(anyM.graInfo.graph.nodeTe)))) # not all actual technologies are represented in graph, e.g. to avoid 3 different solar 
+	actTe_arr = unique(map(x -> sysSym(x,anyM.sets[:Te]) in keys(anyM.parts.tech) ? x : getDescendants(x,anyM.sets[:Te],true)[end], collect(keys(anyM.graInfo.graph.nodeTe)))) # not all actual technologies are represented in graph, e.g. to avoid 3 different solar 
 	modTe_arr = filter(x -> sysSym(x,anyM.sets[:Te]) |> (u -> u in keys(anyM.parts.tech) && !isempty(intersect(modC_arr,union(map(w -> union(w...),values(anyM.parts.tech[u].carrier))...)))), actTe_arr) # check actual technology for carriers
 	modTe_arr = map(x -> x in keys(anyM.graInfo.graph.nodeTe) ? x : maximum(map(y -> y in keys(anyM.graInfo.graph.nodeTe) ? y : 0,getAncestors(x,anyM.sets[:Te],:int))), modTe_arr) # convert to technology in graph again
 	graTe_arr = map(x -> anyM.graInfo.graph.nodeTe[x], modTe_arr) # get technology id in graph
@@ -909,6 +1057,9 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
     posLabC_dic = netw.draw_networkx_labels(graph_obj, actNodePos_dic, font_size = fontSize, labels = cLab_dic, font_weight = "bold", font_family = "arial")
     posLabTe_dic = netw.draw_networkx_labels(graph_obj, actNodePos_dic, font_size = fontSize, font_family = "arial", labels = teLab_dic)
 
+	# export graph as gexf file 
+	if wrtGEXF netw.write_gexf(graph_obj, "$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).gexf") end
+
     # adjusts position of carrier labels so that they are right from node, uses code provided by ImportanceOfBeingErnest from here https://stackoverflow.com/questions/43894987/networkx-node-labels-relative-position
 	figure = plt.gcf()
 	figure.set_size_inches(plotSize[1],plotSize[2])
@@ -930,7 +1081,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 	plt.axis("off")
     plt.savefig("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp)", dpi = 600)
 
-	# write plot information to yaml file as well, *16/9 plotSize[2]/plotSize[1]
+	# write plot information to yaml file as well
 	if wrtYML
 		adjPos_dic = Dict(x[1] => (x[2] .+ 1) ./ 2 for x in collect(flowGrap_obj.nodePos))
 		techNode_arr = [Dict("label" => teLab_dic[n], "name" => string(n), "color" => collect(nodeTe_arr[length(nodeTe_arr) == 1 ? 1 : id]), "position" => adjPos_dic[n], "type" => "technology") for (id,n) in enumerate(ordTe_arr)]
@@ -1318,7 +1469,7 @@ plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0), fontSiz
 ```
 
 """
-function plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12)
+function plotGraphYML(inFile::String; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, wrtGEXF::Bool = false)
 
     # ! import python function
     netw = pyimport("networkx")
@@ -1345,7 +1496,6 @@ function plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0)
 
     # assign colors to nodes
     colC_dic = Dict(y => cData_arr[y]["color"] for y in 1:length(cData_arr))
-    colTe_dic = Dict(cNum_int+y => techData_arr[y]["color"] for y in 1:length(techData_arr))
 
     # prepare edges
     allEdges_arr = map(x -> revName_dic[string(x[1])] => revName_dic[x[2]], getindex.(collect.(graph_dic["edges"]),1))
@@ -1356,7 +1506,7 @@ function plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0)
     edgeColC_arr = map(x -> colC_dic[x[1]], cEdges_arr)
 
     teEdges_arr = collect(keys(labTe_dic)) |> (w -> filter(x -> x[1] in w || x[2] in w, allEdges_arr))
-    edgeColTe_arr = map(x -> x[1] in ordC_arr ? colTe_dic[x[2]] : colTe_dic[x[1]], teEdges_arr)
+    edgeColTe_arr = map(x -> x[1] in ordC_arr ? colC_dic[x[1]] : colC_dic[x[2]], teEdges_arr)
 
 	# ! create actual graph
     # create graph and draw nodes and edges
@@ -1386,7 +1536,7 @@ function plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0)
         # computes offset of label for leaves and non-leaves by first moving according to size auf letters itself (bbdata) and then by size of the nodeteEdges_arr
 
         # (node-size in pixel is devided by dpi and plot size to get relative offset)
-        offset_arr = [cNode_boo ? (bbdata.width/2.0 + (500/plotSize[1]/600)) : 0.0, cNode_boo ? 0.0 : (bbdata.height/2.0 + 200/plotSize[2]/600)]
+        offset_arr = [cNode_boo ? (bbdata.width/2.0 + (500/plotSize[1]/600)) : 0.0, cNode_boo ? 0.0 : (165/plotSize[2]/600)]
         x[2].set_position([x[2]."_x" + offset_arr[1],x[2]."_y" + offset_arr[2]])
         x[2].set_clip_on(false)
     end

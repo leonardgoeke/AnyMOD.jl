@@ -71,7 +71,9 @@ function createOptModel!(anyM::anyModel)
 
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
     for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
-        anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
+        if !isempty(cnsDic[cnsSym].data)
+			anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
+		end
 	end
 
     produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all technologies")
@@ -111,7 +113,7 @@ function createOptModel!(anyM::anyModel)
 
 	if :capaDem in keys(anyM.parts.bal.par) && (isempty(anyM.subPro) || anyM.subPro == (0,0))
 		createCapaBal!(r_dic,anyM)
-		createExpShareCns!(anyM)
+		if :capaBal in keys(anyM.parts.bal.cns) createExpShareCns!(anyM) end
 	end
 	
 	createLimitCns!(anyM.parts.lim,anyM)
