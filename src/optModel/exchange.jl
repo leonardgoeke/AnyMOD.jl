@@ -58,7 +58,6 @@ function prepareExc!(excSym_arr::Array{Symbol,1},prepAllExc_dic::Dict{Symbol,Dic
 	partLim = anyM.parts.lim
 
 	for excSym in excSym_arr
-		println(excSym)
 
 		excInt = sysInt(excSym,anyM.sets[:Exc])
 		part = anyM.parts.exc[excSym]
