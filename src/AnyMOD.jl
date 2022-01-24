@@ -20,6 +20,7 @@ module AnyMOD
 
     using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles, YAML
     using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays, Suppressor
+    using YAML
     @reexport using DataFrames, JuMP, Dates, Suppressor
 
     pyimport_conda("networkx","networkx")
