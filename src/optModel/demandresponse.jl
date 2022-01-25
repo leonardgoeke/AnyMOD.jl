@@ -15,7 +15,7 @@ function createDR(part::TechPart,anyM::anyModel)
     createDrCapExpBal(part,anyM)
     
     # create recovery constraint for DSM upward if recovery time R is given as a parameter
-    if !iszero(part.par[:drRecoveryTime].data.val)
+    if :drRecoveryTime in collectKeys(keys(part.par))
         createDrRecoveryCns(part,anyM)
     end
     #endregion
