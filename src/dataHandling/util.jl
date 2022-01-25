@@ -515,7 +515,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			allVar_df = vcat(allTechVar_df,allExcVar_df)
 			=#
 
-			# # add expressions for storage losses, if this is enabled
+			# add expressions for storage losses, if this is enabled
 			if anyM.options.emissionLoss
 				allSt_arr = union(union(union(map(x -> map(y -> collect(x.carrier[y]),intersect(keys(x.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))),values(anyM.parts.tech))...)...)...)
 				if !isempty(intersect(emC_arr,allSt_arr))
@@ -532,7 +532,6 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 							stVar_df = stVar_dic[st]
 							stVar_df = matchSetParameter(filter(x -> x.Te == tInt,stVar_df),part.par[Symbol(:eff,st)],anyM.sets)
 							stVar_df[!,:var] = stVar_df[!,:var] .* (1 .- stVar_df[!,:val])
-							stVar_df[!,:Exc] .= 0
 							select!(stVar_df,Not(:val))
 							append!(allVar_df,select(stVar_df,Not([:id])))
 						end
