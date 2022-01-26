@@ -861,7 +861,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 
 			# add carriers and expand to dispatch regions
 			capaVar_df[!,:C] .= m.car[1]
-			capaVar_df[!,:R_dis] = map(x -> r_dic[(x.R_exp,anyM.cInfo[x.C].rDis)],eachrow(capaVar_df))
+			capaVar_df[!,:R_dis] = map(x -> r_dic[(x.R_exp,part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[x.C].rDis)],eachrow(capaVar_df))
 			capaVar_df = select(flatten(capaVar_df,:R_dis),Not(:R_exp))
 
 			# add variables for missing capacities (only relevant in subproblems)
