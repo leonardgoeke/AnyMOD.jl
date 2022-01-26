@@ -388,8 +388,6 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 				push!(anyM.report,(3,"technology mapping","spatial aggregation","unknown keyword '$daggR_str' used to control spatial aggregation, please use 'yes' or 'no'"))
 				return
 			end
-		elseif rExp_int > rExpOrg_int # disaggregate by default, if it makes sense
-			disAgg_boo = true
 		else
 			disAgg_boo = false
 		end
@@ -454,14 +452,14 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 				# adds a restriction to fix the relative output
 				fixC_arr = unique(part.par[:mustOut].data[!,:C])
 				for c in fixC_arr
-					push!(snglDim_arr,("must",[c],anyM.cInfo[c].tsDis ,anyM.cInfo[c].rDis))
+					push!(snglDim_arr,("must",[c],anyM.cInfo[c].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[c].rDis))
 				end
 				# removes restrictions on out that become redundant due to the fixed output (out can only become redundant if carrier is not subject to storage)
 				if side == :gen
 					redC_arr = setdiff(fixC_arr,vcat(map(x -> collect(getfield(carGrp_ntup,x)...),intersect((:stIntIn,:stExtOut),keys(carGrp_ntup)))...))
 					for c in redC_arr
-						if ("convOut",[c],anyM.cInfo[c].tsDis ,anyM.cInfo[c].rDis) in snglDim_arr push!(snglRmv_arr,c) end # saves information that on capacity restriction about to be removed
-						filter!(x -> x != ("convOut",[c],anyM.cInfo[c].tsDis ,anyM.cInfo[c].rDis),snglDim_arr) # filters redundant entry from array of all capacity restrictions
+						if ("convOut",[c],anyM.cInfo[c].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[c].rDis) in snglDim_arr push!(snglRmv_arr,c) end # saves information that on capacity restriction about to be removed
+						filter!(x -> x != ("convOut",[c],anyM.cInfo[c].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[c].rDis),snglDim_arr) # filters redundant entry from array of all capacity restrictions
 					end
 				end
 			end

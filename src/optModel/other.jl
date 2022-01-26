@@ -520,7 +520,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		filter!(x -> !isempty(x.var.terms), allLimit_df) # filter cases without variables
 
 		# ! infeas variables for emissions
-		if va == :emission
+		if va == :emission && :emissionInf in keys(partLim.par)
 			# check if corresponding parameter is defined
 			infVar_df = matchSetParameter(select(allLimit_df,intCol(allLimit_df)),partLim.par[:emissionInf],anyM.sets)
 			if !isempty(infVar_df)
