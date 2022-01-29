@@ -1,4 +1,4 @@
-#= using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles
+using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles
 using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays
 using DataFrames, JuMP, Suppressor
 
@@ -22,7 +22,9 @@ include("src/dataHandling/mapping.jl")
 include("src/dataHandling/parameter.jl")
 include("src/dataHandling/readIn.jl")
 include("src/dataHandling/tree.jl")
-include("src/dataHandling/util.jl") =#
+include("src/dataHandling/util.jl")
+
+include("src/dataHandling/gurobiTools.jl")
 
 using Gurobi# , AnyMOD, CSV
 t_int = 4
@@ -31,7 +33,7 @@ t_int = 4
 
 method = :all # options are :all, :fixAndLim, :fixAndQtr :onlyFix and :none
 resHeu = 96
-resMod = 120
+resMod = 192
 t_int = 2
 dir_str = "C:/Users/pacop/Desktop/work/git/TheModel/"
 
@@ -41,15 +43,17 @@ dir_str = "C:/Users/pacop/Desktop/work/git/TheModel/"
 
 reso_tup = (heu = resHeu, mod = resMod) 
 suffix_str = "_" * string(method) * "_" * string(resHeu) * "_" * string(resMod)
-inDir_arr = [[dir_str * "_basis",dir_str * "_full",dir_str * "timeSeries/" * string(x) * "hours_2010"] for x in [reso_tup.heu, reso_tup.mod]] # input directories
+inDir_arr = [[dir_str * "_basis",dir_str * "_full",dir_str * "timeSeries/" * string(x) * "hours_2008"] for x in [reso_tup.heu, reso_tup.mod]] # input directories
 
-coefRngHeu_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
-coefRngTop_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
-coefRngSub_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
+coefRngHeuSca_tup = (mat = (1e-2,1e4), rhs = (1e0,1e5))
+coefRngHeuCom_tup = (mat = (1e-2,1e4), rhs = (1e0,1e4))
+coefRngTop_tup 	  = (mat = (1e-2,1e4), rhs = (1e0,1e4))
+coefRngSub_tup    = (mat = (1e-1,1e5), rhs = (1e1,1e5))
 
-scaFacHeu_tup = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0)
-scaFacTop_tup = (capa = 1e0, capaStSize = 1e1, insCapa = 1e0, dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e0, obj = 1e3)
-scaFacSub_tup = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e1, dispSt = 1e2, dispExc = 1e1, dispTrd = 1e1, costDisp = 1e0, costCapa = 1e2, obj = 1e1)
+scaFacHeuSca_tup = (capa = 1e0, capaStSize = 1e2, insCapa = 1e1, dispConv = 1e1, dispSt = 1e3, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0)
+scaFacHeuCom_tup = (capa = 1e1, capaStSize = 1e2, insCapa = 1e1, dispConv = 1e0, dispSt = 1e1, dispExc = 1e1, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e1, obj = 1e0)
+scaFacTop_tup  	 = (capa = 1e0, capaStSize = 1e1, insCapa = 1e0, dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e0, obj = 1e3)
+scaFacSub_tup 	 = (capa = 1e2, capaStSize = 1e2, insCapa = 1e1, dispConv = 1e1, dispSt = 1e2, dispExc = 1e1, dispTrd = 1e1, costDisp = 1e0, costCapa = 1e2, obj = 1e1)
 
 # ! general input parameters
 
@@ -57,9 +61,10 @@ opt_obj = Gurobi.Optimizer # solver option
 
 # structure of subproblems, indicating the year (first integer) and the scenario (second integer)
 sub_tup = ((1,0),(2,0),(3,0),(4,0),(5,0),(6,0),(7,0))
+sub_tup = ((1,0),(2,0))
 
 # options of solution algorithm
-solOpt_tup = (gap = 0.001, gapLim = 0.005, delCut = 30, linPar = (thrsAbs = 0.05, thrsRel = 0.05), quadPar = (startRad = 1e-1, lowRad = 1e-6, shrThrs = 5e-4, extThrs = 5e-4))
+solOpt_tup = (gap = 0.001, gapLim = 0.005, gapSwitch = 0.05, delCut = 30, linPar = (thrsAbs = 0.05, thrsRel = 0.05), quadPar = (startRad = 1e-1, lowRad = 1e-6, shrThrs = 5e-4, extThrs = 5e-4))
 
 # options for different models
 temp_dir = dir_str * "tempFix" * suffix_str # directory for temporary folder
@@ -67,21 +72,25 @@ temp_dir = dir_str * "tempFix" * suffix_str # directory for temporary folder
 optMod_dic = Dict{Symbol,NamedTuple}()
 
 # options for model generation 
-optMod_dic[:heu] =  (inputDir = inDir_arr[1], resultDir = dir_str * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRngHeu_tup, scaFac = scaFacHeu_tup)
-optMod_dic[:top] =  (inputDir = inDir_arr[2], resultDir = dir_str * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRngTop_tup, scaFac = scaFacTop_tup)
-optMod_dic[:sub] =  (inputDir = inDir_arr[2], resultDir = dir_str * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRngSub_tup, scaFac = scaFacSub_tup)
+optMod_dic[:heuSca] =  (inputDir = inDir_arr[1], resultDir = dir_str * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRngHeuSca_tup, scaFac = scaFacHeuSca_tup)
+optMod_dic[:heuCom] =  (inputDir = inDir_arr[1], resultDir = dir_str * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRngHeuCom_tup, scaFac = scaFacHeuCom_tup)
+optMod_dic[:top] 	=  (inputDir = inDir_arr[2], resultDir = dir_str * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRngTop_tup,    scaFac = scaFacTop_tup)
+optMod_dic[:sub] 	=  (inputDir = inDir_arr[2], resultDir = dir_str * "results", suffix = suffix_str, supTsLvl = 2, shortExp = 5, coefRng = coefRngSub_tup,    scaFac = scaFacSub_tup)
+
 
 #endregion
 
-report_m = @suppress anyModel(String[],optMod_dic[:heu].resultDir, objName = "decomposition" * optMod_dic[:heu].suffix) # creates empty model just for reporting
+report_m = @suppress anyModel(String[],optMod_dic[:heuSca].resultDir, objName = "decomposition" * optMod_dic[:heuSca].suffix) # creates empty model just for reporting
+
+produceMessage(report_m.options,report_m.report, 1," - With current range and scaling settings capacities below $(coefRngSub_tup.rhs[1]/coefRngSub_tup.mat[2]*scaFacSub_tup.capa) GW in the top-problem will be set to zero in the sub-problem.", testErr = false, printErr = false)
 
 #region # * solve heuristic models and write results
 
 if method in (:all,:fixAndLim,:onlyFix,:fixAndQtr)
 	# ! heuristic solve for re-scaled and compressed time-series
 	produceMessage(report_m.options,report_m.report, 1," - Started heuristic pre-solve", testErr = false, printErr = false)
-	heu_m, heuSca_obj = @suppress heuristicSolve(optMod_dic[:heu],1.0,t_int,opt_obj);
-	~, heuCom_obj = @suppress heuristicSolve(optMod_dic[:heu],365/reso_tup.heu,t_int,opt_obj)
+	heu_m, heuSca_obj = @suppress heuristicSolve(optMod_dic[:heuCom],1.0,t_int,opt_obj);
+	~, heuCom_obj = @suppress heuristicSolve(optMod_dic[:heuSca],365/reso_tup.heu,t_int,opt_obj)
 	# ! write fixes to files and limits to dictionary
 	fix_dic, lim_dic, cntHeu_arr = evaluateHeu(heu_m,heuSca_obj,heuCom_obj,solOpt_tup.linPar) # get fixed and limited variables
 	produceMessage(report_m.options,report_m.report, 1," - Get an exact feasible solution", testErr = false, printErr = false)
@@ -136,7 +145,7 @@ if method in (:all,:fixAndLim,:fixAndQtr,:onlyFix)
 		# run subproblems and get cut info
 		cutData_dic = Dict{Tuple{Int64,Int64},bendersData}()
 		for x in collect(sub_tup)
-			dual_etr = runSub(sub_dic[x],copy(z))
+			dual_etr = runSub(sub_dic[x],copy(z),:barrier)
 			# removes entries without dual values
 			for sys in [:exc,:tech]
 				for sSym in keys(dual_etr.capa[sys])
@@ -193,7 +202,7 @@ let i = 1, gap_fl = 1.0, currentBest_fl = Inf, rmvLim_boo = false
 
 		startSub = now()
 		for x in collect(sub_tup)
-			dual_etr = @suppress runSub(sub_dic[x],copy(capaData_obj))
+			dual_etr = @suppress runSub(sub_dic[x],copy(capaData_obj),solOpt_tup.gapSwitch < gap_fl ? :barrier : :simplex)
 			cutData_dic[x] = dual_etr
 		end
 		timeSub = now() - startSub
@@ -274,3 +283,21 @@ end
 rm(temp_dir; force = true, recursive = true) # remove temporal files again
 
 #endregion
+
+
+pefcSpace
+
+r = sysInt(Symbol("30NL"),top_m.sets[:R])
+
+
+tSym = :ccgtH2ChpDh
+tInt = sysInt(tSym,anyM.sets[:Te])
+part = anyM.parts.tech[tSym]
+prepTech_dic = prepSys_dic[:Te][tSym]
+
+top_m.capa[:tech][:ccgtGasChpProMed][:mustCapaConv]
+
+heuSca_obj.capa[:tech][:ccgtGasChpProMed][:mustCapaConv]
+
+
+feasFix_dic[:tech][tSym]
