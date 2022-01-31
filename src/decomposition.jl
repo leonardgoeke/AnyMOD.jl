@@ -128,7 +128,7 @@ function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple)
 		val_arr, cns_arr = [val1_fl+linPar.thrsAbs], [:Up]
 	elseif val1_fl <= linPar.thrsAbs && val2_fl >= linPar.thrsAbs # set second value as upper limit, if other zero
 		val_arr, cns_arr = [val2_fl+linPar.thrsAbs], [:Up]
-	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) # enfore lower and upper limits, if difference does exceed threshold
+	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) # enforce lower and upper limits, if difference does exceed threshold
 		val_arr, cns_arr = sort([val1_fl,val2_fl]), [:Low,:Up]
 		val_arr[2] = val_arr[2] + linPar.thrsAbs
 		if (val_arr[1] > linPar.thrsAbs) 
