@@ -561,7 +561,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},cns_
 			exp_sym = Symbol(replace(String(capa[1]),"capa" => "exp"))
 			
 			# ensure must-out capacity complies with operated capacity in case of decommissioning
-			if decom_boo || !(exp_sym in keys(part.var)) # limit must out capacity with ordinary capacity, necessary in case of decomm or if this is not enforced indirectly via expansion
+			if decom_boo || !(exp_sym in keys(part.var)) # limit must out capacity with ordinary capacity if necessary in case of decomm, if this is not enforced indirectly via expansion
 				bothVar_df = innerjoin(rename(capa_df,:var => :capa),part.var[Symbol("must",makeUp(capa[1]))],on = intCol(capa_df))
 				bothVar_df[!,:cnsExpr] = @expression(anyM.optModel, bothVar_df[:var] .- bothVar_df[:capa])
 				cns_dic[Symbol("must",makeUp(capa[1]),decom_boo ? "Opr" : "")] = cnsCont(select(filter(x -> !isempty(x.cnsExpr.terms), bothVar_df),Not([:var,:capa])),:smaller)
@@ -592,8 +592,8 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},cns_
 				cns_df = joinMissing(cns_df,combine(groupby(expVar_df,join_arr), :var => (x -> sum(x)) => :exp),join_arr,:left,Dict(:exp => AffExpr()))
 
 				# add residual capacities to dataframe
-				insCapa_df = copy(part.var[decom_boo ? Symbol(:ins,makeUp(capa[1])) : capa[1]])
-				insCapa_df[!,:resi] = map(x -> x.constant,insCapa_df[!,:var])
+				insCapa_df = select(copy(part.var[decom_boo ? Symbol(:ins,makeUp(capa[1])) : capa[1]]),Not([:var]))
+				insCapa_df = joinMissing(insCapa_df,rename(checkResiCapa(capa[1],insCapa_df, part, anyM),:var => :resi),intCol(insCapa_df),:left,Dict(:resi => AffExpr()))
 				cns_df = innerjoin(cns_df, select(insCapa_df,vcat(join_arr,[:resi])), on = join_arr)
 				
 				# create upper and lower limits on must-out capacity where there is residual capacity, otherwise just create on equality constraint
