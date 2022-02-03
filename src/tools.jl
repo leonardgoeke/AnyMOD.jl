@@ -324,15 +324,34 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 		in_df =  filter(x -> x.variable in (:use,:stIntIn), allData_df) |> (w -> combine(groupby(w,filter(u -> !(u in (:C,:scr)), intCol(w))),:value => (x -> abs(sum(x))) => :in))
 		out_df = filter(x -> x.variable in (:gen,:stOutIn), allData_df) |> (w -> combine(groupby(w,filter(u -> u != :scr, intCol(w))),:value => (x -> abs(sum(x))) => :out))
 		
-		# compute carrier specific efficiencies
-		eff_df = innerjoin(out_df,in_df, on = intCol(in_df))
-		eff_df[!,:eff] = map(x -> x.out/x.in,eachrow(eff_df))
-		select!(eff_df,Not([:in,:out]))
-		eff_df[!,:scr] .= 0
+		# get capacity and add carriers variables
+		outCapa_df = select(rename(filter(x -> x.variable == :capaConv, allData_df),:value => :capa),Not([:variable,:C,:scr]))
+		outCapa_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x,anyM.sets[:Te])].carrier.gen), outCapa_df[!,:Te]) # extend in with carrier column
+		outCapa_df = flatten(outCapa_df,:C)
+		
+		# aggregate capacity and out variables
+		outCapa_df[!,:out] = aggDivVar(rename(out_df,:out => :val),outCapa_df,tuple(intCol(outCapa_df)...),anyM.sets) # aggregate out to capa
+		noOut_df = filter(x -> x.out == 0.0,outCapa_df) # filter cases without out
+		out_df[!,:capa] = aggDivVar(rename(select(noOut_df,Not([:out])),:capa => :val),out_df,tuple(intCol(in_df)...),anyM.sets) # aggregate capa to out
+		outCapa_df = unique(vcat(filter(x -> x.out != 0.0,outCapa_df),filter(x -> x.capa != 0.0,out_df))) # merge both cases
+
+		# aggregate capacity and in variables
+		outCapa_df[!,:in] = aggDivVar(rename(in_df,:in => :val),outCapa_df,tuple(intCol(in_df)...),anyM.sets) # aggregate in to capa
+		noIn_df = filter(x -> x.in == 0.0,outCapa_df) # filter cases without in 
+		in_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x,anyM.sets[:Te])].carrier.gen), in_df[!,:Te]) # extend in with carrier column
+		in_df = flatten(in_df,:C)
+		in_df[!,:capa] = aggDivVar(rename(select(noIn_df,Not([:in])),:capa => :val),in_df,tuple(intCol(in_df)...),anyM.sets) # aggregate capa to in
+		in_df[!,:out] = aggDivVar(rename(select(noIn_df,Not([:in])),:out => :val),in_df,tuple(intCol(in_df)...),anyM.sets) # aggregate out to in
+		inAgg_df = filter(x -> x.capa != 0.0,in_df)
+		outCapa_df = vcat(filter(x -> !(x.Te in unique(inAgg_df[!,:Te])), outCapa_df),inAgg_df) # merge both cases
+
+		# compute efficiencies
+		outCapa_df[!,:eff] = map(x -> x.in == 0.0 ? 1.0 : x.out/x.in,eachrow(outCapa_df))
+		select!(outCapa_df,Not([:out,:in]))
+		outCapa_df[!,:scr] .= 0.0
 
 		# add output capacities to output
 		if :capaConvOut in addRep
-			outCapa_df = select(rename(filter(x -> x.variable == :capaConv, allData_df),:value => :capa),Not([:variable,:C,:scr])) |> (w -> innerjoin(eff_df,w,on = intCol(w)))
 			outCapa_df[!,:value] = outCapa_df[!,:capa] .* outCapa_df[!,:eff]
 			outCapa_df[!,:variable] .= :capaConvOut
 			append!(allData_df,select(outCapa_df,Not([:capa,:eff])))
