@@ -552,7 +552,7 @@ function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, r
         
         # replaces set names with names in mapping
         for set in keys(setMap_dic)
-            repData_df[!,set] .= map(x -> setMap_dic[set][x],repData_df[!,set])
+            repData_df[!,set] .= map(x -> x in keys(setMap_dic[set]) ? setMap_dic[set][x] : x,repData_df[!,set])
         end
         
         # write variable names as string for correct string comparision below
