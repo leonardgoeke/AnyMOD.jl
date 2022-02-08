@@ -113,7 +113,8 @@ function prepareExcExpansion!(excInt::Int,part::ExcPart,partLim::OthPart,prepExc
 	if :costExpExc in collect(keys(anyM.parts.cost.par)) && !isempty(exExp_df)
 		matchCost_df = select(matchSetParameter(exExp_df,anyM.parts.cost.par[:costExpExc],anyM.sets),Not([:val]))
 		noMatchCost_df = antijoin(exExp_df,matchCost_df, on = intCol(exExp_df))
-		noMatchCost_df[!,:id] .= 0
+		noMatchCost_df[!,:id] .= 0; 
+		if !(:id in intCol(matchCost_df)) matchCost_df[!,:id] .= 0 end
 		exExp_df = vcat(noMatchCost_df,unique(select(matchCost_df,intCol(noMatchCost_df))))
 	else
 		exExp_df[!,:id] .= 0
