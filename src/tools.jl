@@ -87,7 +87,7 @@ Writes results to `.csv` file with content depending on `reportType`. Available 
 reportResults(reportType::Symbol,anyM::anyModel; kwargs...) = reportResults(Val{reportType}(),anyM::anyModel; kwargs...)
 
 # ! summary of all capacity and dispatch results
-function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = tuple())
+function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=true, wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = tuple())
 
 	if !isempty(setdiff(addRep,(:cyc, :flh, :effConv, :capaConvOut)))
 		error("Provided unsupported keywords for addRep argument. Supported are :cyc, :flh, :effConv, and :capaConvOut.")
@@ -369,7 +369,9 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 	if length(unique(allData_df[!,:scr])) == 1
 		select!(allData_df,Not(:scr))
 	end
-	
+
+	# add column with name for model object/scenario
+	if addObjName allData_df[!,:objName] .= anyM.options.objName end
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
@@ -389,7 +391,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; wrtSgn::Bool = true
 end
 
 # ! results for costs
-function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
+function reportResults(objGrp::Val{:cost},anyM::anyModel; addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	# prepare empty dataframe
 	allData_df = DataFrame(Ts_disSup = Int[], R_tech = Int[], R_from = Int[], R_to = Int[], Te = Int[], Exc = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
@@ -418,6 +420,9 @@ function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{S
 		select!(allData_df,Not(:scr))
 	end
 
+	# add column with name for model object/scenario
+	if addObjName allData_df[!,:objName] .= anyM.options.objName end
+
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
 		csvData_df = printObject(allData_df,anyM, fileName = "results_costs", rtnDf = rtnOpt, filterFunc = rmvZero ? x -> abs(x.value) > 1e-5 : x -> true)
@@ -436,7 +441,7 @@ function reportResults(objGrp::Val{:cost},anyM::anyModel; rtnOpt::Tuple{Vararg{S
 end
 
 # ! results for exchange
-function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
+function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc) error("No exchange data found") end
 
@@ -497,6 +502,9 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; rtnOpt::Tuple{Vara
 	if length(unique(allData_df[!,:scr])) == 1
 		select!(allData_df,Not(:scr))
 	end
+
+	# add column with name for model object/scenario
+	if addObjName allData_df[!,:objName] .= anyM.options.objName end
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
@@ -600,10 +608,8 @@ function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, r
         end
     end
 
-    if addObjName
-        allVar_df[!,:objName] .= anyM.options.objName
-    end
-
+	# add column with name for model object/scenario
+    if addObjName allVar_df[!,:objName] .= anyM.options.objName end
 
 	# ! return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
