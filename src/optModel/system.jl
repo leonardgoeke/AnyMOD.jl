@@ -83,12 +83,28 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 			relSys_df  = innerjoin(rename(relSys_df, startCol_arr .=> Symbol.(startCol_arr,"_i")),allCapaDf_dic[capaSym],on = [:Ts_disSup])
 			rename!(relSys_df,vcat(vcat(startCol_arr,[:Ts_disSup]) .=> vcat(Symbol.(startCol_arr,"_j"),[:Ts_retro])))
 
+			# creates general region columns in case of exchange
+			if isempty(relSys_df) continue end
+			if capaSym == :capaExc
+				relSys_df[!,:R_from] = map(x -> [x.R_from_i, x.R_from_j], eachrow(relSys_df)); relSys_df = flatten(relSys_df,:R_from)
+				relSys_df[!,:R_to] = map(x -> [x.R_to_i, x.R_to_j], eachrow(relSys_df)); relSys_df = flatten(relSys_df,:R_to)
+			end
+
 			# filter all rows where regions are not related
 			relR_dic = Dict(x =>  vcat([x],getAncestors(x,anyM.sets[:R],:int)...,getDescendants(x,anyM.sets[:R])...) for x in (sys != :Exc ? unique(relSys_df[!,:R_exp_i]) : unique(vcat(map(z -> relSys_df[!,z],[:R_from_j,:R_from_i,:R_to_j,:R_to_i])...))))
 			filter!(x -> capaSym != :capaExc ? x.R_exp_j in relR_dic[x.R_exp_i] : (x.R_from_j in relR_dic[x.R_from_i] && x.R_to_j in relR_dic[x.R_to_i]),relSys_df)
 
 			# ! match with cost data to see where actual retrofitting is possible
-			allRetro_df = filter(x -> x[Symbol(sys,:_i)] != x[Symbol(sys,:_j)],select(orderDf(matchSetParameter(relSys_df,anyM.parts.cost.par[Symbol(:costRetro,replace(String(capaSym),"capa" => ""))],anyM.sets)),Not([:val])))
+			allRetro_df = unique(filter(x -> x[Symbol(sys,:_i)] != x[Symbol(sys,:_j)],select(orderDf(matchSetParameter(relSys_df,anyM.parts.cost.par[Symbol(:costRetro,replace(String(capaSym),"capa" => ""))],anyM.sets)),Not([:val]))))
+
+			# flips entries for moving from undirected to directed system
+			if capaSym == :capaExc && !part.dir
+				excDir_arr = map(x -> sysInt(x,anyM.sets[:Exc]), filter(z -> anyM.parts.exc[z].dir, excSym_arr))
+				noFlip_df = filter(x -> !(x[:Exc_j] in excDir_arr), allRetro_df)
+				flip_df = filter(x -> x[:Exc_j] in excDir_arr, allRetro_df)  |> (y -> vcat(y,rename(y,:R_from_j => :R_to_j, :R_to_j => :R_from_j)))
+				allRetro_df = unique(vcat(noFlip_df,flip_df))
+			end
+
 			if isempty(allRetro_df) continue end
 
 			# ! add column for last superordinate timestep of operation
@@ -96,7 +112,7 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 			if capaSym != :capaExc
 				allRetro_df[!,:lifeStart] = matchSetParameter(rename(allRetro_df,Symbol.(startCol_arr,"_i") .=> startCol_arr),part.par[Symbol(:life,type_sym)],anyM.sets)[!,:val]
 			else
-				allRetro_df[!,:lifeStart] = matchExcParameter(Symbol(:life,type_sym),rename(allRetro_df,Symbol.(startCol_arr,"_i") .=> startCol_arr),part,anyM.sets,part.dir)[!,:val]
+				allRetro_df[!,:lifeStart] = matchExcParameter(Symbol(:life,type_sym),filter(x -> split(string(x),"_")[1] != "R",startCol_arr) |> (z -> rename(allRetro_df,Symbol.(z,"_i") .=> z)),part,anyM.sets,part.dir)[!,:val]
 			end
 
 			# add column for last superordinate dispatch timesteps capacity would be operating, filters cases where last superordinate dispatch timesteps of operating would be so far in the future, that combination is impossible due to the lifetime
@@ -113,10 +129,12 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 			# compute array of superordinate timesteps in lifetime
 			allRetro_df[!,:Ts_disSup] = map(x -> filter(z -> z >= x.Ts_retro && z < x.Ts_retro + x.lifeRetro/anyM.options.shortExp,collect(anyM.supTs.step)),eachrow(allRetro_df))
 			allRetro_df = orderDf(select!(allRetro_df,Not([:lifeStart,:credit,:lifeRetroSys,:lifeRetro])))
+			select!(allRetro_df,Not([:R_from,:R_to]))
 
 			# add entries for start technology for retrofitting
 			allRetroStart_df = copy(allRetro_df)
 			addToRetro!(prepSys_dic[sys][sSym],allRetroStart_df,retroName_sym)
+			
 
 			# ! adjusts capacities for start
 
@@ -229,6 +247,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 							dirOther_df[!,:dir]  = map(x -> x ? 0 : 1, potCapa_df[!,:dir])
 							potCapa_df = unique(vcat(dirOther_df,potCapa_df))
 						end
+						potCapa_df = select(potCapa_df,Not([:dir]))
 					end
 
 					# get and expand related entries for retrofitting
@@ -251,7 +270,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 					end
 
 					# only preserve capacity entries that could be created based on expansion and retrofitting
-					prepSys_dic[sys][sSym][capaSym] = prepSys_dic[sys][sSym][capaSym] |> (x -> (var = innerjoin(x.var, potCapa_df, on = intCol(x.var,:dir)), resi = x.resi))	
+					prepSys_dic[sys][sSym][capaSym] = prepSys_dic[sys][sSym][capaSym] |> (x -> (var = innerjoin(x.var, potCapa_df, on = intCol(x.var)), resi = x.resi))
 				end
 			end
 
@@ -451,7 +470,7 @@ function adjustRetroRegion(sys::Symbol,retro_df::DataFrame,start::Bool=true)
 	if sys != :Exc
 		retro_df[!,Symbol(:R_exp_,drop_sym)] = retro_df[!,Symbol(:R_exp_,keep_sym)] 
 	else
-		retro_df[!,Symbol(:R_from_,drop_sym)] = retro_df[!,Symbol(:R_from_,keep_sym)]; 
+		retro_df[!,Symbol(:R_from_,drop_sym)] = retro_df[!,Symbol(:R_from_,keep_sym)]
 		retro_df[!,Symbol(:R_to_,drop_sym)] = retro_df[!,Symbol(:R_to_,keep_sym)]
 	end
 	return unique(retro_df)
@@ -497,6 +516,7 @@ function addInsCapa!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple
 		prepTech_dic = prepSys_dic[:Te][tSym]
 		if anyM.parts.tech[tSym].decomm != :none
 			for capTy in intersect(keys(prepTech_dic),(:capaConv,:capaStIn,:capaStOut,:capaStSize,:capaExc))
+				if isempty(prepTech_dic[capTy].resi) continue end 
 
 				# get all cases where variables are not-fixed and as a result different variables for operated and installed capacity variables are still needed
 				if anyM.options.holdFixed
@@ -655,13 +675,7 @@ function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep
 		if retro_boo
 			retroVar_df = filter(x -> sys_int == x[exc_boo ? :Exc_j : :Te_j], flatten(part.var[retroVar_sym],:Ts_disSup))
 			retro_arr = vcat([:Ts_expSup_j, :Ts_disSup], exc_boo ? [:R_from_j, :R_to_j, :Exc_j] : (st_boo ? [:R_exp_j, :Te_j, :id_j] : [:R_exp_j, :Te_j]))
-			if exc_boo && part.dir
-				noFlip_df = filter(x -> x[:Exc_i] in excDir_arr, retroVar_df)
-				flip_df = filter(x -> !(x[:Exc_i] in excDir_arr), retroVar_df)  |> (y -> vcat(y,rename(y,:R_from_j => :R_to_j, :R_to_j => :R_from_j)))
-				retroVar_df = vcat(noFlip_df,flip_df)
-			end
 			retro_df = rename(combine(groupby(retroVar_df,retro_arr), :var => (x -> sum(x)) => :var), retro_arr .=> intCol(cns_df))
-			
 			cns_df[!,:retro_j] = aggDivVar(retro_df,cns_df,tuple(intCol(cns_df)...),sets_dic)
 		end
 		

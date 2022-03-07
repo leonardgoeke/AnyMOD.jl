@@ -446,19 +446,33 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=t
 	if isempty(anyM.parts.exc) error("No exchange data found") end
 
     # ! expansion variables
+	dirExc_dir = Dict(sysInt(x,anyM.sets[:Exc]) => anyM.parts.exc[x].dir ? 1 : 0 for x in keys(anyM.parts.exc))
 	exp_df = getAllVariables(:expExc,anyM)
 	if !isempty(exp_df)
 		# manage superordinate dispatch
 		select!(exp_df,Not([:Ts_disSup]))
 		rename!(exp_df,:Ts_expSup => :Ts_disSup)
 		# add direction info
-		dirExc_dir = Dict(sysInt(x,anyM.sets[:Exc]) => anyM.parts.exc[x].dir ? 1 : 0 for x in keys(anyM.parts.exc))
 		exp_df[!,:dir] = map(x -> dirExc_dir[x],exp_df[!,:Exc])
 		exp_df = combine(groupby(exp_df,[:Ts_disSup,:R_from,:R_to,:Exc,:dir]), :var => (x -> value.(sum(x))) => :value)
 		exp_df[!,:variable] .= :expExc
 		foreach(x -> exp_df[!,x] .= 0,[:Ts_expSup,:C,:scr])
 		append!(allData_df,exp_df)
 	end
+	
+	# ! retrofitting variables
+	retro_df = select(getAllVariables(:retroExc,anyM),[:Ts_expSup_j,:R_from_j,:R_to_j,:Exc_j,:var])
+	if !isempty(exp_df)
+		# manage superordinate dispatch
+		rename!(retro_df,:Ts_expSup_j => :Ts_disSup)
+		# add direction info
+		retro_df[!,:dir] = map(x -> dirExc_dir[x],retro_df[!,:Exc_j])
+		retro_df = combine(groupby(retro_df,[:Ts_disSup,:R_from_j,:R_to_j,:Exc_j,:dir]), :var => (x -> value.(sum(x))) => :value)
+		retro_df[!,:variable] .= :retroExc
+		foreach(x -> retro_df[!,x] .= 0,[:Ts_expSup,:C,:scr])
+		append!(allData_df,rename(retro_df,[:R_from_j,:R_to_j,:Exc_j] .=> [:R_from,:R_to,:Exc]))
+	end
+
 
 	# ! capacity variables
 	for capa in (:capa,:insCapa) 
