@@ -434,17 +434,19 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
         # loops over all parameters of specific pre-setting type
 		for parItr in keys(filter(x -> x[2] == preType,parPre_dic))
             parPef_ntup = parDef_dic[parItr]
+            
+            modRel_boo = specMode_boo && :M in namesSym(part.par[parItr].data)
 
             # drops mode related parameter data, that does not match the modes of the technology
-            if :M in namesSym(part.par[parItr].data)
+            if modRel_boo
                 filter!(x -> x.M in part.modes,part.par[parItr].data)
                 if isempty(part.par[parItr].data) select!(part.par[parItr].data, Not(:M)) end
             end
 
-			newPar_obj, report = resetParameter(:M in namesSym(part.par[parItr].data)  ? dispResoM_df : dispReso_df, part.par[parItr], part.name[end], anyM.sets, anyM.options, anyM.report, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
+			newPar_obj, report = resetParameter(modRel_boo  ? dispResoM_df : dispReso_df, part.par[parItr], part.name[end], anyM.sets, anyM.options, anyM.report, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
 
             # saves mode dependant cases
-            if :M in namesSym(newPar_obj.data) && !isempty(newPar_obj.data)
+            if modRel_boo && !isempty(newPar_obj.data)
                 mode_df = unique(filter(x -> x.M != 0, newPar_obj.data)[!,Not([:val,:M])])
 
                 # loops over all types of relevant variables (:gen, :use etc.) that have to be mode specific
