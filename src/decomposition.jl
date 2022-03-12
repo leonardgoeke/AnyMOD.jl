@@ -73,8 +73,11 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 		part_dic = getfield(heu_m.parts,sys)
 		for sSym in keys(heuSca_obj.capa[sys])
 			fix_dic[sys][sSym] = Dict{Symbol,DataFrame}()
-			lim_dic[sys][sSym] = Dict{Symbol,DataFrame}()		
-			for varSym in filter(x -> occursin("capa",lowercase(string(x))), collect(keys(heuSca_obj.capa[sys][sSym])))
+			lim_dic[sys][sSym] = Dict{Symbol,DataFrame}()
+
+			relVar_arr = filter(x -> any(occursin.(part_dic[sSym].decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(part_dic[sSym].var)))
+
+			for varSym in relVar_arr
 				must_boo = occursin("must",string(varSym))
 				# match results from two different heuristic models
 				bothCapa_df = rename(heuSca_obj.capa[sys][sSym][varSym],:value => :value_1) |> (x -> innerjoin(x, rename(heuCom_obj.capa[sys][sSym][varSym],:value => :value_2), on = intCol(x,:dir)))
@@ -97,12 +100,14 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 				if !isempty(fix_df)
 					fix_dic[sys][sSym][varSym] = rename(fix_df,:limVal => :value)
 					# find related expansion variables and fix as well
-					for expVar in filter(x -> string(x) in replace.(string(varSym),must_boo ? ["Capa" => "Exp"] : ["capa" => "exp"]),keys(heuSca_obj.capa[sys][sSym]))
-						# gets relevant expansion variables
-						exp_df = heuSca_obj.capa[sys][sSym][expVar] |> (w -> innerjoin(w,select(part_dic[sSym].var[expVar],Not([:Ts_expSup,:var])), on = intCol(w)))
-						# only fix expansion variables that relate to a fixed capacity
-						relExp_df = unique(select(select(fix_df,Not(part_dic[sSym].decomm == :emerging ? [:limVal] : [:Ts_expSup,:limVal])) |> (w -> innerjoin(flatten(exp_df,:Ts_disSup),w, on = intCol(w))),Not([:Ts_disSup])))
-						if !isempty(relExp_df) fix_dic[sys][sSym][expVar] = relExp_df end	
+					if !occursin("exp",lowercase(string(varSym)))
+						for expVar in filter(x -> string(x) in replace.(string(varSym),must_boo ? ["Capa" => "Exp"] : ["capa" => "exp"]),keys(heuSca_obj.capa[sys][sSym]))
+							# gets relevant expansion variables
+							exp_df = heuSca_obj.capa[sys][sSym][expVar] |> (w -> innerjoin(w,select(part_dic[sSym].var[expVar],Not([:Ts_expSup,:var])), on = intCol(w)))
+							# only fix expansion variables that relate to a fixed capacity
+							relExp_df = unique(select(select(fix_df,Not(part_dic[sSym].decomm == :emerging ? [:limVal] : [:Ts_expSup,:limVal])) |> (w -> innerjoin(flatten(exp_df,:Ts_disSup),w, on = intCol(w))),Not([:Ts_disSup])))
+							if !isempty(relExp_df) fix_dic[sys][sSym][expVar] = relExp_df end	
+						end
 					end
 					# report on fixed variables
 					rep_df = fix_df
@@ -303,7 +308,7 @@ function addLinearTrust!(top_m::anyModel,lim_dic::Dict{Symbol,Dict{Symbol,Dict{S
 				grpBothCapa_arr = collect(groupby(lim_dic[sys][sSym][trstSym],:limCns))
 				# get variables of top model
 				trstVar_df = filter(x -> !isempty(x.var.terms),part_dic[sSym].var[trstSym])
-				foreach(lim -> limitCapa!(select(rename(lim,:limVal => :value),Not([:limCns])),trstVar_df,trstSym,part_dic[sSym],top_m,lim[1,:limCns]),grpBothCapa_arr)
+				foreach(lim -> limitVar!(select(rename(lim,:limVal => :value),Not([:limCns])),trstVar_df,trstSym,part_dic[sSym],top_m,lim[1,:limCns]),grpBothCapa_arr)
 			end
 		end
 	end
@@ -453,7 +458,7 @@ function runSub(sub_m::anyModel,capaData_obj::bendersData,sol::Symbol,wrtRes::Bo
 				if !(sSym in keys(part_dic)) || !(capaSym in keys(part_dic[sSym].var)) || isempty(capaData_obj.capa[sys][sSym][capaSym])
 					delete!(capaData_obj.capa[sys][sSym],capaSym)
 				else
-					capaData_obj.capa[sys][sSym][capaSym] = limitCapa!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m)
+					capaData_obj.capa[sys][sSym][capaSym] = limitVar!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m)
 				end
 			end
 			# remove system if no capacities exist
@@ -712,7 +717,7 @@ function getResult(res_df::DataFrame)
 end
 
 # ! create constraint fixing capacity (or setting a lower limits)
-function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_obj::AbstractModelPart,fix_m::anyModel,lim_sym::Symbol=:Fix)
+function limitVar!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_obj::AbstractModelPart,fix_m::anyModel,lim_sym::Symbol=:Fix)
 
 	# compute smallest and biggest capacity that can be enforced
 	rngMat_tup = fix_m.options.coefRng.mat
@@ -724,7 +729,7 @@ function limitCapa!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_o
 	fix_df = deSelectSys(value_df) |>  (z -> leftjoin(var_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
 
 	# correct values with scaling factor
-	fix_df[!,:value]  = fix_df[!,:value] ./ getfield(fix_m.options.scaFac,occursin("StSize",string(var_sym)) ? :capaStSize : :capa)
+	fix_df[!,:value]  = lowercase(string(var_sym)) |> (z -> fix_df[!,:value] ./ getfield(fix_m.options.scaFac,occursin("exp",z) ? :insCapa : occursin("stsize",string(z)) ? :capaStSize : :capa))
 	
 	# filter cases where no variable exists
 	filter!(x -> !isempty(x.var.terms),fix_df)
@@ -789,7 +794,7 @@ end
 # ! removes cases where storage variables are fixed by a ratio (e.g. storage energy capacity fixed by e/p ratio) 
 function removeFixStorage(stVar_sym::Symbol,stVar_df::DataFrame,part_obj::TechPart)
 	fixPar_dic = Dict(:expStSize => :sizeToStOutFixExp, :expStIn => :stOutToStInFixExp, :capaStSize => :sizeToStOutFixCapa, :capaStIn => :stOutToStInFixCapa)
-	if stVar_sym in [:expStSize,:expStIn,:capaStSize,:capaStIn] && fixPar_dic[stVar_sym] in collect(keys(part_obj.cns))	
+	if stVar_sym in [:expStSize,:expStIn,:capaStSize,:capaStIn] && fixPar_dic[stVar_sym] in collect(keys(part_obj.cns))
 		fixCns_df = select(part_obj.cns[fixPar_dic[stVar_sym]],Not([:cns]))
 		stVar_df = stVar_df |> (x -> antijoin(x,fixCns_df, on = intCol(x)))	
 	end
