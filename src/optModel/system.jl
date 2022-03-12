@@ -497,7 +497,7 @@ function addInsCapa!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple
 		prepTech_dic = prepSys_dic[:Te][tSym]
 		if anyM.parts.tech[tSym].decomm != :none
 			for capTy in intersect(keys(prepTech_dic),(:capaConv,:capaStIn,:capaStOut,:capaStSize,:capaExc))
-
+				if isempty(prepTech_dic[capTy].resi) continue end 
 				# get all cases where variables are not-fixed and as a result different variables for operated and installed capacity variables are still needed
 				if anyM.options.holdFixed
 					limPar_obj = getLimPar(anyM.parts.lim,Symbol(capTy,:Fix),anyM.sets[:Te], sys = sysInt(tSym,anyM.sets[:Te]))

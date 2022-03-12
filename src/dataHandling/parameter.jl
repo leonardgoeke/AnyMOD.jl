@@ -646,7 +646,10 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, sy
         allParData_df = vcat(map(x -> paraTemp_dic[x][parIt],relFiles_arr)...)
 
         # order regions in ascending order so regions are not ambivalent anymore and duplicates can be identified
-        if :R_b in namesSym(allParData_df) && !(occursin("Dir",string(parIt)))
+        paraDef_ntup = parDef_dic[parIt]
+        parPart_sym = paraDef_ntup.part
+
+        if :R_b in namesSym(allParData_df) && !(occursin("Dir",string(parIt))) && length(filter(x -> SubString(string(x), 1, 1) == "R", collect(paraDef_ntup.dim))) >= 2
             sortR_mat = sort(hcat([allParData_df[!,x] for x in (:R,:R_b)]...);dims = 2)
             for (index,col) in enumerate((:R,:R_b)) allParData_df[!,col] = sortR_mat[:,index] end
         end
@@ -668,8 +671,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, sy
         end
         
         # ! assign parameters to parts
-        paraDef_ntup = parDef_dic[parIt]
-        parPart_sym = paraDef_ntup.part
+
 
         if !(parPart_sym in (:techSt, :techConv, :exc))
             # adds parameter to non-system parts
