@@ -164,11 +164,6 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 				allRetro_df[!,:life] .= nothing
 			end
 
-			if va == :Exc
-				allRetro_df[!,:R_from] = map(x -> [x.R_from_i, x.R_from_j], eachrow(allRetro_df)); allRetro_df = flatten(allRetro_df,:R_from)
-				allRetro_df[!,:R_to] = map(x -> [x.R_to_i, x.R_to_j], eachrow(allRetro_df)); allRetro_df = flatten(allRetro_df,:R_to)
-			end
-
 			# collects all technical lifetimes of start system and credit factors to compute technical lifetime of retrofitting
 			sysFilt_arr = (va == :Exc ? :Exc : :Te) |> (z -> filter(y ->  sysInt(y,anyM.sets[z]) in allRetro_df[:,Symbol(z,:_j)], sysSym_dic[part_sym]))
 			
@@ -181,15 +176,14 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			end
 
 			# match technical lifetime of start system, requires to rename columns
-			startCol_arr = va == :Conv ? [:Te, :Ts_expSup, :R_exp] : (va in (:StIn, :StOut, :StSize) ? [:Te, :Ts_expSup, :R_exp, :id] : [:Exc,:Ts_expSup])
+			startCol_arr = va == :Conv ? [:Te, :Ts_expSup, :R_exp] : (va in (:StIn, :StOut, :StSize) ? [:Te, :Ts_expSup, :R_exp, :id] : [:Exc,:Ts_expSup,:R_from,:R_to])
 
 			if va != :Exc
 				techLife_df = matchSetParameter(rename(allRetro_df,Symbol.(startCol_arr,"_i") .=> startCol_arr),parObj_dic[Symbol(:life,va)],anyM.sets,newCol = :lifeStart)
 			else
-				techLife_df = rename(matchCostExcParameter(:lifeExc, rename(allRetro_df,Symbol.(startCol_arr,"_i") .=> startCol_arr),anyM,nothing,parObj_dic[:lifeExc],parObj_dic[:lifeExcDir]),:val => :lifeStart)
+				techLife_df = rename(matchCostExcParameter(:lifeExc,rename(allRetro_df,Symbol.(startCol_arr,"_i") .=> startCol_arr),anyM,nothing,parObj_dic[:lifeExc],parObj_dic[:lifeExcDir]),:val => :lifeStart)
 			end
 			rename!(techLife_df,startCol_arr .=> Symbol.(startCol_arr,"_i"))
-
 
 			# compute technical lifetime of retrofitting
 			techLife_df = matchSetParameter(techLife_df,parObj_dic[Symbol(:creditRetro,va)],anyM.sets,newCol = :credit)
@@ -376,7 +370,7 @@ function computeAnn(va_sym::Symbol,type_sym::Symbol,allData_df::DataFrame,anyM::
 	generRate_df = rename(antijoin(allData_df,techRate_df,on = intCol(techRate_df)),(type_sym == :Exp ? :Ts_expSup : :Ts_retro) => :Ts_disSup, :Ts_disSup => (type_sym == :Exp ? :Ts_expSup : :Ts_expSup_temp))
 	
 	if type_sym == :Retro
-		startCol_arr = va_sym == :Conv ? [:Te, :Ts_expSup, :R_exp] : (va_sym in (:StIn, :StOut, :StSize) ? [:Te, :Ts_expSup, :R_exp] : [:Exc,:Ts_expSup])
+		startCol_arr = va_sym == :Conv ? [:Te, :Ts_expSup, :R_exp] : (va_sym in (:StIn, :StOut, :StSize) ? [:Te, :Ts_expSup, :R_exp] : [:Exc,:Ts_expSup,:R_from,:R_to])
 		rename!(generRate_df,Symbol.(startCol_arr,"_i") .=> startCol_arr)
 	end
 
