@@ -207,8 +207,8 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 				absUp_df = rename(orderDf(abs_df[!,[intCol(abs_df)...,:absUp]]),:absUp => :cnsExpr)
 				scaleCnsExpr!(absLow_df,top_m.options.coefRng,top_m.options.checkRng)
 				scaleCnsExpr!(absUp_df,top_m.options.coefRng,top_m.options.checkRng)
-				part.cns[Symbol(:absLow,makeUp(varSym))] = createCns(cnsCont(absLow_df,:greater),top_m.optModel)
-				part.cns[Symbol(:absUp,makeUp(varSym))] = createCns(cnsCont(absUp_df,:greater),top_m.optModel)
+				part.cns[Symbol(:absLow,makeUp(varSym))] = createCns(cnsCont(absLow_df,:greater),top_m.optModel,false)
+				part.cns[Symbol(:absUp,makeUp(varSym))] = createCns(cnsCont(absUp_df,:greater),top_m.optModel,false)
 				# create binary constraint to ensure zero values are either zero or above threshold
 				if cutSmall && 0.0 in abs_df[!,:value]
 					cutSmall_df = rename(select(filter(x -> x.value == 0.0,abs_df),Not([:varAbs,:absLow,:absUp,:weight])),:var => :var_2)
@@ -221,8 +221,8 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 					cutSmallNonZero_df = rename(orderDf(cutSmall_df[!,[intCol(cutSmall_df)...,:cutSmallNonZero]]),:cutSmallNonZero => :cnsExpr)
 					scaleCnsExpr!(cutSmallZero_df,top_m.options.coefRng,top_m.options.checkRng)
 					scaleCnsExpr!(cutSmallNonZero_df,top_m.options.coefRng,top_m.options.checkRng)
-					part.cns[Symbol(:cutSmallZero,makeUp(varSym))] = createCns(cnsCont(cutSmallZero_df,:smaller),top_m.optModel)
-					part.cns[Symbol(:cutSmallNonZero,makeUp(varSym))] = createCns(cnsCont(cutSmallNonZero_df,:greater),top_m.optModel)
+					part.cns[Symbol(:cutSmallZero,makeUp(varSym))] = createCns(cnsCont(cutSmallZero_df,:smaller),top_m.optModel,false)
+					part.cns[Symbol(:cutSmallNonZero,makeUp(varSym))] = createCns(cnsCont(cutSmallNonZero_df,:greater),top_m.optModel,false)
 				end
 			end
 		end
@@ -628,7 +628,7 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersDa
 
 	# scale cuts and add to dataframe of benders cuts in model
 	scaleCnsExpr!(cut_df,top_m.options.coefRng,top_m.options.checkRng)
-	append!(top_m.parts.obj.cns[:bendersCuts] ,createCns(cnsCont(cut_df,:smaller),top_m.optModel))
+	append!(top_m.parts.obj.cns[:bendersCuts] ,createCns(cnsCont(cut_df,:smaller),top_m.optModel,false))
 
 end
 
