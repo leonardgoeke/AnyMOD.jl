@@ -90,7 +90,11 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 				if !isempty(lim_df)
 					# removes storage variables controlled by ratio from further analysis
 					if sys == :tech lim_df = removeFixStorage(varSym,lim_df,part_dic[sSym]) end
-					lim_dic[sys][sSym][varSym] = lim_df
+					if isempty(lim_df)
+						continue
+					else 
+						lim_dic[sys][sSym][varSym] = lim_df
+					end
 					# reports on limited variables
 					cntHeu_arr[2] = cntHeu_arr[2] + size(filter(x -> x.limCns == :Up,lim_df),1)
 				end
@@ -99,7 +103,13 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 				fix_df = select(filter(x -> x.limCns == :Fix, bothCapa_df),Not([:limCns]))
 				if !isempty(fix_df)
 					if sys == :tech fix_df = removeFixStorage(varSym,fix_df,part_dic[sSym]) end
-					fix_dic[sys][sSym][varSym] = rename(fix_df,:limVal => :value)
+
+					if isempty(fix_df)
+						continue
+					else 
+						fix_dic[sys][sSym][varSym] = rename(fix_df,:limVal => :value)
+					end
+					
 					# find related expansion variables and fix as well
 					if !occursin("exp",lowercase(string(varSym)))
 						for expVar in filter(x -> string(x) in replace.(string(varSym),must_boo ? ["Capa" => "Exp"] : ["capa" => "exp"]),keys(heuSca_obj.capa[sys][sSym]))
