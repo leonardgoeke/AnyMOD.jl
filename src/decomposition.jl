@@ -98,6 +98,7 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 				# ! store fixed variables
 				fix_df = select(filter(x -> x.limCns == :Fix, bothCapa_df),Not([:limCns]))
 				if !isempty(fix_df)
+					if sys == :tech fix_df = removeFixStorage(varSym,fix_df,part_dic[sSym]) end
 					fix_dic[sys][sSym][varSym] = rename(fix_df,:limVal => :value)
 					# find related expansion variables and fix as well
 					if !occursin("exp",lowercase(string(varSym)))
@@ -110,9 +111,7 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 						end
 					end
 					# report on fixed variables
-					rep_df = fix_df
-					if sys == :tech rep_df = removeFixStorage(varSym,rep_df,part_dic[sSym]) end		
-					cntHeu_arr[1] = cntHeu_arr[1] + size(rep_df,1)
+					cntHeu_arr[1] = cntHeu_arr[1] + size(fix_df,1)	
 				end
 			end
 			# delete if nothing was written

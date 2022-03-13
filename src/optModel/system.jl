@@ -1117,7 +1117,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 		end
 	end
 
-	# loops over all other parameters (ratios on storage capacity, flh, cycling)
+	# loops over all other parameters (ratios on storage capacity/expansion, flh, cycling)
 	for par in filter(x -> !occursin("ratio",string(x)),collectKeys(keys(parToLim_dic)))
 
 		capaRatio_boo = par in (:stInToConv, :stOutToStIn, :sizeToStOut)
@@ -1192,7 +1192,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 			filter!(x -> !isempty(x.cnsExpr.terms), cns_df)
 			if isempty(cns_df) continue end
 
-			va_str = capaRatio_boo ? (string(limVa)[1:4] == "capa" ? "capa" : "exp") : ""
+			va_str = capaRatio_boo ? (string(limVa[1])[1:4] == "capa" ? "capa" : "exp") : ""
 			cns_dic[Symbol(par,lim,makeUp(va_str))] = cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),signLim_dic[lim])
 		end
 	end
