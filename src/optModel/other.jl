@@ -32,7 +32,7 @@ function createTradeVarCns!(partBal::OthPart,ts_dic::Dict{Tuple{Int64,Int64},Arr
 				# prepare, scale and create constraints
 				cns_df[!,:cnsExpr] = cns_df[:var] .- cns_df[:cap]
 				scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
-				partBal.cns[trdCap_sym] = createCns(cnsCont(cns_df,:smaller),anyM.optModel)
+				partBal.cns[trdCap_sym] = createCns(cnsCont(cns_df,:smaller),anyM.optModel,anyM.options.holdFixed)
 
 				produceMessage(anyM.options,anyM.report, 3," - Created capacity restrictions for $(type == :Buy ? "buying" : "selling") carriers")
 			end
@@ -177,9 +177,9 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		aggCol!(cns_df,posVar_arr)
 		aggCol!(cns_df,negVar_arr)
 		cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[posVar_arr[1]] .- cns_df[negVar_arr[1]])
-
-		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		filter!(x -> x.cnsExpr != AffExpr(),cns_df)
+		
+		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 		cns_arr[idx] = Symbol(c_str) => cnsCont(cns_df,anyM.cInfo[c].balSign == :eq ? :equal : :greater)
 
@@ -188,7 +188,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 
 	# loops over stored constraints outside of threaded loop to create actual jump constraints
 	for cns in cns_arr
-		partBal.cns[Symbol(:enBal,makeUp(cns[1]))] = createCns(cns[2],anyM.optModel)
+		partBal.cns[Symbol(:enBal,makeUp(cns[1]))] = createCns(cns[2],anyM.optModel,anyM.options.holdFixed)
 	end
 
 	produceMessage(anyM.options,anyM.report, 1," - Created energy balances for all carriers")
@@ -349,9 +349,7 @@ function createCapaBal!(r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::any
 		if !isempty(anyM.subPro) && anyM.subPro != (0,0) rename!(cns_df,:val => :dem) end
 		cns_df = orderDf(cns_df[!,[intCol(cns_df,[:dem,:actCapa])...,:cnsExpr]])
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
-		# filter cases where no actual variables are compared since they were replaced with parameters
-		filter!(x -> !isempty(x.cnsExpr.terms), cns_df) 
-		partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:equal),anyM.optModel)
+		partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:equal),anyM.optModel,anyM.options.holdFixed)
 	end
 
 	produceMessage(anyM.options,anyM.report, 2," - Created capacity balances")
@@ -452,7 +450,7 @@ function createExpShareCns!(anyM::anyModel)
 
         cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[:denom] .* cns_df[:share] .- cns_df[:num])
 	
-        anyM.parts.bal.cns[share_sym] = createCns(cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),Dict(:Up => :greater, :Low => :smaller, :Fix => :equal)[lim]),anyM.optModel)
+        anyM.parts.bal.cns[share_sym] = createCns(cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),Dict(:Up => :greater, :Low => :smaller, :Fix => :equal)[lim]),anyM.optModel,anyM.options.holdFixed)
     end
 
 end
@@ -516,8 +514,6 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			allLimit_df[!,lim_sym] = map(x -> isnothing(x[dirLim]) ? x[lim_sym] : x[dirLim],eachrow(allLimit_df))
 			select!(allLimit_df,Not([dirLim]))
 		end
-
-		filter!(x -> !isempty(x.var.terms), allLimit_df) # filter cases without variables
 
 		# ! infeas variables for emissions
 		if va == :emission && :emissionInf in keys(partLim.par)
@@ -658,7 +654,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 
 	# loops over stored constraints outside of threaded loop to create actual jump constraints
 	for cnsSym in keys(cns_dic)
-		partLim.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel)
+		partLim.cns[cnsSym] = createCns(cns_dic[cnsSym],anyM.optModel,anyM.options.holdFixed)
 	end
 
 	produceMessage(anyM.options,anyM.report, 1," - Created all limiting constraints")
@@ -755,8 +751,8 @@ function checkExprRng(expr_arr::Array{AffExpr,1},coefRng::NamedTuple{(:mat,:rhs)
 end
 
 # ! creates an actual jump constraint based on the constraint container provided
-function createCns(cnsCont_obj::cnsCont,optModel::Model)
-	cns_df = cnsCont_obj.data
+function createCns(cnsCont_obj::cnsCont,optModel::Model,holdFixed::Bool)
+	cns_df = filter(x -> !holdFixed || !isempty(x.cnsExpr.terms), cnsCont_obj.data) # filter cases without variables
 	if cnsCont_obj.sign == :equal
 		cns_df[!,:cns] = map(x -> @constraint(optModel, x.cnsExpr == 0),eachrow(cns_df))
 	elseif cnsCont_obj.sign == :greater

@@ -459,6 +459,6 @@ function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symb
 	scaleCnsExpr!(cost_df,coefRng_tup,checkRng_ntup)
 
 	# writes equations and variables
-	partObj.cns[costPar_sym] = createCns(cnsCont(select(cost_df,Not(:var)),:equal),optModel)
+	partObj.cns[costPar_sym] = createCns(cnsCont(select(cost_df,Not(:var)),:equal),optModel,anyM.options.holdFixed)
 	partObj.var[costPar_sym] = select(cost_df,Not(:cnsExpr))
 end

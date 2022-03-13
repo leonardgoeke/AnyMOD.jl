@@ -675,7 +675,6 @@ function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep
 
 		# creates final constraint object
 		cns_df[!,:cnsExpr] = @expression(optModel,cns_df[:capa] .-  getfield.(cns_df[:capa],:constant) .+ (exp_boo ? .- cns_df[:exp] : 0.0) .+ (retro_boo ? .- cns_df[:retro_j] : 0.0))	
-		if holdFixed filter!(x -> !isempty(x.cnsExpr.terms), cns_df) end # filter cases where no actual variables are compared since they were replaced with parameters
 		cns_dic[Symbol(capaVar)] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df,intCol(cns_df,:cnsExpr))),:equal)
 	end
 
@@ -704,9 +703,6 @@ function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep
 			cns_df = joinMissing(cns_df,combine(groupby(exp_df,intCol(exp_df)),:exp => (x -> sum(x)) => :exp) ,intCol(grpCapa_df),:left,Dict(:exp => AffExpr()))
 		end
 
-		# filter cases where no actual variables are compared since they were replaced with parameters
-		if holdFixed filter!(x -> !isempty(x.capa.terms) || !isempty(x.retro.terms), cns_df) end
-
 		# create constraint
 		cns_df[!,:cnsExpr] = @expression(optModel,cns_df[:capa] .-  getfield.(cns_df[:capa],:constant) .+ cns_df[:retro] .+ (Symbol(:exp,type_sym) in keys(part.var) ? .- cns_df[:exp]  : 0.0))
 		if holdFixed filter!(x -> !isempty(x.cnsExpr.terms), cns_df) end # filter cases where no actual variables are compared since they were replaced with parameters
@@ -734,7 +730,6 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 			var_df[!,:cnsExpr] = map(x -> x[2] - x[1],zip(var_df[!,:var],oprVar_df[!,:var]))
 		end
 		
-		if anyM.options.holdFixed filter!(x -> !isempty(x.cnsExpr.terms), var_df) end # filter cases where no actual variables are compared since they were replaced with parameters
 		cns_dic[string(insVar_sym) |> (x -> Symbol(:de,uppercase(x[1]),x[2:end]))] = cnsCont(select(var_df,Not(:var)),:smaller)
 
 		# ! create constraint to prevent re-commissioning of capacity once decommissioned
@@ -784,8 +779,7 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 			# create actual constraint information
 			cns_df[!,:resiDelta] =  map(x -> (x.resiNow - x.resiPrev |> (l -> l > 0.0 ? l : 0.0)),eachrow(cns_df))
 			cns_df[!,:cnsExpr]  = @expression(anyM.optModel, -1 .* cns_df[:oprNow] .+ cns_df[:oprPrev] .+ cns_df[:expNow] .+ cns_df[:retroNow] .+ cns_df[:resiDelta])
-			# filter cases without variables
-			filter!(x -> !isempty(x.cnsExpr.terms), cns_df)
+
 			if isempty(cns_df) continue end
 
 			select!(cns_df,Not([:Ts_disSupPrev,:oprNow,:oprPrev,:expNow,:retroNow,:resiNow,:resiPrev,:resiDelta]))
@@ -828,7 +822,6 @@ function createRetroConst!(capaSym::Symbol,cnsDic_arr::Array{Dict{Symbol,cnsCont
 
 	# create final constraint expression by summing up variables
 	retro_df = combine(groupby(retro_df,intCol(retro_df)),[:var,:var2] => ((x,y) -> x + y) => :cnsExpr)
-	if anyM.options.holdFixed filter!(x -> !isempty(x.cnsExpr.terms), retro_df) end # filter cases where no actual variables are compared since they were replaced with parameters
 
 	# add to different cnsDic for target technology or exchange
 	for t in unique(retro_df[!,Symbol(sys_sym,:_i)])
@@ -1188,8 +1181,6 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 			# create constraint
 			cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[!,:val] .* cns_df[!,:denom] .- cns_df[!,:num])
 
-			# filter cases without variables
-			filter!(x -> !isempty(x.cnsExpr.terms), cns_df)
 			if isempty(cns_df) continue end
 
 			va_str = capaRatio_boo ? (string(limVa[1])[1:4] == "capa" ? "capa" : "exp") : ""

@@ -72,7 +72,7 @@ function createOptModel!(anyM::anyModel)
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
     for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
         if !isempty(cnsDic[cnsSym].data)
-			anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
+			anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel,anyM.options.holdFixed)
 		end
 	end
 
@@ -97,7 +97,7 @@ function createOptModel!(anyM::anyModel)
 
 	# loops over array of dictionary with constraint container for each exchange to create actual jump constraints
 	for (idx,cnsDic) in enumerate(excCnsDic_arr), cnsSym in keys(cnsDic)
-		anyM.parts.exc[excSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel)
+		anyM.parts.exc[excSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel,anyM.options.holdFixed)
 	end
 
 	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all exchange")

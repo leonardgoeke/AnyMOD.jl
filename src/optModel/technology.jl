@@ -564,7 +564,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},cns_
 			if decom_boo || !(exp_sym in keys(part.var)) # limit must out capacity with ordinary capacity if necessary in case of decomm, if this is not enforced indirectly via expansion
 				bothVar_df = innerjoin(rename(capa_df,:var => :capa),part.var[Symbol("must",makeUp(capa[1]))],on = intCol(capa_df))
 				bothVar_df[!,:cnsExpr] = @expression(anyM.optModel, bothVar_df[:var] .- bothVar_df[:capa])
-				cns_dic[Symbol("must",makeUp(capa[1]),decom_boo ? "Opr" : "")] = cnsCont(select(filter(x -> !isempty(x.cnsExpr.terms), bothVar_df),Not([:var,:capa])),:smaller)
+				cns_dic[Symbol("must",makeUp(capa[1]),decom_boo ? "Opr" : "")] = cnsCont(select(bothVar_df,Not([:var,:capa])),:smaller)
 			else exp_sym in keys(part.var) # creates and enforces specific expansion variables for must out
 				# create expansion variables for must-out
 				expVar_df = capa == :capaStOut ? filter(x -> x.id in unique(capa_df[!,:id]), part.var[exp_sym]) : part.var[exp_sym]
