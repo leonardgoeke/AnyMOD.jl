@@ -268,6 +268,8 @@ function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 			fix_df[!,:value] = fix_df[!,:value] .+ fix_df[!,:resi]
 			select!(fix_df,Not([:resi]))	
 		end
+
+		if varSym == :expExc && heu_m.parts.exc[sSym].dir fix_df[!,:dir] .= true end
 		# writes parameter file
 		writeParameterFile!(heu_m,fix_df,par_sym,parFix_dic[par_sym],fileName_str)
 	end
