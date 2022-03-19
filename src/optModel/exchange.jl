@@ -58,7 +58,7 @@ function prepareExc!(excSym_arr::Array{Symbol,1},prepAllExc_dic::Dict{Symbol,Dic
 	partLim = anyM.parts.lim
 
 	for excSym in excSym_arr
-
+		println(excSym)
 		excInt = sysInt(excSym,anyM.sets[:Exc])
 		part = anyM.parts.exc[excSym]
 		prepExc_dic = Dict{Symbol,NamedTuple}()
@@ -225,7 +225,7 @@ function addResidualCapaExc!(part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple},
 	capaResi_df = filter(x -> x.R_from != x.R_to, combine(groupby(capaResi_df,intCol(capaResi_df,:dir)),:var => (x -> sum(x)) => :var))
 
 	# operated capacity for undirected exchange will always be symmetric, therefore only the installed capacities in the direction that has smaller residuals are needed 
-	if !part.dir && part.decomm != :none
+	if !part.dir && part.decomm != :none && !isempty(capaResi_df)
 		# adds a new temporary column where regions are is ascending order for grouping
 		capaResi_df[!,:R_sort] = map(x -> (min(x.R_from,x.R_to),max(x.R_from,x.R_to)) ,eachrow(capaResi_df))
 		# filter all rows where the other direction has a smaller residual value
