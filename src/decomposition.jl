@@ -257,7 +257,7 @@ function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 	# loop over variables
 	for sys in (:tech,:exc), sSym in keys(fix_dic[sys])
 		hasMust_boo = sys == :tech ? "must" in heu_m.parts.tech[sSym].capaRestr[!,:cnstrType] : false
-		for varSym in filter(x -> !skipSt || !hasMust_boo || x in (:capaConv, :expConv), keys(fix_dic[sys][sSym]))
+		for varSym in filter(x -> !skipMustSt || !hasMust_boo || x in (:capaConv, :expConv), keys(fix_dic[sys][sSym]))
 			fix_df = feasFix_dic[sys][sSym][varSym] |> (w -> innerjoin(w,select(fix_dic[sys][sSym][varSym],Not([:value])), on = intersect(intCol(w,:dir),intCol(fix_dic[sys][sSym][varSym],:dir))))
 			# create file name
 			par_sym = Symbol(varSym,:Fix)
