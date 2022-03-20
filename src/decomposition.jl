@@ -249,29 +249,33 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 end
 
 # ! find fixed variables and write to file
-function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},feasFix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},temp_dir::String,heu_m::anyModel)
+function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},feasFix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},temp_dir::String,heu_m::anyModel; skipMustSt::Bool =false)
 	rm(temp_dir; force = true, recursive = true)
 	mkdir(temp_dir) # create directory for fixing files
 	parFix_dic = defineParameter(heu_m.options,heu_m.report) # stores parameter info for fixing
+	
 	# loop over variables
-	for sys in (:tech,:exc), sSym in keys(fix_dic[sys]), varSym in keys(fix_dic[sys][sSym])
-		fix_df = feasFix_dic[sys][sSym][varSym] |> (w -> innerjoin(w,select(fix_dic[sys][sSym][varSym],Not([:value])), on = intersect(intCol(w,:dir),intCol(fix_dic[sys][sSym][varSym],:dir))))
-		# create file name
-		par_sym = Symbol(varSym,:Fix)
-		fileName_str = temp_dir * "/par_Fix" * string(makeUp(sys)) * "_" * string(sSym) * "_" * string(varSym)
-		# set really small values due to remaining solver imprecisions to zero
-		fix_df[!,:value] = map(x -> x < 1e-10 ? 0.0 : x,fix_df[!,:value])
-		if occursin("capa",string(varSym)) # adds residual capacities
-			resVal_df = copy(getfield(heu_m.parts,sys)[sSym].var[varSym])
-			resVal_df[!,:resi] = map(x -> x.constant, resVal_df[!,:var])
-			fix_df = innerjoin(fix_df,select(resVal_df,Not([:var])), on = intCol(fix_df,:dir))
-			fix_df[!,:value] = fix_df[!,:value] .+ fix_df[!,:resi]
-			select!(fix_df,Not([:resi]))	
-		end
+	for sys in (:tech,:exc), sSym in keys(fix_dic[sys])
+		hasMust_boo = sys == :tech ? "must" in heu_m.parts.tech[sSym].capaRestr[!,:cnstrType] : false
+		for varSym in filter(x -> !skipSt || !hasMust_boo || x in (:capaConv, :expConv), keys(fix_dic[sys][sSym]))
+			fix_df = feasFix_dic[sys][sSym][varSym] |> (w -> innerjoin(w,select(fix_dic[sys][sSym][varSym],Not([:value])), on = intersect(intCol(w,:dir),intCol(fix_dic[sys][sSym][varSym],:dir))))
+			# create file name
+			par_sym = Symbol(varSym,:Fix)
+			fileName_str = temp_dir * "/par_Fix" * string(makeUp(sys)) * "_" * string(sSym) * "_" * string(varSym)
+			# set really small values due to remaining solver imprecisions to zero
+			fix_df[!,:value] = map(x -> x < 1e-10 ? 0.0 : x,fix_df[!,:value])
+			if occursin("capa",string(varSym)) # adds residual capacities
+				resVal_df = copy(getfield(heu_m.parts,sys)[sSym].var[varSym])
+				resVal_df[!,:resi] = map(x -> x.constant, resVal_df[!,:var])
+				fix_df = innerjoin(fix_df,select(resVal_df,Not([:var])), on = intCol(fix_df,:dir))
+				fix_df[!,:value] = fix_df[!,:value] .+ fix_df[!,:resi]
+				select!(fix_df,Not([:resi]))	
+			end
 
-		if varSym == :expExc && heu_m.parts.exc[sSym].dir fix_df[!,:dir] .= true end
-		# writes parameter file
-		writeParameterFile!(heu_m,fix_df,par_sym,parFix_dic[par_sym],fileName_str)
+			if varSym == :expExc && heu_m.parts.exc[sSym].dir fix_df[!,:dir] .= true end
+			# writes parameter file
+			writeParameterFile!(heu_m,fix_df,par_sym,parFix_dic[par_sym],fileName_str)
+		end
 	end
 end
 
