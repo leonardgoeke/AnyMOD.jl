@@ -1162,7 +1162,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 
 			# use out instead of in for flh of conversion technologies, if technology has no conversion input
 			if isempty(rlvTop_arr) && par == :flhConv
-				rlvTop_arr = intersect(keys(part.carrier),(:stIntIn))
+				rlvTop_arr = intersect(keys(part.carrier),(:stIntIn,:gen))
 			elseif isempty(rlvTop_arr)
 				continue
 			end
