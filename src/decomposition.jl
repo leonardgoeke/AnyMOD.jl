@@ -21,9 +21,9 @@ mutable struct quadTrust
 	rad::Float64
 	cns::ConstraintRef
 	var::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}	
-	opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64,Float64}}	
+	opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:shrFac),Tuple{Float64,Float64,Float64,Float64}}	
 
-	function quadTrust(exp_df::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trust_opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:extThrs),Tuple{Float64,Float64,Float64,Float64}})
+	function quadTrust(exp_df::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trust_opt::NamedTuple{(:startRad,:lowRad,:shrThrs,:shrFac),Tuple{Float64,Float64,Float64,Float64}})
 		trustReg_obj = new()
 		trustReg_obj.opt = trust_opt
 		trustReg_obj.var = exp_df
@@ -38,10 +38,11 @@ end
 #region # * functions for heurstic
 
 # ! run heuristic and return exact capacities plus heuristic cut
-function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_obj::DataType,rtrnMod_boo::Bool=true)
+function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_obj::DataType,rtrnMod_boo::Bool=true,solDet_boo::Bool=false)
 
 	# create and solve model
-	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, redStep = redFac, checkRng = (print = true, all = false))
+	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, redStep = redFac, checkRng = (print = true, all = false), forceScr = solDet_boo ? Symbol() : nothing)
+	
 	prepareMod!(heu_m,opt_obj,t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
 	set_optimizer_attribute(heu_m.optModel, "Crossover", 0)
@@ -377,17 +378,14 @@ end
 # ! dynamically adjusts the trust region
 function adjustQuadTrust(top_m::anyModel,allVal_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},trustReg_obj::quadTrust,objSub_fl::Float64,objTopTrust_fl::Float64,lowLim_fl::Float64,lowLimTrust_fl::Float64,report_m::anyModel)
 	# re-create trust region
-	if (objTopTrust_fl + objSub_fl) < trustReg_obj.objVal # recenter trust region, if new best solution was obtained
+	if (objTopTrust_fl + objSub_fl) <= trustReg_obj.objVal # recenter trust region, if new best solution was obtained
 		trustReg_obj.var = filterQtrVar(allVal_dic,top_m)
 		trustReg_obj.cns  = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
 		trustReg_obj.objVal = objTopTrust_fl + objSub_fl
 		produceMessage(report_m.options,report_m.report, 1," - Re-centered trust-region!", testErr = false, printErr = false)
 	else
-		if abs(1 - lowLimTrust_fl / (objTopTrust_fl + objSub_fl)) < trustReg_obj.opt.extThrs # extend trust region, if constrained top problem converged
-			trustReg_obj.rad = trustReg_obj.rad * 1.5
-			produceMessage(report_m.options,report_m.report, 1," - Extended trust-region!", testErr = false, printErr = false)
-		elseif abs(1 - lowLim_fl / lowLimTrust_fl) < trustReg_obj.opt.shrThrs && trustReg_obj.rad > trustReg_obj.opt.lowRad # shrink trust region, if it does not constrain the top problem and the lower limit for its size is not yet reached
-			trustReg_obj.rad = trustReg_obj.rad * 0.5
+		if abs(1 - lowLim_fl / lowLimTrust_fl) < trustReg_obj.opt.shrThrs && trustReg_obj.rad > trustReg_obj.opt.lowRad # shrink trust region, if it does not constrain the top problem and the lower limit for its size is not yet reached
+			trustReg_obj.rad = trustReg_obj.rad * trustReg_obj.opt.shrFac
 			produceMessage(report_m.options,report_m.report, 1," - Shrunk trust-region!", testErr = false, printErr = false)	
 		end
 		trustReg_obj.cns  = centerQuadTrust(trustReg_obj.var,top_m,trustReg_obj.rad)
@@ -423,7 +421,7 @@ function centerQuadTrust(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 	allVar_df[!,:value] = map(x -> 2*x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
-	abs_fl = sum(allVar_df[!,:value])
+	abs_fl = sum(allVar_df[!,:value]) |> (x -> x < 0.01 * size(allVar_df,1) ? 10 * size(allVar_df,1) : x)
 	scaRng_tup = top_m.options.coefRng.rhs ./ abs((abs_fl * rad_fl)^2 - sum(allVar_df[!,:value].^2))
 
 	# set values of variable to zero or biggest value possible without scaling violating rhs range
@@ -457,6 +455,7 @@ function prepareMod!(mod_m::anyModel,opt_obj::DataType, t_int::Int)
 	# set optimizer and attributes
 	set_optimizer(mod_m.optModel,opt_obj)
 	set_optimizer_attribute(mod_m.optModel, "Threads", t_int)
+	set_optimizer_attribute(mod_m.optModel, "QCPDual", 1)	
 end
 
 # ! run sub-problem
@@ -726,7 +725,7 @@ function getResult(res_df::DataFrame)
 	end
 
 	# write value of variable dataframe
-	res_df[!,:value] = map(x -> value(x) - x.constant,res_df[!,:var])
+	res_df[!,:value] = map(x -> max(0,value(x) - x.constant),res_df[!,:var])
 
 	return select(res_df,Not([:var]))
 end
