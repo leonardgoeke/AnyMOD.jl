@@ -546,6 +546,20 @@ function createScenarioMapping!(anyM::anyModel)
 
 		tsToScr_dic = Dict(y => filter(x -> x.Ts_disSup == y,prop_df)[!,:scr] for y in collect(anyM.supTs.step))
 		tsScrToProp_dic = Dict((x.Ts_disSup,x.scr) => x.val for x in eachrow(prop_df))
+
+		# re-defines into a deterministic model for the most likely scenario or specified scenario
+		if !isnothing(anyM.options.forceScr)
+			# identify relevant scenario
+			if anyM.options.forceScr == Symbol()
+				avgPropScr_arr = collect(keys(tsScrToProp_dic)) |> (u -> map(z -> (z,maximum(map(y -> tsScrToProp_dic[y],filter(x -> x[2] == z, u)))),unique(getindex.(u,2))))
+				propScr_int = maximum(getindex.(avgPropScr_arr,2)) |> (u -> filter(x -> x[2] == u,avgPropScr_arr)[1][1])
+			else
+				propScr_int = sysInt(anyM.options.forceScr,anyM.sets[:scr])
+			end
+			# adjust elements to solve deterministic for one scenario
+			tsScrToProp_dic = Dict((x,propScr_int) => 1.0 for x in anyM.supTs.step)
+			tsToScr_dic = Dict(x => [propScr_int] for x in anyM.supTs.step)
+		end
 	else
 		tsToScr_dic = Dict(y => [0,] for y in collect(anyM.supTs.step))
 		tsScrToProp_dic = Dict((y,0) => 1.0 for y in collect(anyM.supTs.step))
