@@ -316,7 +316,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 					bal_sym = Symbol(row_df[bal_sym])
 				end
 			else
-				bal_sym = :ineq
+				bal_sym = :eq
 			end
 			# writes to object
 			if bal == :conv
