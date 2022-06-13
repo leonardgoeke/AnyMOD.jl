@@ -18,7 +18,7 @@ function readSets!(files_dic::Dict{String,Array{String,1}},anyM::anyModel)
 		if setShort_sym in keys(anyM.sets)
 			push!(anyM.report,(3,"set read-in",string(setLong_sym),"multiple input files provided for set"))
 		end
-		setData_dic[setShort_sym] = convertReadIn(CSV.read(setFile;delim = anyM.options.csvDelim[1]),setFile,set_arr,setLngShrt_dic,anyM.report,anyM.lock)
+		setData_dic[setShort_sym] = convertReadIn(CSV.read(setFile, DataFrame ;delim = anyM.options.csvDelim[1]),setFile,set_arr,setLngShrt_dic,anyM.report,anyM.lock)
 		anyM.sets[setShort_sym] = createTree(setData_dic[setShort_sym],setLong_sym,anyM.report)
 	    produceMessage(anyM.options,anyM.report, 3," - Read-in set file: ",setFile)
 	end
@@ -57,9 +57,9 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 	set_arr = append!(map(x ->  Symbol(x[findfirst("set_",x)[1]+4:end-4]),files_dic["set"]), [:mode, :id])
 	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :mode => :M, :id => :id)
 
-	# read-in parameter files and convert their content
-	@threads for parFile in files_dic["par"]
-		parData_df = convertReadIn(CSV.read(parFile;delim = anyM.options.csvDelim[1]),parFile,set_arr,setLngShrt_dic,anyM.report,anyM.lock,anyM.sets)
+	# read-in parameter files and convert their content @threads 
+	for parFile in files_dic["par"]
+		parData_df = convertReadIn(CSV.read(parFile, DataFrame;delim = anyM.options.csvDelim[1]),parFile,set_arr,setLngShrt_dic,anyM.report,anyM.lock,anyM.sets)
 		if isempty(parData_df) || any(getindex.(anyM.report,1) .== 3) continue end
 		para_obj =  writeParameter(parData_df, anyM.sets, setLngShrt_dic, parFile, anyM.report, anyM.lock)
 		lock(anyM.lock)
@@ -94,6 +94,8 @@ end
 # XXX filters missing and adjusts data according to "all" statements
 function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{Symbol},setLngShrt_dic::Dict{Symbol,Symbol},report::Array{Tuple,1},lock_::ReentrantLock,sets::Dict{Symbol,Tree} = Dict{Symbol,Tree}())
 
+	strTypes_arr = [String, String1, String3, String7, String15, String31, String63, String127, String255]
+
 	setNames_arr = filterSetColumns(readIn_df,set_arr)
     oprNames_arr = filterSetColumns(readIn_df,[:parameter,:variable,:value, :id])
 	readInColAll_tup = tuple(namesSym(readIn_df)...)
@@ -120,9 +122,10 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 			end
 			readIn_df[!,j] = col
 		elseif eltype(col) >: Missing
-			act_type = eltype(col) >: String ? String : Float64
+			str_type = typeintersect(eltype(col), Union{String, String1, String3, String7, String15, String31, String63, String127, String255})
+			act_type = any(eltype(col) .>: strTypes_arr) ? str_type : Float64
 			# convert remaining columns to strings and replace 'missing' with empty string
-			col[findall(ismissing.(col))] .= act_type == String ? "" : NaN
+			col[findall(ismissing.(col))] .= act_type == str_type ? "" : NaN
 			readIn_df[!,j] = convert(Array{act_type,1},col)
 		else
 			readIn_df[!,j] = col
@@ -130,14 +133,14 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 	end
 
 	# XXX check types of columns
-	if  !isempty(valCol_arr) && any(map(x -> eltype(readIn_df[!,x]),  findall(map(x -> x in valCol_arr, readInCol_arr))) .== String)
+	if  !isempty(valCol_arr) && any(map(x -> x in strTypes_arr, map(x -> eltype(readIn_df[!,x]),  findall(map(x -> x in valCol_arr, readInCol_arr)))))
 		lock(lock_)
 		push!(report,(3,"parameter read-in",fileName_str,"detected strings in value column, file was not read-in"))
 		unlock(lock_)
 		return DataFrame()
 	end
 
-	for supCol in findall(eltype.(eachcol(readIn_df)) .!= String)
+	for supCol in findall(.!map(x -> x in strTypes_arr, eltype.(eachcol(readIn_df))))
 		if !occursin("value",string(readInCol_arr[supCol]))
 			lock(lock_)
 			push!(report,(3,"parameter read-in",fileName_str,"entries in $(readInCol_arr[supCol]) could not be converted to strings (probably provided as floats), file was not read-in"))
@@ -156,13 +159,16 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
         if all(!,rowsAll_arr) continue end
 
         # determine relevant reference for "all", if parameter are read in
-        if  !isempty(sets) # take reference from readin sets
+        if !isempty(sets) # take reference from readin sets
             specSet_arr = split(String(col),"_")
             relSet_obj = sets[setLngShrt_dic[Symbol(specSet_arr[1])]]
             colValUni_arr = unique(map(x -> x.val,getNodesLvl(relSet_obj, parse(Int,specSet_arr[2]))))
         else # take reference from other column values, relevant when sets are currently read in
             colValUni_arr = sort(unique(filter(x -> !isempty(x),colVal_arr[(!).(rowsAll_arr)])))
         end
+
+		
+		readIn_df[!,col] = convert.(String,readIn_df[!,col])
 
         # loop over rows with all
         for row in eachrow(readIn_df[rowsAll_arr,:])
@@ -269,7 +275,7 @@ function createTree(readIn_df::DataFrame, setLoad_sym::Symbol, report::Array{Tup
 
 	# writes values of first column
 	firstCol_sym = Symbol(setLoad_str,"_1")
-	topNodes_arr =  filter(x -> !isempty(x),convert(Matrix,unique(readIn_df[!,namesSym(readIn_df) .== firstCol_sym])))
+	topNodes_arr =  filter(x -> !isempty(x),unique(readIn_df[!,namesSym(readIn_df) .== firstCol_sym])[!,end])
 
 	for (idx, node) in enumerate(sort(topNodes_arr))
 	    tree_obj.nodes[idx] = Node(idx,node,1,idx,Int[])
@@ -342,7 +348,7 @@ function createTreeLevel!(readIn_df::DataFrame, tree_obj::Tree, setLoad_str::Str
 end
 
 # XXX create specific node on branch
-function createNodes!(upToLow_dic::Dict{Int64,SubArray{String,1,Array{String,1},Tuple{Array{Int64,1}},false}},tree_obj::Tree,i::Int)
+function createNodes!(upToLow_dic::Dict,tree_obj::Tree,i::Int)
 	upToLowSort_dic = Dict(map(x -> x => upToLow_dic[x] ,sort(collect(keys(upToLow_dic)))))
 	up_arr =  sort(collect(keys(upToLowSort_dic)))
 	for upperNodeId in (i == 2 ? up_arr : sortSiblings(up_arr,tree_obj))

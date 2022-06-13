@@ -18,9 +18,8 @@ module AnyMOD
         ENV["PYTHON"] = envPy
     end
 
-    using Base.Threads, CSV, Dates, LinearAlgebra, Requires
+    using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DataFrames, JuMP
     using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays
-    @reexport using DataFrames, JuMP
 
     pyimport_conda("networkx","networkx")
     pyimport_conda("matplotlib.pyplot","matplotlib")

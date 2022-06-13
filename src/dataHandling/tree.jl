@@ -1,5 +1,5 @@
 # XXX finds provided string tuple in tree structure and returns node id (or false), tuple does not need to start at the top level of tree, in that case function can return an array instead of a number
-function lookupTupleTree(input_uni::Tuple{Vararg{String,N} where N},tree_obj::Tree, startLvl_int::Int= 1)
+function lookupTupleTree(input_uni::Tuple{Vararg{Union{InlineString,String},N} where N},tree_obj::Tree, startLvl_int::Int= 1)
 
 	if isempty(tree_obj.nodes) return false end
 

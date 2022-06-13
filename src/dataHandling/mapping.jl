@@ -378,5 +378,5 @@ function createCapaRestrMap!(tSym::Symbol,anyM::anyModel)
         end
     end
 
-    part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : categorical(rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR))
+    part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR)
 end
