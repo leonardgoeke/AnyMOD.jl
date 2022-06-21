@@ -256,7 +256,7 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
             end
         end
         # remove inital rows with all
-        delete!(readIn_df,findall(rowsAll_arr))
+        deleteat!(readIn_df,findall(rowsAll_arr))
     end
 
 	# ! convert column names if sets are defined for multiple instances (e.g. two regions in case of trade related parameters)

@@ -4,16 +4,16 @@ using Gurobi
 function printIIS(anyM::anyModel)
 
     # computes iis
-    MOI.compute_conflict!(anyM.optModel.moi_backend.optimizer.model)
+    compute_conflict!(anyM.optModel)
 
-    if anyM.optModel.moi_backend.optimizer.model.conflict != 0 return end
+    if MOI.get(anyM.optModel, MOI.ConflictStatus()) != MOI.ConflictStatusCode(3) return end
     # loops over constraint tables to find constraints within iis
     allCns_pair = vcat(collect.(vcat(anyM.parts.obj.cns, anyM.parts.bal.cns, anyM.parts.cost.cns, anyM.parts.lim.cns, map(x -> x.cns,values(anyM.parts.exc))...,map(x -> x.cns,values(anyM.parts.tech))...))...)
 
     for cns in allCns_pair
         if cns[1] == :objEqn continue end
 
-        allConstr_arr = findall(map(x -> MathOptInterface.ConflictParticipationStatusCode(0) != MOI.get(anyM.optModel.moi_backend, MOI.ConstraintConflictStatus(), x.index),cns[2][!,:cns]))
+        allConstr_arr = findall(map(x -> MOI.ConflictParticipationStatusCode(0) != MOI.get(anyM.optModel.moi_backend, MOI.ConstraintConflictStatus(), x.index),cns[2][!,:cns]))
         # prints constraints within iis
         if !isempty(allConstr_arr)
             println("$(length(allConstr_arr)) of IIS in $(cns[1]) constraints.")
