@@ -275,7 +275,7 @@ function createTree(readIn_df::DataFrame, setLoad_sym::Symbol, report::Array{Tup
 
 	# writes values of first column
 	firstCol_sym = Symbol(setLoad_str,"_1")
-	topNodes_arr =  filter(x -> !isempty(x),unique(readIn_df[!,namesSym(readIn_df) .== firstCol_sym])[!,end])
+	topNodes_arr =  filter(x -> !isempty(x),unique(hcat(map(x -> readIn_df[!,namesSym(readIn_df) .== firstCol_sym][!,x],1:sum(namesSym(readIn_df) .== firstCol_sym))...)))
 
 	for (idx, node) in enumerate(sort(topNodes_arr))
 	    tree_obj.nodes[idx] = Node(idx,node,1,idx,Int[])
