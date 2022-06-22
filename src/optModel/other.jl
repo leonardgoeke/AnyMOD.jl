@@ -107,7 +107,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},anyM::anyModel)
 		select!(cns_df,Not(:val))
 
 		# XXX get relevant variables
-		sort!(cns_df,sort(AnyMOD.intCol(cns_df)))
+		sort!(cns_df,sort(intCol(cns_df)))
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
 
 		# add tech variables
