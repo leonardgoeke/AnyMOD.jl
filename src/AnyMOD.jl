@@ -19,7 +19,8 @@ module AnyMOD
     end
 
     using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DataFrames, JuMP
-    using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays
+    using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays, CategoricalArrays
+    @reexport using JuMP
 
     pyimport_conda("networkx","networkx")
     pyimport_conda("matplotlib.pyplot","matplotlib")
