@@ -405,6 +405,7 @@ end
 function createConvBal(part::TechPart,anyM::anyModel)
 
 	cns_df = rename(part.par[:effConv].data,:val => :eff)
+	sort!(cns_df,sort(intCol(cns_df)))
 	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), intCol(cns_df))
 
 	# defines tuple specificing dimension of aggregation later
@@ -473,6 +474,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 
 		# get constraints relevant for carrier and find rows where mode is specified
 		cnsC_df = filter(x -> x.C == c,cns_df)
+		sort!(cnsC_df,sort(intCol(cnsC_df)))
 
 		m_arr = findall(0 .!= cnsC_df[!,:M])
 		noM_arr = setdiff(1:size(cnsC_df,1),m_arr)
@@ -595,10 +597,12 @@ function createRestr(part::TechPart, capaVar_df::DataFrame, restr::DataFrameRow,
 	# replaces expansion with dispatch regions and aggregates capacity variables accordingy if required
 	grpCapaVar_df = copy(select(capaVar_df,Not(:var))) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
 	resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = part.balLvl.exp[1], Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
+	sort!(grpCapaVar_df,sort(intCol(grpCapaVar_df)))
 	grpCapaVar_df[!,:var] = aggUniVar(rename(capaVar_df,:R_exp => :R_dis),grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 
 	# expand capacity to dimension of dispatch
 	capaDim_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(grpCapaVar_df[!,Not(:var)],namesSym(grpCapaVar_df[!,Not(:var)])))[!,Not(:lvlTs)]
+	sort!(capaDim_df,sort(intCol(capaDim_df)))
 	select!(grpCapaVar_df,Not(:lvlTs))
 
 	# obtain all relevant dispatch variables
@@ -645,6 +649,7 @@ function createRatioCns!(part::TechPart,cns_dic::Dict{Symbol,cnsCont},anyM::anyM
 
 		# obtain variable name and parameter data
 		cns_df = rename(copy(part.par[ratioName_sym].data),:val => :ratio)
+		sort!(cns_df,sort(intCol(cns_df)))
 
 		# joins parameter data with ratio controlled variable and all variables
 		agg_arr = filter(r -> r != :Te && (part.type == :emerging || r != :Ts_expSup), intCol(cns_df))

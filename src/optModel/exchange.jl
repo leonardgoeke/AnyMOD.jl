@@ -221,12 +221,14 @@ function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array
 	# extend constraint dataframe to dispatch levels
 	cns_df[!,:Ts_dis] .= map(x -> ts_dic[x,cRes_tup.Ts_dis],cns_df[!,:Ts_disSup])
 	cns_df = flatten(cns_df,:Ts_dis)
+	sort!(cns_df,sort(intCol(cns_df,:dir)))
 
 	# resize capacity variables
 	cns_df[!,:capa]  = cns_df[!,:capa] .* map(x -> anyM.supTs.sca[(x,cRes_tup.Ts_dis)], cns_df[!,:Ts_disSup])
 
 	# filter relevant dispatch variables
 	relDisp_df = filter(x -> x.C in leafes_arr, partExc.var[:exc])
+
 
 	# first aggregate symmetric and directed entries in one direction, then directed entries in the other direction
 	cns_df[!,:disp] = aggUniVar(relDisp_df,cns_df,[:Ts_dis,:R_from,:R_to],cRes_tup,anyM.sets)
@@ -242,8 +244,6 @@ function prepareRestrExc(cns_df::DataFrame,ts_dic::Dict{Tuple{Int64,Int64},Array
 	else
 		cns_df[!,:avaDir] .= nothing
 	end
-
-
 
 	# prepare, scale and create constraints
 	cns_df[!,:cnsExpr] = map(x -> x.disp  - x.capa * (isnothing(x.avaDir) ? x.avaSym : x.avaDir), eachrow(cns_df))

@@ -199,7 +199,6 @@ function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Sy
 
 	# only selects relevant columns
     aggEtr_df = select(aggEtr_df,vcat(:var,agg_arr...))
-	srcEtr_df = select(srcEtr_df,agg_arr)
 
 	# adjusts entries in aggregation dataframe to comply with resolution of search dataframe
 	for dim in intersect(keys(srcRes_tup),agg_arr)
@@ -209,8 +208,10 @@ function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Sy
 	end
 
 	aggEtrGrp_df = combine(groupby(aggEtr_df,agg_arr), :var => (x -> sum(x)) => :var)
-	var_arr = joinMissing(srcEtr_df,aggEtrGrp_df,agg_arr,:left,Dict(:var => AffExpr()))[!,:var]
-	return var_arr
+	joined_df = joinMissing(srcEtr_df,aggEtrGrp_df,agg_arr,:left,Dict(:var => AffExpr()))
+	sort!(joined_df,sort(intCol(joined_df)))
+	
+	return joined_df[!,:var]
 end
 
 # XXX aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if entries of search can have different resolutions (not all entries in a relevant column are on the same level)
