@@ -765,7 +765,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		data_df = vcat(values(allData_dic)...)
 
 		if unstck && !isempty(data_df)
-			data_df[!,:variable] = CategoricalArray(data_df[!,:variable])
+			data_df[!,:variable] = CategoricalArray(string.(data_df[!,:variable]))
 			data_df = unstack(data_df,:variable,:value)
 		end
 
@@ -787,7 +787,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		for signItr in signVar
 			data_df = allData_dic[signItr]
 			if unstck && !isempty(data_df)
-				data_df[!,:variable] = CategoricalArray(data_df[!,:variable])
+				data_df[!,:variable] = CategoricalArray(string.(data_df[!,:variable]))
 				data_df = unstack(data_df,:variable,:value)
 			end
 
