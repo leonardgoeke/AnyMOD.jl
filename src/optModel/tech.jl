@@ -505,6 +505,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 			# adds dispatch variable to constraint dataframe, mode dependant and non-mode dependant balances have to be aggregated separately
 			dispVar_df = vcat(typExpr_arr...)
 			cnsC_df[!,typ] .= AffExpr()
+			if isempty(dispVar_df) continue end
 			cnsC_df[m_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[m_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 1,), anyM.sets)
 			cnsC_df[noM_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[noM_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 0,), anyM.sets)
 		end
