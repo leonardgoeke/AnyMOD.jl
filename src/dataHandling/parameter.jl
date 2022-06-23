@@ -816,13 +816,22 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
         for parItr in keys(filter(x -> x[2] == preType,parPre_dic))
 
             parPef_ntup = parDef_dic[parItr]
-			newPar_obj = resetParameter(:M in namesSym(part.par[parItr].data) ? dispResoM_df : dispReso_df, part.par[parItr], part.name[end], anyM, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
+
+            modRel_boo = specMode_boo && :M in namesSym(part.par[parItr].data)
+
+            # drops mode related parameter data, that does not match the modes of the technology
+            if modRel_boo
+                filter!(x -> x.M in part.modes,part.par[parItr].data)
+                if isempty(part.par[parItr].data) select!(part.par[parItr].data, Not(:M)) end
+            end
+
+			newPar_obj = resetParameter(modRel_boo ? dispResoM_df : dispReso_df, part.par[parItr], part.name[end], anyM, length(part.modes), haskey(newHerit_dic,preType) ? newHerit_dic[preType] : tuple())
 
             # skips parameter if no values are remaining after resetting, in case of mode dependant parameter writes the dimensions that have to be made mode specific
             if isempty(newPar_obj.data)
                 delete!(part.par, parItr)
                 continue
-            elseif :M in namesSym(newPar_obj.data)
+            elseif modRel_boo
                 mode_df = unique(filter(x -> x.M != 0, newPar_obj.data)[!,Not([:val,:M])])
 
                 if !isempty(mode_df)
