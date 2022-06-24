@@ -657,6 +657,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
 	ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
 	relDim_df = filter(filterFunc,createPotDisp([c_int],ts_dic,anyM))
+	sort!(relDim_df,orderDim(intCol(relDim_df)))
 	relC_arr = unique([c_int,getDescendants(c_int,anyM.sets[:C])...])
 	cRes_tup = anyM.cInfo[c_int] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c_int].lvl))
 
