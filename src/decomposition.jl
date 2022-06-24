@@ -240,7 +240,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 	# change objective of top problem to minimize absolute values and missing capacities
 	@objective(top_m.optModel, Min, objExpr_df[1,:cnsExpr])
 	# solve problem
-	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.01)
+	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
 	
 	optimize!(top_m.optModel)
@@ -725,7 +725,7 @@ function getResult(res_df::DataFrame)
 	end
 
 	# write value of variable dataframe
-	res_df[!,:value] = map(x -> max(0,value(x) - x.constant),res_df[!,:var])
+	res_df[!,:value] = map(x -> round(max(0,value(x) - x.constant), digits = 12),res_df[!,:var])
 
 	return select(res_df,Not([:var]))
 end
