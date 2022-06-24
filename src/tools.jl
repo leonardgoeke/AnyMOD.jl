@@ -379,6 +379,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 
 	# XXX initialize relevant dimensions and carriers
 	relDim_df = filter(filterFunc,createPotDisp([c_int],anyM))
+	sort!(relDim_df,sort(intCol(relDim_df)))
 	relC_arr = unique([c_int,getDescendants(c_int,anyM.sets[:C])...])
 	cRes_tup = anyM.cInfo[c_int] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c_int].lvl))
 
