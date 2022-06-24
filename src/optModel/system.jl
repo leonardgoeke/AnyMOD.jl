@@ -969,18 +969,18 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	if type_sym != :exc
 		grpCapaVar_df = copy(select(capaVar_df,Not([:var]))) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
 		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
-		sort!(grpCapaVar_df,sort(intCol(grpCapaVar_df)))
+		sort!(grpCapaVar_df,orderDim(intCol(grpCapaVar_df)))
 		grpCapaVar_df[!,:var] = aggUniVar(rename(capaVar_df,:R_exp => :R_dis),grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 	else
 		grpCapaVar_df = rename(copy(select(capaVar_df,Not([:var]))),:R_from => :R_a,:R_to => :R_b) |> (y -> unique(combine(x -> (R_from = r_dic[(x.R_a[1],x.lvlR[1])],R_to = r_dic[(x.R_b[1],x.lvlR[1])]),groupby(y,namesSym(y)))[!,Not([:lvlR,:R_a,:R_b])]))
 		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_disSup = supTs_ntup.lvl, R_from = restr.lvlR, R_to = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
-		sort!(grpCapaVar_df,sort(intCol(grpCapaVar_df)))
+		sort!(grpCapaVar_df,orderDim(intCol(grpCapaVar_df)))
 		grpCapaVar_df[!,:var] = aggUniVar(capaVar_df,grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 	end
 
 	# expand capacity to dimension of dispatch
 	capaDim_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(grpCapaVar_df[!,Not(:var)],namesSym(grpCapaVar_df[!,Not(:var)])))[!,Not(:lvlTs)]
-	sort!(capaDim_df,sort(intCol(capaDim_df)))
+	sort!(capaDim_df,orderDim(intCol(capaDim_df)))
 	select!(grpCapaVar_df,Not(:lvlTs))
 
 	# obtain all relevant dispatch variables
@@ -1072,7 +1072,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 				for (idx,subCns) in enumerate(grpCns_gdf)
 
 					subCns_df = DataFrame(subCns)
-					sort!(subCns_df,sort(intCol(subCns_df)))
+					sort!(subCns_df,orderDim(intCol(subCns_df)))
 
 					# get columns being aggregated
 					agg_arr = filter(r -> r != (par != :ratioExc ? :Te : :Exc) && (part.type == :emerging || r != :Ts_expSup), intCol(subCns_df))

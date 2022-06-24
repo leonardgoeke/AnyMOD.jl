@@ -243,7 +243,7 @@ function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Sy
 
 	aggEtrGrp_df = combine(groupby(aggEtr_df,agg_arr), :var => (x -> sum(x)) => :var)
 	joined_df = joinMissing(srcEtr_df,aggEtrGrp_df,agg_arr,:left,Dict(:var => AffExpr()))
-	sort!(joined_df,sort(intCol(joined_df)))
+	sort!(joined_df,orderDim(intCol(joined_df)))
 	
 	return joined_df[!,:var]
 end

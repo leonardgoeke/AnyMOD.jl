@@ -239,7 +239,7 @@ end
 function createConvBal(part::TechPart,anyM::anyModel)
 
 	cns_df = rename(part.par[:effConv].data,:val => :eff)
-	sort!(cns_df,sort(intCol(cns_df)))
+	sort!(cns_df,orderDim(intCol(cns_df)))
 	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), intCol(cns_df))
 
 	# defines tuple specificing dimension of aggregation later
@@ -310,7 +310,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 
 		# get constraints relevant for carrier and find rows where mode is specified
 		cnsC_df = filter(x -> x.C == bal[1] && x.id == bal[2],cns_df)
-		sort!(cnsC_df,sort(intCol(cnsC_df)))
+		sort!(cnsC_df,orderDim(intCol(cnsC_df)))
 
 		m_arr = findall(0 .!= cnsC_df[!,:M])
 		noM_arr = setdiff(1:size(cnsC_df,1),m_arr)

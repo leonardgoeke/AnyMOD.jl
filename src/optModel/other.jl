@@ -104,7 +104,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		cns_df = rename(cns_df,:val => :dem)
 				
 		# ! get relevant variables
-		sort!(cns_df,sort(intCol(cns_df)))
+		sort!(cns_df,orderDim(intCol(cns_df)))
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
 
 		# add tech variables
@@ -239,7 +239,7 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 		else
 			grpVar_df = combine(groupby(allVar_df, [:Ts_dis, :R_dis, :scr]), :var => (x -> sum(x)) => :var)
 			joined_df = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis,:scr], :left, Dict(:var => AffExpr()))
-            sort!(joined_df,sort(intCol(joined_df)))
+            sort!(joined_df,orderDim(intCol(joined_df)))
             techVar_arr[idx] = joined_df[!,:var]
 		end
 	end

@@ -297,7 +297,7 @@ function createUseExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 	
 	# aggregate both variables to constraint entries
 	agg_arr = filter(x -> x != :Exc && (part.type == :emerging || x != :Ts_expSup), intCol(cns_df))
-	sort!(cns_df,sort(intCol(cns_df,:dir)))
+	sort!(cns_df,orderDim(intCol(cns_df,:dir)))
 	
 	cns_df[!,:use] = aggUniVar(useExc_df, select(cns_df,intCol(cns_df)), agg_arr, (Ts_expSup = anyM.supTs.lvl, Ts_dis = refTs_int, R_from = refR_int, R_to = refR_int), anyM.sets)
 	cns_df[!,:exc] = aggUniVar(part.var[:exc] , select(cns_df,intCol(cns_df)), filter(x -> x != :C, agg_arr), (Ts_expSup = anyM.supTs.lvl, Ts_dis = refTs_int, R_dis = refR_int), anyM.sets)
