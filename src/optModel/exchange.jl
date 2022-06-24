@@ -81,7 +81,7 @@ function prepareExc!(excSym_arr::Array{Symbol,1},prepAllExc_dic::Dict{Symbol,Dic
 			capaDispRestr_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
 			restrInfo_arr = mapCapaRestr(map(x -> (x, anyM.cInfo[x].tsDis, anyM.cInfo[x].rDis),collect(part.carrier)),:exc,anyM)
 			map(x -> push!(capaDispRestr_arr,("exc", restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])),1:length(restrInfo_arr))
-			part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : categorical(rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR))
+			part.capaRestr = isempty(capaDispRestr_arr) ? DataFrame() : rename(DataFrame(capaDispRestr_arr), :1 => :cnstrType, :2 => :car, :3 => :lvlTs, :4 => :lvlR)
 		
 			# if any capacity variables or residuals were prepared, add these to overall dictionary
 			if collect(values(prepExc_dic)) |> (z -> any(map(x -> any(.!isempty.(getfield.(z,x))), (:var,:resi))))
@@ -297,6 +297,8 @@ function createUseExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 	
 	# aggregate both variables to constraint entries
 	agg_arr = filter(x -> x != :Exc && (part.type == :emerging || x != :Ts_expSup), intCol(cns_df))
+	sort!(cns_df,sort(intCol(cns_df,:dir)))
+	
 	cns_df[!,:use] = aggUniVar(useExc_df, select(cns_df,intCol(cns_df)), agg_arr, (Ts_expSup = anyM.supTs.lvl, Ts_dis = refTs_int, R_from = refR_int, R_to = refR_int), anyM.sets)
 	cns_df[!,:exc] = aggUniVar(part.var[:exc] , select(cns_df,intCol(cns_df)), filter(x -> x != :C, agg_arr), (Ts_expSup = anyM.supTs.lvl, Ts_dis = refTs_int, R_dis = refR_int), anyM.sets)
 

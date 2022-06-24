@@ -29,7 +29,7 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
 			print_df[!,i] = string.(print_df[!,i])
 		elseif lookUp_sym == :dir
 			print_df[!,i] = map(x -> x == 1 ? "yes" : "no",print_df[!,i])
-        elseif lookUp_sym in keys(sets) && eltype(print_df[i]) <: Int
+        elseif lookUp_sym in keys(sets) && eltype(print_df[!,i]) <: Int
 			print_df[!,i] = map(x -> createFullString(x,sets[lookUp_sym]),print_df[!,i])
         end
     end

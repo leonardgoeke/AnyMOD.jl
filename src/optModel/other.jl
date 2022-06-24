@@ -93,7 +93,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	cns_arr = Array{Pair{Symbol,cnsCont}}(undef,length(relC_arr))
 	itrC_arr = collect(enumerate(relC_arr))
 
-	@threads for (idx,c) in itrC_arr
+	@threads for (idx,c) in itrC_arr 
 
 		subC_arr = unique([c,getDescendants(c,anyM.sets[:C],true)...])
 		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
@@ -104,6 +104,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		cns_df = rename(cns_df,:val => :dem)
 				
 		# ! get relevant variables
+		sort!(cns_df,sort(intCol(cns_df)))
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
 
 		# add tech variables
@@ -176,7 +177,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 
 		aggCol!(cns_df,posVar_arr)
 		aggCol!(cns_df,negVar_arr)
-		cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[posVar_arr[1]] .- cns_df[negVar_arr[1]])
+		cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,posVar_arr[1]] .- cns_df[!,negVar_arr[1]])
 		filter!(x -> x.cnsExpr != AffExpr(),cns_df)
 		
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
@@ -237,7 +238,9 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 			techVar_arr[idx]  = fill(AffExpr(),size(src_df,1))
 		else
 			grpVar_df = combine(groupby(allVar_df, [:Ts_dis, :R_dis, :scr]), :var => (x -> sum(x)) => :var)
-			techVar_arr[idx] = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis, :scr], :left, Dict(:var => AffExpr()))[!,:var]
+			joined_df = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis,:scr], :left, Dict(:var => AffExpr()))
+            sort!(joined_df,sort(intCol(joined_df)))
+            techVar_arr[idx] = joined_df[!,:var]
 		end
 	end
 
@@ -448,7 +451,7 @@ function createExpShareCns!(anyM::anyModel)
         cns_df[!,:denom] = aggDivVar(rename(select(allExp_df,Not([:Ts_disSup])), :Ts_expSup => :Ts_disSup), cns_df, (:Ts_disSup,:R_exp,:C), anyM.sets)
         cns_df[!,:num] = aggDivVar(rename(select(allExp_df,Not([:Ts_disSup])), :Ts_expSup => :Ts_disSup), cns_df, (:Ts_disSup,:R_exp,:C,:Te), anyM.sets)
 
-        cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[:denom] .* cns_df[:share] .- cns_df[:num])
+        cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[!,:denom] .* cns_df[!,:share] .- cns_df[!,:num])
 	
         anyM.parts.bal.cns[share_sym] = createCns(cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]),Dict(:Up => :greater, :Low => :smaller, :Fix => :equal)[lim]),anyM.optModel,anyM.options.holdFixed)
     end
@@ -468,7 +471,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 	cns_dic = Dict{Symbol,cnsCont}()
 	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal, :UpDir => :smaller, :LowDir => :greater, :FixDir => :equal)
 
-	@threads for va in allKeys_arr
+	@threads for va in allKeys_arr 
 
 		# obtain all variables relevant for limits
 		allVar_df = getAllVariables(va,anyM)

@@ -58,7 +58,7 @@ function produceMessageShort(mes_str::String,report_m::anyModel; testErr=false, 
 mergePrep(in_tup::NamedTuple) = isempty(in_tup.resi) ? in_tup.var : unique(vcat(in_tup.var,select(in_tup.resi,Not([:var]))))
 
 # ! aggregates all columns in array of dataframe to first column in array
-aggCol!(col_df::DataFrame,col_arr::Array{Symbol,1}) = foreach(x -> add_to_expression!.(col_df[col_arr[1]],col_df[x]),col_arr[2:end])
+aggCol!(col_df::DataFrame,col_arr::Array{Symbol,1}) = foreach(x -> add_to_expression!.(col_df[!,col_arr[1]],col_df[!,x]),col_arr[2:end])
 
 # ! removes column relating to system (technology or exchange)
 deSelectSys(in_df::DataFrame) = select(in_df,Not([:Te in namesSym(in_df) ? :Te : :Exc]))
@@ -72,7 +72,7 @@ plus(a::Int,b::Nothing) = a
 plus(a::Nothing,b::Int) = b
 
 # ! creates array of string from typical input of array
-makeC(in::String) = split(replace(in," " => ""),";")
+makeC(in::Union{String, String1, String3, String7, String15, String31, String63, String127, String255}) = split(replace(in," " => ""),";")
 
 # ! provides names of columns as array of symbols ('names' function itself was changed from strings to symbols)
 namesSym(df::DataFrame) = map(x -> Symbol(x),names(df))
@@ -242,8 +242,10 @@ function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Sy
 	end
 
 	aggEtrGrp_df = combine(groupby(aggEtr_df,agg_arr), :var => (x -> sum(x)) => :var)
-	var_arr = joinMissing(srcEtr_df,aggEtrGrp_df,agg_arr,:left,Dict(:var => AffExpr()))[!,:var]
-	return var_arr
+	joined_df = joinMissing(srcEtr_df,aggEtrGrp_df,agg_arr,:left,Dict(:var => AffExpr()))
+	sort!(joined_df,sort(intCol(joined_df)))
+	
+	return joined_df[!,:var]
 end
 
 # ! aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if entries of search can have different resolutions (not all entries in a relevant column are on the same level)

@@ -239,6 +239,7 @@ end
 function createConvBal(part::TechPart,anyM::anyModel)
 
 	cns_df = rename(part.par[:effConv].data,:val => :eff)
+	sort!(cns_df,sort(intCol(cns_df)))
 	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), intCol(cns_df))
 
 	# defines tuple specificing dimension of aggregation later
@@ -278,7 +279,7 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	aggCol!(cns_df,in_arr)
 	aggCol!(cns_df,out_arr)
 	
-	cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[in_arr[1]] .* cns_df[:eff] .- cns_df[out_arr[1]])
+	cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[!,in_arr[1]] .* cns_df[!,:eff] .- cns_df[!,out_arr[1]])
 	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]), part.balSign.conv == :eq ? :equal : :greater)
 end
 
@@ -309,6 +310,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 
 		# get constraints relevant for carrier and find rows where mode is specified
 		cnsC_df = filter(x -> x.C == bal[1] && x.id == bal[2],cns_df)
+		sort!(cnsC_df,sort(intCol(cnsC_df)))
 
 		m_arr = findall(0 .!= cnsC_df[!,:M])
 		noM_arr = setdiff(1:size(cnsC_df,1),m_arr)
@@ -374,7 +376,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 		end
 
 		# ! create final equation	
-		cnsC_df[!,:cnsExpr] = @expression(anyM.optModel, cnsC_df[:stLvlPrev] .* cnsC_df[:stDis] .+ cnsC_df[:stInflow] .+ cnsC_df[:in] .- cnsC_df[:out] .- cnsC_df[:stLvl])
+		cnsC_df[!,:cnsExpr] = @expression(anyM.optModel, cnsC_df[!,:stLvlPrev] .* cnsC_df[!,:stDis] .+ cnsC_df[!,:stInflow] .+ cnsC_df[!,:in] .- cnsC_df[!,:out] .- cnsC_df[!,:stLvl])
 		cCns_arr[idx] = cnsC_df
 	end
 
@@ -582,7 +584,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},cns_
 				
 				# match expansion variable for must-out with general expansion variables
 				bothVar_df = innerjoin(select(rename(expVar_df,:var => :exp),Not([:Ts_disSup])),select(part.var[Symbol("must",makeUp(exp_sym))],Not([:Ts_disSup])),on = intCol(expVar_df))
-				bothVar_df[!,:cnsExpr] = @expression(anyM.optModel, bothVar_df[:var] .- bothVar_df[:exp])
+				bothVar_df[!,:cnsExpr] = @expression(anyM.optModel, bothVar_df[!,:var] .- bothVar_df[!,:exp])
 				filter!(x -> !(isempty(x.cnsExpr.terms)), bothVar_df)
 				cns_dic[Symbol("must",makeUp(exp_sym))] = cnsCont(select(bothVar_df,Not([:var,:exp])),:smaller)
 		
@@ -600,7 +602,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},cns_
 				# create upper and lower limits on must-out capacity where there is residual capacity, otherwise just create on equality constraint
 				cnsEq_df, cnsNoEq_df = [filter(z,cns_df) for z in (x -> x.resi == 0.0, x -> x.resi != 0.0)]
 				if !isempty(cnsEq_df)
-					cnsEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsEq_df[:capa] .- cnsEq_df[:exp])	
+					cnsEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsEq_df[!,:capa] .- cnsEq_df[!,:exp])	
 					filter!(x -> !(isempty(x.cnsExpr.terms)), cnsEq_df)
 					cns_dic[Symbol("must",makeUp(capa[1]),"Eq")] = cnsCont(select(cnsEq_df,intCol(cnsEq_df,:cnsExpr)),:equal)
 				end

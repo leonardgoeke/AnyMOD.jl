@@ -1151,7 +1151,7 @@ function heritParameter_rest(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{I
         if heritAgg_sym in (:sum,:avg)
             # groups value and checks, if all possible childeren are covered if necessary 
             if heritFull_boo
-                paraDataGrp_df = combine(x -> (valAgg = (heritAgg_sym == :sum ? sum(x.val) : Statistics.mean(x.val)), full = [sort(x[heritSet_sym])] == [childPar_dic[x.pare[1]]],), groupby(paraDataSrc_df, vcat(noHeritSet_tup...,:pare)))
+                paraDataGrp_df = combine(x -> (valAgg = (heritAgg_sym == :sum ? sum(x[!,:val]) : Statistics.mean(x[!,:val])), full = [sort(x[!,heritSet_sym])] == [childPar_dic[x[1,:pare]]],), groupby(paraDataSrc_df, vcat(noHeritSet_tup...,:pare)))
                 filter!(x -> x.full, paraDataGrp_df)
             else
                 paraDataGrp_df = combine(groupby(paraDataSrc_df, vcat(noHeritSet_tup...,:pare)), :val => (x -> heritAgg_sym == :sum ? sum(x) : Statistics.mean(x)) => :valAgg)
@@ -1175,6 +1175,7 @@ function heritParameter_rest(herit_par::Pair{Symbol,Symbol},unmatch_arr::Array{I
         end
         # add parent column to new data and filters values to consider for further inheritance (= only children of unmatched values)
         paraDataSrc_df = filter(r -> getproperty(r,heritSet_sym) in childrenUnmatch_arr,newData_df)
+        if isempty(paraDataSrc_df) newVal_boo = false end
     end
 
     return newData_df

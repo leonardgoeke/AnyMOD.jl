@@ -674,7 +674,7 @@ function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep
 		if !exp_boo && !retro_boo continue end
 
 		# creates final constraint object
-		cns_df[!,:cnsExpr] = @expression(optModel,cns_df[:capa] .-  getfield.(cns_df[:capa],:constant) .+ (exp_boo ? .- cns_df[:exp] : 0.0) .+ (retro_boo ? .- cns_df[:retro_j] : 0.0))	
+		cns_df[!,:cnsExpr] = @expression(optModel,cns_df[!,:capa] .-  getfield.(cns_df[!,:capa],:constant) .+ (exp_boo ? .- cns_df[!,:exp] : 0.0) .+ (retro_boo ? .- cns_df[!,:retro_j] : 0.0))	
 		cns_dic[Symbol(capaVar)] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df,intCol(cns_df,:cnsExpr))),:equal)
 	end
 
@@ -704,7 +704,7 @@ function createCapaCns!(part::AbstractModelPart,sets_dic::Dict{Symbol,Tree},prep
 		end
 
 		# create constraint
-		cns_df[!,:cnsExpr] = @expression(optModel,cns_df[:capa] .-  getfield.(cns_df[:capa],:constant) .+ cns_df[:retro] .+ (Symbol(:exp,type_sym) in keys(part.var) ? .- cns_df[:exp]  : 0.0))
+		cns_df[!,:cnsExpr] = @expression(optModel,cns_df[!,:capa] .-  getfield.(cns_df[!,:capa],:constant) .+ cns_df[!,:retro] .+ (Symbol(:exp,type_sym) in keys(part.var) ? .- cns_df[!,:exp]  : 0.0))
 		if holdFixed filter!(x -> !isempty(x.cnsExpr.terms), cns_df) end # filter cases where no actual variables are compared since they were replaced with parameters
 		cns_dic[Symbol(capaVar,:_b)] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df,intCol(cns_df,:cnsExpr))),:equal)
 	end
@@ -778,7 +778,7 @@ function createOprVarCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},
 
 			# create actual constraint information
 			cns_df[!,:resiDelta] =  map(x -> (x.resiNow - x.resiPrev |> (l -> l > 0.0 ? l : 0.0)),eachrow(cns_df))
-			cns_df[!,:cnsExpr]  = @expression(anyM.optModel, -1 .* cns_df[:oprNow] .+ cns_df[:oprPrev] .+ cns_df[:expNow] .+ cns_df[:retroNow] .+ cns_df[:resiDelta])
+			cns_df[!,:cnsExpr]  = @expression(anyM.optModel, -1 .* cns_df[!,:oprNow] .+ cns_df[!,:oprPrev] .+ cns_df[!,:expNow] .+ cns_df[!,:retroNow] .+ cns_df[!,:resiDelta])
 
 			if isempty(cns_df) continue end
 
@@ -895,7 +895,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			# create actual constraint
 			outVar_arr = intersect(namesSym(mustOut_df),[:gen,:stExtOut])
 			aggCol!(mustOut_df,outVar_arr)
-			mustOut_df[!,:cnsExpr] = @expression(anyM.optModel,mustOut_df[:mustOut] .* mustOut_df[:capa] .- mustOut_df[outVar_arr[1]])
+			mustOut_df[!,:cnsExpr] = @expression(anyM.optModel,mustOut_df[!,:mustOut] .* mustOut_df[!,:capa] .- mustOut_df[!,outVar_arr[1]])
 			
 			allMustCns_arr[idx] = select(mustOut_df,[:Ts_expSup,:Ts_dis,:R_dis,:C,:Te,:scr,:cnsExpr])
 			idx = idx + 1
@@ -938,7 +938,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 		allCns_df = vcat(allCns_arr...)
 
 		# add all constraints to part
-		allCns_df[!,:cnsExpr] = @expression(anyM.optModel,allCns_df[:disp] .- allCns_df[:capa])
+		allCns_df[!,:cnsExpr] = @expression(anyM.optModel,allCns_df[!,:disp] .- allCns_df[!,:capa])
 		cns_dic[Symbol(type_sym,:Restr)] = cnsCont(orderDf(allCns_df[!,[intCol(allCns_df)...,:cnsExpr]]),:smaller)
 	end
 
@@ -969,15 +969,18 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	if type_sym != :exc
 		grpCapaVar_df = copy(select(capaVar_df,Not([:var]))) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
 		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
+		sort!(grpCapaVar_df,sort(intCol(grpCapaVar_df)))
 		grpCapaVar_df[!,:var] = aggUniVar(rename(capaVar_df,:R_exp => :R_dis),grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 	else
 		grpCapaVar_df = rename(copy(select(capaVar_df,Not([:var]))),:R_from => :R_a,:R_to => :R_b) |> (y -> unique(combine(x -> (R_from = r_dic[(x.R_a[1],x.lvlR[1])],R_to = r_dic[(x.R_b[1],x.lvlR[1])]),groupby(y,namesSym(y)))[!,Not([:lvlR,:R_a,:R_b])]))
 		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_disSup = supTs_ntup.lvl, R_from = restr.lvlR, R_to = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
+		sort!(grpCapaVar_df,sort(intCol(grpCapaVar_df)))
 		grpCapaVar_df[!,:var] = aggUniVar(capaVar_df,grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 	end
 
 	# expand capacity to dimension of dispatch
 	capaDim_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(grpCapaVar_df[!,Not(:var)],namesSym(grpCapaVar_df[!,Not(:var)])))[!,Not(:lvlTs)]
+	sort!(capaDim_df,sort(intCol(capaDim_df)))
 	select!(grpCapaVar_df,Not(:lvlTs))
 
 	# obtain all relevant dispatch variables
@@ -1069,6 +1072,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 				for (idx,subCns) in enumerate(grpCns_gdf)
 
 					subCns_df = DataFrame(subCns)
+					sort!(subCns_df,sort(intCol(subCns_df)))
 
 					# get columns being aggregated
 					agg_arr = filter(r -> r != (par != :ratioExc ? :Te : :Exc) && (part.type == :emerging || r != :Ts_expSup), intCol(subCns_df))
@@ -1101,7 +1105,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 					end
 
 					# create corresponding constraint
-					subCns_df[!,:cnsExpr] = @expression(anyM.optModel,subCns_df[:allVar] .* subCns_df[:ratio] .- subCns_df[:ratioVar])
+					subCns_df[!,:cnsExpr] = @expression(anyM.optModel,subCns_df[!,:allVar] .* subCns_df[!,:ratio] .- subCns_df[!,:ratioVar])
 					allCns_arr[idx] = subCns_df
 				end
 				cns_df = vcat(allCns_arr...)
