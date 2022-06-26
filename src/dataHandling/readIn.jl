@@ -276,9 +276,11 @@ function createTree(readIn_df::DataFrame, setLoad_sym::Symbol, report::Array{Tup
 	height_int = maximum((map(x -> parse(Int,x[end]), filter(x-> (tryparse(Int,string(x[end])) != nothing) && x[1:minimum([length(x),length(setLoad_str)])] .== setLoad_str,[String(namesSym(readIn_df)[i]) for i = 1:size(readIn_df,2)]))))
 
 	# checks if set definitions are unique or if one set is defined multiple times
-	relSet_df = select(readIn_df, map(x -> setLoad_str * "_" * string(x), 1:height_int))
-	if size(relSet_df,1) != size(unique(relSet_df),1)
-		push!(report,(2,"set read-in",setLoad_str,"non-unique set definition provided, only the first set will be considered"))
+	if setLoad_sym != :mode
+		relSet_df = select(readIn_df, map(x -> setLoad_str * "_" * string(x), 1:height_int))
+		if size(relSet_df,1) != size(unique(relSet_df),1)
+			push!(report,(2,"set read-in",setLoad_str,"non-unique set definition provided, only the first set will be considered"))
+		end
 	end
 
 	# create tree object and add the top node
