@@ -113,7 +113,6 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 	# XXX convert missing values and change array container type for editing later
 	for j in 1:size(readIn_df,2)
 		col = collect(readIn_df[!,j])
-
 		if eltype(col) >: Int
 			col = replace(string.(col),"missing" => "")
 			if readInCol_arr[j] in valCol_arr
@@ -124,9 +123,14 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 		elseif eltype(col) >: Missing
 			str_type = typeintersect(eltype(col), Union{String, String1, String3, String7, String15, String31, String63, String127, String255})
 			act_type = any(eltype(col) .>: strTypes_arr) ? str_type : Float64
+			# convert column at least to String3, because String1 cannot take empty string
+			if act_type == String1 
+				col = convert(Array{Union{Missing, String3},1},col)
+				readIn_df[!,j] = convert(Array{Union{Missing, String3},1},readIn_df[!,j])
+			end
 			# convert remaining columns to strings and replace 'missing' with empty string
 			col[findall(ismissing.(col))] .= act_type == str_type ? "" : NaN
-			readIn_df[!,j] = convert(Array{act_type,1},col)
+			readIn_df[!,j] = convert(Array{act_type == String1 ? String3 : act_type,1},col)
 		else
 			readIn_df[!,j] = col
 		end
