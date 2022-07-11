@@ -24,9 +24,9 @@ module AnyMOD
     using MathOptInterface, Reexport, Statistics, SparseArrays, CategoricalArrays
     @reexport using JuMP
 
-    pyimport_conda("networkx","networkx")
-    pyimport_conda("matplotlib.pyplot","matplotlib")
-    pyimport_conda("plotly","plotly")
+    #pyimport_conda("networkx","networkx")
+    #pyimport_conda("matplotlib.pyplot","matplotlib")
+    #pyimport_conda("plotly","plotly")
 
     include("objects.jl")
     include("tools.jl")

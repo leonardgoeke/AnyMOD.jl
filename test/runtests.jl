@@ -22,10 +22,10 @@ using AnyMOD, Cbc, Test
     reportTimeSeries(:electricity, anyM, rtnOpt = (:raw,:rawDf,:csv,:csvDf), mergeVar = false)
 
     # create plots
-    plotEnergyFlow(:sankey,anyM, rmvNode = ("electricity; export","import"))
-    plotTree(:region,anyM)
-    plotEnergyFlow(:graph,anyM)
-    moveNode!(anyM,("coal",[0.1,0.1]))
+    #plotEnergyFlow(:sankey,anyM, rmvNode = ("electricity; export","import"))
+    #plotTree(:region,anyM)
+    #plotEnergyFlow(:graph,anyM)
+    #moveNode!(anyM,("coal",[0.1,0.1]))
 
     @test length(anyM.report) == 33
     @test round(objective_value(anyM.optModel),digits = 1) == 137566.6
