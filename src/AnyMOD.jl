@@ -1,6 +1,7 @@
 module AnyMOD
 
     # XXX enforce use of Julia's own python distribution to avoid interference with local python installations
+    #=
     using Pkg
     # save current value of environment variable
     if "PYTHON" in keys(ENV)
@@ -17,9 +18,10 @@ module AnyMOD
     else
         ENV["PYTHON"] = envPy
     end
+    =#
 
     using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DataFrames, JuMP
-    using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays, CategoricalArrays
+    using MathOptInterface, Reexport, Statistics, SparseArrays, CategoricalArrays
     @reexport using JuMP
 
     pyimport_conda("networkx","networkx")
@@ -43,7 +45,7 @@ module AnyMOD
 
     export anyModel, initializeModel, createOptModel!, setObjective!
     export reportResults, reportTimeSeries, printObject, printDuals
-    export plotTree, plotEnergyFlow, moveNode!
+    #export plotTree, plotEnergyFlow, moveNode!
 
     # XXX define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
     function __init__()

@@ -554,7 +554,7 @@ function printDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x ->
 end
 
 # </editor-fold>
-
+#=
 # <editor-fold desc="plotting tools"
 
 # XXX plots tree graph for input set
@@ -566,6 +566,7 @@ plotTree(tree_sym::Symbol, model_object::anyModel)
 Plots the hierarchical tree of nodes for the set specified by `tree_sym`. See [Node trees](@ref).
 
 """
+
 function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Float64} = (8.0,4.5), fontSize::Int = 12, useColor::Bool = true, wide::Array{Float64,1} = fill(1.0,30))
 
     netw = pyimport("networkx")
@@ -1109,7 +1110,7 @@ function moveNode!(anyM::anyModel,newPos_arr::Union{Array{Tuple{String,Array{Flo
 end
 
 # </editor-fold>
-
+=#
 # XXX dummy function just do provide a docstring for printIIS (docstring in printIIS wont work, because read-in is conditional)
 """
 ```julia
