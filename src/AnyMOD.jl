@@ -1,6 +1,7 @@
 module AnyMOD
 
     # ! enforce use of Julia's own python distribution to avoid interference with local python installations
+    #=
     using Pkg
     # save current value of environment variable
     if "PYTHON" in keys(ENV)
@@ -17,14 +18,15 @@ module AnyMOD
     else
         ENV["PYTHON"] = envPy
     end
+    =#
 
     using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles, YAML, CategoricalArrays
-    using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays, Suppressor
+    using MathOptInterface, Reexport, Statistics, SparseArrays, Suppressor
     @reexport using DataFrames, JuMP, Dates, Suppressor
 
-    pyimport_conda("networkx","networkx")
-    pyimport_conda("matplotlib.pyplot","matplotlib")
-    pyimport_conda("plotly","plotly")
+    #pyimport_conda("networkx","networkx")
+    #pyimport_conda("matplotlib.pyplot","matplotlib")
+    #pyimport_conda("plotly","plotly")
 
     include("objects.jl")
     include("tools.jl")
@@ -46,7 +48,8 @@ module AnyMOD
 
     export anyModel, initializeModel, createOptModel!, setObjective!
     export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML
-    export plotTree, plotEnergyFlow, moveNode!, produceMessage, produceMessageShort
+    #export plotTree, plotEnergyFlow, moveNode!
+    export produceMessage, produceMessageShort
     export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
 
     export trustRegion, bendersData, quadTrust

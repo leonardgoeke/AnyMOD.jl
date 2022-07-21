@@ -849,7 +849,7 @@ function printDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x ->
 end
 
 #endregion
-
+#=
 #region # * plotting tools
 
 # ! plots tree graph for input set
@@ -1575,7 +1575,7 @@ function plotGraphYML(inFile::String; plotSize::Tuple{Number,Number} = (16.0,9.0
     plt.savefig(replace(inFile,".yml" => ".png"), dpi = 600)
     graph_obj = nothing
 end
-
+=#
 # ! dummy function just do provide a docstring for printIIS (docstring in printIIS wont work, because read-in is conditional)
 """
 ```julia
