@@ -349,7 +349,7 @@ function createCapaBal!(r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::any
 		cns_df[!,:cnsExpr] = map(x -> maxRng_fl < ((isempty(x.var.terms) ? 1.0 : maximum(abs.(collect(values(x.var.terms))))) / abs(x.val-x.var.constant)) ? (x.var - x.var.constant) : (x.var - x.val), eachrow(cns_df))
 
 		# preserve demand column in case of subproblem
-		if !isempty(anyM.subPro) && anyM.subPro != (0,0) rename!(cns_df,:val => :dem) end
+		if !isempty(anyM.subPro) && !(anyM.subPro in ((0,0),(-1,-1))) rename!(cns_df,:val => :dem) end
 		cns_df = orderDf(cns_df[!,[intCol(cns_df,[:dem,:actCapa])...,:cnsExpr]])
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
 		partBal.cns[:capaBal] = createCns(cnsCont(cns_df,:equal),anyM.optModel,anyM.options.holdFixed)

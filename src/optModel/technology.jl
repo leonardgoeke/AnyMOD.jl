@@ -16,7 +16,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		createExpCap!(part,prepTech_dic,anyM,ratioVar_dic)
 
 		# create expansion constraints
-		if isempty(anyM.subPro) || anyM.subPro == (0,0)
+		if isempty(anyM.subPro) || anyM.subPro in ((0,0),(-1,-1))
 			# connect capacity and expansion variables
 			createCapaCns!(part,anyM.sets,prepTech_dic,cns_dic,anyM.optModel,anyM.options.holdFixed)
 
@@ -126,7 +126,7 @@ function prepareTeExpansion!(prepTech_dic::Dict{Symbol,NamedTuple},tsYear_dic::D
 	allMap_df =  getindex.(expDim_arr,1) |> (x -> DataFrame(Ts_exp = getindex.(x,1), Ts_expSup = getindex.(x,2), R_exp = getindex.(expDim_arr,2), Te = fill(tInt,length(expDim_arr))))
 
 	stCar_arr = getCarrierFields(part.carrier,(:stExtIn,:stExtOut,:stIntIn,:stIntOut))
-	convCar_arr=  getCarrierFields(part.carrier,(:use,:gen))
+	convCar_arr = getCarrierFields(part.carrier,(:use,:gen))
 
 	
 	# loops over type of capacities to specify dimensions of capacity variables
@@ -559,7 +559,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},cns_
 
 		#region # * control must capacity 
 
-		if isempty(anyM.subPro) || anyM.subPro == (0,0)
+		if isempty(anyM.subPro) || anyM.subPro in ((0,0),(-1,-1))
 			decom_boo = part.decomm != :none
 			exp_sym = Symbol(replace(String(capa[1]),"capa" => "exp"))
 			

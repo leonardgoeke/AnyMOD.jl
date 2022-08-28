@@ -1120,7 +1120,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 		capaRatio_boo = par in (:stInToConv, :stOutToStIn, :sizeToStOut)
 
 		# controls variables ratio is applied
-		if capaRatio_boo && (part.type == :stock || (!isempty(anyM.subPro) && anyM.subPro != (0,0))) # removes expansion for stock technologies or for subproblem
+		if capaRatio_boo && (part.type == :stock || (!isempty(anyM.subPro) && !(anyM.subPro in ((0,0),(-1,-1))))) # removes expansion for stock technologies or for subproblem
 			limVa_arr = (ratioVar_dic[par][1],)
 		elseif capaRatio_boo && part.decomm == :none  # removes capacity in case without decomm
 			limVa_arr = (ratioVar_dic[par][2],)
@@ -1131,7 +1131,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 		# loops over variables limits are enforced on
 		for limVa in limVa_arr, lim in parToLim_dic[par]
 			# skip lower and upper bound on storage capacites for subproblems (already in top problem)
-			if lim in (:Low,:Up) && par in capaRatio_boo && (isempty(anyM.subPro) || anyM.subPro != (0,0)) continue end
+			if lim in (:Low,:Up) && par in capaRatio_boo && (isempty(anyM.subPro) || !(anyM.subPro in ((0,0),(-1,-1)))) continue end
 
 			# get variables for denominator
 			if limVa[1] in keys(part.var)

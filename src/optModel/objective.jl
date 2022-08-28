@@ -59,7 +59,7 @@ function createObjective!(obj_dic::Dict{Symbol,NamedTuple},anyM::anyModel,minimi
 	end
 
 	# ! add cut variable for benders
-	if anyM.subPro == (0,0)
+	if anyM.subPro in ((0,0),(-1,-1))
 		push!(partObj.var[:objVar],(name = :benders, var = anyM.options.scaFac.obj * JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)),"allCut")))
 		partObj.cns[:bendersCuts] = DataFrame(i=Int[], Ts_disSup = Int[], scr = Int[], limCoef = Bool[], actItr = Int[], cns = ConstraintRef[])
 	end

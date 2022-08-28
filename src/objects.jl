@@ -505,7 +505,7 @@ mutable struct anyModel <: AbstractModel
 	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, holdFixed = false, emissionLoss = true, forceScr = nothing,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e4), rhs = (1e-2,1e2)),
 																											scaFac = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
-																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true))
+																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true), subPro = tuple())
 		anyM = new()
 
 		#region # * initialize report and options
@@ -515,6 +515,7 @@ mutable struct anyModel <: AbstractModel
 
 		anyM.optModel = Model()
 		anyM.lock = ReentrantLock()
+		anyM.subPro = subPro
 
 		# ! sets whole options object from specified directories TODO arbeite mit kwargs später
 		outStamp_str = string(objName,"_",Dates.format(now(),"yyyymmddHHMM"))
