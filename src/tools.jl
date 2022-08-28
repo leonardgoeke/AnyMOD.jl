@@ -861,11 +861,7 @@ plotTree(tree_sym::Symbol, model_object::anyModel)
 Plots the hierarchical tree of nodes for the set specified by `tree_sym`. See [Node trees](@ref).
 
 """
-function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Float64} = (8.0,4.5), fontSize::Int = 12, useColor::Bool = true, wide::Array{Float64,1} = fill(1.0,30))
-
-    netw = pyimport("networkx")
-    plt = pyimport("matplotlib.pyplot")
-    PyCall.fixqtpath()
+function plotTree(tree_sym::Symbol, anyM::anyModel; fontSize::Int = 12, useColor::Bool = true, wide::Array{Float64,1} = fill(1.0,30))
 
     #region # * initialize variables
     treeName_dic = Dict(:region => :R,:timestep => :Ts,:carrier => :C,:technology => :Te)
@@ -923,7 +919,7 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
 	label_dic = Dict(x[1] => x[2] == "" ? "" : name_dic[x[2]] for x in enumerate(tree_df[!,:val]))
 
 	if useColor
-		col_arr = [col_dic[tree_sym]]
+		col_arr = fill(col_dic[tree_sym],nodes_int)
 	else
 		col_arr = getNodeColors(collect(1:nodes_int),label_dic,anyM)
 	end
@@ -931,43 +927,39 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
 	#endregion
 
     #region # * draw final tree
-    # draw single nodes
-    edges_arr = Array{Tuple{Int,Int},1}()
 
-    for rowTree in eachrow(tree_df)[1:end-1]
-      # 0 node in tree_df becomes last node in graph, because there is 0 node within the plots
-      if rowTree[:up] == 0 pare_int = nodes_int else pare_int = idxPos_dic[rowTree[:up]] end
-      push!(edges_arr, (idxPos_dic[rowTree[:idx]], pare_int))
+    # get coordinates for positions
+    edgeX_arr = Union{Nothing,Float64}[]
+    edgeY_arr = Union{Nothing,Float64}[]
+
+    for rowTree in eachrow(tree_df)
+        # 0 node in tree_df becomes last node in graph, because there is 0 node within the plots
+        if rowTree[:up] == 0 pare_int = nodes_int else pare_int = idxPos_dic[rowTree[:up]] end
+        #push!(edges_arr, (idxPos_dic[rowTree[:idx]], pare_int))
+        push!(edgeX_arr, pos_dic[idxPos_dic[rowTree[:idx]]][1])
+        push!(edgeY_arr, pos_dic[idxPos_dic[rowTree[:idx]]][2])
+        push!(edgeX_arr, pos_dic[pare_int][1])
+        push!(edgeY_arr, pos_dic[pare_int][2])
+        push!(edgeX_arr, nothing)
+        push!(edgeY_arr, nothing)
     end
+    
+    # get coordinates for nodes
+    posX_arr, posY_arr = [map(x -> x[2][y], collect(sort(pos_dic))) for y in [1,2]]
 
-    # draw graph object
-    plt.clf()
-    graph_obj = netw.Graph()
+    # create plot
+    label_arr = map(x -> label_dic[x], sort(collect(keys(pos_dic))))
+    colStr_arr = replace.("rgba" .* string.(col_arr)," " => "")
+    labelPos_arr = map(x -> isempty(x) ? "bottom center" : "top center", tree_df[!,:down])
 
-    netw.draw_networkx_nodes(graph_obj, pos_dic; nodelist = collect(1:nodes_int), node_color = col_arr)
-    netw.draw_networkx_edges(graph_obj, pos_dic; edgelist = edges_arr)
-    posLabOff_dic = netw.draw_networkx_labels(graph_obj, pos_dic, font_family = "arial", font_size = fontSize, labels = label_dic)
+    edgesTr_obj = scatter(mode="lines", x=edgeX_arr, y=edgeY_arr, line=attr(width=0.5,color="black"))
+    nodesTr_obj = scatter(x=posX_arr, y=posY_arr, text = label_arr, textfont_size = fontSize, textfont_color = "black", textfont_family = "Arial", textposition = labelPos_arr, mode="markers+text", hoverinfo = "text", marker=attr(size=24,color= colStr_arr))
+    layout_obj = Layout(hovermode="closest",titlefont_size=16,showlegend=false,showarrow=false,xaxis=attr(showgrid=false, zeroline=false, showticklabels=false),yaxis=attr(showgrid=false, zeroline=false, showticklabels=false),paper_bgcolor= "rgba(0,0,0,0)",plot_bgcolor= "rgba(0,0,0,0)")
 
-	figure = plt.gcf()
-	figure.set_size_inches(plotSize[1],plotSize[2])
-
-    r = figure.canvas.get_renderer()
-    trans = plt.gca().transData.inverted()
-    for x in collect(posLabOff_dic)
-        down_boo = isempty(tree_obj.nodes[posIdx_dic[x[1]]].down)
-        bb = x[2].get_window_extent(renderer=r)
-        bbdata = bb.transformed(trans)
-		# computes offset of label for leaves and non-leaves by first moving according to size auf letters itself (bbdata) and then by size of the node
-		# (node-size in pixel is devided by dpi and plot size to get relative offset)
-        offset_arr = [down_boo ? 0.0 : (bbdata.width/2.0 + (150/plotSize[1]/600)), down_boo ? (-bbdata.height/2.0 - 150/plotSize[2]/600) : 0.0]
-        x[2].set_position([x[2]."_x" + offset_arr[1],x[2]."_y" + offset_arr[2]])
-        x[2].set_clip_on(false)
-    end
-
-    # size plot and save
-    plt.axis("off")
-    plt.savefig("$(anyM.options.outDir)/$(tree_sym)_$(anyM.options.outStamp)", dpi = 600, bbox_inches="tight")
+    savefig(plot([edgesTr_obj, nodesTr_obj],layout_obj), "$(anyM.options.outDir)/$(tree_sym)_$(anyM.options.outStamp).html")
+    
     #endregion
+
 end
 
 """
@@ -981,7 +973,7 @@ Plots the energy flow in a model. Set `plotType` to `:graph` for a qualitative n
 plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
 
 # ! plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
-function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, wrtYML::Bool = false, wrtGEXF::Bool = false, relC::Tuple = ())
+function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, wrtYML::Bool = false, wrtGEXF::Bool = false, relC::Tuple = ())
 
     # ! import python function
     netw = pyimport("networkx")
@@ -1120,7 +1112,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 end
 
 # ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = true, netExc::Bool = true, name::String = "")
+function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = true, netExc::Bool = true, name::String = "")
 
     flowGrap_obj = anyM.graInfo.graph
 
@@ -1337,13 +1329,13 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	
 	#region # * create various dictionaries to define format and create plot
 	
-	data_obj = sankey(type = "sankey", orientation = "h", valueformat =".0f", hoverinfo = "skip")
-	menues_obj = attr(buttons = dropData_arr, direction = "down", pad_l = 10, pad_t = 10, font_size = 16, font_family = "Arial", showactive = true, x = 0.01, xanchor = "center", y = 1.1, yanchor = "middle")
-	layout_obj = Layout(;width = 125*plotSize[1], height = 125*plotSize[2], updatemenus = [menues_obj], font_size = 32, font_family = "Arial")
+	data_obj = sankey(type = "sankey", orientation = "h", valueformat =".0f", hoverinfo = "value", textfont_size = fontSize, textfont_color = "black")
+	menues_obj = attr(buttons = dropData_arr, direction = "down", pad_l = 10, pad_t = 10, font_size = 16, font_family = "Arial", textfont_color = "black", showactive = true, x = 0.01, xanchor = "center", y = 1.1, yanchor = "middle")
+	layout_obj = Layout(;updatemenus = [menues_obj], font_size = 32, font_family = "Arial")
 	
 	savefig(plot(data_obj, layout_obj), "$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown),"_"))$(name == "" ? "" : "_" * name)_$(anyM.options.outStamp).html")
-
     #endregion
+
 end
 
 # ! define postions of nodes in energy flow graph
