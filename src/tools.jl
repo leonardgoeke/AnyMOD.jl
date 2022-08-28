@@ -1121,7 +1121,7 @@ end
 
 # ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
 function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = true, netExc::Bool = true, name::String = "")
-    plt = pyimport("plotly")
+
     flowGrap_obj = anyM.graInfo.graph
 
     #region # * initialize data
@@ -1135,7 +1135,7 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
     dropDim_arr = collect(map(x -> drop_dic[x], dropDown))
 
     # get summarised data and filter dispatch variables
-    data_df = reportResults(:summary,anyM,rtnOpt = (:rawDf,))
+    data_df = select(reportResults(:summary,anyM,rtnOpt = (:rawDf,)),Not([:objName]))
 	filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
 
 	# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
@@ -1193,20 +1193,17 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
     teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> useTeColor && z in keys(col_dic) ? col_dic[z] : (useTeColor && names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sortTe_arr)
     othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(othNodeId_dic))))
     nodeColor_arr = vcat(map(x -> replace.(string.("rgb",string.(map(z -> z .* 255.0,x)))," " => ""),[cColor_arr, teColor_arr, othColor_arr])...)
+	dropData_arr = PlotlyBase.PlotlyAttribute{Dict{Symbol, Any}}[]
 
-    dropData_arr = Array{Dict{Symbol,Any},1}()
-
-    #endregion
-
-    # ! loop over potential buttons in dropdown menue
-    for drop in eachrow(unique(data_df[!,intersect(namesSym(data_df),dropDim_arr)]))
-
-	    #region # * filter data and create flow array
-
-	    dropData_df = copy(data_df)
-	    if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,anyM.sets[:R],true)...] end
-	    for d in dropDown
-	      filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
+	# ! loop over potential buttons in dropdown menue
+	for drop in eachrow(unique(data_df[!,intersect(namesSym(data_df),dropDim_arr)]))
+	
+		#region # * filter data and create flow array
+	
+		dropData_df = copy(data_df)
+		if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,anyM.sets[:R],true)...] end
+		for d in dropDown
+		  filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
 		end
 		
 		if netExc
@@ -1226,126 +1223,125 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 				dropData_df = vcat(filter(x -> !(x.variable in (:netImport,:netExport)),dropData_df),aggExc_df)
 			end
 		end
-	    flow_arr = Array{Tuple,1}()
-
-	    # write flows reported in data summary
-	    for x in eachrow(dropData_df)
-	      a = Array{Any,1}(undef,3)
-
-	      # technology related entries
-	      if x.variable in (:demand,:export,:trdSell,:crt,:netExport,:exchangeLoss)
-	        a[1] = flowGrap_obj.nodeC[x.C]
-	        a[2] = othNode_dic[(x.C,x.variable)]
-	      elseif x.variable in (:import,:trdBuy,:lss,:netImport)
-	        a[1] = othNode_dic[(x.C,x.variable)]
-	        a[2] = flowGrap_obj.nodeC[x.C]
-	      elseif x.variable in (:gen,:stOut)
-
-	    	  if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
-	    		  a[1] = flowGrap_obj.nodeTe[x.Te]
-	    	  else
-	    		  a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
-	    	  end
-
-	    	  a[2] = flowGrap_obj.nodeC[x.C]
-	      else
-	        a[1] = flowGrap_obj.nodeC[x.C]
-
-	    	if x.Te in keys(flowGrap_obj.nodeTe)
-	    		a[2] = flowGrap_obj.nodeTe[x.Te]
-	    	else
-	    		a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
-	    	end
-	      end
-
-	      a[3] = abs(x.value)
-
-	      push!(flow_arr,tuple(a...))
-	    end
-
-	    # create flows connecting different carriers
-	    idToC_dic = Dict(map(x -> x[2] => x[1], collect(flowGrap_obj.nodeC)))
-	    for x in filter(x -> anyM.sets[:C].up[x] != 0,intersect(union(getindex.(flow_arr,1),getindex.(flow_arr,2)),values(flowGrap_obj.nodeC)))
-	      a = Array{Any,1}(undef,3)
-	      a[1] = flowGrap_obj.nodeC[x]
-	      a[2] = flowGrap_obj.nodeC[anyM.sets[:C].up[x]]
-	      a[3] = (getindex.(filter(y -> y[2] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z))) - (getindex.(filter(y -> y[1] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z)))
-	      push!(flow_arr,tuple(a...))
-	    end
-
-	    # merges flows for different regions that connect the same nodes
-	    flow_arr = map(unique(map(x -> x[1:2],flow_arr))) do fl
-	      allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
-	      return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
+		flow_arr = Array{Tuple,1}()
+	
+		# write flows reported in data summary
+		for x in eachrow(dropData_df)
+		  a = Array{Any,1}(undef,3)
+	
+		  # technology related entries
+		  if x.variable in (:demand,:export,:trdSell,:crt,:netExport,:exchangeLoss)
+			a[1] = flowGrap_obj.nodeC[x.C]
+			a[2] = othNode_dic[(x.C,x.variable)]
+		  elseif x.variable in (:import,:trdBuy,:lss,:netImport)
+			a[1] = othNode_dic[(x.C,x.variable)]
+			a[2] = flowGrap_obj.nodeC[x.C]
+		  elseif x.variable in (:gen,:stOut)
+	
+			  if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
+				  a[1] = flowGrap_obj.nodeTe[x.Te]
+			  else
+				  a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+			  end
+	
+			  a[2] = flowGrap_obj.nodeC[x.C]
+		  else
+			a[1] = flowGrap_obj.nodeC[x.C]
+	
+			if x.Te in keys(flowGrap_obj.nodeTe)
+				a[2] = flowGrap_obj.nodeTe[x.Te]
+			else
+				a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+			end
+		  end
+	
+		  a[3] = abs(x.value)
+	
+		  push!(flow_arr,tuple(a...))
+		end
+	
+		# create flows connecting different carriers
+		idToC_dic = Dict(map(x -> x[2] => x[1], collect(flowGrap_obj.nodeC)))
+		for x in filter(x -> anyM.sets[:C].up[x] != 0,intersect(union(getindex.(flow_arr,1),getindex.(flow_arr,2)),values(flowGrap_obj.nodeC)))
+		  a = Array{Any,1}(undef,3)
+		  a[1] = flowGrap_obj.nodeC[x]
+		  a[2] = flowGrap_obj.nodeC[anyM.sets[:C].up[x]]
+		  a[3] = (getindex.(filter(y -> y[2] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z))) - (getindex.(filter(y -> y[1] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z)))
+		  push!(flow_arr,tuple(a...))
+		end
+	
+		# merges flows for different regions that connect the same nodes
+		flow_arr = map(unique(map(x -> x[1:2],flow_arr))) do fl
+		  allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
+		  return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
 		end
 		
-
-	    # removes nodes accoring function input provided
-	    for rmv in rmvNode
-	      # splits remove expression by semicolon and searches for first part
-	      rmvStr_arr = split(rmv,"; ")
-	      relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
-	      if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
-	      if isempty(relNodes_arr) continue end
-
-	      if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
-	        relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
-	        if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
-
-	        if isempty(relC_arr)
-	            produceMessage(anyM.options,anyM.report, 1," - Remove string contained a carrier not found in graph, check for typos: "*rmv)
-	            continue
-	        else
-	            c_int = relC_arr[1]
-	        end
-
-	        filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)),flow_arr)
-	      elseif length(rmvStr_arr) > 2
-	        error("one remove string contained more then one semicolon, this is not supported")
-	      else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
-	        out_tup = filter(x -> x[1] == relNodes_arr[1],flow_arr)
-	        in_tup = filter(x -> x[2] == relNodes_arr[1],flow_arr)
-
-	        if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
-	          filter!(x -> !(x in (out_tup[1],in_tup[1])),flow_arr)
-	          push!(flow_arr,(in_tup[1][1],out_tup[1][2],in_tup[1][3]))
-	        elseif length(out_tup) == 0 # only ingoing flows
-	          filter!(x -> !(x in in_tup),flow_arr)
-	        elseif length(in_tup) == 0 # only outgoing flows
-	          filter!(x -> !(x in out_tup),flow_arr)
-	        end
-	      end
-	    end
-
-	    #endregion
-
-	    #region # * create dictionaries for later plotting
-
-	    # collect data for drop in a dictionary
-
-	    linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
-	    	(z -> replace(string("rgba",string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...)))," " => "")), flow_arr)
-	    link_dic = Dict(:source => getindex.(flow_arr,1) .- 1, :target => getindex.(flow_arr,2) .- 1, :value => getindex.(flow_arr,3), :color => linkColor_arr)
-
-	    fullData_arr = [Dict(:link => link_dic, :node => Dict(:label => nodeLabel_arr, :color => nodeColor_arr))]
-
-	    # pushes dictionary to overall array
-	    label_str = string("<b>",join(map(y -> anyM.sets[Symbol(split(String(y),"_")[1])].nodes[drop[y]].val,intersect(namesSym(data_df),dropDim_arr)),", "),"</b>")
-	    push!(dropData_arr,Dict(:args => fullData_arr, :label => label_str, :method => "restyle"))
-
-	    #endregion
+	
+		# removes nodes accoring function input provided
+		for rmv in rmvNode
+		  # splits remove expression by semicolon and searches for first part
+		  rmvStr_arr = split(rmv,"; ")
+		  relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
+		  if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
+		  if isempty(relNodes_arr) continue end
+	
+		  if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
+			relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
+			if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
+	
+			if isempty(relC_arr)
+				produceMessage(anyM.options,anyM.report, 1," - Remove string contained a carrier not found in graph, check for typos: "*rmv)
+				continue
+			else
+				c_int = relC_arr[1]
+			end
+	
+			filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)),flow_arr)
+		  elseif length(rmvStr_arr) > 2
+			error("one remove string contained more then one semicolon, this is not supported")
+		  else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
+			out_tup = filter(x -> x[1] == relNodes_arr[1],flow_arr)
+			in_tup = filter(x -> x[2] == relNodes_arr[1],flow_arr)
+	
+			if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
+			  filter!(x -> !(x in (out_tup[1],in_tup[1])),flow_arr)
+			  push!(flow_arr,(in_tup[1][1],out_tup[1][2],in_tup[1][3]))
+			elseif length(out_tup) == 0 # only ingoing flows
+			  filter!(x -> !(x in in_tup),flow_arr)
+			elseif length(in_tup) == 0 # only outgoing flows
+			  filter!(x -> !(x in out_tup),flow_arr)
+			end
+		  end
+		end
+	
+		#endregion
+	
+		#region # * create dictionaries for later plotting
+	
+		# collect data for drop in a dictionary
+	
+		linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
+			(z -> replace(string("rgba",string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...)))," " => "")), flow_arr)
+		link_obj = attr(source = getindex.(flow_arr,1) .- 1, target = getindex.(flow_arr,2) .- 1, value = getindex.(flow_arr,3), color = linkColor_arr)
+	
+		fullData_arr = [attr(link = link_obj, node = attr(label = nodeLabel_arr, color = nodeColor_arr))]
+	
+		# pushes dictionary to overall array
+		label_str = string("<b>",join(map(y -> anyM.sets[Symbol(split(String(y),"_")[1])].nodes[drop[y]].val,intersect(namesSym(data_df),dropDim_arr)),", "),"</b>")
+		
+		push!(dropData_arr,attr(args = fullData_arr, label = label_str, method = "restyle"))
+	
+		#endregion
 	
 	end
-
-    #region # * create various dictionaries to define format and create plot
-
-    menues_dic =[Dict(:buttons => dropData_arr, :direction => "down", :pad => Dict(:l => 10, :t => 10), :font => Dict(:size => 16, :family => "Arial"), :showactive => true, :x => 0.01, :xanchor => "center", :y => 1.1, :yanchor => "middle")]
-    data_dic = Dict(:type => "sankey", :orientation => "h", :valueformat => ".0f", :textfont => Dict(:family => "Arial"), :node => Dict(:pad => 8, :thickness => 36, :line => Dict(:color => "white",:width => 0.01), :hoverinfo => "skip"))
-    layout_dic = Dict(:width => 125*plotSize[1], :height => 125*plotSize[2], :updatemenus => menues_dic, :font => Dict(:size => 32, :family => "Arial"))
-
-	fig = Dict(:data => [data_dic], :layout => layout_dic)
 	
-    plt.offline.plot(fig, filename="$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown),"_"))$(name == "" ? "" : "_" * name)_$(anyM.options.outStamp).html")
+	#region # * create various dictionaries to define format and create plot
+	
+	data_obj = sankey(type = "sankey", orientation = "h", valueformat =".0f", hoverinfo = "skip")
+	menues_obj = attr(buttons = dropData_arr, direction = "down", pad_l = 10, pad_t = 10, font_size = 16, font_family = "Arial", showactive = true, x = 0.01, xanchor = "center", y = 1.1, yanchor = "middle")
+	layout_obj = Layout(;width = 125*plotSize[1], height = 125*plotSize[2], updatemenus = [menues_obj], font_size = 32, font_family = "Arial")
+	
+	savefig(plot(data_obj, layout_obj), "$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown),"_"))$(name == "" ? "" : "_" * name)_$(anyM.options.outStamp).html")
 
     #endregion
 end
