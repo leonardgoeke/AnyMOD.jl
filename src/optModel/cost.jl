@@ -247,25 +247,26 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 		transferCostEle!(allVar_df, partCost,:costMissCapa,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costCapa,anyM.options.checkRng,anyM,0.0)
 	end
 
-	# infeasibility costs of emissions
-	if :emissionInf in keys(anyM.parts.lim.var)
-		# matches infeasibility variables with costs
-		allVar_df = matchSetParameter(anyM.parts.lim.var[:emissionInf],anyM.parts.lim.par[:emissionInf],anyM.sets, newCol = :cost)
-		# adds discount factor
-		allVar_df = (:R_dis in intCol(allVar_df) ? rename(allVar_df,:R_dis => :R_exp) : allVar_df) |> (z -> :Ts_dis in intCol(z) ? rename(z,:Ts_dis => :Ts_disSup) : z)
-		allVar_df = matchSetParameter(allVar_df,partCost.par[:disFac],anyM.sets,newCol = :disFac)
-		# cretae cost expression
-		allVar_df = combine(x -> (expr = sum(x.disFac .* x.var .* x.cost),) ,groupby(allVar_df, intersect([:Ts_disSup,:R_exp],intCol(allVar_df))))
-		transferCostEle!(allVar_df, partCost,:costEmInf,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM,0.0)
-	end
-
 	produceMessage(anyM.options,anyM.report, 2," - Created all variables and constraints for expansion related costs")
 
 	#endregion
 
 	#region # * dispatch related costs
 
-	if isempty(anyM.subPro) || anyM.subPro != (0,0)
+	if isempty(anyM.subPro) || anyM.subPro != 0.0 #!(anyM.subPro in ((0,0),(-1,-1)))
+		
+		# ! infeasibility costs of emissions
+		if :emissionInf in keys(anyM.parts.lim.var)
+			# matches infeasibility variables with costs
+			allVar_df = matchSetParameter(anyM.parts.lim.var[:emissionInf],anyM.parts.lim.par[:emissionInf],anyM.sets, newCol = :cost)
+			# adds discount factor
+			allVar_df = (:R_dis in intCol(allVar_df) ? rename(allVar_df,:R_dis => :R_exp) : allVar_df) |> (z -> :Ts_dis in intCol(z) ? rename(z,:Ts_dis => :Ts_disSup) : z)
+			allVar_df = matchSetParameter(allVar_df,partCost.par[:disFac],anyM.sets,newCol = :disFac)
+			# cretae cost expression
+			allVar_df = combine(x -> (expr = sum(x.disFac .* x.var .* x.cost),) ,groupby(allVar_df, intersect([:Ts_disSup,:R_exp],intCol(allVar_df))))
+			transferCostEle!(allVar_df, partCost,:costEmInf,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM,0.0)
+		end
+
 		# ! add elements for variable costs of systems
 		for va in (:use,:gen,:stIn,:stOut,:in,:out,:exc)
 
