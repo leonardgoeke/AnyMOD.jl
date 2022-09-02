@@ -36,7 +36,7 @@ function createOptModel!(anyM::anyModel)
 
 	foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),collect(keys(prepSys_dic[:Te]))))
 	foreach(x -> delete!(anyM.parts.exc, x),setdiff(collect(keys(anyM.parts.exc)),collect(keys(prepSys_dic[:Exc]))))
-
+	anyM.graInfo = graInfo(anyM) # re-create graph object, because objects might have been removed
 	#endregion
 
 	#region # * create technology related variables and constraints
@@ -118,7 +118,7 @@ function createOptModel!(anyM::anyModel)
 	
 	createLimitCns!(anyM.parts.lim,anyM)
 	createCost!(anyM.parts.cost,anyM)
-	
+
 	#endregion
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")

@@ -1000,9 +1000,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; fontSize::Int = 12, 
 
 	cEdge_arr = filter(x -> x[1] in graC_arr || x[2] in graC_arr,collect.(flowGrap_obj.edgeC))
 	teEdge_arr = filter(x -> x[1] in graTe_arr || x[2] in graTe_arr, flowGrap_obj.edgeTe)
-
 	edges_arr =  vcat(cEdge_arr,collect.(teEdge_arr))
-
 
 	#endregion
 
@@ -1043,8 +1041,8 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; fontSize::Int = 12, 
 	end
 
 	# separate into edges between technologies and carriers and between carriers, then get respective colors
-	edgeColC_arr = "rgb" .* string.(map(x -> anyM.graInfo.colors[idToName_dic[x[1]]] .* 255, flowGrap_obj.edgeC))
-	edgeColTe_arr = "rgb" .* string.(map(x -> (x[1] in ordC_arr ? anyM.graInfo.colors[idToName_dic[x[1]]] : anyM.graInfo.colors[idToName_dic[x[2]]]) .* 255, flowGrap_obj.edgeTe))
+	edgeColC_arr = "rgb" .* string.(map(x -> anyM.graInfo.colors[idToName_dic[x[1]]] .* 255, cEdge_arr))
+	edgeColTe_arr = "rgb" .* string.(map(x -> (x[1] in ordC_arr ? anyM.graInfo.colors[idToName_dic[x[1]]] : anyM.graInfo.colors[idToName_dic[x[2]]]) .* 255, teEdge_arr))
 
 	#endregion
 
@@ -1053,7 +1051,7 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; fontSize::Int = 12, 
 	edgeX_arr = Union{Nothing,Float64}[]
 	edgeY_arr = Union{Nothing,Float64}[]
 
-	for x in vcat(flowGrap_obj.edgeC,flowGrap_obj.edgeTe)
+	for x in vcat(cEdge_arr,teEdge_arr)
 		push!(edgeX_arr, flowGrap_obj.nodePos[x[1]][1])
 		push!(edgeY_arr, flowGrap_obj.nodePos[x[1]][2])
 		push!(edgeX_arr, flowGrap_obj.nodePos[x[2]][1])
