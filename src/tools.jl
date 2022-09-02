@@ -1461,11 +1461,11 @@ end
 # ! convert energy flow graph in yaml file to gexf
 """
 ```julia
-convertYAML2GEXF(yamlFile::String)
+convertYML2GEXF(yamlFile::String)
 ```
 
 """
-function convertYAML2GEXF(yamlFile::String)
+function convertYML2GEXF(yamlFile::String)
 
     # ! define default strings
     header_str = "<?xml version='1.0' encoding='utf-8'?>
