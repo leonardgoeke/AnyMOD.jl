@@ -162,4 +162,4 @@ function getUniName(nodeIdx_int::Int, tree_obj::Tree, wrtGap::Bool = false)
 	return tuple(vcat(nodeStr_arr...)...)
 end
 
-createFullString(nodeIdx_int::Int,tree_obj::Tree) = join(getUniName(nodeIdx_int,tree_obj)," < ")
+createFullString(nodeIdx_int::Int,tree_obj::Tree,wrtGap::Bool = false) = join(getUniName(nodeIdx_int,tree_obj,wrtGap)," < ")

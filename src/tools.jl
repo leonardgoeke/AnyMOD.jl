@@ -7,7 +7,7 @@ printObject(print_df::DataFrame, model_object::anyModel)
 
 Writes a DataFrame of parameters, constraints, or variables to a `.csv` file in readable format (strings instead of ids). See [Individual elements](@ref).
 """
-function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true)
+function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true, wrtGap::Bool = false)
 
 	sets = anyM.sets
 	options = anyM.options
@@ -30,7 +30,7 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
 		elseif lookUp_sym == :dir
 			print_df[!,i] = map(x -> x == 1 ? "yes" : "no",print_df[!,i])
         elseif lookUp_sym in keys(sets) && eltype(print_df[!,i]) <: Int
-			print_df[!,i] = map(x -> createFullString(x,sets[lookUp_sym]),print_df[!,i])
+			print_df[!,i] = map(x -> createFullString(x,sets[lookUp_sym],wrtGap),print_df[!,i])
         end
     end
 
@@ -1171,7 +1171,7 @@ Plots the Sankey diagram for energy flows in a model.
 
 """
 # ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotSankeyDiagram(anyM::anyModel; fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = true, netExc::Bool = true, name::String = "", ymlFilter::String = "")
+function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = true, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false)
 
     flowGrap_obj = anyM.graInfo.graph
 
@@ -1181,20 +1181,35 @@ function plotSankeyDiagram(anyM::anyModel; fontSize::Int = 12, minVal::Float64 =
     error("dropDown only accepts array :region and :timestep as content")
     end
 
-    # get mappings to create buttons of dropdown menue
-    drop_dic = Dict(:region => :R_dis, :timestep => :Ts_disSup, :scenario => :scr)
-    dropDim_arr = collect(map(x -> drop_dic[x], dropDown))
+	# get mappings to create buttons of dropdown menue
+	drop_dic = Dict(:region => :R_dis, :timestep => :Ts_disSup, :scenario => :scr)
+	dropDim_arr = collect(map(x -> drop_dic[x], dropDown))
 
-    # get summarised data and filter dispatch variables
-    data_df = select(reportResults(:summary,anyM,rtnOpt = (:rawDf,)),Not([:objName]))
-	filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
+	if isempty(dataIn)
+		# get summarised data and filter dispatch variables
+		data_df = select(reportResults(:summary,anyM,rtnOpt = (:rawDf,)),Not([:objName]))
+		filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
 
-	# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
-	c_dic, r_dic = [anyM.sets[x].nodes for x in [:C,:R]]
-	if :scr in namesSym(data_df)
-		data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.scr == x.scr && y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+		# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
+		c_dic, r_dic = [anyM.sets[x].nodes for x in [:C,:R]]
+		if :scr in namesSym(data_df)
+			data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.scr == x.scr && y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+		else
+			data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+		end
 	else
-		data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+		data_df = CSV.read(dataIn,DataFrame)
+		data_df[!,:timestep_superordinate_dispatch] = map(x -> lookupTupleTree(tuple(replace.(split(x,"<")," " => "")...),anyM.sets[:Ts])[end],data_df[!,:timestep_superordinate_dispatch])
+		data_df[!,:region_dispatch] = map(x -> lookupTupleTree(tuple(replace.(split(x,"<")," " => "")...),anyM.sets[:R])[end],data_df[!,:region_dispatch])
+		data_df[!,:technology] = map(x -> x == "none" ? 0 : lookupTupleTree(tuple(replace.(split(x,"<")," " => "")...),anyM.sets[:Te])[end],data_df[!,:technology])
+		data_df[!,:carrier] = map(x -> x == "none" ? 0 : lookupTupleTree(tuple(replace.(split(x,"<")," " => "")...),anyM.sets[:C])[end],data_df[!,:carrier])
+		data_df[!,:id] = map(x -> x == "none" ? 0 : lookupTupleTree(tuple(replace.(split(x,"<")," " => "")...),anyM.sets[:id])[end],data_df[!,:id])
+		data_df[!,:variable] = Symbol.(data_df[!,:variable]) 
+		rename!(data_df,[:timestep_superordinate_dispatch => :Ts_disSup,:region_dispatch => :R_dis,:technology => :Te,:carrier => :C])
+	end
+
+	if savaData 
+		printObject(data_df,anyM, wrtGap = true, fileName = "sankeyData$(name == "" ? "" : "_" * name)")
 	end
 	
 	# converts export and import quantities into net values
@@ -1219,7 +1234,8 @@ function plotSankeyDiagram(anyM::anyModel; fontSize::Int = 12, minVal::Float64 =
 	end	
     othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(oth_df))))
 	othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
-	 
+
+
 	#endregion
 
 	#region # * filter flows according to provided yaml file
