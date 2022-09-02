@@ -949,7 +949,7 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; fontSize::Int = 12, useColor
 
     # create plot
     label_arr = map(x -> label_dic[x], sort(collect(keys(pos_dic))))
-    colStr_arr = replace.("rgba" .* string.(col_arr)," " => "")
+    colStr_arr = "rgb" .* string.(map(x -> x .* 255,col_arr))
     labelPos_arr = map(x -> isempty(x) ? "bottom center" : "top center", tree_df[!,:down])
 
     edgesTr_obj = scatter(mode="lines", x=edgeX_arr, y=edgeY_arr, line=attr(width=0.5,color="black"))
@@ -973,17 +973,12 @@ Plots the energy flow in a model. Set `plotType` to `:graph` for a qualitative n
 plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
 
 # ! plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
-function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, wrtYML::Bool = false, wrtGEXF::Bool = false, relC::Tuple = ())
-
-    # ! import python function
-    netw = pyimport("networkx")
-    plt = pyimport("matplotlib.pyplot")
-    PyCall.fixqtpath()
+function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, wrtYML::Bool = false, relC::Tuple = ())
 
 	#region # * create graph and map edges
 	
 	# ! get relevant model and graph ids for carriers and technologies
-	
+
 	# graph and model ids of carriers
 	graC_arr = Array{Int,1}()
 	try
@@ -1001,21 +996,17 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; fontSize::Int = 12, 
 
 	# ! create relevant edges for carriers and technologies
 
-    graph_obj = netw.DiGraph()
-    flowGrap_obj = anyM.graInfo.graph
-	flowGrap_obj.plotSize = plotSize
+	flowGrap_obj = anyM.graInfo.graph
 
 	cEdge_arr = filter(x -> x[1] in graC_arr || x[2] in graC_arr,collect.(flowGrap_obj.edgeC))
 	teEdge_arr = filter(x -> x[1] in graTe_arr || x[2] in graTe_arr, flowGrap_obj.edgeTe)
 
-    edges_arr =  vcat(cEdge_arr,collect.(teEdge_arr))
-    for x in edges_arr
-        graph_obj.add_edge(x[1],x[2])
-    end
+	edges_arr =  vcat(cEdge_arr,collect.(teEdge_arr))
 
-    #endregion
 
-    #region # * obtain and order graph properties (colors, names, etc.)
+	#endregion
+
+	#region # * obtain and order graph properties (colors, names, etc.)
 
 	# get carriers that should be plotted, because they are connected with a technology
 	relNodeC1_arr = filter(x -> x[2] in vcat(getindex.(flowGrap_obj.edgeTe,1),getindex.(flowGrap_obj.edgeTe,2)), collect(flowGrap_obj.nodeC))
@@ -1023,15 +1014,15 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; fontSize::Int = 12, 
 	relNodeC2_arr = filter(x -> any(map(y -> x[2] in y && !isempty(intersect(getindex.(relNodeC1_arr,2),y)) , collect.(flowGrap_obj.edgeC))), collect(flowGrap_obj.nodeC))
 
 	# maps node id to node names
-    idToC_arr = map(x -> x[2] => anyM.sets[:C].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), intersect(flowGrap_obj.nodeC, union(relNodeC1_arr,relNodeC2_arr))))
-    idToTe_arr  = map(x -> x[2] => anyM.sets[:Te].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), collect(flowGrap_obj.nodeTe)))
-    idToName_dic = Dict(vcat(idToC_arr,idToTe_arr))
+	idToC_arr = map(x -> x[2] => anyM.sets[:C].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), intersect(flowGrap_obj.nodeC, union(relNodeC1_arr,relNodeC2_arr))))
+	idToTe_arr  = map(x -> x[2] => anyM.sets[:Te].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), collect(flowGrap_obj.nodeTe)))
+	idToName_dic = Dict(vcat(idToC_arr,idToTe_arr))
 
-    # obtain colors of nodes
-    ordC_arr = intersect(unique(vcat(edges_arr...)), getindex.(idToC_arr,1))
+	# obtain colors of nodes
+	ordC_arr = intersect(unique(vcat(edges_arr...)), getindex.(idToC_arr,1))
 	ordTe_arr = intersect(unique(vcat(edges_arr...)), getindex.(idToTe_arr,1))
-    nodeC_arr = getNodeColors(ordC_arr,idToName_dic,anyM)
-	nodeTe_arr = useTeColor ? getNodeColors(ordTe_arr,idToName_dic,anyM) : [(0.85,0.85,0.85)]
+	nodeC_arr = "rgb" .* string.(map(x -> x .* 255, getNodeColors(ordC_arr,idToName_dic,anyM)))
+	nodeTe_arr = "rgb" .* string.(useTeColor ? map(x -> x .* 255, getNodeColors(ordTe_arr,idToName_dic,anyM)) : fill((216.75,216.75,216.75),size(ordTe_arr,1)))
 
 	# obtain name of nodes
 	cLab_dic = Dict(y[1] => anyM.graInfo.names[y[2]] for y in filter(x -> x[1] in ordC_arr,idToName_dic))
@@ -1045,68 +1036,59 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; fontSize::Int = 12, 
 	foreach(x -> edges_mat[findall(id_arr .== x[1])[1],findall(id_arr .== x[2])[1]] = 1, filter(x -> x[1] in id_arr && x[2] in id_arr,edges_arr))
 	edges_smat = SparseArrays.sparse(edges_mat)
 
-    # compute position of nodes
-    if replot || !(isdefined(flowGrap_obj,:nodePos))
-        pos_dic = flowLayout(nodesCnt_int,edges_smat; scaDist = scaDist, maxIter = maxIter, initTemp = initTemp)
+	# compute position of nodes
+	if replot || !(isdefined(flowGrap_obj,:nodePos))
+		pos_dic = flowLayout(nodesCnt_int,edges_smat; scaDist = scaDist, maxIter = maxIter, initTemp = initTemp)
 		flowGrap_obj.nodePos = Dict(id_arr[x] => pos_dic[x] for x in keys(pos_dic))
-    end
+	end
 
-	# adjust positions for plot size
-	actNodePos_dic =  Dict(x[1] => [x[2][1]*plotSize[1]/plotSize[2],x[2][2]] for x in collect(flowGrap_obj.nodePos))
+	# separate into edges between technologies and carriers and between carriers, then get respective colors
+	edgeColC_arr = "rgb" .* string.(map(x -> anyM.graInfo.colors[idToName_dic[x[1]]] .* 255, flowGrap_obj.edgeC))
+	edgeColTe_arr = "rgb" .* string.(map(x -> (x[1] in ordC_arr ? anyM.graInfo.colors[idToName_dic[x[1]]] : anyM.graInfo.colors[idToName_dic[x[2]]]) .* 255, flowGrap_obj.edgeTe))
 
-    # separate into edges between technologies and carriers and between carriers, then get respective colors
-    cEdges_arr = filter(x -> x[1] in ordC_arr && x[2] in ordC_arr, collect(graph_obj.edges))
-    edgeColC_arr = map(x -> anyM.graInfo.colors[idToName_dic[x[1]]], cEdges_arr)
+	#endregion
 
-    teEdges_arr = filter(x -> x[1] in ordTe_arr || x[2] in ordTe_arr, collect(graph_obj.edges))
-    edgeColTe_arr = map(x -> x[1] in ordC_arr ? anyM.graInfo.colors[idToName_dic[x[1]]] : anyM.graInfo.colors[idToName_dic[x[2]]], teEdges_arr)
+	#region # * draw and save graph with python
 
-    #endregion
+	edgeX_arr = Union{Nothing,Float64}[]
+	edgeY_arr = Union{Nothing,Float64}[]
 
-    #region # * draw and save graph with python
+	for x in vcat(flowGrap_obj.edgeC,flowGrap_obj.edgeTe)
+		push!(edgeX_arr, flowGrap_obj.nodePos[x[1]][1])
+		push!(edgeY_arr, flowGrap_obj.nodePos[x[1]][2])
+		push!(edgeX_arr, flowGrap_obj.nodePos[x[2]][1])
+		push!(edgeY_arr, flowGrap_obj.nodePos[x[2]][2])
+		push!(edgeX_arr, nothing)
+		push!(edgeY_arr, nothing)
+	end
 
-    # plot final graph object
-    plt.clf()
+	# get coordinates for nodes
+	posX_arr, posY_arr = [map(x -> flowGrap_obj.nodePos[x][y], vcat(ordC_arr,ordTe_arr)) for y in [1,2]]
 
-    netw.draw_networkx_nodes(graph_obj, actNodePos_dic, nodelist = ordC_arr, node_shape="s", node_size = 300, node_color = nodeC_arr)
-    netw.draw_networkx_nodes(graph_obj, actNodePos_dic, nodelist = ordTe_arr, node_shape="o", node_size = 185,node_color = nodeTe_arr)
+	# create plot
+	label_arr = vcat(map(x -> cLab_dic[x], ordC_arr),map(x -> teLab_dic[x], ordTe_arr))
+	marker_arr = vcat(fill("square",size(ordC_arr,1)),fill("circle",size(ordTe_arr,1)))
 
-    netw.draw_networkx_edges(graph_obj, actNodePos_dic, edgelist = cEdges_arr, edge_color = edgeColC_arr, arrowsize  = 16.2, width = 1.62)
-    netw.draw_networkx_edges(graph_obj, actNodePos_dic, edgelist = teEdges_arr, edge_color = edgeColTe_arr)
+	nodesTr_obj = scatter(x=posX_arr, y=posY_arr, text = label_arr, marker_symbol = marker_arr ,textfont_size = fontSize, textfont_color = "black", textfont_family = "Arial", textposition = "top center", mode="markers+text", hoverinfo = "text", marker=attr(size=18,color = vcat(nodeC_arr,nodeTe_arr)))
+	layout_obj = Layout(hovermode="closest",titlefont_size=16,showlegend=false,showarrow=false,xaxis=attr(showgrid=false, zeroline=false, showticklabels=false),yaxis=attr(showgrid=false, zeroline=false, showticklabels=false),paper_bgcolor= "rgba(0,0,0,0)",plot_bgcolor= "rgba(0,0,0,0)")
 
-    posLabC_dic = netw.draw_networkx_labels(graph_obj, actNodePos_dic, font_size = fontSize, labels = cLab_dic, font_weight = "bold", font_family = "arial")
-    posLabTe_dic = netw.draw_networkx_labels(graph_obj, actNodePos_dic, font_size = fontSize, font_family = "arial", labels = teLab_dic)
+	graph_pl = plot(nodesTr_obj,layout_obj)
+	edgeCol_arr = vcat(edgeColC_arr,edgeColTe_arr)
 
-	# export graph as gexf file 
-	if wrtGEXF netw.write_gexf(graph_obj, "$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).gexf") end
+	for i in 1:length(edgeCol_arr)
+		add_trace!(graph_pl, scatter(mode="lines", x=edgeX_arr[1+(i-1)*3:3+(i-1)*3], y=edgeY_arr[1+(i-1)*3:3+(i-1)*3], line=attr(width=0.5,color = edgeCol_arr[i])))
+	end
 
-    # adjusts position of carrier labels so that they are right from node, uses code provided by ImportanceOfBeingErnest from here https://stackoverflow.com/questions/43894987/networkx-node-labels-relative-position
-	figure = plt.gcf()
-	figure.set_size_inches(plotSize[1],plotSize[2])
+	add_trace!(graph_pl,nodesTr_obj)
 
-    r = figure.canvas.get_renderer()
-    trans = plt.gca().transData.inverted()
-    for x in vcat(collect(posLabC_dic),collect(posLabTe_dic))
-		cNode_boo = x[1] in ordC_arr
-        bb = x[2].get_window_extent(renderer=r)
-        bbdata = bb.transformed(trans)
-		# computes offset of label for leaves and non-leaves by first moving according to size auf letters itself (bbdata) and then by size of the node
-		# (node-size in pixel is devided by dpi and plot size to get relative offset)
-		offset_arr = [cNode_boo ? (bbdata.width/2.0 + (500/plotSize[1]/600)) : 0.0, cNode_boo ? 0.0 : (bbdata.height/2.0 + 200/plotSize[2]/600)]
-		x[2].set_position([x[2]."_x" + offset_arr[1],x[2]."_y" + offset_arr[2]])
-        x[2].set_clip_on(false)
-    end
-
-    # size plot and save
-	plt.axis("off")
-    plt.savefig("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp)", dpi = 600)
+	savefig(graph_pl, "$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).html")
 
 	# write plot information to yaml file as well
 	if wrtYML
 		adjPos_dic = Dict(x[1] => (x[2] .+ 1) ./ 2 for x in collect(flowGrap_obj.nodePos))
-		techNode_arr = [Dict("label" => teLab_dic[n], "name" => string(n), "color" => collect(nodeTe_arr[length(nodeTe_arr) == 1 ? 1 : id]), "position" => adjPos_dic[n], "type" => "technology") for (id,n) in enumerate(ordTe_arr)]
-		carNode_arr = [Dict("label" => cLab_dic[n], "name" => string(n), "color" => collect(nodeC_arr[id]), "position" => adjPos_dic[n], "type" => "carrier") for (id,n) in enumerate(ordC_arr)]
-		YAML.write_file("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).yml", Dict("vertices" => vcat(techNode_arr,carNode_arr), "edges" => [string(e[1]) => string(e[2]) for e in vcat(cEdges_arr,teEdges_arr)]))
+		techNode_arr = [Dict("label" => teLab_dic[n], "name" => string(n), "color" => convertCol(nodeTe_arr[length(nodeTe_arr) == 1 ? 1 : id]), "position" => adjPos_dic[n], "type" => "technology") for (id,n) in enumerate(ordTe_arr)]
+		carNode_arr = [Dict("label" => cLab_dic[n], "name" => string(n), "color" => convertCol(nodeC_arr[id]), "position" => adjPos_dic[n], "type" => "carrier") for (id,n) in enumerate(ordC_arr)]
+		YAML.write_file("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).yml", Dict("vertices" => vcat(techNode_arr,carNode_arr), "edges" => [string(e[1]) => string(e[2]) for e in vcat(flowGrap_obj.edgeC,flowGrap_obj.edgeTe)]))
 	end
     #endregion
 end
@@ -1478,6 +1460,47 @@ end
 
 #endregion
 
+# ! convert energy flow graph in yaml file to gexf
+"""
+```julia
+convertYAML2GEXF(yamlFile::String)
+```
+
+"""
+function convertYAML2GEXF(yamlFile::String)
+
+    # ! define default strings
+    header_str = "<?xml version='1.0' encoding='utf-8'?>
+    <gexf version=\"1.2\" xmlns=\"http://www.gexf.net/1.2draft\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.gexf.net/1.2draft http://www.gexf.net/1.2draft/gexf.xsd\">
+    <meta lastmodifieddate=\"2022-01-18\">
+        <creator>NetworkX 2.4</creator>
+        </meta>
+        <graph defaultedgetype=\"directed\" mode=\"static\" name=\"\">
+        <nodes>
+    "
+
+    mid_str = "</nodes>
+    <edges>
+    "
+
+    bot_str = "</edges>
+    </graph>
+    </gexf>
+    "
+
+    # ! write info on nodes and vertices
+
+    graph_dic = YAML.load_file(yamlFile)
+
+    node_arr = map(x -> "<node id=\"" * x["name"] *  "\" label=\"" * x["label"] * "\" /> \n",collect(values(graph_dic["vertices"])))
+    edge_arr = map(x -> "<edge id=\"" * string(x[1]) * "\" source=\"" * string(collect(keys(x[2]))[1]) * "\" target=\"" * collect(values(x[2]))[1] * "\" /> \n",enumerate(collect(values(graph_dic["edges"]))))
+
+    text_str =header_str * string(node_arr...) * mid_str * string(edge_arr...) * bot_str
+
+    write(replace(yamlFile,"yml" => "gexf"), text_str)
+
+end
+
 # ! plot energy flow graph from yaml file
 """
 ```julia
@@ -1485,83 +1508,77 @@ plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0), fontSiz
 ```
 
 """
-function plotGraphYML(inFile::String; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, wrtGEXF::Bool = false)
-
-    # ! import python function
-    netw = pyimport("networkx")
-    plt = pyimport("matplotlib.pyplot")
-    PyCall.fixqtpath()
+function plotGraphYML(inFile::String; fontSize::Int = 12)
 
     # ! extract node data from yaml file and convert
     graph_dic = YAML.load_file(inFile)
 
-    cData_arr, techData_arr = [filter(x -> x["type"] == z,graph_dic["vertices"]) for z in ["carrier","technology"]]
-    nodeC_arr, nodeTe_arr = [map(x -> tuple(x["color"]...),z) for z in [cData_arr,techData_arr]]
+    cData_arr, teData_arr = [filter(x -> x["type"] == z,graph_dic["vertices"]) for z in ["carrier","technology"]]
+
 
     cNum_int = length(cData_arr)
-    nodePos_dic = vcat(cData_arr,techData_arr) |> (w -> Dict(x => w[x]["position"] |> (u -> [(u[1]*2-1)*plotSize[1]/plotSize[2],u[2]+2-1]) for x in 1:length(w))) # assign positions to nodes
+    nodePos_dic = vcat(cData_arr,teData_arr) |> (w -> Dict(x => w[x]["position"] |> (u -> [(u[1]*2-1),u[2]+2-1]) for x in 1:length(w))) # assign positions to nodes
 
     # assign names to nodes
     nameC_dic = Dict(y => cData_arr[y]["name"] for y in 1:length(cData_arr))
-    nameTe_dic = Dict(cNum_int+y => techData_arr[y]["name"] for y in 1:length(techData_arr))
+    nameTe_dic = Dict(cNum_int+y => teData_arr[y]["name"] for y in 1:length(teData_arr))
     revName_dic = merge(Dict(v => k for (k, v) in nameC_dic),Dict(v => k for (k, v) in nameTe_dic))
+
+    # assign colors to nodes
+    colorC_dic = Dict(y => "rgb" .* string(tuple(cData_arr[y]["color"]...) .* 255) for y in 1:length(cData_arr))
+    colorTe_dic = Dict(cNum_int+y => "rgb" .* string(tuple(teData_arr[y]["color"]...) .* 255) for y in 1:length(teData_arr))
 
     # assign labels to nodes
     labC_dic = Dict(y => cData_arr[y]["label"] for y in 1:length(cData_arr))
-    labTe_dic = Dict(cNum_int+y => techData_arr[y]["label"] for y in 1:length(techData_arr))
-
-    # assign colors to nodes
-    colC_dic = Dict(y => cData_arr[y]["color"] for y in 1:length(cData_arr))
+    labTe_dic = Dict(cNum_int+y => teData_arr[y]["label"] for y in 1:length(teData_arr))
 
     # prepare edges
     allEdges_arr = map(x -> revName_dic[string(x[1])] => revName_dic[x[2]], getindex.(collect.(graph_dic["edges"]),1))
-    ordC_arr = collect(keys(nameC_dic)) 
+    ordC_arr = collect(keys(labC_dic)) 
+    ordTe_arr = collect(keys(labTe_dic)) 
 
     # separate into edges between technologies and carriers and between carriers, then get respective colors
     cEdges_arr = filter(x -> x[1] in ordC_arr && x[2] in ordC_arr, allEdges_arr)
-    edgeColC_arr = map(x -> colC_dic[x[1]], cEdges_arr)
+    edgeColC_arr = map(x -> colorC_dic[x[1]], cEdges_arr)
 
     teEdges_arr = collect(keys(labTe_dic)) |> (w -> filter(x -> x[1] in w || x[2] in w, allEdges_arr))
-    edgeColTe_arr = map(x -> x[1] in ordC_arr ? colC_dic[x[1]] : colC_dic[x[2]], teEdges_arr)
+    edgeColTe_arr = map(x -> x[1] in ordC_arr ? colorC_dic[x[1]] : colorC_dic[x[2]], teEdges_arr)
 
-	# ! create actual graph
+    # ! create actual graph
     # create graph and draw nodes and edges
-    graph_obj = netw.DiGraph()
-    plt.clf()
+    edgeX_arr = Union{Nothing,Float64}[]
+    edgeY_arr = Union{Nothing,Float64}[]
 
-    netw.draw_networkx_nodes(graph_obj, nodePos_dic, nodelist = collect(1:length(cData_arr)), node_shape="s", node_size = 300, node_color = nodeC_arr)
-    netw.draw_networkx_nodes(graph_obj, nodePos_dic, nodelist = collect((1+cNum_int):(cNum_int+length(techData_arr))), node_shape="o", node_size = 185,node_color = nodeTe_arr)
-
-    netw.draw_networkx_edges(graph_obj, nodePos_dic, edgelist = cEdges_arr, edge_color = edgeColC_arr, arrowsize  = 16.2, width = 1.62)
-    netw.draw_networkx_edges(graph_obj, nodePos_dic, edgelist = teEdges_arr, edge_color = edgeColTe_arr)
-
-    # add labels and adjust their position
-    posLabC_dic = netw.draw_networkx_labels(graph_obj, nodePos_dic, font_size = fontSize, labels = labC_dic, font_weight = "bold", font_family = "arial")
-    posLabTe_dic = netw.draw_networkx_labels(graph_obj, nodePos_dic, font_size = fontSize, font_family = "arial", labels = labTe_dic)
-
-    # adjusts position of carrier labels so that they are right from node, uses code provided by ImportanceOfBeingErnest from here https://stackoverflow.com/questions/43894987/networkx-node-labels-relative-position
-    figure = plt.gcf()
-    figure.set_size_inches(plotSize[1],plotSize[2])
-
-    r = figure.canvas.get_renderer()
-    trans = plt.gca().transData.inverted()
-    for x in vcat(collect(posLabC_dic),collect(posLabTe_dic))
-        cNode_boo = x[1] in ordC_arr
-        bb = x[2].get_window_extent(renderer=r)
-        bbdata = bb.transformed(trans)
-        # computes offset of label for leaves and non-leaves by first moving according to size auf letters itself (bbdata) and then by size of the nodeteEdges_arr
-
-        # (node-size in pixel is devided by dpi and plot size to get relative offset)
-        offset_arr = [cNode_boo ? (bbdata.width/2.0 + (500/plotSize[1]/600)) : 0.0, cNode_boo ? 0.0 : (165/plotSize[2]/600)]
-        x[2].set_position([x[2]."_x" + offset_arr[1],x[2]."_y" + offset_arr[2]])
-        x[2].set_clip_on(false)
+    for x in vcat(cEdges_arr,teEdges_arr)
+        push!(edgeX_arr, nodePos_dic[x[1]][1])
+        push!(edgeY_arr, nodePos_dic[x[1]][2])
+        push!(edgeX_arr, nodePos_dic[x[2]][1])
+        push!(edgeY_arr, nodePos_dic[x[2]][2])
+        push!(edgeX_arr, nothing)
+        push!(edgeY_arr, nothing)
     end
 
-    plt.axis("off")
+    # get coordinates for nodes
+    posX_arr, posY_arr = [map(x -> nodePos_dic[x][y], vcat(ordC_arr,ordTe_arr)) for y in [1,2]]
 
-    # size plot and save
-    plt.savefig(replace(inFile,".yml" => ".png"), dpi = 600)
-    graph_obj = nothing
+    # create plot
+    label_arr = vcat(map(x -> labC_dic[x], ordC_arr),map(x -> labTe_dic[x], ordTe_arr))
+    color_arr = vcat(map(x -> colorC_dic[x], ordC_arr),map(x -> colorTe_dic[x], ordTe_arr))
+    marker_arr = vcat(fill("square",size(ordC_arr,1)),fill("circle",size(ordTe_arr,1)))
+
+    nodesTr_obj = scatter(x=posX_arr, y=posY_arr, text = label_arr, marker_symbol = marker_arr ,textfont_size = fontSize, textfont_color = "black", textfont_family = "Arial", textposition = "top center", mode="markers+text", hoverinfo = "text", marker=attr(size=18,color = color_arr))
+    layout_obj = Layout(hovermode="closest",titlefont_size=16,showlegend=false,showarrow=false,xaxis=attr(showgrid=false, zeroline=false, showticklabels=false),yaxis=attr(showgrid=false, zeroline=false, showticklabels=false),paper_bgcolor= "rgba(0,0,0,0)",plot_bgcolor= "rgba(0,0,0,0)")
+
+    graph_pl = plot(nodesTr_obj,layout_obj)
+    edgeCol_arr = vcat(edgeColC_arr,edgeColTe_arr)
+
+    for i in 1:length(edgeCol_arr)
+        add_trace!(graph_pl, scatter(mode="lines", x=edgeX_arr[1+(i-1)*3:3+(i-1)*3], y=edgeY_arr[1+(i-1)*3:3+(i-1)*3], line=attr(width=0.5,color = edgeCol_arr[i])))
+    end
+
+    add_trace!(graph_pl,nodesTr_obj)
+
+    savefig(graph_pl, replace(inFile,".yml" => ".html"))
 end
 
 # ! dummy function just do provide a docstring for printIIS (docstring in printIIS wont work, because read-in is conditional)

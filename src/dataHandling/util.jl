@@ -54,6 +54,9 @@ function produceMessageShort(mes_str::String,report_m::anyModel; testErr=false, 
 
 #region # * miscellaneous data processing
 
+# ! converts color string to rgb array
+convertCol(col_str::String) = split(col_str,", ") |> (u -> parse.(Float64,[u[1][5:end],u[2],u[3][1:end-1]])./255)
+
 # ! merges elements of named tuples for capacity preparation
 mergePrep(in_tup::NamedTuple) = isempty(in_tup.resi) ? in_tup.var : unique(vcat(in_tup.var,select(in_tup.resi,Not([:var]))))
 

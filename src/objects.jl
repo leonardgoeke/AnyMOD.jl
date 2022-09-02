@@ -341,7 +341,6 @@ mutable struct flowGraph
 	edgeC::Array{Pair{Int,Int},1}
 	edgeTe::Array{Pair{Int,Int},1}
 	nodePos::Dict{Int,Array{Float64,1}}
-	plotSize::Tuple{Number,Number}
 
 	function flowGraph(anyM::AbstractModel)
 

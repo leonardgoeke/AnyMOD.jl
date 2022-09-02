@@ -2,29 +2,10 @@ module AnyMOD
 
     # ! enforce use of Julia's own python distribution to avoid interference with local python installations
     using Pkg
-    # save current value of environment variable
-    if "PYTHON" in keys(ENV)
-        envPy = ENV["PYTHON"]
-    else
-        envPy = ""
-    end
-    # build python package with Julia distribution
-    ENV["PYTHON"]=""
-    Pkg.build("PyCall")
-    # re-sets environment to former status
-    if envPy == ""
-        delete!(ENV,"PYTHON")
-    else
-        ENV["PYTHON"] = envPy
-    end
 
-    using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles, YAML, CategoricalArrays
+    using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles, YAML, CategoricalArrays, Plotly
     using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays, Suppressor
     @reexport using DataFrames, JuMP, Dates, Suppressor
-
-    pyimport_conda("networkx","networkx")
-    pyimport_conda("matplotlib.pyplot","matplotlib")
-    pyimport_conda("plotly","plotly")
 
     include("objects.jl")
     include("tools.jl")
@@ -45,7 +26,7 @@ module AnyMOD
     include("dataHandling/util.jl")
 
     export anyModel, initializeModel, createOptModel!, setObjective!
-    export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML
+    export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML, convertYAML2GEXF
     export plotTree, plotEnergyFlow, moveNode!, produceMessage, produceMessageShort
     export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
 
