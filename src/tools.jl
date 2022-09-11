@@ -1215,7 +1215,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	# converts export and import quantities into net values
 	if netExc
 		allExc_df = filter(x -> x.variable in (:import,:export),data_df)
-		joinedExc_df = joinMissing(select(rename(filter(x -> x.variable == :export,allExc_df),:value => :export),Not([:variable])),select(rename(filter(x -> x.variable == :import,allExc_df),:value => :import),Not([:variable])),intCol(data_df),:left,Dict(:export => 0.0,:import => 0.0))
+		joinedExc_df = joinMissing(select(rename(filter(x -> x.variable == :export,allExc_df),:value => :export),Not([:variable])),select(rename(filter(x -> x.variable == :import,allExc_df),:value => :import),Not([:variable])),intCol(data_df),:outer,Dict(:export => 0.0,:import => 0.0))
 		joinedExc_df[!,:value] = joinedExc_df[!,:export] .+ joinedExc_df[!,:import]
 		select!(joinedExc_df,Not([:export,:import]))
 		joinedExc_df[!,:variable] = map(x -> x > 0.0 ? :netImport : :netExport, joinedExc_df[!,:value])
@@ -1235,7 +1235,6 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
     othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(oth_df))))
 	othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
 
-
 	#endregion
 
 	#region # * filter flows according to provided yaml file
@@ -1243,23 +1242,30 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	if !isempty(ymlFilter)
 		graph_dic = YAML.load_file(ymlFilter)
 		revName_dic = Dict(anyM.graInfo.names[x] => x for x in collect(keys(anyM.graInfo.names)))
-		te_arr = map(y -> sysInt(Symbol(revName_dic[y["label"]]),anyM.sets[:Te]) , filter(x -> x["type"] == "technology", graph_dic["vertices"]))
+		# filters entries that aggregates several sub-categories
+		aggTech_arr = filter(x -> "aggregating" in keys(x), graph_dic["vertices"])
+		nonAggTech_arr = setdiff(graph_dic["vertices"],aggTech_arr)
+		# filters relevant technologies and carriers
+		te_arr = map(y -> sysInt(Symbol(revName_dic[y]),anyM.sets[:Te]), vcat(map(y -> y["label"], filter(x -> x["type"] == "technology", nonAggTech_arr)),vcat(map(x -> x["aggregating"],aggTech_arr)...)))
 		c_arr = map(y -> sysInt(Symbol(revName_dic[y["label"]]),anyM.sets[:C]), filter(x -> x["type"] == "carrier", graph_dic["vertices"]))
-		filter!(x -> x.C in c_arr && x.Te in te_arr,data_df)
+		filter!(x -> x.C in c_arr && (x.Te == 0 || x.Te in te_arr),data_df)
+		# perform aggregation
+		aggTech_dic = Dict(vcat(map(x -> map(y -> sysInt(Symbol(y),anyM.sets[:Te]) => sysInt(Symbol(x["aggregating"][1]),anyM.sets[:Te]), x["aggregating"]) ,aggTech_arr)...))
+		data_df[!,:Te] = map(x -> x in keys(aggTech_dic) ? aggTech_dic[x] : x,data_df[!,:Te]) 
+		data_df = combine(groupby(data_df,intCol(data_df,:variable)), :value => (x -> sum(x)) => :value)
 	end
-	
+
 	#endregion
 	
 	#region # * prepare labels and colors
 
     # prepare name and color assignment
-    names_dic = anyM.graInfo.names
+    names_dic = merge(anyM.graInfo.names,Dict(x["aggregating"][1] => x["label"] for x in aggTech_arr))
     revNames_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
-    col_dic = anyM.graInfo.colors
 
 	# use color from yaml, if any are provided
 	if !isempty(ymlFilter)
-		col_dic = Dict(revName_dic[x["label"]] => tuple(x["color"]...) for x in graph_dic["vertices"])
+		col_dic = Dict((x in nonAggTech_arr ? revName_dic[x["label"]] : x["label"]) => tuple(x["color"]...) for x in graph_dic["vertices"])
 	else
 		col_dic = anyM.graInfo.colors
 	end
@@ -1298,7 +1304,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 				allExc_df[!,:value] = map(x -> x.variable == :netExport ? x.value * -1 : x.value, eachrow(allExc_df))
 				aggExc_df = combine(groupby(allExc_df,[:Ts_disSup,:Te,:C]), :value => (x -> sum(x)) => :value)
 				aggExc_df[!,:variable] = map(x -> x.value > 0.0 ? :netImport : :netExport, eachrow(aggExc_df))
-				# renames net-export into storage losses in case regions does not appear in drop dropDown
+				# renames net-export into losses in case regions does not appear in drop dropDown
 				if !(:region in dropDown)
 					aggExc_df[!,:variable] = map(x -> x == :netExport ? :exchangeLoss : x, aggExc_df[!,:variable])
 					aggExc_df[!,:R_dis] .= 0
@@ -1362,7 +1368,6 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		  return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
 		end
 		
-	
 		# removes nodes accoring function input provided
 		for rmv in rmvNode
 		  # splits remove expression by semicolon and searches for first part

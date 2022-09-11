@@ -356,11 +356,7 @@ mutable struct flowGraph
 
 		for t in keys(tleaf_dic)
 		    subCar_arr = map(y -> anyM.parts.tech[sysSym(y,anyM.sets[:Te])].carrier,tleaf_dic[t])
-		    if length(unique(subCar_arr)) == 1
-		        push!(relTech_arr,t)
-		    else
-		        append!(relTech_arr,collect(tleaf_dic[t]))
-		    end
+		    append!(relTech_arr,collect(tleaf_dic[t]))
 		end
 
 		# creates dictionary mapping each relevant id to node id
