@@ -1529,7 +1529,7 @@ end
 moveNode!(model_object::anyModel, newPos_arr::Union{Array{Tuple{String,Array{Float64,1}},1},Tuple{String,Array{Float64,1}}})
 ```
 
-Moves a node within the current layout of the node graph created with `plotEnergyFlow`. See [Energy flow](@ref).
+Moves a node within the current layout of the node graph created with `plotNetworkGraph`. See [Energy flow](@ref).
 
 """
 function moveNode!(anyM::anyModel,newPos_arr::Union{Array{Tuple{String,Array{Float64,1}},1},Tuple{String,Array{Float64,1}}})
@@ -1537,7 +1537,7 @@ function moveNode!(anyM::anyModel,newPos_arr::Union{Array{Tuple{String,Array{Flo
     flowGrap_obj = anyM.graInfo.graph
 
     if !isdefined(flowGrap_obj,:nodePos)
-        error("Initial positions are not yet defined. Run 'plotEnergyFlow' first.")
+        error("Initial positions are not yet defined. Run 'plotNetworkGraph' first.")
     end
 
     # gets assignment between node ids and names
