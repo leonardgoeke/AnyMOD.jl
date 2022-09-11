@@ -4,7 +4,7 @@ module AnyMOD
     using Pkg
 
     using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles, YAML, CategoricalArrays, Plotly
-    using MathOptInterface, Reexport, Statistics, PyCall, SparseArrays, Suppressor
+    using MathOptInterface, Reexport, Statistics, SparseArrays, Suppressor
     @reexport using DataFrames, JuMP, Dates, Suppressor
 
     include("objects.jl")
