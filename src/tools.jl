@@ -1241,7 +1241,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	#region # * filter flows according to provided yaml file
 
 	if !isempty(ymlFilter)
-		graph_dic = YAML.load_file("test/districtHeat.yml")
+		graph_dic = YAML.load_file(ymlFilter)
 		revName_dic = Dict(anyM.graInfo.names[x] => x for x in collect(keys(anyM.graInfo.names)))
 		te_arr = map(y -> sysInt(Symbol(revName_dic[y["label"]]),anyM.sets[:Te]) , filter(x -> x["type"] == "technology", graph_dic["vertices"]))
 		c_arr = map(y -> sysInt(Symbol(revName_dic[y["label"]]),anyM.sets[:C]), filter(x -> x["type"] == "carrier", graph_dic["vertices"]))
