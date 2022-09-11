@@ -361,9 +361,8 @@ function deleteLinearTrust!(top_m::anyModel)
 end
 
 # ! solves top problem without trust region and obtains lower limits
-function runTopWithoutQuadTrust(top_m::anyModel,trustReg_obj::quadTrust)
+function runTopWithoutQuadTrust(top_m::anyModel,trustReg_obj::quadTrust,useVI_boo::Bool=false)
 	# solve top again with trust region and re-compute bound for soultion
-	delete(top_m.optModel,trustReg_obj.cns)
 	set_optimizer_attribute(top_m.optModel, "Method", 0)
 	set_optimizer_attribute(top_m.optModel, "NumericFocus", 0)
 	optimize!(top_m.optModel)
