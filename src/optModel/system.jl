@@ -214,8 +214,9 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 				end
 			end
 
-			# ! filter entries where capacity variable cannot exist, because there is no corresponding expansion or retrofitting variable
+			
 			if part_obj.type != :stock
+				# ! filter entries where capacity variable cannot exist, because there is no corresponding expansion or retrofitting variable
 				for capaSym in filter(x -> occursin("capa",string(x)), collect(keys(prepSys_dic[sys][sSym])))
 
 					# get and expand related entries for expansion
@@ -253,10 +254,8 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 					# only preserve capacity entries that could be created based on expansion and retrofitting
 					prepSys_dic[sys][sSym][capaSym] = prepSys_dic[sys][sSym][capaSym] |> (x -> (var = innerjoin(x.var, potCapa_df, on = intCol(x.var,:dir)), resi = x.resi))	
 				end
-			end
 
-			# ! remove variables for retrofitting and grouped capacity for cases where no start capacity can exist
-			if part_obj.type != :stock
+				# ! remove variables for retrofitting and grouped capacity for cases where no start capacity can exist
 				for grpSym in filter(x -> occursin("grp",lowercase(string(x))),collect(keys(prepSys_dic[sys][sSym])))
 
 					type_sym = Symbol(replace(string(grpSym), "grpCapa" => ""))
@@ -329,6 +328,15 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 							nonRel_df  = filter(x -> x[Symbol(sys,"_j")] != s, prepSys_dic[sys][sysSym(s,anyM.sets[sys])][Symbol(:retro,type_sym)].var)
 							prepSys_dic[sys][sysSym(s,anyM.sets[sys])][Symbol(:retro,type_sym)] = (var = orderDf(vcat(nonRel_df,filter(x -> x[Symbol(sys,"_j")] == s, allRetro_df))), resi = DataFrame())
 						end
+					end
+				end
+
+				# ! removes storage variables where capacity does not exist for interal storage
+				if (:stIntIn in keys(part_obj.carrier) && !(:stExtIn in keys(part_obj.carrier))) || (:stExtIn in keys(part_obj.carrier) && !(:stExtOut in keys(part_obj.carrier))) && :capaConv in keys(prepSys_dic[sys][sSym])
+				
+					for x in intersect(keys(prepSys_dic[sys][sSym]),[:capaStIn,:capaStOut,:capaStSize])
+						flt_df = prepSys_dic[sys][sSym][:capaConv].var |> (w -> innerjoin(prepSys_dic[sys][sSym][x].var,w,on = intCol(w)))
+						prepSys_dic[sys][sSym][x] = (var = flt_df, resi = prepSys_dic[sys][sSym][x].resi)
 					end
 				end
 			end
