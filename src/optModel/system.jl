@@ -1138,7 +1138,6 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 
 		# loops over variables limits are enforced on
 		for limVa in limVa_arr, lim in parToLim_dic[par]
-			println(limVa)
 			# skip lower and upper bound on storage capacites for subproblems (already in top problem)
 			if lim in (:Low,:Up) && par in capaRatio_boo && (isempty(anyM.subPro) || anyM.subPro != (0,0)) continue end
 
