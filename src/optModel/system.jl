@@ -1138,6 +1138,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 
 		# loops over variables limits are enforced on
 		for limVa in limVa_arr, lim in parToLim_dic[par]
+			println(limVa)
 			# skip lower and upper bound on storage capacites for subproblems (already in top problem)
 			if lim in (:Low,:Up) && par in capaRatio_boo && (isempty(anyM.subPro) || anyM.subPro != (0,0)) continue end
 
@@ -1168,6 +1169,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 			else
 				cns_df = rename(matchExcParameter(Symbol(par,lim),cns_df,part,anyM.sets,part.dir),:var => :denom)
 			end
+	
 
 			# get variables for numerator
 			rlvTop_arr =  intersect(keys(part.var),limVa[2] in keys(va_dic) ? intersect(keys(part.carrier),va_dic[limVa[2]]) : (limVa[2],))
@@ -1183,6 +1185,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 
 			# rename column for aggregation
 			if !capaRatio_boo cns_df = rename(cns_df,:Ts_disSup => :Ts_dis) end
+			if capaRatio_boo && string(limVa[1])[1:3] != "exp" && :Ts_exp in intCol(cns_df) select!(cns_df,Not([:Ts_exp])) end
 
 			# connect denominator and numerator
 			cns_df[!,:num] =  aggDivVar(top_df, cns_df, tuple(intCol(cns_df)...), anyM.sets)
