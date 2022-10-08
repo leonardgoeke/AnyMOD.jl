@@ -336,9 +336,8 @@ function createCapaBal!(r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::any
 	filter!(x -> x.val > x.var.constant,cns_df)
 	
 	if !isempty(cns_df)
-		# add column indicating, if capacities other than missing capacity are added
-		cns_df[!,:actCapa] = .!isempty.(map(x -> x.terms, cns_df[!,:var]))
-		if anyM.options.holdFixed filter!(x -> x.actCapa,cns_df) end
+		# add column indicating, if capacities other than missing capacity are added, only relevant for benders heuristik
+		cns_df[!,:actCapa] =  .!isempty.(map(x -> x.terms, cns_df[!,:var]))
 		
 		# add missing capacity variables
 		if :missCapa in keys(partBal.var)
