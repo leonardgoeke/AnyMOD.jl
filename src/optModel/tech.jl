@@ -246,10 +246,11 @@ function createExpCap!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple}
 
 			join_arr = intCol(part.var[ratioVar_sym])
 			# join ratios and corresponding
-			ratio_df = select(innerjoin(preRatio_df,part.var[ratioVar_sym]; on = join_arr),unique(vcat(join_arr,[:var,:ratio,:Ts_disSup])))
+			select_arr = expVar in [:capaStIn,:expStIn] ? [:var,:ratio,:Ts_disSup,:C] : [:var,:ratio,:Ts_disSup]
+			ratio_df = select(innerjoin(preRatio_df,part.var[ratioVar_sym]; on = join_arr),unique(vcat(join_arr,select_arr)))
 			ratio_df[!,:var] = ratio_df[!,:var] .* ratio_df[!,:ratio]
 	
-			var_df = ratio_df[!,Not(:ratio)] |> (x -> isempty(var_df) ? x : vcat(x,antijoin(var_df,x, on = join_arr)))
+			var_df = ratio_df[!,Not(:ratio)] |> (x -> isempty(var_df) ? x : vcat(x,antijoin(select(var_df,names(x)),x, on = join_arr)))
 		end
 
 		if !isempty(var_df)	part.var[expVar] = orderDf(var_df) end
@@ -554,6 +555,7 @@ function createCapaRestr!(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{I
 
 	# loop over groups of capacity restrictions (like out, stIn, ...)
 	for restrGrp in capaRestr_gdf
+
 		# relevant capacity variables
 		type_sym = Symbol(restrGrp.cnstrType[1])
 		info_ntup = cnstrType_dic[type_sym]
