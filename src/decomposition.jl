@@ -62,7 +62,7 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 end
 
 # ! evaluate results of heuristic solution to determine fixed and limited variables
-function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::bendersData,linPar::NamedTuple)
+function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::bendersData,linPar::NamedTuple,wrtCapa::Bool=false)
 
 	# create empty dictionaries for limits and fixes
 	fix_dic = Dict(:tech => Dict{Symbol,Dict{Symbol,DataFrame}}(),:exc => Dict{Symbol,Dict{Symbol,DataFrame}}())
@@ -76,7 +76,8 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 			fix_dic[sys][sSym] = Dict{Symbol,DataFrame}()
 			lim_dic[sys][sSym] = Dict{Symbol,DataFrame}()
 
-			relVar_arr = filter(x -> any(occursin.(part_dic[sSym].decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(part_dic[sSym].var)))
+			relVar_arr = filter(x -> any(occursin.(part_dic[sSym].decomm == :none && !wrtCapa ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(part_dic[sSym].var)))
+			relVarLim_arr = filter(x -> any(occursin.(part_dic[sSym].decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(part_dic[sSym].var)))
 
 			for varSym in relVar_arr
 				must_boo = occursin("must",string(varSym))
@@ -87,17 +88,19 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 				bothCapa_df = flatten(select(bothCapa_df,Not([:value_1,:value_2])),[:limVal,:limCns])
 
 				# ! store limited variables
-				lim_df = filter(x -> x.limCns != :Fix, bothCapa_df)
-				if !isempty(lim_df)
-					# removes storage variables controlled by ratio from further analysis
-					if sys == :tech lim_df = removeFixStorage(varSym,lim_df,part_dic[sSym]) end
-					if isempty(lim_df)
-						continue
-					else 
-						lim_dic[sys][sSym][varSym] = lim_df
+				if varSym in relVarLim_arr
+					lim_df = filter(x -> x.limCns != :Fix, bothCapa_df)
+					if !isempty(lim_df)
+						# removes storage variables controlled by ratio from further analysis
+						if sys == :tech lim_df = removeFixStorage(varSym,lim_df,part_dic[sSym]) end
+						if isempty(lim_df)
+							continue
+						else 
+							lim_dic[sys][sSym][varSym] = lim_df
+						end
+						# reports on limited variables
+						cntHeu_arr[2] = cntHeu_arr[2] + size(filter(x -> x.limCns == :Up,lim_df),1)
 					end
-					# reports on limited variables
-					cntHeu_arr[2] = cntHeu_arr[2] + size(filter(x -> x.limCns == :Up,lim_df),1)
 				end
 				
 				# ! store fixed variables
