@@ -402,7 +402,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 				styCyc_int = anyM.supTs.lvl
 				push!(anyM.report,(2,"technology mapping","storage cycling","specific storage cycling level provided for technology '$(string(sSym))' could not parsed into a integer, value was ignored"))
 			else
-				if styCyc_int <= anyM.supTs.lvl
+				if styCyc_int < anyM.supTs.lvl
 					push!(anyM.report,(3,"technology mapping","storage cycling","specific storage cycling level provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch timestep"))
 					return
 				end
