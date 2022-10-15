@@ -138,6 +138,7 @@ mutable struct TechPart <: AbstractModelPart
 	balLvl::NamedTuple{(:exp,:ref),Tuple{Tuple{Int,Int},Union{Nothing,Tuple{Int,Int}}}}
 	capaRestr::DataFrame
 	actSt::Tuple
+	stCyc::Int
 	type::Symbol
 	disAgg::Bool
 	modes::Tuple{Vararg{Int,N} where N}
@@ -178,6 +179,7 @@ mutable struct TechPart <: AbstractModelPart
 	balSign::NamedTuple{(:conv,:st),Tuple{Symbol,Symbol}}
 	capaRestr::DataFrame
 	type::Symbol
+	stCyc::Int
 	disAgg::Bool
 	modes::Tuple{Vararg{Int,N} where N}
 	decomm::Symbol

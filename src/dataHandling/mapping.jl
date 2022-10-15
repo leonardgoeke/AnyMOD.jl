@@ -357,7 +357,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 			end
 		end
 
-		# check if carrier based spatial resolution is overwritten by a technology specifc value
+		# ! check if carrier based spatial resolution is overwritten by a technology specifc value
 		if cEx_boo && :region_expansion in namesSym(row_df)
 			rExpSpc_int = tryparse(Int,row_df[:region_expansion])
 
@@ -370,6 +370,8 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 					push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(sSym))' was used instead of a carrier based value"))
 					rExp_int = rExpSpc_int
 				end
+			else
+				push!(anyM.report,(2,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(sSym))' could not parsed into a integer, value ignored"))
 			end
 		end
 
@@ -392,6 +394,23 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 			disAgg_boo = false
 		end
 		part.disAgg = disAgg_boo
+
+		# ! check if a specific resolution is enforced for the cyclic constraint of storage
+		if :timestep_cyclic in namesSym(row_df) && row_df[:timestep_cyclic] != ""
+			styCyc_int =tryparse(Int,row_df[:timestep_cyclic])
+			if isnothing(styCyc_int)
+				styCyc_int = anyM.supTs.lvl
+				push!(anyM.report,(2,"technology mapping","storage cycling","specific storage cycling level provided for technology '$(string(sSym))' could not parsed into a integer, value was ignored"))
+			else
+				if styCyc_int <= anyM.supTs.lvl
+					push!(anyM.report,(3,"technology mapping","storage cycling","specific storage cycling level provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch timestep"))
+					return
+				end
+			end
+		else
+			styCyc_int = anyM.supTs.lvl
+		end
+		part.stCyc = styCyc_int
 
 		# ! determines reference resolution for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
 		if !isempty(part.carrier)
