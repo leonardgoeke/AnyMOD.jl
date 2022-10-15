@@ -292,7 +292,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 	cnsDim_arr = filter(x -> x != :Ts_disSup, intCol(cns_df))
 
 	# join variables for previous storage level
-	tsChildren_dic = Dict((x,y) => getDescendants(x,anyM.sets[:Ts],false,y) for x in anyM.supTs.step, y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x],:lvl), cns_df[!,:Ts_dis])))
+	tsChildren_dic = Dict((x,y) => getDescendants(x,anyM.sets[:Ts],false,y) for x in getfield.(getNodesLvl(anyM.sets[:Ts],part.stCyc),:idx), y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x],:lvl), cns_df[!,:Ts_dis])))
 	firstLastTs_dic = Dict(minimum(tsChildren_dic[z]) => maximum(tsChildren_dic[z]) for z in keys(tsChildren_dic))
 	firstTs_arr = collect(keys(firstLastTs_dic))
 
