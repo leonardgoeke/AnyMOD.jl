@@ -135,6 +135,15 @@ function createTimestepMapping!(anyM::anyModel)
 		push!(anyM.report,(2,"timestep mapping","","problem specification resulted in more than 50 superordinate dispatch timesteps, this looks faulty"))
 	end
 
+	
+	# ! checks, if all levels for actual dispatch are "well-formed", meaning each step relates to the same number of steps on the lowest level
+	for l in unique([x.tsDis for x in values(anyM.cInfo)])
+		if anyM.sets[:Ts].height == l continue end # no need to check lowest level itself
+		if length(unique(map(x -> length(getDescendants(x.idx,anyM.sets[:Ts],false,anyM.sets[:Ts].height)), getNodesLvl(anyM.sets[:Ts],l)))) != 1
+			push!(anyM.report,(3,"timestep mapping","","timestep level $l is a dispatch resolution, but steps on level vary in length, this is not supported"))
+		end
+	end
+
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for time steps")
 end
 
