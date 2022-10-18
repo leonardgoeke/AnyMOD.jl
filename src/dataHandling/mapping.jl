@@ -367,7 +367,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 		end
 
 		# ! check if carrier based spatial resolution is overwritten by a technology specifc value
-		if cEx_boo && :region_expansion in namesSym(row_df)
+		if cEx_boo && :region_expansion in namesSym(row_df) && row_df[:region_expansion] != ""
 			rExpSpc_int = tryparse(Int,row_df[:region_expansion])
 
 			if !isnothing(rExpSpc_int)
