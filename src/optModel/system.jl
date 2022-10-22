@@ -422,7 +422,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 							if part.type == :stock
 								push!(anyM.report,(2,"technology mapping","storage capacity","in some cases $(nameSt_dic[capa]) capacities for stock technology '$(string(tSym))' are not defined, but other storage capacities exist, if not subject to other limits, these capacities are unrestricted"))
 							else
-								push!(anyM.report,(2,"technology mapping","storage capacity","in some cases limits on expansion prevent $(nameSt_dic[capa]) capacities for technology '$(string(tSym))', but other storage capacities exist, therefore respecitve capacities exist anyway, but are disconnected from expansion variables"))
+								push!(anyM.report,(2,"technology mapping","storage capacity","in some cases limits on expansion prevent $(nameSt_dic[capa]) capacities for technology '$(string(tSym))', but other storage capacities exist, therefore respective capacities exist anyway, but are disconnected from expansion variables"))
 							end
 						end
 					end
