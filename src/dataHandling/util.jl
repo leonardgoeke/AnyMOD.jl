@@ -115,6 +115,8 @@ filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in namesSym(var_df) ? 
 # ! makes first letter of string or symbol capital or non-capital
 makeUp(in::String) = isempty(in) ? "" : string(uppercase(in[1]),in[2:end])
 makeUp(in::Symbol) = Symbol(uppercase(string(in)[1]),string(in)[2:end])
+makeLow(in::String) = isempty(in) ? "" : string(lowercase(in[1]),in[2:end])
+makeLow(in::Symbol) = Symbol(lowercase(string(in)[1]),string(in)[2:end])
 
 # ! create dataframe with all potential dimensions for carrier provided
 function createPotDisp(c_arr::Array{Int,1},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)

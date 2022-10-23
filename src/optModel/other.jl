@@ -476,6 +476,9 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		# obtain all variables relevant for limits
 		allVar_df = getAllVariables(va,anyM)
 
+		# filter cases without actual variables
+		if anyM.options.holdFixed filter!(x -> !isempty(x.var.terms),allVar_df) end
+
 		# check if acutally any variables were obtained
 		if isempty(allVar_df)
 			lock(anyM.lock)
