@@ -614,7 +614,7 @@ function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, r
 
 	# ! return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allVar_df,anyM, fileName = string(split(ymlFile,".")[end-1]), rtnDf = (:csvDf,))
+		csvData_df = printObject(allVar_df,anyM, fileName = string(split(ymlFile,".")[end-1]), rtnDf = rtnOpt)
 	end
 
 	if :raw in rtnOpt
