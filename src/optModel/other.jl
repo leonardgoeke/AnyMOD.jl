@@ -378,7 +378,7 @@ function createExpShareCns!(anyM::anyModel)
 		# ! extend all balances with possible technologies
 		# assign carriers in balance to technologies appearing in parameter data
 		allShareTe_arr = unique(anyM.parts.bal.par[share_sym].data[!,:Te])
-		techToCar_arr = [x => union(map(y -> getCarrierFields(anyM.parts.tech[sysSym(y,anyM.sets[:Te])].carrier,(:gen, :stExtOut)),getDescendants(x, anyM.sets[:Te], true))...) for x in allShareTe_arr]
+		techToCar_arr = [x => union(map(y -> getCarrierFields(anyM.parts.tech[sysSym(y,anyM.sets[:Te])].carrier,(:gen,)),getDescendants(x, anyM.sets[:Te], true))...) for x in allShareTe_arr]
 		carToTe_dic = Dict(c => filter(x -> c in x[2],techToCar_arr) |> (u -> isempty(u) ? Int[] : getindex.(u,1)) for c in unique(capaBal[!,:C]))
 
 		# expand dataframe with technologies
@@ -386,14 +386,11 @@ function createExpShareCns!(anyM::anyModel)
 		capaBal = unique(flatten(capaBal,:Te))
 
 		# ! get relevant expansion variables
-		conv_df, st_df = [getAllVariables(Symbol(:mustExp,z),anyM) |> (x -> isempty(x) ? getAllVariables(Symbol(:exp,z),anyM) : vcat(x,antijoin(getAllVariables(Symbol(:exp,z),anyM),x,on = intCol(x)))) for z in (:Conv,:StOut)]
-		conv_df[!,:id] .= 0
-
+		allExp_df = getAllVariables(:mustExpConv,anyM) |> (x -> isempty(x) ? getAllVariables(:expConv,anyM) : vcat(x,antijoin(getAllVariables(:expConv,anyM),x,on = intCol(x))))
+		
 		# extends expansion with generated carriers and merges them
-		conv_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier.gen) , eachrow(conv_df))
-		st_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier.stExtOut[x.id]) , eachrow(st_df))
+		allExp_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier.gen) , eachrow(allExp_df))
 
-		allExp_df = isempty(st_df) ? conv_df : vcat(conv_df,st_df)
 		if isempty(allExp_df) continue end
 		allExp_df = flatten(allExp_df,:C)
 
@@ -401,7 +398,7 @@ function createExpShareCns!(anyM::anyModel)
 		filter!(x -> x.C in unique(capaBal[!,:C]),allExp_df)
 
 		# compute and collect aggregated output for all relevant technologies
-		allMustOut_df = DataFrame(Ts_expSup = Int[], R_exp = Int[], C = Int[], Te = Int[], id = Int[], val = Float64[])
+		allMustOut_df = DataFrame(Ts_expSup = Int[], R_exp = Int[], C = Int[], Te = Int[], val = Float64[])
 
 		for t in unique(allExp_df[!,:Te])
 
@@ -435,7 +432,7 @@ function createExpShareCns!(anyM::anyModel)
 			end
 
 			# add mustOuts to all  
-			append!(allMustOut_df,select(mustOut_df,Not([:Ts_disSup,:desFac])))
+			append!(allMustOut_df,select(filter(x -> x.id == 0, mustOut_df),Not([:Ts_disSup,:desFac,:id])))
 		end
 
 		# join expansion variables with output values
@@ -517,7 +514,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		# merge columns for directed limits to rest
 		for dirLim in intersect(namesSym(allLimit_df),(:FixDir,:UpDir,:LowDir))
 			lim_sym = Symbol(replace(string(dirLim),"Dir" => ""))
-			allLimit_df[!,lim_sym] = map(x -> isnothing(x[dirLim]) ? x[lim_sym] : x[dirLim],eachrow(allLimit_df))
+			allLimit_df[!,lim_sym] = map(x -> isnothing(x[dirLim]) && lim_sym in namesSym(x) ? x[lim_sym] : x[dirLim],eachrow(allLimit_df))
 			select!(allLimit_df,Not([dirLim]))
 		end
 
