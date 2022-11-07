@@ -181,6 +181,7 @@ mutable struct TechPart <: AbstractModelPart
 	type::Symbol
 	stCyc::Int
 	disAgg::Bool
+	intCapaRestr::Bool
 	modes::Tuple{Vararg{Int,N} where N}
 	decomm::Symbol
 	TechPart(name::Tuple{Vararg{String,N} where N}) = new(name,Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())

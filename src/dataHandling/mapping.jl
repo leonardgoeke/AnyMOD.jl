@@ -404,6 +404,22 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 		end
 		part.disAgg = disAgg_boo
 
+		# ! check if internal storage variables should be subject to capacity restriction for storage
+		if :technology_intCapaRestr in namesSym(row_df) && row_df[:technology_intCapaRestr] != ""
+			intCapaRestr_str = row_df[:technology_intCapaRestr]
+			if intCapaRestr_str == "yes"
+				intCapaRestr_boo = true
+			elseif intCapaRestr_str == "no"
+				intCapaRestr_boo = false
+			else
+				push!(anyM.report,(3,"technology mapping","internal capacity restriction","unknown keyword '$intCapaRestr_str' used to control if interal storage variables are part of capacity restriction for storage, please use 'yes' or 'no'"))
+				return
+			end
+		else
+			intCapaRestr_boo = true
+		end
+		part.intCapaRestr = intCapaRestr_boo
+
 		# ! check if a specific resolution is enforced for the cyclic constraint of storage
 		if :timestep_cyclic in namesSym(row_df) && row_df[:timestep_cyclic] != ""
 			styCyc_int =tryparse(Int,row_df[:timestep_cyclic])

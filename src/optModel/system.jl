@@ -919,7 +919,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			allMustCns_arr[idx] = select(mustOut_df,[:Ts_expSup,:Ts_dis,:R_dis,:C,:Te,:scr,:cnsExpr])
 			idx = idx + 1
 
-			# add a new restriciton on conversion output, in case it was detected that must run cannot replace conversion output
+			# add a new restriction on conversion output, in case it was detected that must run cannot replace conversion output
 			if addConvOut_boo
 				push!(part.capaRestr,(cnstrType = "convOut",car = m.car,lvlTs = m.lvlTs, lvlR = m.lvlR))
 			end
@@ -941,6 +941,9 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 		type_sym = Symbol(split(String(restrGrp.cnstrType[1]),"_")[1])
 		info_ntup = cnstrType_dic[type_sym]
 
+		# removes internal variables for restriction if corresponding option is set 
+		if type_sym in (:stOut,:stIn) && !part.intCapaRestr info_ntup = type_sym == :stIn ? (dis = (:stExtIn,), capa = :StIn) : (dis = (:stExtOut, ), capa = :StOut) end
+
 		allCns_arr = Array{DataFrame}(undef,size(restrGrp,1))
 
 		# obtains corresponding capacity if any exists
@@ -955,7 +958,8 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			allCns_arr[idx] = createRestr(part,copy(capaVar_df),restr,type_sym,info_ntup,ts_dic,r_dic,anyM.sets,anyM.supTs,anyM.optModel)
 		end
 
-		allCns_df = vcat(allCns_arr...)
+		allCns_df = vcat(filter(x -> !isempty(x),allCns_arr)...)
+		if isempty(allCns_df) continue end
 
 		# add all constraints to part
 		allCns_df[!,:cnsExpr] = @expression(anyM.optModel,allCns_df[!,:disp] .- allCns_df[!,:capa])
@@ -1011,15 +1015,18 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 		resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_dis = restr.lvlTs, R_from = restr.lvlR, R_to = restr.lvlR) : (Ts_dis = restr.lvlTs,  R_from = restr.lvlR, R_to = restr.lvlR)
 	end
 
+	if isempty(dispVar_arr) return DataFrame() end
+
 	for va in dispVar_arr
 		# filter dispatch variables not belonging to relevant carrier
-		allVar_df = filter(r -> r.C in restr.car, part.var[va])[!,Not(:Ts_disSup)]
-		
+		allVar_df = filter(r -> r.C in restr.car, part.var[va])[!,Not(:Ts_disSup)] |> (x -> sort!(x,orderDim(intCol(x))))
+
 		# correct dispatch variables with energy carrier
 		allVar_df = addEnergyCont(allVar_df,part,sets_dic)
 
 		# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
 		ava_arr = matchSetParameter(allVar_df,part.par[Symbol(:ava,info_ntup.capa)],sets_dic, newCol = :ava)[!,:ava]
+		
 		if va != :exc
 			if type_sym in (:convOut,:stOut)
 				ava_arr = matchSetParameter(allVar_df,part.par[type_sym == :convOut ? :effConv : :effStOut],sets_dic,newCol = :eff)[!,:eff] .* ava_arr
