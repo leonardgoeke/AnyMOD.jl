@@ -525,7 +525,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=t
 end
 
 # ! merges reported results according to external yml file
-function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),)
+function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, addName::String="", rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),csvInput::Dict{Symbol,String} = Dict(:summary => "", :exchange => "", :costs => ""))
 
     # ! read in mappings and prepare variables
     allMapping_dic = YAML.load_file(ymlFile)
@@ -549,7 +549,21 @@ function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, r
     repData_dic = Dict{String,DataFrame}()
     for repFile in relFile_arr
     
-        repData_df = filter(x -> x.variable in relVar_arr, reportResults(repFile,anyM,rtnOpt = (:csvDf,), addRep = optVar_tup))
+        if csvInput[repFile] == ""
+            if isnothing(model) error("No model object or file provided to obtain data for $repFile") end
+            resData_df = reportResults(repFile,model,rtnOpt = (:csvDf,), addRep = optVar_tup)
+        elseif !(repFile in keys(csvInput))
+            error("The 'csvInput' dictionary does not provide an file for $repFile")
+        else
+            relVar_arr = String.(relVar_arr)
+            try
+                resData_df = CSV.read(csvInput[repFile],DataFrame)
+            catch
+                error("Unable to read the file $(csvInput[repFile]) for $repFile")
+            end
+        end
+        
+        repData_df = filter(x -> x.variable in relVar_arr, resData_df)
         # renames columns to match set names
         if repFile == :summary
             rename!(repData_df,"region_dispatch" => "region","timestep_superordinate_dispatch" => "timestep")
@@ -610,24 +624,12 @@ function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, r
     end
 
 	# add column with name for model object/scenario
-    if addObjName allVar_df[!,:objName] .= anyM.options.objName end
+    if addName != "" allVar_df[!,:objName] .= addName end
 
 	# ! return dataframes and write csv files based on specified inputs
-	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allVar_df,anyM, fileName = string(split(ymlFile,".")[end-1]), rtnDf = rtnOpt)
-	end
-
-	if :raw in rtnOpt
-		CSV.write("$(anyM.options.outDir)/$(split(ymlFile,".")[end-1])_$(anyM.options.outStamp).csv", allVar_df)
-	end
-
-	if :rawDf in rtnOpt && :csvDf in rtnOpt
-		return allVar_df, csvData_df
-	else
-		if :rawDf in rtnOpt return allVar_df end
-		if :csvDf in rtnOpt return csvData_df end
-	end
-
+	if :csv in rtnOpt CSV.write("$(split(split(ymlFile,"/")[end],".")[end-1])$(addName == "" ? "" : "_" * addName).csv", allVar_df) end
+    if :df in rtnOpt return allVar_df end
+    
 end
 
 # ! print time series for in and out into separate tables
