@@ -525,7 +525,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=t
 end
 
 # ! merges reported results according to external yml file
-function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, addName::String="", rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),csvInput::Dict{Symbol,String} = Dict(:summary => "", :exchange => "", :costs => ""))
+function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, addName::String="", rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),csvInput::Dict{Symbol,String} = Dict(:summary => "", :exchange => "", :costs => ""), outputDir::String = "")
 
     # ! read in mappings and prepare variables
     allMapping_dic = YAML.load_file(ymlFile)
@@ -533,6 +533,11 @@ function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, 
     varMap_dic = allMapping_dic["variables"]
     setMap_dic = allMapping_dic["sets"]
     agg_arr = allMapping_dic["aggregations"]
+
+    if "region" in keys(setMap_dic)
+        setMap_dic["region_from"] = setMap_dic["region"]
+        setMap_dic["region_to"] = setMap_dic["region"]
+    end
 
     # get relevant variables and filter which are specific
     relVar_arr = Symbol.(union(map(x -> map(y -> y["variable"], collect(values(x))), collect(values(allMapping_dic["variables"])))...))
@@ -544,7 +549,7 @@ function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, 
 	end
 
     # ! prepare all summary output files
-    allVar_df = DataFrame(timestep = String[], region = String[], variable = String[], value = Float64[])
+    allVar_df = DataFrame(timestep = String[], region = String[], region_from = String[], region_to = String[], variable = String[], value = Float64[])
     
     repData_dic = Dict{String,DataFrame}()
     for repFile in relFile_arr
@@ -568,13 +573,13 @@ function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, 
         if repFile == :summary
             rename!(repData_df,"region_dispatch" => "region","timestep_superordinate_dispatch" => "timestep")
         elseif repFile == :exchange
-            rename!(repData_df,"region_from" => "region","timestep_superordinate_dispatch" => "timestep")
+            rename!(repData_df,"timestep_superordinate_dispatch" => "timestep")
         else
             rename!(repData_df,"timestep_superordinate_dispatch" => "timestep")
         end
         
         # replaces set names with names in mapping
-        for set in keys(setMap_dic)
+        for set in intersect(names(repData_df),keys(setMap_dic))
             repData_df[!,set] .= map(x -> x in keys(setMap_dic[set]) ? setMap_dic[set][x] : x,repData_df[!,set])
         end
         
@@ -587,7 +592,7 @@ function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, 
     for reportVar in keys(varMap_dic)
 
         mapInfo_arr = varMap_dic[reportVar]
-        reportVar_df = DataFrame(timestep = String[], region = String[], value = Float64[])
+        reportVar_df = DataFrame(timestep = String[], region = String[], region_from = String[], region_to = String[], value = Float64[])
 
         # loop over elements aggregated for reporting variable
         for aggCase in mapInfo_arr
@@ -601,11 +606,17 @@ function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, 
             # apply correction factor and add to dataframe for variable
             fltCsv_df[!,:value] .= fltCsv_df[!,:value] * aggCase["factor"]
 
-            append!(reportVar_df,combine(groupby(fltCsv_df,["timestep", "region"]),:value => (x -> sum(x)) => :value))
+            if aggCase["file"] == "exchange"
+                fltCsv_df[!,:region] .= ""
+            else
+                foreach(x -> fltCsv_df[!,x] .= "",[:region_from,:region_to])
+            end
+
+            append!(reportVar_df,combine(groupby(fltCsv_df,["timestep", "region", "region_from","region_to"]),:value => (x -> sum(x)) => :value))
         end
 
         # aggregate all entries for regions and timesteps
-        reportVar_df = combine(groupby(reportVar_df,["timestep", "region"]),:value => (x -> sum(x)) => :value)
+        reportVar_df = combine(groupby(reportVar_df,["timestep", "region", "region_from","region_to"]),:value => (x -> sum(x)) => :value)
 
         # add variable column
         reportVar_df[!,:variable] .= reportVar
@@ -617,17 +628,22 @@ function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, 
     if !isnothing(agg_arr)
         for aggVar in agg_arr
             aggVar_df = select(filter(x -> occursin(aggVar,x.variable) ,noAggVar_df),Not([:variable]))
-            aggVar_df = combine(groupby(aggVar_df,["timestep", "region"]),:value => (x -> sum(x)) => :value)
+            aggVar_df = combine(groupby(aggVar_df,["timestep", "region", "region_from","region_to"]),:value => (x -> sum(x)) => :value)
             aggVar_df[!,:variable] .= aggVar
             append!(allVar_df,aggVar_df)
         end
+    end
+    
+    # ! delete empty columns
+    for x in [:region, :region_from,:region_to]
+        if unique(allVar_df[!,x]) == [""] select!(allVar_df,Not([x])) end
     end
 
 	# add column with name for model object/scenario
     if addName != "" allVar_df[!,:objName] .= addName end
 
 	# ! return dataframes and write csv files based on specified inputs
-	if :csv in rtnOpt CSV.write("$(split(split(ymlFile,"/")[end],".")[end-1])$(addName == "" ? "" : "_" * addName).csv", allVar_df) end
+	if :csv in rtnOpt CSV.write("$(outputDir)$(split(split(ymlFile,"/")[end],".")[end-1])$(addName == "" ? "" : "_" * addName).csv", allVar_df) end
     if :df in rtnOpt return allVar_df end
     
 end
