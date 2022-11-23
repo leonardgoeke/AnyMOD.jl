@@ -1218,11 +1218,13 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		end
 	else
 		data_df = CSV.read(dataIn,DataFrame)
-		data_df[!,:timestep_superordinate_dispatch] = map(x -> lookupTupleTree(tuple(replace.(split(x,"<")," " => "")...),anyM.sets[:Ts])[end],data_df[!,:timestep_superordinate_dispatch])
-		data_df[!,:region_dispatch] = map(x -> lookupTupleTree(tuple(replace.(split(x,"<")," " => "")...),anyM.sets[:R])[end],data_df[!,:region_dispatch])
-		data_df[!,:technology] = map(x -> x == "none" ? 0 : lookupTupleTree(tuple(replace.(split(x,"<")," " => "")...),anyM.sets[:Te])[end],data_df[!,:technology])
-		data_df[!,:carrier] = map(x -> x == "none" ? 0 : lookupTupleTree(tuple(replace.(split(x,"<")," " => "")...),anyM.sets[:C])[end],data_df[!,:carrier])
-		data_df[!,:id] = map(x -> x == "none" ? 0 : lookupTupleTree(tuple(replace.(split(x,"<")," " => "")...),anyM.sets[:id])[end],data_df[!,:id])
+		filter!(x -> x.variable in ("demand","gen","use","stIn","stOut","trdBuy","trdSell","demand","import","export","lss","crt"),data_df)
+		if "objName" in names(data_df) select!(data_df,Not([:objName])) end
+		data_df[!,:timestep_superordinate_dispatch] = map(x -> lookupString(x,anyM.sets[:Ts]),data_df[!,:timestep_superordinate_dispatch])
+		data_df[!,:region_dispatch] = map(x -> lookupString(x,anyM.sets[:R]),data_df[!,:region_dispatch])
+		data_df[!,:technology] = map(x -> lookupString(x,anyM.sets[:Te]),data_df[!,:technology])
+		data_df[!,:carrier] = map(x -> lookupString(x,anyM.sets[:C]),data_df[!,:carrier])
+		data_df[!,:id] = map(x -> lookupString(x,anyM.sets[:id]),data_df[!,:id])
 		data_df[!,:variable] = Symbol.(data_df[!,:variable]) 
 		rename!(data_df,[:timestep_superordinate_dispatch => :Ts_disSup,:region_dispatch => :R_dis,:technology => :Te,:carrier => :C])
 	end
@@ -1234,12 +1236,14 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	# converts export and import quantities into net values
 	if netExc
 		allExc_df = filter(x -> x.variable in (:import,:export),data_df)
-		joinedExc_df = joinMissing(select(rename(filter(x -> x.variable == :export,allExc_df),:value => :export),Not([:variable])),select(rename(filter(x -> x.variable == :import,allExc_df),:value => :import),Not([:variable])),intCol(data_df),:outer,Dict(:export => 0.0,:import => 0.0))
-		joinedExc_df[!,:value] = joinedExc_df[!,:export] .+ joinedExc_df[!,:import]
-		select!(joinedExc_df,Not([:export,:import]))
-		joinedExc_df[!,:variable] = map(x -> x > 0.0 ? :netImport : :netExport, joinedExc_df[!,:value])
-		joinedExc_df[!,:value] = abs.(joinedExc_df[!,:value])
-		data_df = vcat(joinedExc_df,filter(x -> !(x.variable in (:export,:import)) ,data_df))
+		if !isempty(data_df)
+			joinedExc_df = joinMissing(select(rename(filter(x -> x.variable == :export,allExc_df),:value => :export),Not([:variable])),select(rename(filter(x -> x.variable == :import,allExc_df),:value => :import),Not([:variable])),intCol(data_df),:outer,Dict(:export => 0.0,:import => 0.0))
+			joinedExc_df[!,:value] = joinedExc_df[!,:export] .+ joinedExc_df[!,:import]
+			select!(joinedExc_df,Not([:export,:import]))
+			joinedExc_df[!,:variable] = map(x -> x > 0.0 ? :netImport : :netExport, joinedExc_df[!,:value])
+			joinedExc_df[!,:value] = abs.(joinedExc_df[!,:value])
+			data_df = vcat(joinedExc_df,filter(x -> !(x.variable in (:export,:import)) ,data_df))
+		end
 	end
 
     # filter non relevant entries
@@ -1279,7 +1283,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	#region # * prepare labels and colors
 
     # prepare name and color assignment
-    names_dic = merge(anyM.graInfo.names,Dict(x["aggregating"][1] => x["label"] for x in aggTech_arr))
+    names_dic = isempty(ymlFilter) ? anyM.graInfo.names : merge(anyM.graInfo.names,Dict(x["aggregating"][1] => x["label"] for x in aggTech_arr))
     revNames_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
 
 	# use color from yaml, if any are provided
@@ -1314,7 +1318,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		dropData_df = copy(data_df)
 		if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,anyM.sets[:R],true)...] end
 		for d in dropDown
-		  filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
+			filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
 		end
 		
 		if netExc
@@ -1338,90 +1342,91 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	
 		# write flows reported in data summary
 		for x in eachrow(dropData_df)
-		  a = Array{Any,1}(undef,3)
-	
-		  # technology related entries
-		  if x.variable in (:demand,:export,:trdSell,:crt,:netExport,:exchangeLoss)
-			a[1] = flowGrap_obj.nodeC[x.C]
-			a[2] = othNode_dic[(x.C,x.variable)]
-		  elseif x.variable in (:import,:trdBuy,:lss,:netImport)
-			a[1] = othNode_dic[(x.C,x.variable)]
-			a[2] = flowGrap_obj.nodeC[x.C]
-		  elseif x.variable in (:gen,:stOut)
-	
-			  if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
-				  a[1] = flowGrap_obj.nodeTe[x.Te]
-			  else
-				  a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
-			  end
-	
-			  a[2] = flowGrap_obj.nodeC[x.C]
-		  else
-			a[1] = flowGrap_obj.nodeC[x.C]
-	
-			if x.Te in keys(flowGrap_obj.nodeTe)
-				a[2] = flowGrap_obj.nodeTe[x.Te]
+
+			a = Array{Any,1}(undef,3)
+		
+			# technology related entries
+			if x.variable in (:demand,:export,:trdSell,:crt,:netExport,:exchangeLoss)
+				a[1] = flowGrap_obj.nodeC[x.C]
+				a[2] = othNode_dic[(x.C,x.variable)]
+			elseif x.variable in (:import,:trdBuy,:lss,:netImport)
+				a[1] = othNode_dic[(x.C,x.variable)]
+				a[2] = flowGrap_obj.nodeC[x.C]
+			elseif x.variable in (:gen,:stOut)
+		
+				if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
+					a[1] = flowGrap_obj.nodeTe[x.Te]
+				else
+					a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+				end
+		
+				a[2] = flowGrap_obj.nodeC[x.C]
 			else
-				a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+				a[1] = flowGrap_obj.nodeC[x.C]
+		
+				if x.Te in keys(flowGrap_obj.nodeTe)
+					a[2] = flowGrap_obj.nodeTe[x.Te]
+				else
+					a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+				end
 			end
-		  end
-	
-		  a[3] = abs(x.value)
-	
-		  push!(flow_arr,tuple(a...))
+		
+			a[3] = abs(x.value)
+		
+			push!(flow_arr,tuple(a...))
 		end
 	
 		# create flows connecting different carriers
 		idToC_dic = Dict(map(x -> x[2] => x[1], collect(flowGrap_obj.nodeC)))
 		for x in filter(x -> anyM.sets[:C].up[x] != 0,intersect(union(getindex.(flow_arr,1),getindex.(flow_arr,2)),values(flowGrap_obj.nodeC)))
-		  a = Array{Any,1}(undef,3)
-		  a[1] = flowGrap_obj.nodeC[x]
-		  a[2] = flowGrap_obj.nodeC[anyM.sets[:C].up[x]]
-		  a[3] = (getindex.(filter(y -> y[2] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z))) - (getindex.(filter(y -> y[1] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z)))
-		  push!(flow_arr,tuple(a...))
+			a = Array{Any,1}(undef,3)
+			a[1] = flowGrap_obj.nodeC[x]
+			a[2] = flowGrap_obj.nodeC[anyM.sets[:C].up[x]]
+			a[3] = (getindex.(filter(y -> y[2] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z))) - (getindex.(filter(y -> y[1] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z)))
+			push!(flow_arr,tuple(a...))
 		end
 	
 		# merges flows for different regions that connect the same nodes
 		flow_arr = map(unique(map(x -> x[1:2],flow_arr))) do fl
-		  allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
-		  return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
+			allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
+			return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
 		end
 		
 		# removes nodes accoring function input provided
 		for rmv in rmvNode
-		  # splits remove expression by semicolon and searches for first part
-		  rmvStr_arr = split(rmv,"; ")
-		  relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
-		  if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
-		  if isempty(relNodes_arr) continue end
-	
-		  if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
-			relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
-			if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
-	
-			if isempty(relC_arr)
-				produceMessage(anyM.options,anyM.report, 1," - Remove string contained a carrier not found in graph, check for typos: "*rmv)
-				continue
-			else
-				c_int = relC_arr[1]
+			# splits remove expression by semicolon and searches for first part
+			rmvStr_arr = split(rmv,"; ")
+			relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
+			if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
+			if isempty(relNodes_arr) continue end
+
+			if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
+				relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
+				if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
+
+				if isempty(relC_arr)
+					produceMessage(anyM.options,anyM.report, 1," - Remove string contained a carrier not found in graph, check for typos: "*rmv)
+					continue
+				else
+					c_int = relC_arr[1]
+				end
+
+				filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)),flow_arr)
+				elseif length(rmvStr_arr) > 2
+				error("one remove string contained more then one semicolon, this is not supported")
+				else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
+				out_tup = filter(x -> x[1] == relNodes_arr[1],flow_arr)
+				in_tup = filter(x -> x[2] == relNodes_arr[1],flow_arr)
+
+				if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
+					filter!(x -> !(x in (out_tup[1],in_tup[1])),flow_arr)
+					push!(flow_arr,(in_tup[1][1],out_tup[1][2],in_tup[1][3]))
+				elseif length(out_tup) == 0 # only ingoing flows
+					filter!(x -> !(x in in_tup),flow_arr)
+				elseif length(in_tup) == 0 # only outgoing flows
+					filter!(x -> !(x in out_tup),flow_arr)
+				end
 			end
-	
-			filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)),flow_arr)
-		  elseif length(rmvStr_arr) > 2
-			error("one remove string contained more then one semicolon, this is not supported")
-		  else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
-			out_tup = filter(x -> x[1] == relNodes_arr[1],flow_arr)
-			in_tup = filter(x -> x[2] == relNodes_arr[1],flow_arr)
-	
-			if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
-			  filter!(x -> !(x in (out_tup[1],in_tup[1])),flow_arr)
-			  push!(flow_arr,(in_tup[1][1],out_tup[1][2],in_tup[1][3]))
-			elseif length(out_tup) == 0 # only ingoing flows
-			  filter!(x -> !(x in in_tup),flow_arr)
-			elseif length(in_tup) == 0 # only outgoing flows
-			  filter!(x -> !(x in out_tup),flow_arr)
-			end
-		  end
 		end
 	
 		#endregion
