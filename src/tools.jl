@@ -1084,14 +1084,14 @@ function plotNetworkGraph(anyM::anyModel; fontSize::Int = 12, replot::Bool = tru
 	label_arr = vcat(map(x -> cLab_dic[x], ordC_arr),map(x -> teLab_dic[x], ordTe_arr))
 	marker_arr = vcat(fill("square",size(ordC_arr,1)),fill("circle",size(ordTe_arr,1)))
 
-	nodesTr_obj = scatter(x=posX_arr, y=posY_arr, text = label_arr, marker_symbol = marker_arr ,textfont_size = fontSize, textfont_color = "black", textfont_family = "Arial", textposition = "top center", mode="markers+text", hoverinfo = "text", marker=attr(size=18,color = vcat(nodeC_arr,nodeTe_arr)))
-	layout_obj = Layout(hovermode="closest",titlefont_size=16,showlegend=false,showarrow=false,xaxis=attr(showgrid=false, zeroline=false, showticklabels=false),yaxis=attr(showgrid=false, zeroline=false, showticklabels=false),paper_bgcolor= "rgba(0,0,0,0)",plot_bgcolor= "rgba(0,0,0,0)")
+	nodesTr_obj = scatter(x=posX_arr[1:2], y=posY_arr[1:2], text = label_arr[1:2], marker_symbol = marker_arr[1:2] ,textfont_size = fontSize, textfont_color = "black", textfont_family = "Arial", textposition = "top center", mode="markers+text", hoverinfo = "text", marker=attr(size=18,color = vcat(nodeC_arr,nodeTe_arr)))
+	layout_obj = Layout(hovermode="closest", titlefont_size=16,showlegend=false,showarrow=false,xaxis=attr(showgrid=false, zeroline=false, showticklabels=false),yaxis=attr(showgrid=false, zeroline=false, showticklabels=false),paper_bgcolor= "rgba(0,0,0,0)",plot_bgcolor= "rgba(0,0,0,0)")
 
 	graph_pl = plot(nodesTr_obj,layout_obj)
 	edgeCol_arr = vcat(edgeColC_arr,edgeColTe_arr)
 
 	for i in 1:length(edgeCol_arr)
-		add_trace!(graph_pl, scatter(mode="lines", x=edgeX_arr[1+(i-1)*3:3+(i-1)*3], y=edgeY_arr[1+(i-1)*3:3+(i-1)*3], line=attr(width=0.5,color = edgeCol_arr[i])))
+		add_trace!(graph_pl, scatter(mode="lines+markers", marker=attr(symbol="arrow-up",size=10,angleref="previous"), x=edgeX_arr[1+(i-1)*3:3+(i-1)*3], y=edgeY_arr[1+(i-1)*3:3+(i-1)*3], line=attr(width=0.5,color = edgeCol_arr[i])))
 	end
 
 	add_trace!(graph_pl,nodesTr_obj)
@@ -1190,7 +1190,7 @@ Plots the Sankey diagram for energy flows in a model.
 
 """
 # ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = true, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false)
+function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false)
 
     flowGrap_obj = anyM.graInfo.graph
 
@@ -1264,18 +1264,21 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 
 	if !isempty(ymlFilter)
 		graph_dic = YAML.load_file(ymlFilter)
-		revName_dic = Dict(anyM.graInfo.names[x] => x for x in collect(keys(anyM.graInfo.names)))
 		# filters entries that aggregates several sub-categories
-		aggTech_arr = filter(x -> "aggregating" in keys(x), graph_dic["vertices"])
-		nonAggTech_arr = setdiff(graph_dic["vertices"],aggTech_arr)
+		agg_arr = filter(x -> "aggregating" in keys(x), graph_dic["vertices"])
+		nonAgg_arr = graph_dic["vertices"]
+		aggTe_arr, aggCe_arr =  map(z -> vcat(map(y -> y["aggregating"],filter(x -> x["type"] == z, agg_arr))...),["technology","carrier"])
+		nonAggTe_arr, nonAggCe_arr = map(z -> map(y -> y["name"],filter(x -> x["type"] == z, nonAgg_arr)),["technology","carrier"])
 		# filters relevant technologies and carriers
-		te_arr = map(y -> sysInt(Symbol(revName_dic[y]),anyM.sets[:Te]), vcat(map(y -> y["label"], filter(x -> x["type"] == "technology", nonAggTech_arr)),vcat(map(x -> x["aggregating"],aggTech_arr)...)))
-		c_arr = map(y -> sysInt(Symbol(revName_dic[y["label"]]),anyM.sets[:C]), filter(x -> x["type"] == "carrier", graph_dic["vertices"]))
+		te_arr = map(y -> sysInt(Symbol(y),anyM.sets[:Te]), vcat(aggTe_arr...,nonAggTe_arr...))
+		c_arr = map(y -> sysInt(Symbol(y),anyM.sets[:C]), vcat(aggCe_arr...,nonAggCe_arr...))
 		filter!(x -> x.C in c_arr && (x.Te == 0 || x.Te in te_arr),data_df)
 		# perform aggregation
-		aggTech_dic = Dict(vcat(map(x -> map(y -> sysInt(Symbol(y),anyM.sets[:Te]) => sysInt(Symbol(x["aggregating"][1]),anyM.sets[:Te]), x["aggregating"]) ,aggTech_arr)...))
-		data_df[!,:Te] = map(x -> x in keys(aggTech_dic) ? aggTech_dic[x] : x,data_df[!,:Te]) 
-		data_df = combine(groupby(data_df,intCol(data_df,:variable)), :value => (x -> sum(x)) => :value)
+		for u in (:Te,:C)
+			agg_dic = Dict(vcat(map(x -> map(y -> sysInt(Symbol(y),anyM.sets[u]) => sysInt(Symbol(x["name"]),anyM.sets[u]), vcat(x["name"],x["aggregating"]...)), filter(x -> x["type"] == (u == :Te ? "technology" : "carrier"), agg_arr))...))
+			data_df[!,u] = map(x -> x in keys(agg_dic) ? agg_dic[x] : x,data_df[!,u]) 
+			data_df = combine(groupby(data_df,intCol(data_df,:variable)), :value => (x -> sum(x)) => :value)
+		end
 	end
 
 	#endregion
@@ -1283,32 +1286,36 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	#region # * prepare labels and colors
 
     # prepare name and color assignment
-    names_dic = isempty(ymlFilter) ? anyM.graInfo.names : merge(anyM.graInfo.names,Dict(x["aggregating"][1] => x["label"] for x in aggTech_arr))
-    revNames_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
+    names_dic = isempty(ymlFilter) ? anyM.graInfo.names : Dict(x["name"] => x["label"] for x in collect(graph_dic["vertices"])) |> (z -> merge(z,filter(x -> !(x[1] in keys(z)),anyM.graInfo.names)))
+    revName_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
 
 	# use color from yaml, if any are provided
 	if !isempty(ymlFilter)
-		col_dic = Dict((x in nonAggTech_arr ? revName_dic[x["label"]] : x["label"]) => tuple(x["color"]...) for x in graph_dic["vertices"])
+		col_dic = Dict(x["name"] => tuple(x["color"]...) for x in graph_dic["vertices"])
 	else
 		col_dic = anyM.graInfo.colors
 	end
 
     sortTe_arr = getindex.(sort(collect(flowGrap_obj.nodeTe),by = x -> x[2]),1)
-    cColor_dic = Dict(x => anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[col_dic[z]] : (0.85,0.85,0.85))) for x in sort(collect(keys(flowGrap_obj.nodeC))))
+    cColor_dic = Dict(x => anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85,0.85,0.85)) for x in sort(collect(keys(flowGrap_obj.nodeC))))
 
     # create array of node labels
-    cLabel_arr = map(x -> names_dic[anyM.sets[:C].nodes[x].val],sort(collect(keys(flowGrap_obj.nodeC))))
-    teLabel_arr = map(x -> names_dic[anyM.sets[:Te].nodes[x].val],sortTe_arr)
+    cLabel_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z),sort(collect(keys(flowGrap_obj.nodeC))))
+    teLabel_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z),sortTe_arr)
     othLabel_arr = map(x -> names_dic[String(othNodeId_dic[x][2])],sort(collect(keys(othNodeId_dic))))
     nodeLabel_arr = vcat(cLabel_arr, teLabel_arr, othLabel_arr)
-    revNodelLabel_arr = map(x -> revNames_dic[x],nodeLabel_arr)
+    revNodelLabel_arr = map(x -> revName_dic[x],nodeLabel_arr)
 
     # create array of node colors
-    cColor_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(flowGrap_obj.nodeC))))
-    teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> useTeColor && z in keys(col_dic) ? col_dic[z] : (useTeColor && names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sortTe_arr)
-    othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(othNodeId_dic))))
+    cColor_arr = map(x -> cColor_dic[x],sort(collect(keys(flowGrap_obj.nodeC))))
+    teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(col_dic) && useTeColor ? col_dic[z] : (0.85,0.85,0.85)),sortTe_arr)
+    othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85,0.85,0.85)),sort(collect(keys(othNodeId_dic))))
     nodeColor_arr = vcat(map(x -> replace.(string.("rgb",string.(map(z -> z .* 255.0,x)))," " => ""),[cColor_arr, teColor_arr, othColor_arr])...)
 	dropData_arr = PlotlyBase.PlotlyAttribute{Dict{Symbol, Any}}[]
+
+	if ymlFilter != "" && "removeSankey" in keys(graph_dic)
+		rmvNode = map(x -> collect(x)[1] |> (z -> string(z[1],"; ",z[2])), collect(graph_dic["removeSankey"])) |> (u ->  isempty(rmvNode) ? tuple(u...) : tuple(u...,rmvNode...))
+	end
 
 	# ! loop over potential buttons in dropdown menue
 	for drop in eachrow(unique(data_df[!,intersect(namesSym(data_df),dropDim_arr)]))
@@ -1391,7 +1398,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 			allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
 			return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
 		end
-		
+
 		# removes nodes accoring function input provided
 		for rmv in rmvNode
 			# splits remove expression by semicolon and searches for first part
@@ -1405,7 +1412,6 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 				if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
 
 				if isempty(relC_arr)
-					produceMessage(anyM.options,anyM.report, 1," - Remove string contained a carrier not found in graph, check for typos: "*rmv)
 					continue
 				else
 					c_int = relC_arr[1]
