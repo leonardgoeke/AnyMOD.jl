@@ -1063,7 +1063,7 @@ function plotNetworkGraph(anyM::anyModel; fontSize::Int = 12, replot::Bool = tru
 
 	#endregion
 
-	#region # * draw and save graph with python
+	#region # * draw and save graph
 
 	edgeX_arr = Union{Nothing,Float64}[]
 	edgeY_arr = Union{Nothing,Float64}[]
@@ -1101,9 +1101,10 @@ function plotNetworkGraph(anyM::anyModel; fontSize::Int = 12, replot::Bool = tru
 	# write plot information to yaml file as well
 	if wrtYML
 		adjPos_dic = Dict(x[1] => (x[2] .+ 1) ./ 2 for x in collect(flowGrap_obj.nodePos))
-		techNode_arr = [Dict("label" => teLab_dic[n], "name" => string(n), "color" => convertCol(nodeTe_arr[length(nodeTe_arr) == 1 ? 1 : id]), "position" => adjPos_dic[n], "type" => "technology") for (id,n) in enumerate(ordTe_arr)]
-		carNode_arr = [Dict("label" => cLab_dic[n], "name" => string(n), "color" => convertCol(nodeC_arr[id]), "position" => adjPos_dic[n], "type" => "carrier") for (id,n) in enumerate(ordC_arr)]
-		YAML.write_file("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).yml", Dict("vertices" => vcat(techNode_arr,carNode_arr), "edges" => [string(e[1]) => string(e[2]) for e in vcat(flowGrap_obj.edgeC,flowGrap_obj.edgeTe)]))
+		techNode_arr = [Dict("label" => teLab_dic[n], "name" => teLab_dic[n], "color" => convertCol(nodeTe_arr[length(nodeTe_arr) == 1 ? 1 : id]), "position" => adjPos_dic[n], "type" => "technology") for (id,n) in enumerate(ordTe_arr)]
+		carNode_arr = [Dict("label" => cLab_dic[n], "name" => cLab_dic[n], "color" => convertCol(nodeC_arr[id]), "position" => adjPos_dic[n], "type" => "carrier") for (id,n) in enumerate(ordC_arr)]
+		allLab_dic = merge(teLab_dic,cLab_dic)
+		YAML.write_file("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).yml", Dict("vertices" => vcat(techNode_arr,carNode_arr), "edges" => [allLab_dic[e[1]] => allLab_dic[e[2]] for e in vcat(flowGrap_obj.edgeC,flowGrap_obj.edgeTe)]))
 	end
     #endregion
 end
