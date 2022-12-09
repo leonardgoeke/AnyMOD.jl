@@ -1192,7 +1192,7 @@ Plots the Sankey diagram for energy flows in a model.
 
 """
 # ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false)
+function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false, wrtVal::Bool = true, digVal::Int = 1)
 
     flowGrap_obj = anyM.graInfo.graph
 
@@ -1446,6 +1446,21 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
 			(z -> replace(string("rgba",string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...)))," " => "")), flow_arr)
 		link_obj = attr(source = getindex.(flow_arr,1) .- 1, target = getindex.(flow_arr,2) .- 1, value = getindex.(flow_arr,3), color = linkColor_arr)
+
+
+		# compute values for each node to written to graph
+		if wrtVal
+			for x in 1:length(nodeLabel_arr)
+				relFlow_arr = filter(y -> y[1] == x, flow_arr)
+				if isempty(relFlow_arr)
+					relFlow_arr = filter(y -> y[2] == x, flow_arr)
+					if isempty(relFlow_arr)
+						nodeLabel_arr[x] = nodeLabel_arr[x] * ", " * string(0.0)
+					end
+				end
+				nodeLabel_arr[x] = nodeLabel_arr[x] * ", " * string(round(sum(getindex.(relFlow_arr,3)), digits = digVal))
+			end
+		end
 	
 		fullData_arr = [attr(link = link_obj, node = attr(label = nodeLabel_arr, color = nodeColor_arr))]
 	
