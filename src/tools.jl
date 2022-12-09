@@ -1192,7 +1192,7 @@ Plots the Sankey diagram for energy flows in a model.
 
 """
 # ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false, wrtVal::Bool = true, digVal::Int = 1)
+function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false, wrtVal::Bool = true, digVal::Int = 1, sgnVal::String = ";")
 
     flowGrap_obj = anyM.graInfo.graph
 
@@ -1458,7 +1458,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 						nodeLabel_arr[x] = nodeLabel_arr[x] * ", " * string(0.0)
 					end
 				end
-				nodeLabel_arr[x] = nodeLabel_arr[x] * ", " * string(round(sum(getindex.(relFlow_arr,3)), digits = digVal))
+				nodeLabel_arr[x] = nodeLabel_arr[x] * sgnVal * " " * string(round(sum(getindex.(relFlow_arr,3)), digits = digVal))
 			end
 		end
 	
