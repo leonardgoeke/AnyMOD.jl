@@ -1454,11 +1454,13 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 				relFlow_arr = filter(y -> y[1] == x, flow_arr)
 				if isempty(relFlow_arr)
 					relFlow_arr = filter(y -> y[2] == x, flow_arr)
-					if isempty(relFlow_arr)
+					if isempty(relFlow_arr) && nodeLabel_arr[x] != ""
 						nodeLabel_arr[x] = nodeLabel_arr[x] * ", " * string(0.0)
 					end
 				end
-				nodeLabel_arr[x] = nodeLabel_arr[x] * sgnVal * " " * string(round(sum(getindex.(relFlow_arr,3)), digits = digVal))
+				if nodeLabel_arr[x] != ""
+					nodeLabel_arr[x] = nodeLabel_arr[x] * sgnVal * " " * string(round(sum(getindex.(relFlow_arr,3)), digits = digVal))
+				end
 			end
 		end
 	
