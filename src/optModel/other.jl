@@ -93,8 +93,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	cns_arr = Array{Pair{Symbol,cnsCont}}(undef,length(relC_arr))
 	itrC_arr = collect(enumerate(relC_arr))
 
-	@threads for (idx,c) in itrC_arr 
-		println(c)
+	@threads for (idx,c) in itrC_arr
 
 		subC_arr = unique([c,getDescendants(c,anyM.sets[:C],true)...])
 		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
