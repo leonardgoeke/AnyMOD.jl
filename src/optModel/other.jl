@@ -94,6 +94,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	itrC_arr = collect(enumerate(relC_arr))
 
 	@threads for (idx,c) in itrC_arr 
+		println(c)
 
 		subC_arr = unique([c,getDescendants(c,anyM.sets[:C],true)...])
 		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
@@ -274,13 +275,14 @@ function createCapaBal!(r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::any
 	conv_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier.gen) , eachrow(conv_df))
 	
 	if !isempty(st_df)
-		st_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier.stExtOut[x.id]) , eachrow(st_df))
-		allCapa_df = vcat(conv_df,st_df)
+		st_df[!,:C] = map(x -> anyM.parts.tech[sysSym(x.Te,anyM.sets[:Te])].carrier |> (z -> :stExtOut in keys(z) ? collect(z.stExtOut[x.id]) : nothing), eachrow(st_df))
+		allCapa_df = vcat(conv_df,filter(x -> !isnothing(x.C), st_df))
 	else
 		allCapa_df = conv_df
 	end
 
 	allCapa_df = flatten(allCapa_df,:C)
+	allCapa_df[!,:C] = Int.(allCapa_df[!,:C])
  
 	# filter storage variables, where they are not to be part of balance
 	filter!(x -> anyM.cInfo[x.C].stBalCapa == :yes || x.id == 0, allCapa_df)
