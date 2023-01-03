@@ -608,11 +608,11 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},cns_
 				end
 				if !isempty(cnsNoEq_df)
 					# set lower limit based on expansion
-					cnsNoEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsNoEq_df[:capa] .- cnsNoEq_df[:exp])
+					cnsNoEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsNoEq_df[!,:capa] .- cnsNoEq_df[!,:exp])
 					filter!(x -> !(isempty(x.cnsExpr.terms)), cnsNoEq_df)
 					cns_dic[Symbol("must",makeUp(capa[1]),"Gr")] =  filter(x -> x.exp != AffExpr(),cnsNoEq_df) |> (w -> cnsCont(select(w,intCol(w,:cnsExpr)),:greater))
 					# set upper limit based on expansion plus residuals
-					cnsNoEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsNoEq_df[:capa] .- cnsNoEq_df[:exp] - cnsNoEq_df[:resi])
+					cnsNoEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsNoEq_df[!,:capa] .- cnsNoEq_df[!,:exp] - cnsNoEq_df[!,:resi])
 					filter!(x -> !(isempty(x.cnsExpr.terms)) && (!decom_boo || x.exp != AffExpr()), cnsNoEq_df)
 					cns_dic[Symbol("must",makeUp(capa[1]),"Sm")] = cnsCont(select(cnsNoEq_df,intCol(cnsNoEq_df,:cnsExpr)),:smaller)
 				end
