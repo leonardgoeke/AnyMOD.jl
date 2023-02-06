@@ -498,8 +498,8 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 				for c in fixC_arr
 					push!(snglDim_arr,("must",[c],anyM.cInfo[c].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[c].rDis))
 				end
-				# removes restrictions on out that become redundant due to the fixed output (out can only become redundant if carrier is not subject to storage)
-				if side == :gen
+				# removes restrictions on out that become redundant due to the fixed output (out can only become redundant if carrier is not subject to storage and no seperate must capa variable exists)
+				if side == :gen && !(:mustCapaConv in keys(part.var))
 					redC_arr = setdiff(fixC_arr,vcat(map(x -> collect(getfield(carGrp_ntup,x)...),intersect((:stIntIn,:stExtOut),keys(carGrp_ntup)))...))
 					for c in redC_arr
 						if ("convOut",[c],anyM.cInfo[c].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[c].rDis) in snglDim_arr push!(snglRmv_arr,c) end # saves information that on capacity restriction about to be removed
