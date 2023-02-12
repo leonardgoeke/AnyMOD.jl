@@ -870,6 +870,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			# get relevant capacity variables and add carrier
 			relCapa_arr = intersect((:capaConv,:capaStOut),keys(part.var))
 			capaVar_df = vcat(map(x -> (Symbol(:must, makeUp(x)) in keys(part.var) ? part.var[Symbol(:must, makeUp(x))] : part.var[x]) |> (z -> x == :capaStOut ? z : insertcols!(copy(z), 1, :id => fill(0,size(z,1)))),relCapa_arr)...)
+			filter!(x -> x.id == 0 || (:stExtOut in keys(part.carrier) && !isempty(intersect(part.carrier.stExtOut,m.car))), capaVar_df)
 
 			# add carriers and expand to dispatch regions
 			capaVar_df[!,:C] .= m.car[1]
@@ -888,7 +889,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			capaVar_df[!,:var] = capaVar_df[!,:var] .* capaVar_df[!,:desFac]
 			capaVar_df = combine(groupby(capaVar_df,filter(x -> x != :id,intCol(capaVar_df))),:var => (x -> sum(x)) => :capa)
 			# resize capacity variables
-			capaVar_df[!,:capa]  = capaVar_df[!,:capa] .* map(x -> anyM.supTs.sca[(x,anyM.cInfo[m.car[1]].tsDis)],	capaVar_df[!,:Ts_disSup])
+			capaVar_df[!,:capa]  = capaVar_df[!,:capa] .* map(x -> anyM.supTs.sca[(x,anyM.cInfo[m.car[1]].tsDis)], capaVar_df[!,:Ts_disSup])
 
 			# get must-run parameter 
 			mustOut_df = filter(x -> x.C == m.car[1],rename(part.par[:mustOut].data,:val => :mustOut))
