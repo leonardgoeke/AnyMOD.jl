@@ -1272,8 +1272,21 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		aggTe_arr, aggCe_arr =  map(z -> vcat(map(y -> y["aggregating"],filter(x -> x["type"] == z, agg_arr))...),["technology","carrier"])
 		nonAggTe_arr, nonAggCe_arr = map(z -> map(y -> y["name"],filter(x -> x["type"] == z, nonAgg_arr)),["technology","carrier"])
 		# filters relevant technologies and carriers
-		te_arr = map(y -> sysInt(Symbol(y),anyM.sets[:Te]), vcat(aggTe_arr...,nonAggTe_arr...))
-		c_arr = map(y -> sysInt(Symbol(y),anyM.sets[:C]), vcat(aggCe_arr...,nonAggCe_arr...))
+		te_arr = map(vcat(aggTe_arr...,nonAggTe_arr...)) do y
+			if y in getfield.(collect(values(anyM.sets[:Te].nodes)),:val)
+				return sysInt(Symbol(y),anyM.sets[:Te])
+			else 
+				error("technology " * y * " not defined!")
+			end
+		end
+		c_arr = map(vcat(aggCe_arr...,nonAggCe_arr...)) do y
+			if y in getfield.(collect(values(anyM.sets[:C].nodes)),:val)
+				return sysInt(Symbol(y),anyM.sets[:C])
+			else 
+				error("technology " * y * " not defined!")
+			end
+		end
+
 		filter!(x -> x.C in c_arr && (x.Te == 0 || x.Te in te_arr),data_df)
 		# perform aggregation
 		for u in (:Te,:C)
@@ -1305,8 +1318,8 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
     cLabel_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z),sort(collect(keys(flowGrap_obj.nodeC))))
     teLabel_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z),sortTe_arr)
     othLabel_arr = map(x -> names_dic[String(othNodeId_dic[x][2])],sort(collect(keys(othNodeId_dic))))
-    nodeLabel_arr = vcat(cLabel_arr, teLabel_arr, othLabel_arr)
-    revNodelLabel_arr = map(x -> revName_dic[x],nodeLabel_arr)
+    nodeLabelAll_arr = vcat(cLabel_arr, teLabel_arr, othLabel_arr)
+    revNodelLabel_arr = map(x -> revName_dic[x],nodeLabelAll_arr)
 
     # create array of node colors
     cColor_arr = map(x -> cColor_dic[x],sort(collect(keys(flowGrap_obj.nodeC))))
@@ -1323,6 +1336,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	for drop in eachrow(unique(data_df[!,intersect(namesSym(data_df),dropDim_arr)]))
 	
 		#region # * filter data and create flow array
+		nodeLabel_arr = copy(nodeLabelAll_arr)
 	
 		dropData_df = copy(data_df)
 		if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,anyM.sets[:R],true)...] end
