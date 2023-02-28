@@ -507,6 +507,13 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 	allFac_df[!,:Ts_disSup] = map(x -> yTs_dic[x],allFac_df[!,:Ts_dis])
 	allFac_df = combine(x -> (desFac = minimum(x.run) * maximum(x.mustOut),),groupby(allFac_df,filter(x -> !(x in [:Ts_dis,:scr]),intCol(allFac_df))))
 
+
+	# check for pre-defined capacity factors and use them instead of computed values
+	if :desFac in keys(part.par)
+		preDefFac_df = matchSetParameter(select(allFac_df,Not([:desFac])),part.par[:desFac],anyM.sets, newCol = :desFac)
+		allFac_df = vcat(antijoin(allFac_df,preDefFac_df,on = intCol(allFac_df)),preDefFac_df)
+	end
+
 	# add computed factors to parameter data
 	if !isempty(allFac_df)
 		parDef_ntup = (dim = (:Ts_expSup, :Ts_disSup, :R_dis, :C, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :C => :up, :Te => :up, :R_dis => :avg_any), part = :techConv)
