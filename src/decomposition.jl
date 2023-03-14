@@ -79,7 +79,7 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 			relVar_arr = filter(x -> any(occursin.(part_dic[sSym].decomm == :none && !wrtCapa ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(part_dic[sSym].var)))
 			relVarLim_arr = filter(x -> any(occursin.(part_dic[sSym].decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(part_dic[sSym].var)))
 
-			for varSym in relVar_arr
+			for varSym in intersect(keys(heuSca_obj.capa[sys][sSym]),keys(heuCom_obj.capa[sys][sSym]),relVar_arr)
 				must_boo = occursin("must",string(varSym))
 				# match results from two different heuristic models
 				bothCapa_df = rename(heuSca_obj.capa[sys][sSym][varSym],:value => :value_1) |> (x -> innerjoin(x, rename(heuCom_obj.capa[sys][sSym][varSym],:value => :value_2), on = intCol(x,:dir)))
@@ -654,7 +654,7 @@ end
 #region # * transfer results between models
 
 # ! write capacities or expansion in input model to returned capacity dictionary
-function writeResult(in_m::anyModel, var_arr::Array{Symbol,1},rmvFix::Bool = false, fltSt::Bool = true)
+function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = false, fltSt::Bool = true, rmvCons::Bool = true)
 	
 	var_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
 	
@@ -667,7 +667,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1},rmvFix::Bool = fal
 			if part_dic[sSym].type == :stock &&  part_dic[sSym].decomm == :none continue end	
 
 			varSym_arr = filter(x -> any(occursin.(string.(var_arr),string(x))), keys(part_dic[sSym].var))
-			var_dic[sys][sSym] = Dict(varSym => getResult(copy(part_dic[sSym].var[varSym])) for varSym in varSym_arr)
+			var_dic[sys][sSym] = Dict(varSym => getResult(copy(part_dic[sSym].var[varSym]),rmvCons) for varSym in varSym_arr)
 
 			# check if storage expansion is fixed to storage output and removes variables in these cases
 			if sys == :Te && fltSt
@@ -718,7 +718,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1},rmvFix::Bool = fal
 end
 
 # ! replaces the variable column with a column storing the value of the variable
-function getResult(res_df::DataFrame)
+function getResult(res_df::DataFrame,rmvCons::Bool)
 	
 	if :Ts_exp in namesSym(res_df) # for expansion filter unique variables
 		# aggregates expansion, if spread across different years
@@ -728,7 +728,7 @@ function getResult(res_df::DataFrame)
 	end
 
 	# write value of variable dataframe
-	res_df[!,:value] = map(x -> round(max(0,value(x) - x.constant), digits = 12),res_df[!,:var])
+	res_df[!,:value] = map(x -> round(max(0,value(x) - (rmvCons ? x.constant : 0.0)), digits = 12),res_df[!,:var])
 
 	return select(res_df,Not([:var]))
 end
