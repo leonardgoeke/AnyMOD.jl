@@ -543,7 +543,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData
 	checkIIS(top_m)
 
 	# write technology capacites and level of capacity balance to benders object
-	capaData_obj.capa, allVal_dic = [writeResult(top_m,x; rmvFix = true)) for x in [[:capa,:mustCapa],[:capa,:exp]]] 
+	capaData_obj.capa, allVal_dic = [writeResult(top_m,x; rmvFix = true) for x in [[:capa,:mustCapa],[:capa,:exp]]] 
 	
 	# get objective value of top problem
 	objTopTrust_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
