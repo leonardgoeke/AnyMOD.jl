@@ -53,7 +53,7 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 	heuData_obj = bendersData()
 	heuData_obj.objVal = sum(map(z -> sum(value.(heu_m.parts.cost.var[z][!,:var])), collect(filter(x -> any(occursin.(["costExp", "costOpr", "costMissCapa", "costRetro"],string(x))), keys(heu_m.parts.cost.var)))))
 	heuData_obj.capa = writeResult(heu_m,[:capa,:exp,:mustCapa,:mustExp])
-
+	
 	if rtrnMod_boo
 		return heu_m, heuData_obj
 	else
@@ -177,7 +177,7 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 	topFeas_m = computeFeas(topFeas_m,fix_dic,zeroThrs_fl,true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m,[:exp,:mustExp,:capa,:mustCapa],false,false)
+    return writeResult(topFeas_m,[:exp,:mustExp,:capa,:mustCapa]; fltSt = false) 
 end
 
 # ! runs top problem again with optimal results
@@ -543,7 +543,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData
 	checkIIS(top_m)
 
 	# write technology capacites and level of capacity balance to benders object
-	capaData_obj.capa, allVal_dic = [writeResult(top_m,x,true) for x in [[:capa,:mustCapa],[:capa,:exp]]]
+	capaData_obj.capa, allVal_dic = [writeResult(top_m,x; rmvFix = true)) for x in [[:capa,:mustCapa],[:capa,:exp]]] 
 	
 	# get objective value of top problem
 	objTopTrust_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
