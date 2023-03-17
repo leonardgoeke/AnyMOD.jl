@@ -260,7 +260,7 @@ function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 	
 	# loop over variables
 	for sys in (:tech,:exc), sSym in keys(fix_dic[sys])
-		hasMust_boo = sys == :tech ? "must" in heu_m.parts.tech[sSym].capaRestr[!,:cnstrType] : false
+		hasMust_boo = sys == :tech && isdefined(heu_m.parts.tech[sSym],:capaRestr) ? "must" in heu_m.parts.tech[sSym].capaRestr[!,:cnstrType] : false
 		for varSym in filter(x -> !skipMustSt || !hasMust_boo || x in (:capaConv, :expConv), keys(fix_dic[sys][sSym]))
 			fix_df = feasFix_dic[sys][sSym][varSym] |> (w -> innerjoin(w,select(fix_dic[sys][sSym][varSym],Not([:value])), on = intersect(intCol(w,:dir),intCol(fix_dic[sys][sSym][varSym],:dir))))
 			# create file name
@@ -268,12 +268,12 @@ function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 			fileName_str = temp_dir * "/par_Fix" * string(makeUp(sys)) * "_" * string(sSym) * "_" * string(varSym)
 			# set really small values due to remaining solver imprecisions to zero
 			fix_df[!,:value] = map(x -> x < 1e-10 ? 0.0 : x,fix_df[!,:value])
-			if occursin("capa",string(varSym)) # adds residual capacities
+			if occursin("capa",string(varSym)) && varSym in keys(getfield(heu_m.parts,sys)[sSym].var) # adds residual capacities
 				resVal_df = copy(getfield(heu_m.parts,sys)[sSym].var[varSym])
 				resVal_df[!,:resi] = map(x -> x.constant, resVal_df[!,:var])
-				fix_df = innerjoin(fix_df,select(resVal_df,Not([:var])), on = intCol(fix_df,:dir))
+				fix_df = joinMissing(fix_df,select(resVal_df,Not([:var])),intCol(fix_df,:dir),:left,Dict(:resi => 0.0))
 				fix_df[!,:value] = fix_df[!,:value] .+ fix_df[!,:resi]
-				select!(fix_df,Not([:resi]))	
+				select!(fix_df,Not([:resi]))
 			end
 
 			if varSym == :expExc && heu_m.parts.exc[sSym].dir fix_df[!,:dir] .= true end
@@ -654,7 +654,7 @@ end
 #region # * transfer results between models
 
 # ! write capacities or expansion in input model to returned capacity dictionary
-function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = false, fltSt::Bool = true, rmvCons::Bool = true)
+function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = false, fltSt::Bool = true)
 	
 	var_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
 	
@@ -667,7 +667,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = fal
 			if part_dic[sSym].type == :stock &&  part_dic[sSym].decomm == :none continue end	
 
 			varSym_arr = filter(x -> any(occursin.(string.(var_arr),string(x))), keys(part_dic[sSym].var))
-			var_dic[sys][sSym] = Dict(varSym => getResult(copy(part_dic[sSym].var[varSym]),rmvCons) for varSym in varSym_arr)
+			var_dic[sys][sSym] = Dict(varSym => getResult(copy(part_dic[sSym].var[varSym])) for varSym in varSym_arr)
 
 			# check if storage expansion is fixed to storage output and removes variables in these cases
 			if sys == :Te && fltSt
@@ -718,7 +718,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = fal
 end
 
 # ! replaces the variable column with a column storing the value of the variable
-function getResult(res_df::DataFrame,rmvCons::Bool)
+function getResult(res_df::DataFrame)
 	
 	if :Ts_exp in namesSym(res_df) # for expansion filter unique variables
 		# aggregates expansion, if spread across different years
@@ -728,7 +728,7 @@ function getResult(res_df::DataFrame,rmvCons::Bool)
 	end
 
 	# write value of variable dataframe
-	res_df[!,:value] = map(x -> round(max(0,value(x) - (rmvCons ? x.constant : 0.0)), digits = 12),res_df[!,:var])
+	res_df[!,:value] = map(x -> round(max(0,value(x) - x.constant), digits = 12),res_df[!,:var])
 
 	return select(res_df,Not([:var]))
 end
