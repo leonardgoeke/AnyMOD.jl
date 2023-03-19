@@ -442,19 +442,15 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 		else
 			allVar_df = DataFrame()
 		end
-	elseif occursin("cost",string(va)) && !(va in (:cost,:costExp,:costDis)) # get single variables from cost part
+	elseif occursin("cost",string(va)) && va != :cost # get single variables from cost part
 		if va in keys(anyM.parts.cost.var)
 			allVar_df = copy(anyM.parts.cost.var[va])
 		else
 			allVar_df = DataFrame()
 		end
-	elseif va in (:cost,:costExp,:costDis) # get merged cost variables
+	elseif va == :cost # get merged cost variables
 
-		# gets all cost variables used
-		allCostVar_arr = collect(keys(anyM.parts.cost.var))
-		# filters either dispatch or expansion related costs if specified
-		costDis_arr = [:costVarUse,:costVarGen,:costVarStIn,:costVarStOut,:costVarIn,:costVarOut,:costVarExc,:costEm, :costCrt,:costLss,:trdBuyPrc, :trdBuySell, :costEmInf]
-		costVar_arr = va == :cost ? allCostVar_arr : (va == :costExp ? setdiff(allCostVar_arr,costDis_arr) : intersect(allCostVar_arr,costDis_arr))
+		costVar_arr = collect(keys(anyM.parts.cost.var))
 		costDf_arr = Array{DataFrame}(undef,length(costVar_arr))
 
 		for (idx,va) in enumerate(costVar_arr)
@@ -523,7 +519,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 
 			# add expressions for storage losses, if this is enabled
 			if anyM.options.emissionLoss
-				allSt_arr = vcat(map(x -> map(y -> collect(x.carrier[y]),intersect(keys(x.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))),values(anyM.parts.tech))...) |> (w -> isempty(w) ? Int[] : union(union(union(w)...)...))
+				allSt_arr = union(union(union(map(x -> map(y -> collect(x.carrier[y]),intersect(keys(x.carrier),(:stExtIn,:stExtOut,:stIntIn,:stIntOut))),values(anyM.parts.tech))...)...)...)
 				if !isempty(intersect(emC_arr,allSt_arr))
 					# get all storage variables where storage losses can lead to emissions
 					stVar_dic = Dict((string(st) |> (y -> Symbol(uppercase(y[1]),y[2:end]))) => getAllVariables(st,anyM, filterFunc = x -> x.C in emC_arr || x.Te in emTe_arr) for st in (:stIn,:stOut))

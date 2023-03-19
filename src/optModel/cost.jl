@@ -10,7 +10,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 
 	#region # * expansion related costs
 
-	if isempty(anyM.subPro) || anyM.subPro in ((0,0),(-1,-1))
+	if isempty(anyM.subPro) || anyM.subPro == (0,0)
 
 		# ! add elements for expansion costs of technologies
 		for va in (:Conv, :StIn, :StOut, :StSize, :Exc)
@@ -227,7 +227,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 	# costs of missing capacity
 
 	# obtain missing capacity variables
-	if !isempty(anyM.subPro) && !(anyM.subPro in ((0,0),(-1,-1))) # for sub-problems missing capacity variables only server to avoid infeasibilities with storage technologies and are stored in technology parts
+	if !isempty(anyM.subPro) && anyM.subPro != (0,0) # for sub-problems missing capacity variables only server to avoid infeasibilities with storage technologies and are stored in technology parts
 		missCapa_df = filter(x -> :missCapa in keys(anyM.parts.tech[x].var) ,collect(keys(anyM.parts.tech))) |> (z -> isempty(z) ? DataFrame() : vcat(map(y -> anyM.parts.tech[y].var[:missCapa],z)...))
 	else
 		missCapa_df = :missCapa in keys(anyM.parts.bal.var) ? anyM.parts.bal.var[:missCapa] : DataFrame()
@@ -237,7 +237,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 		# compute discounted costs
 		allVar_df = rename(matchSetParameter(missCapa_df,anyM.parts.bal.par[:costMissCapa],anyM.sets,newCol = :cost),:var => :missCapa)
 		allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partCost.par[:disFac],anyM.sets,newCol = :disFac)
-		if !isempty(anyM.subPro) && !(anyM.subPro in ((0,0),(-1,-1))) 
+		if !isempty(anyM.subPro) && anyM.subPro != (0,0)  
 			# add scenario probability
 			allVar_df[!,:scr] .= anyM.subPro[2]
 			allVar_df[!,:missCapa] = allVar_df[!,:missCapa] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allVar_df))
@@ -404,7 +404,7 @@ function computeDisFac!(partObj::OthPart,anyM::anyModel)
 	rExp_arr = union(map(x -> getfield.(getNodesLvl(anyM.sets[:R],x),:idx), unique(getfield.(values(anyM.cInfo),:rExp)))...)
 	discR_df = matchSetParameter(flatten(flatten(DataFrame(Ts_disSup = anyM.supTs.step, R_exp = rExp_arr),:Ts_disSup),:R_exp),partObj.par[:rateDisc],anyM.sets)
 
-	factY_int = !isempty(anyM.subPro) && !(anyM.subPro in ((0,0),(-1,-1))) ? anyM.subPro[1] : 1 # factor to correct discount factor in case of distributed model generation
+	factY_int = !isempty(anyM.subPro) && anyM.subPro != (0,0) ? anyM.subPro[1] : 1 # factor to correct discount factor in case of distributed model generation
 
 	discR_df[!,:disFac] = 1 ./ (1 .+ discR_df[!,:val]).^(anyM.options.shortExp * factY_int)
 	discR_df[!,:disFac] = map(x -> filter(y -> y < x.Ts_disSup ,collect(anyM.supTs.step)) |> (z -> prod(filter(y -> y.R_exp == x.R_exp && y.Ts_disSup in z, discR_df)[!,:disFac])*x.disFac),eachrow(discR_df))

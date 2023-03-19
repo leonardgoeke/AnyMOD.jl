@@ -23,7 +23,7 @@ function createOptModel!(anyM::anyModel)
 	addInsCapa!(prepSys_dic,anyM) # add entries for installed capacities
 
 	# ! remove unrequired elements in case of distributed model creation
-	if !isempty(anyM.subPro) && anyM.subPro != (-1,-1)
+	if !isempty(anyM.subPro)
 	    distributedMapping!(anyM,prepSys_dic)
 	end
 	# abort if there is already an error
@@ -123,6 +123,3 @@ function createOptModel!(anyM::anyModel)
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")
 end
-
-
-

@@ -10,7 +10,7 @@ function createExc!(eInt::Int,part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple}
 		createExpCap!(part,prepExc_dic,anyM)
 
 		# create expansion constraints
-		if isempty(anyM.subPro) || anyM.subPro in ((0,0),(-1,-1))
+		if isempty(anyM.subPro) || anyM.subPro == (0,0)
 			# connect capacity and expansion variables
 			createCapaCns!(part,anyM.sets,prepExc_dic,cns_dic,anyM.optModel,anyM.options.holdFixed,excDir_arr)
 
@@ -25,7 +25,7 @@ function createExc!(eInt::Int,part::ExcPart,prepExc_dic::Dict{Symbol,NamedTuple}
 	if !isempty(part.var) || part.type == :unrestricted 
 		produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for exchange $(exc_str)")
 
-		if isempty(anyM.subPro) || !(anyM.subPro in ((0,0),(-1,-1)))
+		if isempty(anyM.subPro) || anyM.subPro != (0,0)
 			# create dispatch variables
 			createExcVar!(part,ts_dic,r_dic,prepExc_dic,anyM) 
 			# create variables for energy use of exchange

@@ -543,7 +543,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData
 	capaData_obj.capa, allVal_dic = [writeResult(top_m,x,true) for x in [[:capa,:mustCapa],[:capa,:exp]]]
 	
 	# get objective value of top problem
-	objTopTrust_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var])) - value(sum(filter(x -> x.name == :costDis, top_m.parts.obj.var[:objVar])[!,:var]))
+	objTopTrust_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
 	lowLimTrust_fl = objTopTrust_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
 
 	return capaData_obj, allVal_dic, objTopTrust_fl, lowLimTrust_fl

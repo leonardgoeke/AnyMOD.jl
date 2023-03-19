@@ -183,15 +183,13 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 		end
 
 		# avoid storage of carriers that are balanced on superordinate dispatch level (e.g. if gas is balanced yearly, there is no need for gas storage)
-		if anyM.subPro != (-1,-1)
-			for type in (:carrier_stored_out, :carrier_stored_in)
-				for c in union(carId_dic[type]...)
-					if anyM.supTs.lvl == anyM.cInfo[c].tsDis
-						carId_dic[type] = tuple(map(z -> filter(x -> x != c,z),collect(carId_dic[type]))...)
-						push!(anyM.report,(2,"technology mapping","carrier","carrier '$(createFullString(c,anyM.sets[:C]))' of technology '$(string(sSym))' cannot be stored, because carrier is balanced on superordinate dispatch level"))
-					end
-				end 
-			end
+		for type in (:carrier_stored_out, :carrier_stored_in)
+			for c in union(carId_dic[type]...)
+				if anyM.supTs.lvl == anyM.cInfo[c].tsDis
+					carId_dic[type] = tuple(map(z -> filter(x -> x != c,z),collect(carId_dic[type]))...)
+					push!(anyM.report,(2,"technology mapping","carrier","carrier '$(createFullString(c,anyM.sets[:C]))' of technology '$(string(sSym))' cannot be stored, because carrier is balanced on superordinate dispatch level"))
+				end
+			end 
 		end
 		
 		# writes all relevant type of dispatch variables and respective carrier
@@ -655,7 +653,7 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 		end
 
 		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be a sub-problem for time-step '$(createFullString(supTs_int,anyM.sets[:Ts]))'$(getScrName(subPro[2],anyM.sets[:scr]))")
-	else # ! case of top-problem without valid inequalities
+	else # ! case of top-problem
 		# ! remove parameter data
 		# remove unrequired parameter data from technology parts
 		for sys in (:exc,:tech), pName in collectKeys(keys(getfield(anyM.parts,sys))), parName in collectKeys(keys(getfield(getfield(anyM.parts,sys)[pName],:par)))
