@@ -962,7 +962,7 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 
 	# resize capacity variables (expect for stSize since these are already provided in energy units)
 	if type_sym != :stSize
-		capaVar_df[!,:var]  = @expression(optModel,capaVar_df[!,:var] .* map(x -> supTs_ntup.sca[(x.Ts_disSup,x.lvlTs)],	eachrow(capaVar_df[!,[:Ts_disSup,:lvlTs]])))
+		capaVar_df[!,:var]  = @expression(optModel,capaVar_df[!,:var] .* map(x -> supTs_ntup.sca[(x.Ts_disSup,x.lvlTs)], eachrow(capaVar_df[!,[:Ts_disSup,:lvlTs]])))
 	end
 
 	# replaces expansion with dispatch regions and aggregates capacity variables accordingy if required
@@ -1106,6 +1106,10 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 
 					# create corresponding constraint
 					subCns_df[!,:cnsExpr] = @expression(anyM.optModel,subCns_df[!,:allVar] .* subCns_df[!,:ratio] .- subCns_df[!,:ratioVar])
+					
+					# aggregate constraints for creation of valid inequalities
+					if anyM.options.createVI aggregateReg!(subCns_df) end
+					
 					allCns_arr[idx] = subCns_df
 				end
 				cns_df = vcat(allCns_arr...)

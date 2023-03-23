@@ -23,7 +23,7 @@ function createOptModel!(anyM::anyModel)
 	addInsCapa!(prepSys_dic,anyM) # add entries for installed capacities
 
 	# ! remove unrequired elements in case of distributed model creation
-	if !isempty(anyM.subPro)
+	if !isempty(anyM.subPro) && !anyM.options.createVI
 	    distributedMapping!(anyM,prepSys_dic)
 	end
 	# abort if there is already an error
@@ -106,7 +106,7 @@ function createOptModel!(anyM::anyModel)
 
 	#region # * create variables and constraints for trade, the energy balance and costs
 	
-	if isempty(anyM.subPro) || anyM.subPro != (0,0)
+	if isempty(anyM.subPro) || anyM.subPro != (0,0) || (anyM.subPro == (0,0) && anyM.options.createVI)
 		createTradeVarCns!(anyM.parts.bal,ts_dic,anyM)
 		createEnergyBal!(techSym_arr,ts_dic,anyM)
 	end

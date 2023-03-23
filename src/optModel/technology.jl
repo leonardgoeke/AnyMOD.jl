@@ -39,14 +39,12 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		end
 
 		# map required capacity constraints
-		if part.type != :unrestricted 
-			rmvOutC_arr = createCapaRestrMap!(part, anyM) 
-		end
+		if part.type != :unrestricted rmvOutC_arr = createCapaRestrMap!(part, anyM) end
 			
 		produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
 
 		# create dispatch variables and constraints
-		if isempty(anyM.subPro) || anyM.subPro != (0,0)
+		if isempty(anyM.subPro) || anyM.subPro != (0,0) || anyM.options.createVI
 			createDispVar!(part,modeDep_dic,ts_dic,r_dic,prepTech_dic,anyM)
 			produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
 
@@ -57,7 +55,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 			end
 
 			# create storage balance for storage technologies
-			if :stLvl in keys(part.var) && part.balSign.st != :none
+			if :stLvl in keys(part.var) && part.balSign.st != :none && !anyM.options.createVI
 				cns_dic[:stBal] = createStBal(part,anyM)
 				produceMessage(anyM.options,anyM.report, 3," - Prepared storage balance for technology $(tech_str)")
 			end
@@ -71,7 +69,6 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 
 		# create ratio constraints
 		createRatioCns!(part,cns_dic,r_dic,anyM)
-
 
 		# all constraints are scaled and then written into their respective array position
 		foreach(x -> scaleCnsExpr!(x[2].data,anyM.options.coefRng,anyM.options.checkRng), collect(cns_dic))
@@ -180,18 +177,36 @@ end
 
 # ! create all dispatch variables
 function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},prepTech_dic::Dict{Symbol,NamedTuple},anyM::anyModel)
+	
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,))
-	hasSt_boo = :capaStSize in keys(prepTech_dic)
+	hasSt_boo = :capaStSize in keys(prepTech_dic) && !anyM.options.createVI
+	dispVar_arr = collectKeys(keys(part.carrier)) |> (x -> hasSt_boo  ? [:stLvl,x...]  : x)
+	onlyGen_boo =  :gen in dispVar_arr && isempty(intersect([:use,:stIntIn],dispVar_arr))
 
-	for va in collectKeys(keys(part.carrier)) |> (x -> hasSt_boo  ? [:stLvl,x...]  : x) # loop over all relevant kind of variables
+	# filter map of capacity restrictions based on actually created dispatch variables
+	if anyM.options.createVI
+		if !hasSt_boo filter!(x -> !any(occursin.(["stIn","stOut","stSize"],x.cnstrType)),part.capaRestr) end
+		if onlyGen_boo filter!(x -> false, part.capaRestr) end
+	end
+
+	for va in  dispVar_arr # loop over all relevant kind of variables
 		conv_boo = va in (:gen,:use) && :capaConv in keys(prepTech_dic)
+		# dont create storage variables when only creating valid inequalities
+		if (va in (:stExtOut,:stExtIn,:stLvl) || (va == :stIntOut && :gen in dispVar_arr) || (va == :stIntIn && :use in dispVar_arr)) && anyM.options.createVI
+			continue 
+		end
 		# obtains relevant capacity variable
 		if conv_boo
 			basis_df = copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[:capaConv]))...)))
 			if isempty(basis_df) continue end
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
+			# capacity replacing generation variables in case of valid inequalities if possible
+			if anyM.options.createVI && onlyGen_boo 
+				basis_df = innerjoin(basis_df,part.var[:capaConv], on = intCol(part.var[:capaConv])) 
+				basis_df[!,:var]  = @expression(optModel,basis_df[!,:var] .* map(x -> supTs_ntup.sca[(x.Ts_disSup,anyM.cInfo[x.C].tsDis)], eachrow(basis_df[!,:])))
+			end 
 		elseif hasSt_boo && !(va in (:gen,:use))
 			basis_df = orderDf(copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[:capaStSize]))...))))
 			if isempty(basis_df) continue end
@@ -204,7 +219,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		else
 			continue
 		end
-
+		
 		# adds temporal and spatial level to dataframe
 		cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[x].rDis) for x in unique(basis_df[!,:C]))
 		basis_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],basis_df[!,:C])
@@ -218,20 +233,43 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 
 		allVar_df = joinMissing(allVar_df,modeDep_df,namesSym(modeDep_dic[va]),:left,Dict(:M => 0))
 
-		# filter entries where availability is zero
-		for avaPar in relAva_dic[va]
-			if avaPar in keys(part.par) && !isempty(part.par[avaPar].data) && 0.0 in part.par[avaPar].data[!,:val]
-				allVar_df = filter(x -> x.val != 0.0,  matchSetParameter(allVar_df,part.par[avaPar],anyM.sets))[!,Not(:val)]
-			end
-		end
+		# replace dispatch variables with maximum output, if technology does not need capacity constraints
+		if anyM.options.createVI && onlyGen_boo
+			# compute maximum output
+			allVar_df = matchSetParameter(allVar_df,part.par[relAva_dic[va][1]],anyM.sets,newCol = :out)
+			if va == :gen
+				if :desFac in keys(part.par)
+					allVar_df = matchSetParameter(allVar_df,part.par[:desFac],anyM.sets,newCol = :desFac)
+					allVar_df = matchSetParameter(allVar_df,part.par[:mustOut],anyM.sets,newCol = :mustOut)
+					allVar_df[!,:out] = allVar_df[!,:desFac] .* allVar_df[!,:mustOut]
+				else
+					allVar_df = matchSetParameter(allVar_df,part.par[:effConv],anyM.sets,newCol = :eff)
+					allVar_df[!,:out] = allVar_df[!,:out] .* allVar_df[!,:eff]
+					select!(allVar_df,Not([:eff]))
+				end
+			else
 
-		# computes value to scale up the global limit on dispatch variable that is provied per hour and create variable
-        if conv_boo
-			scaFac_fl = anyM.options.scaFac.dispConv
+			end
+			allVar_df[!,:var] = allVar_df[!,:var]  .* allVar_df[!,:out]
+			allVar_df = combine(x -> (var = sum(x.var)/length(unique(x.Ts_dis)),),groupby(allVar_df,filter(x -> x != :Ts_dis, intCol(allVar_df))))
+			allVar_df[!,:Ts_dis] = allVar_df[!,:Ts_disSup]
+			part.var[va] = orderDf(allVar_df)
 		else
-			scaFac_fl = anyM.options.scaFac.dispSt
+			# filter entries where availability is zero
+			for avaPar in relAva_dic[va]
+				if avaPar in keys(part.par) && !isempty(part.par[avaPar].data) && 0.0 in part.par[avaPar].data[!,:val]
+					allVar_df = filter(x -> x.val != 0.0,  matchSetParameter(allVar_df,part.par[avaPar],anyM.sets))[!,Not(:val)]
+				end
+			end
+
+			# computes value to scale up the global limit on dispatch variable that is provied per hour and create variable
+			if conv_boo
+				scaFac_fl = anyM.options.scaFac.dispConv
+			else
+				scaFac_fl = anyM.options.scaFac.dispSt
+			end
+			part.var[va] = orderDf(createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / scaFac_fl,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = scaFac_fl))
 		end
-		part.var[va] = orderDf(createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / scaFac_fl,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = scaFac_fl))
 	end
 end
 
@@ -274,12 +312,16 @@ function createConvBal(part::TechPart,anyM::anyModel)
 			cns_df[!,va] = aggUniVar(var_df, select(cns_df,intCol(cns_df)), agg_arr, srcRes_ntup, anyM.sets)
 		end
 	end
-
+	
 	# aggregate in and out variables respectively and create actual constraint
 	aggCol!(cns_df,in_arr)
 	aggCol!(cns_df,out_arr)
 	
 	cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[!,in_arr[1]] .* cns_df[!,:eff] .- cns_df[!,out_arr[1]])
+	
+	# aggregate regions for valid inequalities
+	if anyM.options.createVI aggregateReg!(cns_df) end
+
 	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]), part.balSign.conv == :eq ? :equal : :greater)
 end
 

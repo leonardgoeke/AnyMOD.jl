@@ -135,6 +135,16 @@ function createTimestepMapping!(anyM::anyModel)
 		push!(anyM.report,(2,"timestep mapping","","problem specification resulted in more than 50 superordinate dispatch timesteps, this looks faulty"))
 	end
 
+	# adjust temporal resolution of dispatch for valid inequalities
+	if anyM.options.createVI 
+		for c in keys(anyM.cInfo)
+			res_dic = anyM.cInfo[c]
+			anyM.cInfo[c] = (tsDis = anyM.supTs.lvl, tsExp = res_dic[:tsExp], rDis = res_dic[:rDis], rExp = res_dic[:rExp], balSign = res_dic[:balSign], stBalCapa = res_dic[:stBalCapa])
+		end
+	end
+		
+	produceMessage(anyM.options,anyM.report, 2," - Adjusted temporal resolution for valid inequalities")
+
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for time steps")
 end
 
@@ -183,15 +193,17 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 		end
 
 		# avoid storage of carriers that are balanced on superordinate dispatch level (e.g. if gas is balanced yearly, there is no need for gas storage)
-		for type in (:carrier_stored_out, :carrier_stored_in)
-			for c in union(carId_dic[type]...)
-				if anyM.supTs.lvl == anyM.cInfo[c].tsDis
-					carId_dic[type] = tuple(map(z -> filter(x -> x != c,z),collect(carId_dic[type]))...)
-					push!(anyM.report,(2,"technology mapping","carrier","carrier '$(createFullString(c,anyM.sets[:C]))' of technology '$(string(sSym))' cannot be stored, because carrier is balanced on superordinate dispatch level"))
-				end
-			end 
+		if !anyM.options.createVI
+			for type in (:carrier_stored_out, :carrier_stored_in)
+				for c in union(carId_dic[type]...)
+					if anyM.supTs.lvl == anyM.cInfo[c].tsDis
+						carId_dic[type] = tuple(map(z -> filter(x -> x != c,z),collect(carId_dic[type]))...)
+						push!(anyM.report,(2,"technology mapping","carrier","carrier '$(createFullString(c,anyM.sets[:C]))' of technology '$(string(sSym))' cannot be stored, because carrier is balanced on superordinate dispatch level"))
+					end
+				end 
+			end
 		end
-		
+
 		# writes all relevant type of dispatch variables and respective carrier
 		grpSt_int = length(carId_dic[:carrier_stored_out])
 		carGrp_ntup = (use = carId_dic[:carrier_conversion_in], gen = carId_dic[:carrier_conversion_out], 

@@ -253,7 +253,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 
 	#region # * dispatch related costs
 
-	if isempty(anyM.subPro) || anyM.subPro != 0.0 #!(anyM.subPro in ((0,0),(-1,-1)))
+	if isempty(anyM.subPro) || anyM.subPro != (0,0)
 		
 		# ! infeasibility costs of emissions
 		if :emissionInf in keys(anyM.parts.lim.var)
