@@ -139,6 +139,7 @@ mutable struct TechPart <: AbstractModelPart
 	capaRestr::DataFrame
 	actSt::Tuple
 	stCyc::Int
+	stTrack::Union{Int,Nothing}
 	type::Symbol
 	disAgg::Bool
 	modes::Tuple{Vararg{Int,N} where N}
@@ -180,6 +181,7 @@ mutable struct TechPart <: AbstractModelPart
 	capaRestr::DataFrame
 	type::Symbol
 	stCyc::Int
+	stTrack::Union{Int,Nothing}
 	disAgg::Bool
 	intCapaRestr::Bool
 	modes::Tuple{Vararg{Int,N} where N}

@@ -422,20 +422,37 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 
 		# ! check if a specific resolution is enforced for the cyclic constraint of storage
 		if :timestep_cyclic in namesSym(row_df) && row_df[:timestep_cyclic] != ""
-			styCyc_int =tryparse(Int,row_df[:timestep_cyclic])
-			if isnothing(styCyc_int)
-				styCyc_int = anyM.supTs.lvl
+			stCyc_int =tryparse(Int,row_df[:timestep_cyclic])
+			if isnothing(stCyc_int)
+				stCyc_int = anyM.supTs.lvl
 				push!(anyM.report,(2,"technology mapping","storage cycling","specific storage cycling level provided for technology '$(string(sSym))' could not parsed into a integer, value was ignored"))
 			else
-				if styCyc_int < anyM.supTs.lvl
+				if stCyc_int < anyM.supTs.lvl
 					push!(anyM.report,(3,"technology mapping","storage cycling","specific storage cycling level provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch timestep"))
 					return
 				end
 			end
 		else
-			styCyc_int = anyM.supTs.lvl
+			stCyc_int = anyM.supTs.lvl
 		end
-		part.stCyc = styCyc_int
+		part.stCyc = stCyc_int
+
+		# ! check if a specific resolution is enforced for tracking the storage level
+		if :timestep_tracked in namesSym(row_df) && row_df[:timestep_tracked] != ""
+			stTrack_int =tryparse(Int,row_df[:timestep_tracked])
+			if isnothing(stTrack_int)
+				stTrack_int = nothing
+				push!(anyM.report,(2,"technology mapping","storage tracked","specific resolution for tracking storage level provided for technology '$(string(sSym))' could not parsed into a integer, value was ignored"))
+			else
+				if stTrack_int < anyM.supTs.lvl
+					push!(anyM.report,(3,"technology mapping","storage tracked","specific resolution for tracking storage level provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch timestep"))
+					return
+				end
+			end
+		else
+			stTrack_int = nothing
+		end
+		part.stTrack = stTrack_int
 
 		# ! determines reference resolution for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
 		if !isempty(part.carrier)
