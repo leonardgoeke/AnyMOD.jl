@@ -42,7 +42,8 @@ function createOptModel!(anyM::anyModel)
 	#region # * create technology related variables and constraints
 
     # creates dictionary that assigns combination of superordinate dispatch timestep and dispatch level to dispatch timesteps
-    allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
+	allTrackStDis_arr = anyM.parts.tech |> (z -> filter(y -> !isnothing(y),map(x -> z[x].stTrack,collect(keys(anyM.parts.tech)))))
+    allLvlTsDis_arr = convert(Vector{Int64},unique(vcat(getfield.(values(anyM.cInfo),:tsDis),allTrackStDis_arr)))
 	ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
 	
 	# creates dictionary that assigns superordinate dispatch time-step to each dispatch time-step

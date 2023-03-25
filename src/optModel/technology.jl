@@ -40,7 +40,12 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 
 		# map required capacity constraints
 		if part.type != :unrestricted 
-			rmvOutC_arr = createCapaRestrMap!(part, anyM) 
+			rmvOutC_arr = createCapaRestrMap!(part, anyM)
+			# adjust tracking level of storage
+			if !isnothing(part.stTrack)
+				stSizeRow_arr = findall(map(x -> occursin("stSize",x), part.capaRestr[!,:cnstrType]))
+				part.capaRestr[stSizeRow_arr,:lvlTs] .= part.stTrack
+			end
 		end
 			
 		produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
@@ -205,9 +210,19 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			continue
 		end
 
-		# adds temporal and spatial level to dataframe
+		# adds temporal level to dataframe
 		cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[x].rDis) for x in unique(basis_df[!,:C]))
 		basis_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],basis_df[!,:C])
+		# replaces level for storage level with specific resolution provided
+		if va == :stLvl && !isnothing(part.stTrack)
+			if any(part.stTrack .> basis_df[!,:lvlTs])
+				push!(anyM.report,(3,"technology mapping","storage tracked","specific resolution for tracking storage level provided for technology '$(string(sSym))' is more detailed than resolution for the stored carrier"))
+				return
+			end
+			basis_df[!,:lvlTs] .= part.stTrack
+		end
+
+		# adds spatial level to dataframe
 		basis_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],basis_df[!,:C])
 		allVar_df = orderDf(expandExpToDisp(basis_df,ts_dic,r_dic,anyM.supTs.scr,true))
 
@@ -344,12 +359,15 @@ function createStBal(part::TechPart,anyM::anyModel)
 				return typVar_df[!,Not(:val)]
 			end
 
-			# adds dispatch variable to constraint dataframe, mode dependant and non-mode dependant balances have to be aggregated separately
+			# adds dispatch variable to constraint dataframe, mode dependant and non-mode dependant balances have to be aggregated separately and timesteps only need aggregration if resolution for storage level differs
 			dispVar_df = vcat(typExpr_arr...)
 			cnsC_df[!,typ] .= AffExpr()
 			if isempty(dispVar_df) continue end
-			cnsC_df[m_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[m_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 1,), anyM.sets)
-			cnsC_df[noM_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[noM_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 0,), anyM.sets)
+
+			mAgg_tup = isnothing(part.stTrack) ?  (M = 1,) : (M = 1, Ts_dis = anyM.sets[:Ts].nodes[cnsC_df[1,:Ts_dis]].lvl)
+			noMAgg_tup = isnothing(part.stTrack) ?  (M = 1,) : (M = 1, Ts_dis = anyM.sets[:Ts].nodes[cnsC_df[1,:Ts_dis]].lvl)
+			cnsC_df[m_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[m_arr,:],intCol(cnsC_df)), [:M,agg_arr...], mAgg_tup, anyM.sets)
+			cnsC_df[noM_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[noM_arr,:],intCol(cnsC_df)), [:M,agg_arr...], noMAgg_tup, anyM.sets)			
 		end
 
 		# ! adds further parameters that depend on the carrier specified in storage level (superordinate or the same as dispatch carriers)
