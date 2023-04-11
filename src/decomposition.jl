@@ -62,7 +62,7 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 end
 
 # ! evaluate results of heuristic solution to determine fixed and limited variables
-function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::bendersData,linPar::NamedTuple,wrtCapa::Bool=false)
+function evaluateHeu(heu_m::anyModel,heuSca_obj::resData,heuCom_obj::resData,linPar::NamedTuple,wrtCapa::Bool=false)
 
 	# create empty dictionaries for limits and fixes
 	fix_dic = Dict(:tech => Dict{Symbol,Dict{Symbol,DataFrame}}(),:exc => Dict{Symbol,Dict{Symbol,DataFrame}}())
