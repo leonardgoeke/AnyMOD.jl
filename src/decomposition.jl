@@ -1,15 +1,15 @@
 #region # * objects for decomposition
 
-# ! struct for results of a sub-problem
-mutable struct bendersData
+# ! struct for model results
+mutable struct resData
 	objVal::Float64
 	capa::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}
-	bendersData() = new(0.0,Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}())
+	resData() = new(0.0,Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}())
 end
 
-# ! copy functions for benders related results
-function copy(ben_obj::bendersData)
-	out = bendersData()
+# ! copy functions for model results
+function copy(ben_obj::resData)
+	out = resData()
 	out.objVal = ben_obj.objVal
 	out.capa = deepcopy(ben_obj.capa)
 	return out
@@ -35,7 +35,7 @@ end
 
 #endregion
 
-#region # * functions for heurstic
+#region # * functions for computing and fixing solutions
 
 # ! run heuristic and return exact capacities plus heuristic cut
 function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_obj::DataType,rtrnMod_boo::Bool=true,solDet_boo::Bool=false)
@@ -50,7 +50,7 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 	checkIIS(heu_m)
 
 	# write results to benders object
-	heuData_obj = bendersData()
+	heuData_obj = resData()
 	heuData_obj.objVal = sum(map(z -> sum(value.(heu_m.parts.cost.var[z][!,:var])), collect(filter(x -> any(occursin.(["costExp", "costOpr", "costMissCapa", "costRetro"],string(x))), keys(heu_m.parts.cost.var)))))
 	heuData_obj.capa = writeResult(heu_m,[:capa,:exp,:mustCapa,:mustExp])
 
@@ -250,14 +250,14 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 end
 
 # ! find fixed variables and write to file
-function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},feasFix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},temp_dir::String,heu_m::anyModel; skipMustSt::Bool =false)
+function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},feasFix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},temp_dir::String,res_m::anyModel; skipMustSt::Bool =false)
 	rm(temp_dir; force = true, recursive = true)
 	mkdir(temp_dir) # create directory for fixing files
-	parFix_dic = defineParameter(heu_m.options,heu_m.report) # stores parameter info for fixing
+	parFix_dic = defineParameter(res_m.options,res_m.report) # stores parameter info for fixing
 	
 	# loop over variables
 	for sys in (:tech,:exc), sSym in keys(fix_dic[sys])
-		hasMust_boo = sys == :tech ? "must" in heu_m.parts.tech[sSym].capaRestr[!,:cnstrType] : false
+		hasMust_boo = sys == :tech && isdefined(res_m.parts.tech[sSym],:capaRestr) ? "must" in res_m.parts.tech[sSym].capaRestr[!,:cnstrType] : false
 		for varSym in filter(x -> !skipMustSt || !hasMust_boo || x in (:capaConv, :expConv), keys(fix_dic[sys][sSym]))
 			fix_df = feasFix_dic[sys][sSym][varSym] |> (w -> innerjoin(w,select(fix_dic[sys][sSym][varSym],Not([:value])), on = intersect(intCol(w,:dir),intCol(fix_dic[sys][sSym][varSym],:dir))))
 			# create file name
@@ -265,17 +265,17 @@ function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 			fileName_str = temp_dir * "/par_Fix" * string(makeUp(sys)) * "_" * string(sSym) * "_" * string(varSym)
 			# set really small values due to remaining solver imprecisions to zero
 			fix_df[!,:value] = map(x -> x < 1e-10 ? 0.0 : x,fix_df[!,:value])
-			if occursin("capa",string(varSym)) # adds residual capacities
-				resVal_df = copy(getfield(heu_m.parts,sys)[sSym].var[varSym])
+			if occursin("capa",string(varSym)) && varSym in keys(getfield(res_m.parts,sys)[sSym].var) # adds residual capacities
+				resVal_df = copy(getfield(res_m.parts,sys)[sSym].var[varSym])
 				resVal_df[!,:resi] = map(x -> x.constant, resVal_df[!,:var])
 				fix_df = innerjoin(fix_df,select(resVal_df,Not([:var])), on = intCol(fix_df,:dir))
 				fix_df[!,:value] = fix_df[!,:value] .+ fix_df[!,:resi]
 				select!(fix_df,Not([:resi]))	
 			end
 
-			if varSym == :expExc && heu_m.parts.exc[sSym].dir fix_df[!,:dir] .= true end
+			if varSym == :expExc && res_m.parts.exc[sSym].dir fix_df[!,:dir] .= true end
 			# writes parameter file
-			writeParameterFile!(heu_m,fix_df,par_sym,parFix_dic[par_sym],fileName_str)
+			writeParameterFile!(res_m,fix_df,par_sym,parFix_dic[par_sym],fileName_str)
 		end
 	end
 end
@@ -459,7 +459,7 @@ function prepareMod!(mod_m::anyModel,opt_obj::DataType, t_int::Int)
 end
 
 # ! run sub-problem
-function runSub(sub_m::anyModel,capaData_obj::bendersData,sol::Symbol,wrtRes::Bool=false)
+function runSub(sub_m::anyModel,capaData_obj::resData,sol::Symbol,wrtRes::Bool=false)
 
 	# fixing capacity
 	for sys in (:tech,:exc)
@@ -526,9 +526,9 @@ function runSub(sub_m::anyModel,capaData_obj::bendersData,sol::Symbol,wrtRes::Bo
 end
 
 # ! run top-problem
-function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},i::Int)
+function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},i::Int)
 
-	capaData_obj = bendersData()
+	capaData_obj = resData()
 
 	# add cuts
 	if !isempty(cutData_dic) addCuts!(top_m,cutData_dic,i) end
@@ -550,7 +550,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData
 end
 
 # ! add all cuts from input dictionary to top problem
-function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},bendersData},i::Int)
+function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},i::Int)
 	
 	# create array of expressions with duals for sub-problems
 	cut_df = DataFrame(i = Int[], Ts_disSup = Int[],scr = Int[], limCoef = Bool[], actItr = Int[], cnsExpr = AffExpr[])
