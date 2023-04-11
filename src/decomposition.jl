@@ -61,8 +61,8 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 	end
 end
 
-# ! evaluate results of heuristic solution to determine fixed and limited variables
-function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::bendersData,linPar::NamedTuple,wrtCapa::Bool=false)
+# ! evaluate results of model, can be single result to return fixed capacities only, or two solutions to return fixed and limited variables
+function evaluateRes(res_m::anyModel,sol1_obj::resData,sol2_obj::Union{Nothing,resData},thrsAbs::Float64;thrsRel::Float64=0.0,wrtCapa::Bool=false)
 
 	# create empty dictionaries for limits and fixes
 	fix_dic = Dict(:tech => Dict{Symbol,Dict{Symbol,DataFrame}}(),:exc => Dict{Symbol,Dict{Symbol,DataFrame}}())
@@ -71,40 +71,49 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 
 	# ! determine variables for fixing and limiting
 	for sys in (:tech,:exc)
-		part_dic = getfield(heu_m.parts,sys)
-		for sSym in keys(heuSca_obj.capa[sys])
+		part_dic = getfield(res_m.parts,sys)
+		for sSym in keys(sol1_obj.capa[sys])
 			fix_dic[sys][sSym] = Dict{Symbol,DataFrame}()
 			lim_dic[sys][sSym] = Dict{Symbol,DataFrame}()
 
 			relVar_arr = filter(x -> any(occursin.(part_dic[sSym].decomm == :none && !wrtCapa ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(part_dic[sSym].var)))
 			relVarLim_arr = filter(x -> any(occursin.(part_dic[sSym].decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(part_dic[sSym].var)))
+			dataVar_arr = isnothing(sol2_obj) ? collect(keys(sol1_obj.capa[sys][sSym])) : intersect(keys(sol1_obj.capa[sys][sSym]),keys(sol2_obj.capa[sys][sSym]))
 
-			for varSym in intersect(keys(heuSca_obj.capa[sys][sSym]),keys(heuCom_obj.capa[sys][sSym]),relVar_arr)
+			for varSym in intersect(dataVar_arr,relVar_arr)
 				must_boo = occursin("must",string(varSym))
-				# match results from two different heuristic models
-				bothCapa_df = rename(heuSca_obj.capa[sys][sSym][varSym],:value => :value_1) |> (x -> innerjoin(x, rename(heuCom_obj.capa[sys][sSym][varSym],:value => :value_2), on = intCol(x,:dir)))
-				# determine cases for fix and limit
-				bothCapa_df[!,:limVal], bothCapa_df[!,:limCns] = map(x -> getLinTrust(x.value_1,x.value_2,linPar), eachrow(bothCapa_df)) |> (w -> map(x -> getindex.(w,x),[1,2]))
-				bothCapa_df = flatten(select(bothCapa_df,Not([:value_1,:value_2])),[:limVal,:limCns])
+				
+				if !isnothing(sol2_obj) # compares solutions and stores limited variables in case of two solutions
+					# match results from two different heuristic models
+					allCapa_df = rename(sol1_obj.capa[sys][sSym][varSym],:value => :value_1) |> (x -> innerjoin(x, rename(sol2_obj.capa[sys][sSym][varSym],:value => :value_2), on = intCol(x,:dir)))
+					# determine cases for fix and limit
+					allCapa_df[!,:limVal], allCapa_df[!,:limCns] = map(x -> getLinTrust(x.value_1,x.value_2,(thrsAbs = thrsAbs, thrsRel = thrsRel)), eachrow(allCapa_df)) |> (w -> map(x -> getindex.(w,x),[1,2]))
+					allCapa_df = flatten(select(allCapa_df,Not([:value_1,:value_2])),[:limVal,:limCns])
 
-				# ! store limited variables
-				if varSym in relVarLim_arr
-					lim_df = filter(x -> x.limCns != :Fix, bothCapa_df)
-					if !isempty(lim_df)
-						# removes storage variables controlled by ratio from further analysis
-						if sys == :tech lim_df = removeFixStorage(varSym,lim_df,part_dic[sSym]) end
-						if isempty(lim_df)
-							continue
-						else 
-							lim_dic[sys][sSym][varSym] = lim_df
+					# ! store limited variables
+					if varSym in relVarLim_arr
+						lim_df = filter(x -> x.limCns != :Fix, allCapa_df)
+						if !isempty(lim_df)
+							# removes storage variables controlled by ratio from further analysis
+							if sys == :tech lim_df = removeFixStorage(varSym,lim_df,part_dic[sSym]) end
+							if isempty(lim_df)
+								continue
+							else 
+								lim_dic[sys][sSym][varSym] = lim_df
+							end
+							# reports on limited variables
+							cntHeu_arr[2] = cntHeu_arr[2] + size(filter(x -> x.limCns == :Up,lim_df),1)
 						end
-						# reports on limited variables
-						cntHeu_arr[2] = cntHeu_arr[2] + size(filter(x -> x.limCns == :Up,lim_df),1)
 					end
+				else
+					allCapa_df = sol1_obj.capa[sys][sSym][varSym]
+					allCapa_df[!,:limCns] .= :Fix
+					allCapa_df[!,:limVal] = map(x -> x > thrsAbs ? x : 0.0, allCapa_df[!,:value])
+					select!(allCapa_df,Not([:value]))
 				end
 				
 				# ! store fixed variables
-				fix_df = select(filter(x -> x.limCns == :Fix, bothCapa_df),Not([:limCns]))
+				fix_df = select(filter(x -> x.limCns == :Fix, allCapa_df),Not([:limCns]))
 				if !isempty(fix_df)
 					if sys == :tech fix_df = removeFixStorage(varSym,fix_df,part_dic[sSym]) end
 
@@ -116,9 +125,9 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::bendersData,heuCom_obj::benders
 					
 					# find related expansion variables and fix as well
 					if !occursin("exp",lowercase(string(varSym)))
-						for expVar in filter(x -> string(x) in replace.(string(varSym),must_boo ? ["Capa" => "Exp"] : ["capa" => "exp"]),keys(heuSca_obj.capa[sys][sSym]))
+						for expVar in filter(x -> string(x) in replace.(string(varSym),must_boo ? ["Capa" => "Exp"] : ["capa" => "exp"]),keys(sol1_obj.capa[sys][sSym]))
 							# gets relevant expansion variables
-							exp_df = heuSca_obj.capa[sys][sSym][expVar] |> (w -> innerjoin(w,select(part_dic[sSym].var[expVar],Not([:Ts_expSup,:var])), on = intCol(w)))
+							exp_df = sol1_obj.capa[sys][sSym][expVar] |> (w -> innerjoin(w,select(part_dic[sSym].var[expVar],Not([:Ts_expSup,:var])), on = intCol(w)))
 							# only fix expansion variables that relate to a fixed capacity
 							relExp_df = unique(select(select(fix_df,Not(part_dic[sSym].decomm == :emerging ? [:limVal] : [:Ts_expSup,:limVal])) |> (w -> innerjoin(flatten(exp_df,:Ts_disSup),w, on = intCol(w))),Not([:Ts_disSup])))
 							if !isempty(relExp_df) fix_dic[sys][sSym][expVar] = relExp_df end	
@@ -187,10 +196,12 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 	for sys in (:tech,:exc)
 		partTop_dic = getfield(top_m.parts,sys)
 		for sSym in keys(var_dic[sys])
+			println(sSym)
 			part = partTop_dic[sSym]
 			relVar_arr = filter(x -> any(occursin.(part.decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(var_dic[sys][sSym])))
 			# create variabbles and writes constraints to minimize absolute value of capacity delta
 			for varSym in relVar_arr
+				println(varSym)
 				var_df = part.var[varSym] |> (w -> occursin("exp",string(varSym)) ? collapseExp(w) : w)
 				if sys == :tech var_df = removeFixStorage(varSym,var_df,part) end # remove storage variables controlled by ratio
 				if isempty(var_df) continue end
