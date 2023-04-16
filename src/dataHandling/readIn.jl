@@ -115,8 +115,6 @@ function readParameters!(files_dic::Dict{String,Array{String,1}},setData_dic::Di
 	return paraTemp_dic
 end
 
-
-
 # ! read inputs folders for all 'csv' or 'jl' files starting with 'set', 'par', 'var' and 'eqn'
 function readInputFolder(inputFolders::Array{String,1},files_dic::Dict{String,Array{String,1}} = Dict(b => String[] for b in ("set","par","var","eqn")))
 	# loops over main folders provides in constructor

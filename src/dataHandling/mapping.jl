@@ -144,6 +144,14 @@ function createTimestepMapping!(anyM::anyModel)
 	end
 		
 	produceMessage(anyM.options,anyM.report, 2," - Adjusted temporal resolution for valid inequalities")
+	
+	# ! checks, if all levels for actual dispatch are "well-formed", meaning each step relates to the same number of steps on the lowest level
+	for l in unique([x.tsDis for x in values(anyM.cInfo)])
+		if anyM.sets[:Ts].height == l continue end # no need to check lowest level itself
+		if length(unique(map(x -> length(getDescendants(x.idx,anyM.sets[:Ts],false,anyM.sets[:Ts].height)), getNodesLvl(anyM.sets[:Ts],l)))) != 1
+			push!(anyM.report,(3,"timestep mapping","","timestep level $l is a dispatch resolution, but steps on level vary in length, this is not supported"))
+		end
+	end
 
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for time steps")
 end
@@ -369,8 +377,8 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 			end
 		end
 
-		# check if carrier based spatial resolution is overwritten by a technology specifc value
-		if cEx_boo && :region_expansion in namesSym(row_df)
+		# ! check if carrier based spatial resolution is overwritten by a technology specifc value
+		if cEx_boo && :region_expansion in namesSym(row_df) && row_df[:region_expansion] != ""
 			rExpSpc_int = tryparse(Int,row_df[:region_expansion])
 
 			if !isnothing(rExpSpc_int)
@@ -382,6 +390,8 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 					push!(anyM.report,(1,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(sSym))' was used instead of a carrier based value"))
 					rExp_int = rExpSpc_int
 				end
+			else
+				push!(anyM.report,(2,"technology mapping","expansion level","specific spatial expansion level provided for technology '$(string(sSym))' could not parsed into a integer, value ignored"))
 			end
 		end
 
@@ -404,6 +414,56 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 			disAgg_boo = false
 		end
 		part.disAgg = disAgg_boo
+
+		# ! check if internal storage variables should be subject to capacity restriction for storage
+		if :technology_intCapaRestr in namesSym(row_df) && row_df[:technology_intCapaRestr] != ""
+			intCapaRestr_str = row_df[:technology_intCapaRestr]
+			if intCapaRestr_str == "yes"
+				intCapaRestr_boo = true
+			elseif intCapaRestr_str == "no"
+				intCapaRestr_boo = false
+			else
+				push!(anyM.report,(3,"technology mapping","internal capacity restriction","unknown keyword '$intCapaRestr_str' used to control if interal storage variables are part of capacity restriction for storage, please use 'yes' or 'no'"))
+				return
+			end
+		else
+			intCapaRestr_boo = true
+		end
+		part.intCapaRestr = intCapaRestr_boo
+
+		# ! check if a specific resolution is enforced for the cyclic constraint of storage
+		if :timestep_cyclic in namesSym(row_df) && row_df[:timestep_cyclic] != ""
+			stCyc_int =tryparse(Int,row_df[:timestep_cyclic])
+			if isnothing(stCyc_int)
+				stCyc_int = anyM.supTs.lvl
+				push!(anyM.report,(2,"technology mapping","storage cycling","specific storage cycling level provided for technology '$(string(sSym))' could not parsed into a integer, value was ignored"))
+			else
+				if stCyc_int < anyM.supTs.lvl
+					push!(anyM.report,(3,"technology mapping","storage cycling","specific storage cycling level provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch timestep"))
+					return
+				end
+			end
+		else
+			stCyc_int = anyM.supTs.lvl
+		end
+		part.stCyc = stCyc_int
+
+		# ! check if a specific resolution is enforced for tracking the storage level
+		if :timestep_tracked in namesSym(row_df) && row_df[:timestep_tracked] != ""
+			stTrack_int =tryparse(Int,row_df[:timestep_tracked])
+			if isnothing(stTrack_int)
+				stTrack_int = nothing
+				push!(anyM.report,(2,"technology mapping","storage tracked","specific resolution for tracking storage level provided for technology '$(string(sSym))' could not parsed into a integer, value was ignored"))
+			else
+				if stTrack_int < anyM.supTs.lvl
+					push!(anyM.report,(3,"technology mapping","storage tracked","specific resolution for tracking storage level provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch timestep"))
+					return
+				end
+			end
+		else
+			stTrack_int = nothing
+		end
+		part.stTrack = stTrack_int
 
 		# ! determines reference resolution for conversion (takes into account "region_disaggregate" by using spatial expansion instead of dispatch level if set to yes)
 		if !isempty(part.carrier)
@@ -466,8 +526,8 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 				for c in fixC_arr
 					push!(snglDim_arr,("must",[c],anyM.cInfo[c].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[c].rDis))
 				end
-				# removes restrictions on out that become redundant due to the fixed output (out can only become redundant if carrier is not subject to storage)
-				if side == :gen
+				# removes restrictions on out that become redundant due to the fixed output (out can only become redundant if carrier is not subject to storage and no seperate must capa variable exists)
+				if side == :gen && !(:mustCapaConv in keys(part.var))
 					redC_arr = setdiff(fixC_arr,vcat(map(x -> collect(getfield(carGrp_ntup,x)...),intersect((:stIntIn,:stExtOut),keys(carGrp_ntup)))...))
 					for c in redC_arr
 						if ("convOut",[c],anyM.cInfo[c].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[c].rDis) in snglDim_arr push!(snglRmv_arr,c) end # saves information that on capacity restriction about to be removed

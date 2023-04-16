@@ -19,8 +19,8 @@ function createOptModel!(anyM::anyModel)
 	prepareExc!(collect(keys(anyM.parts.exc)),prepSys_dic[:Exc],tsYear_dic,anyM)
 
 	allCapaDf_dic = addRetrofitting!(prepSys_dic,anyM)
-	removeFixed!(prepSys_dic,allCapaDf_dic,anyM) # remove entries were capacities are fixed to zero
 	addInsCapa!(prepSys_dic,anyM) # add entries for installed capacities
+	removeFixed!(prepSys_dic,allCapaDf_dic,anyM) # remove entries were capacities are fixed to zero
 
 	# ! remove unrequired elements in case of distributed model creation
 	if !isempty(anyM.subPro) && !anyM.options.createVI
@@ -36,13 +36,14 @@ function createOptModel!(anyM::anyModel)
 
 	foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),collect(keys(prepSys_dic[:Te]))))
 	foreach(x -> delete!(anyM.parts.exc, x),setdiff(collect(keys(anyM.parts.exc)),collect(keys(prepSys_dic[:Exc]))))
-
+	anyM.graInfo = graInfo(anyM) # re-create graph object, because objects might have been removed
 	#endregion
 
 	#region # * create technology related variables and constraints
 
     # creates dictionary that assigns combination of superordinate dispatch timestep and dispatch level to dispatch timesteps
-    allLvlTsDis_arr = unique(getfield.(values(anyM.cInfo),:tsDis))
+	allTrackStDis_arr = anyM.parts.tech |> (z -> filter(y -> !isnothing(y),map(x -> z[x].stTrack,collect(keys(anyM.parts.tech)))))
+    allLvlTsDis_arr = convert(Vector{Int64},unique(vcat(getfield.(values(anyM.cInfo),:tsDis),allTrackStDis_arr)))
 	ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
 	
 	# creates dictionary that assigns superordinate dispatch time-step to each dispatch time-step
@@ -118,7 +119,7 @@ function createOptModel!(anyM::anyModel)
 	
 	createLimitCns!(anyM.parts.lim,anyM)
 	createCost!(anyM.parts.cost,anyM)
-	
+
 	#endregion
 
 	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")

@@ -38,10 +38,10 @@ end
 #region # * functions for computing and fixing solutions
 
 # ! run heuristic and return exact capacities plus heuristic cut
-function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_obj::DataType,rtrnMod_boo::Bool=true,solDet_boo::Bool=false)
+function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_obj::DataType;rtrnMod::Bool=true,solDet::Bool=false,fltSt::Bool=true)
 
 	# create and solve model
-	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, redStep = redFac, checkRng = (print = true, all = false), forceScr = solDet_boo ? Symbol() : nothing)
+	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, redStep = redFac, checkRng = (print = true, all = false), forceScr = solDet ? Symbol() : nothing)
 	
 	prepareMod!(heu_m,opt_obj,t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
@@ -52,9 +52,9 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 	# write results to benders object
 	heuData_obj = resData()
 	heuData_obj.objVal = sum(map(z -> sum(value.(heu_m.parts.cost.var[z][!,:var])), collect(filter(x -> any(occursin.(["costExp", "costOpr", "costMissCapa", "costRetro"],string(x))), keys(heu_m.parts.cost.var)))))
-	heuData_obj.capa = writeResult(heu_m,[:capa,:exp,:mustCapa,:mustExp])
-
-	if rtrnMod_boo
+	heuData_obj.capa = writeResult(heu_m,[:capa,:exp,:mustCapa,:mustExp],fltSt = fltSt)
+	
+	if rtrnMod
 		return heu_m, heuData_obj
 	else
 		return heuData_obj
@@ -62,7 +62,7 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 end
 
 # ! evaluate results of heuristic solution to determine fixed and limited variables
-function evaluateHeu(heu_m::anyModel,heuSca_obj::resData,heuCom_obj::resData,linPar::NamedTuple,wrtCapa::Bool=false)
+function evaluateHeu(heu_m::anyModel,heuSca_obj::resData,heuCom_obj::resData,linPar_tup::NamedTuple,wrtCapa::Bool=false)
 
 	# create empty dictionaries for limits and fixes
 	fix_dic = Dict(:tech => Dict{Symbol,Dict{Symbol,DataFrame}}(),:exc => Dict{Symbol,Dict{Symbol,DataFrame}}())
@@ -76,28 +76,31 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::resData,heuCom_obj::resData,lin
 			fix_dic[sys][sSym] = Dict{Symbol,DataFrame}()
 			lim_dic[sys][sSym] = Dict{Symbol,DataFrame}()
 
-			relVar_arr = filter(x -> any(occursin.(part_dic[sSym].decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(part_dic[sSym].var)))
+			relVar_arr = filter(x -> any(occursin.(part_dic[sSym].decomm == :none && !wrtCapa ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(part_dic[sSym].var)))
+			relVarLim_arr = filter(x -> any(occursin.(part_dic[sSym].decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(part_dic[sSym].var)))
 
-			for varSym in relVar_arr
+			for varSym in intersect(keys(heuSca_obj.capa[sys][sSym]),keys(heuCom_obj.capa[sys][sSym]),relVar_arr)
 				must_boo = occursin("must",string(varSym))
 				# match results from two different heuristic models
 				bothCapa_df = rename(heuSca_obj.capa[sys][sSym][varSym],:value => :value_1) |> (x -> innerjoin(x, rename(heuCom_obj.capa[sys][sSym][varSym],:value => :value_2), on = intCol(x,:dir)))
 				# determine cases for fix and limit
-				bothCapa_df[!,:limVal], bothCapa_df[!,:limCns] = map(x -> getLinTrust(x.value_1,x.value_2,linPar), eachrow(bothCapa_df)) |> (w -> map(x -> getindex.(w,x),[1,2]))
+				bothCapa_df[!,:limVal], bothCapa_df[!,:limCns] = map(x -> getLinTrust(x.value_1,x.value_2,linPar_tup), eachrow(bothCapa_df)) |> (w -> map(x -> getindex.(w,x),[1,2]))
 				bothCapa_df = flatten(select(bothCapa_df,Not([:value_1,:value_2])),[:limVal,:limCns])
 
 				# ! store limited variables
-				lim_df = filter(x -> x.limCns != :Fix, bothCapa_df)
-				if !isempty(lim_df)
-					# removes storage variables controlled by ratio from further analysis
-					if sys == :tech lim_df = removeFixStorage(varSym,lim_df,part_dic[sSym]) end
-					if isempty(lim_df)
-						continue
-					else 
-						lim_dic[sys][sSym][varSym] = lim_df
+				if varSym in relVarLim_arr
+					lim_df = filter(x -> x.limCns != :Fix, bothCapa_df)
+					if !isempty(lim_df)
+						# removes storage variables controlled by ratio from further analysis
+						if sys == :tech lim_df = removeFixStorage(varSym,lim_df,part_dic[sSym]) end
+						if isempty(lim_df)
+							continue
+						else 
+							lim_dic[sys][sSym][varSym] = lim_df
+						end
+						# reports on limited variables
+						cntHeu_arr[2] = cntHeu_arr[2] + size(filter(x -> x.limCns == :Up,lim_df),1)
 					end
-					# reports on limited variables
-					cntHeu_arr[2] = cntHeu_arr[2] + size(filter(x -> x.limCns == :Up,lim_df),1)
 				end
 				
 				# ! store fixed variables
@@ -135,19 +138,19 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::resData,heuCom_obj::resData,lin
 end
 
 # ! get limits imposed on by linear trust region all limits are extended to avoid infeasbilites
-function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple)
+function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar_tup::NamedTuple)
 
-	if (val1_fl <= linPar.thrsAbs && val2_fl <= linPar.thrsAbs) || (any([val1_fl <= linPar.thrsAbs,val2_fl <= linPar.thrsAbs]) && abs(val1_fl - val2_fl) < linPar.thrsAbs) # fix to zero, if both values are zero, or if one is zero and the other is very close to zero
+	if (val1_fl <= linPar_tup.thrsAbs && val2_fl <= linPar_tup.thrsAbs) || (any([val1_fl <= linPar_tup.thrsAbs,val2_fl <= linPar_tup.thrsAbs]) && abs(val1_fl - val2_fl) < linPar_tup.thrsAbs) # fix to zero, if both values are zero, or if one is zero and the other is very close to zero
 		val_arr, cns_arr = [0.0], [:Fix]
-	elseif val1_fl >= linPar.thrsAbs && val2_fl <= linPar.thrsAbs # set first value as upper limit, if other is zero
-		val_arr, cns_arr = [val1_fl+linPar.thrsAbs], [:Up]
-	elseif val1_fl <= linPar.thrsAbs && val2_fl >= linPar.thrsAbs # set second value as upper limit, if other zero
-		val_arr, cns_arr = [val2_fl+linPar.thrsAbs], [:Up]
-	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) # enforce lower and upper limits, if difference does exceed threshold
+	elseif val1_fl >= linPar_tup.thrsAbs && val2_fl <= linPar_tup.thrsAbs # set first value as upper limit, if other is zero
+		val_arr, cns_arr = [val1_fl+linPar_tup.thrsAbs], [:Up]
+	elseif val1_fl <= linPar_tup.thrsAbs && val2_fl >= linPar_tup.thrsAbs # set second value as upper limit, if other zero
+		val_arr, cns_arr = [val2_fl+linPar_tup.thrsAbs], [:Up]
+	elseif (abs(val1_fl/val2_fl-1) > linPar_tup.thrsRel) # enforce lower and upper limits, if difference does exceed threshold
 		val_arr, cns_arr = sort([val1_fl,val2_fl]), [:Low,:Up]
-		val_arr[2] = val_arr[2] + linPar.thrsAbs
-		if (val_arr[1] > linPar.thrsAbs) 
-			val_arr[1] = val_arr[1] - linPar.thrsAbs
+		val_arr[2] = val_arr[2] + linPar_tup.thrsAbs
+		if (val_arr[1] > linPar_tup.thrsAbs) 
+			val_arr[1] = val_arr[1] - linPar_tup.thrsAbs
 		else
 			val_arr, cns_arr = [val_arr[2]], [:Up]
 		end
@@ -162,7 +165,7 @@ end
 function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int,zeroThrs_fl::Float64,opt_obj::DataType)
 
 	# create top-problem
-	topFeas_m = anyModel(modOpt_tup.inputDir,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false))
+	topFeas_m = anyModel(modOpt_tup.inputDir,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), holdFixed = true)
 
 	topFeas_m.subPro = tuple(0,0)
 	prepareMod!(topFeas_m,opt_obj,t_int)
@@ -174,21 +177,23 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 	topFeas_m = computeFeas(topFeas_m,fix_dic,zeroThrs_fl,true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m,[:exp,:mustExp,:capa,:mustCapa],false,false)
+    return writeResult(topFeas_m,[:exp,:mustExp,:capa,:mustCapa]; fltSt = false) 
 end
 
 # ! runs top problem again with optimal results
-function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},zeroThrs_fl::Float64,cutSmall::Bool=false)
+function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},zeroThrs_fl::Float64,cutSmall_boo::Bool=false)
 	
 	# create absolute value constraints for capacities or expansion variables
 	for sys in (:tech,:exc)
 		partTop_dic = getfield(top_m.parts,sys)
 		for sSym in keys(var_dic[sys])
+			println(sSym)
 			part = partTop_dic[sSym]
 			relVar_arr = filter(x -> any(occursin.(part.decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(var_dic[sys][sSym])))
 			# create variabbles and writes constraints to minimize absolute value of capacity delta
 			for varSym in relVar_arr
 				var_df = part.var[varSym] |> (w -> occursin("exp",string(varSym)) ? collapseExp(w) : w)
+				filter!(x -> !isempty(x.var.terms), var_df)
 				if sys == :tech var_df = removeFixStorage(varSym,var_df,part) end # remove storage variables controlled by ratio
 				if isempty(var_df) continue end
 				# gets variable value and set variables below threshold to zero
@@ -211,7 +216,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 				part.cns[Symbol(:absLow,makeUp(varSym))] = createCns(cnsCont(absLow_df,:greater),top_m.optModel,false)
 				part.cns[Symbol(:absUp,makeUp(varSym))] = createCns(cnsCont(absUp_df,:greater),top_m.optModel,false)
 				# create binary constraint to ensure zero values are either zero or above threshold
-				if cutSmall && 0.0 in abs_df[!,:value]
+				if cutSmall_boo && 0.0 in abs_df[!,:value]
 					cutSmall_df = rename(select(filter(x -> x.value == 0.0,abs_df),Not([:varAbs,:absLow,:absUp,:weight])),:var => :var_2)
 					# create binary variable
 					cutSmall_df = createVar(cutSmall_df, string("cutSmall",makeUp(varSym)),NaN,top_m.optModel, top_m.lock,top_m.sets,bi = true)
@@ -259,7 +264,9 @@ function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 	for sys in (:tech,:exc), sSym in keys(fix_dic[sys])
 		hasMust_boo = sys == :tech && isdefined(res_m.parts.tech[sSym],:capaRestr) ? "must" in res_m.parts.tech[sSym].capaRestr[!,:cnstrType] : false
 		for varSym in filter(x -> !skipMustSt || !hasMust_boo || x in (:capaConv, :expConv), keys(fix_dic[sys][sSym]))
+
 			fix_df = feasFix_dic[sys][sSym][varSym] |> (w -> innerjoin(w,select(fix_dic[sys][sSym][varSym],Not([:value])), on = intersect(intCol(w,:dir),intCol(fix_dic[sys][sSym][varSym],:dir))))
+			if isempty(fix_df) continue end
 			# create file name
 			par_sym = Symbol(varSym,:Fix)
 			fileName_str = temp_dir * "/par_Fix" * string(makeUp(sys)) * "_" * string(sSym) * "_" * string(varSym)
@@ -268,9 +275,9 @@ function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 			if occursin("capa",string(varSym)) && varSym in keys(getfield(res_m.parts,sys)[sSym].var) # adds residual capacities
 				resVal_df = copy(getfield(res_m.parts,sys)[sSym].var[varSym])
 				resVal_df[!,:resi] = map(x -> x.constant, resVal_df[!,:var])
-				fix_df = innerjoin(fix_df,select(resVal_df,Not([:var])), on = intCol(fix_df,:dir))
+				fix_df = joinMissing(fix_df,select(resVal_df,Not([:var])),intCol(fix_df,:dir),:left,Dict(:resi => 0.0))
 				fix_df[!,:value] = fix_df[!,:value] .+ fix_df[!,:resi]
-				select!(fix_df,Not([:resi]))	
+				select!(fix_df,Not([:resi]))
 			end
 
 			if varSym == :expExc && res_m.parts.exc[sSym].dir fix_df[!,:dir] .= true end
@@ -540,7 +547,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},i:
 	checkIIS(top_m)
 
 	# write technology capacites and level of capacity balance to benders object
-	capaData_obj.capa, allVal_dic = [writeResult(top_m,x,true) for x in [[:capa,:mustCapa],[:capa,:exp]]]
+	capaData_obj.capa, allVal_dic = [writeResult(top_m,x; rmvFix = true) for x in [[:capa,:mustCapa],[:capa,:exp]]] 
 	
 	# get objective value of top problem
 	objTopTrust_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
@@ -651,7 +658,7 @@ end
 #region # * transfer results between models
 
 # ! write capacities or expansion in input model to returned capacity dictionary
-function writeResult(in_m::anyModel, var_arr::Array{Symbol,1},rmvFix::Bool = false, fltSt::Bool = true)
+function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = false, fltSt::Bool = true)
 	
 	var_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
 	
@@ -664,12 +671,20 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1},rmvFix::Bool = fal
 			if part_dic[sSym].type == :stock &&  part_dic[sSym].decomm == :none continue end	
 
 			varSym_arr = filter(x -> any(occursin.(string.(var_arr),string(x))), keys(part_dic[sSym].var))
-			var_dic[sys][sSym] = Dict(varSym => getResult(copy(part_dic[sSym].var[varSym])) for varSym in varSym_arr)
 
+			# get relevant capcities filtering fixed ones in case option is active
+			var_dic[sys][sSym] = Dict{Symbol, DataFrame}()
+			for varSym in varSym_arr
+				relVar_df = filter(x -> !isempty(x.var.terms), copy(part_dic[sSym].var[varSym]))
+				if isempty(relVar_df) continue end
+				var_dic[sys][sSym][varSym] = getResult(relVar_df)
+			end
+			
 			# check if storage expansion is fixed to storage output and removes variables in these cases
-			if sys == :Te && fltSt
+			if sys == :tech && fltSt
 				for stVar in collect(keys(var_dic[sys][sSym]))
-					var_dic[sys][sSym][stVar] = removeFixStorage(stVar,var_dic[sys][sSym],part_dic[sSym])
+					var_dic[sys][sSym][stVar] = removeFixStorage(stVar,var_dic[sys][sSym][stVar],part_dic[sSym])
+					if isempty(var_dic[sys][sSym][stVar]) delete!(var_dic[sys][sSym],stVar) end
 				end
 			end
 
@@ -807,10 +822,10 @@ end
 
 # ! removes cases where storage variables are fixed by a ratio (e.g. storage energy capacity fixed by e/p ratio) 
 function removeFixStorage(stVar_sym::Symbol,stVar_df::DataFrame,part_obj::TechPart)
-	fixPar_dic = Dict(:expStSize => :sizeToStOutFixExp, :expStIn => :stOutToStInFixExp, :capaStSize => :sizeToStOutFixCapa, :capaStIn => :stOutToStInFixCapa)
-	if stVar_sym in [:expStSize,:expStIn,:capaStSize,:capaStIn] && fixPar_dic[stVar_sym] in collect(keys(part_obj.cns))
+	fixPar_dic = Dict(:expStSize => :sizeToStOutFixExp, :expStIn => :stInToConvFixExp, :expStOut => :stOutToStInFixExp, :capaStSize => :sizeToStOutFixCapa, :capaStIn => :stInToConvFixCapa, :capaStOut => :stOutToStInFixCapa)
+	if stVar_sym in [:expStSize,:expStIn,:expStOut,:capaStSize,:capaStIn,:capaStOut] && fixPar_dic[stVar_sym] in collect(keys(part_obj.cns))
 		fixCns_df = select(part_obj.cns[fixPar_dic[stVar_sym]],Not([:cns]))
-		stVar_df = stVar_df |> (x -> antijoin(x,fixCns_df, on = intCol(x)))	
+		stVar_df = stVar_df |> (x -> antijoin(x,fixCns_df, on = intersect(intCol(x),intCol(fixCns_df))))
 	end
 	return stVar_df
 end

@@ -39,7 +39,14 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		end
 
 		# map required capacity constraints
-		if part.type != :unrestricted rmvOutC_arr = createCapaRestrMap!(part, anyM) end
+		if part.type != :unrestricted 
+			rmvOutC_arr = createCapaRestrMap!(part, anyM)
+			# adjust tracking level of storage
+			if !isnothing(part.stTrack)
+				stSizeRow_arr = findall(map(x -> occursin("stSize",x), part.capaRestr[!,:cnstrType]))
+				part.capaRestr[stSizeRow_arr,:lvlTs] .= part.stTrack
+			end
+		end
 			
 		produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
 
@@ -219,10 +226,20 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		else
 			continue
 		end
-		
-		# adds temporal and spatial level to dataframe
+
+		# adds temporal level to dataframe
 		cToLvl_dic = Dict(x => (anyM.cInfo[x].tsDis, part.disAgg ? part.balLvl.exp[2] : anyM.cInfo[x].rDis) for x in unique(basis_df[!,:C]))
 		basis_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],basis_df[!,:C])
+		# replaces level for storage level with specific resolution provided
+		if va == :stLvl && !isnothing(part.stTrack)
+			if any(part.stTrack .> basis_df[!,:lvlTs])
+				push!(anyM.report,(3,"technology mapping","storage tracked","specific resolution for tracking storage level provided for technology '$(string(sSym))' is more detailed than resolution for the stored carrier"))
+				return
+			end
+			basis_df[!,:lvlTs] .= part.stTrack
+		end
+
+		# adds spatial level to dataframe
 		basis_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],basis_df[!,:C])
 		allVar_df = orderDf(expandExpToDisp(basis_df,ts_dic,r_dic,anyM.supTs.scr,true))
 
@@ -334,7 +351,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 	cnsDim_arr = filter(x -> x != :Ts_disSup, intCol(cns_df))
 
 	# join variables for previous storage level
-	tsChildren_dic = Dict((x,y) => getDescendants(x,anyM.sets[:Ts],false,y) for x in anyM.supTs.step, y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x],:lvl), cns_df[!,:Ts_dis])))
+	tsChildren_dic = Dict((x,y) => getDescendants(x,anyM.sets[:Ts],false,y) for x in getfield.(getNodesLvl(anyM.sets[:Ts],part.stCyc),:idx), y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x],:lvl), cns_df[!,:Ts_dis])))
 	firstLastTs_dic = Dict(minimum(tsChildren_dic[z]) => maximum(tsChildren_dic[z]) for z in keys(tsChildren_dic))
 	firstTs_arr = collect(keys(firstLastTs_dic))
 
@@ -386,12 +403,15 @@ function createStBal(part::TechPart,anyM::anyModel)
 				return typVar_df[!,Not(:val)]
 			end
 
-			# adds dispatch variable to constraint dataframe, mode dependant and non-mode dependant balances have to be aggregated separately
+			# adds dispatch variable to constraint dataframe, mode dependant and non-mode dependant balances have to be aggregated separately and timesteps only need aggregration if resolution for storage level differs
 			dispVar_df = vcat(typExpr_arr...)
 			cnsC_df[!,typ] .= AffExpr()
 			if isempty(dispVar_df) continue end
-			cnsC_df[m_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[m_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 1,), anyM.sets)
-			cnsC_df[noM_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[noM_arr,:],intCol(cnsC_df)), [:M,agg_arr...], (M = 0,), anyM.sets)
+
+			mAgg_tup = isnothing(part.stTrack) ?  (M = 1,) : (M = 1, Ts_dis = anyM.sets[:Ts].nodes[cnsC_df[1,:Ts_dis]].lvl)
+			noMAgg_tup = isnothing(part.stTrack) ?  (M = 1,) : (M = 1, Ts_dis = anyM.sets[:Ts].nodes[cnsC_df[1,:Ts_dis]].lvl)
+			cnsC_df[m_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[m_arr,:],intCol(cnsC_df)), [:M,agg_arr...], mAgg_tup, anyM.sets)
+			cnsC_df[noM_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[noM_arr,:],intCol(cnsC_df)), [:M,agg_arr...], noMAgg_tup, anyM.sets)			
 		end
 
 		# ! adds further parameters that depend on the carrier specified in storage level (superordinate or the same as dispatch carriers)
@@ -549,6 +569,13 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 	allFac_df[!,:Ts_disSup] = map(x -> yTs_dic[x],allFac_df[!,:Ts_dis])
 	allFac_df = combine(x -> (desFac = minimum(x.run) * maximum(x.mustOut),),groupby(allFac_df,filter(x -> !(x in [:Ts_dis,:scr]),intCol(allFac_df))))
 
+
+	# check for pre-defined capacity factors and use them instead of computed values
+	if :desFac in keys(part.par)
+		preDefFac_df = matchSetParameter(select(allFac_df,Not([:desFac])),part.par[:desFac],anyM.sets, newCol = :desFac)
+		allFac_df = vcat(antijoin(allFac_df,preDefFac_df,on = intCol(allFac_df)),preDefFac_df)
+	end
+
 	# add computed factors to parameter data
 	if !isempty(allFac_df)
 		parDef_ntup = (dim = (:Ts_expSup, :Ts_disSup, :R_dis, :C, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_disSup => :up, :R_dis => :up, :C => :up, :Te => :up, :R_dis => :avg_any), part = :techConv)
@@ -608,7 +635,7 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},cns_
 			# ensure must-out capacity complies with operated capacity in case of decommissioning
 			if decom_boo || !(exp_sym in keys(part.var)) # limit must out capacity with ordinary capacity if necessary in case of decomm, if this is not enforced indirectly via expansion
 				bothVar_df = innerjoin(rename(capa_df,:var => :capa),part.var[Symbol("must",makeUp(capa[1]))],on = intCol(capa_df))
-				bothVar_df[!,:cnsExpr] = @expression(anyM.optModel, bothVar_df[:var] .- bothVar_df[:capa])
+				bothVar_df[!,:cnsExpr] = @expression(anyM.optModel, bothVar_df[!,:var] .- bothVar_df[!,:capa])
 				cns_dic[Symbol("must",makeUp(capa[1]),decom_boo ? "Opr" : "")] = cnsCont(select(bothVar_df,Not([:var,:capa])),:smaller)
 			else exp_sym in keys(part.var) # creates and enforces specific expansion variables for must out
 				# create expansion variables for must-out
@@ -650,11 +677,11 @@ function prepareMustOut!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},cns_
 				end
 				if !isempty(cnsNoEq_df)
 					# set lower limit based on expansion
-					cnsNoEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsNoEq_df[:capa] .- cnsNoEq_df[:exp])
+					cnsNoEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsNoEq_df[!,:capa] .- cnsNoEq_df[!,:exp])
 					filter!(x -> !(isempty(x.cnsExpr.terms)), cnsNoEq_df)
 					cns_dic[Symbol("must",makeUp(capa[1]),"Gr")] =  filter(x -> x.exp != AffExpr(),cnsNoEq_df) |> (w -> cnsCont(select(w,intCol(w,:cnsExpr)),:greater))
 					# set upper limit based on expansion plus residuals
-					cnsNoEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsNoEq_df[:capa] .- cnsNoEq_df[:exp] - cnsNoEq_df[:resi])
+					cnsNoEq_df[!,:cnsExpr] = @expression(anyM.optModel,cnsNoEq_df[!,:capa] .- cnsNoEq_df[!,:exp] - cnsNoEq_df[!,:resi])
 					filter!(x -> !(isempty(x.cnsExpr.terms)) && (!decom_boo || x.exp != AffExpr()), cnsNoEq_df)
 					cns_dic[Symbol("must",makeUp(capa[1]),"Sm")] = cnsCont(select(cnsNoEq_df,intCol(cnsNoEq_df,:cnsExpr)),:smaller)
 				end

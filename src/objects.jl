@@ -138,6 +138,8 @@ mutable struct TechPart <: AbstractModelPart
 	balLvl::NamedTuple{(:exp,:ref),Tuple{Tuple{Int,Int},Union{Nothing,Tuple{Int,Int}}}}
 	capaRestr::DataFrame
 	actSt::Tuple
+	stCyc::Int
+	stTrack::Union{Int,Nothing}
 	type::Symbol
 	disAgg::Bool
 	modes::Tuple{Vararg{Int,N} where N}
@@ -178,7 +180,10 @@ mutable struct TechPart <: AbstractModelPart
 	balSign::NamedTuple{(:conv,:st),Tuple{Symbol,Symbol}}
 	capaRestr::DataFrame
 	type::Symbol
+	stCyc::Int
+	stTrack::Union{Int,Nothing}
 	disAgg::Bool
+	intCapaRestr::Bool
 	modes::Tuple{Vararg{Int,N} where N}
 	decomm::Symbol
 	TechPart(name::Tuple{Vararg{String,N} where N}) = new(name,Dict{Symbol,ParElement}(),Dict{Symbol,DataFrame}(),Dict{Symbol,DataFrame}())
@@ -343,7 +348,6 @@ mutable struct flowGraph
 	edgeC::Array{Pair{Int,Int},1}
 	edgeTe::Array{Pair{Int,Int},1}
 	nodePos::Dict{Int,Array{Float64,1}}
-	plotSize::Tuple{Number,Number}
 
 	function flowGraph(anyM::AbstractModel)
 
@@ -359,11 +363,7 @@ mutable struct flowGraph
 
 		for t in keys(tleaf_dic)
 		    subCar_arr = map(y -> anyM.parts.tech[sysSym(y,anyM.sets[:Te])].carrier,tleaf_dic[t])
-		    if length(unique(subCar_arr)) == 1
-		        push!(relTech_arr,t)
-		    else
-		        append!(relTech_arr,collect(tleaf_dic[t]))
-		    end
+		    append!(relTech_arr,collect(tleaf_dic[t]))
 		end
 
 		# creates dictionary mapping each relevant id to node id

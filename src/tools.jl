@@ -7,7 +7,7 @@ printObject(print_df::DataFrame, model_object::anyModel)
 
 Writes a DataFrame of parameters, constraints, or variables to a `.csv` file in readable format (strings instead of ids). See [Individual elements](@ref).
 """
-function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true)
+function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true, wrtGap::Bool = false)
 
 	sets = anyM.sets
 	options = anyM.options
@@ -30,7 +30,7 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
 		elseif lookUp_sym == :dir
 			print_df[!,i] = map(x -> x == 1 ? "yes" : "no",print_df[!,i])
         elseif lookUp_sym in keys(sets) && eltype(print_df[!,i]) <: Int
-			print_df[!,i] = map(x -> createFullString(x,sets[lookUp_sym]),print_df[!,i])
+			print_df[!,i] = map(x -> createFullString(x,sets[lookUp_sym],wrtGap),print_df[!,i])
         end
     end
 
@@ -331,19 +331,20 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 		
 		# aggregate capacity and out variables
 		outCapa_df[!,:out] = aggDivVar(rename(out_df,:out => :val),outCapa_df,tuple(intCol(outCapa_df)...),anyM.sets) # aggregate out to capa
-		noOut_df = filter(x -> x.out == 0.0,outCapa_df) # filter cases without out
+		noOut_df = deepcopy(outCapa_df) # filter cases without out
 		out_df[!,:capa] = aggDivVar(rename(select(noOut_df,Not([:out])),:capa => :val),out_df,tuple(intCol(in_df)...),anyM.sets) # aggregate capa to out
 		outCapa_df = unique(vcat(filter(x -> x.out != 0.0,outCapa_df),filter(x -> x.capa != 0.0,out_df))) # merge both cases
 
 		# aggregate capacity and in variables
 		outCapa_df[!,:in] = aggDivVar(rename(in_df,:in => :val),outCapa_df,tuple(intCol(in_df)...),anyM.sets) # aggregate in to capa
-		noIn_df = filter(x -> x.in == 0.0,outCapa_df) # filter cases without in 
+		noIn_df = deepcopy(outCapa_df) # filter cases without in 
 		in_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x,anyM.sets[:Te])].carrier.gen), in_df[!,:Te]) # extend in with carrier column
 		in_df = flatten(in_df,:C)
 		in_df[!,:capa] = aggDivVar(rename(select(noIn_df,Not([:in])),:capa => :val),in_df,tuple(intCol(in_df)...),anyM.sets) # aggregate capa to in
 		in_df[!,:out] = aggDivVar(rename(select(noIn_df,Not([:in])),:out => :val),in_df,tuple(intCol(in_df)...),anyM.sets) # aggregate out to in
 		inAgg_df = filter(x -> x.capa != 0.0,in_df)
 		outCapa_df = vcat(filter(x -> !(x.Te in unique(inAgg_df[!,:Te])), outCapa_df),inAgg_df) # merge both cases
+		filter!(x -> x.out/x.in < 1e3,  outCapa_df)
 
 		# compute efficiencies
 		outCapa_df[!,:eff] = map(x -> x.in == 0.0 ? 1.0 : x.out/x.in,eachrow(outCapa_df))
@@ -524,7 +525,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=t
 end
 
 # ! merges reported results according to external yml file
-function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),)
+function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, addName::String="", rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,),csvInput::Dict{Symbol,String} = Dict(:summary => "", :exchange => "", :costs => ""), outputDir::String = "")
 
     # ! read in mappings and prepare variables
     allMapping_dic = YAML.load_file(ymlFile)
@@ -532,6 +533,11 @@ function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, r
     varMap_dic = allMapping_dic["variables"]
     setMap_dic = allMapping_dic["sets"]
     agg_arr = allMapping_dic["aggregations"]
+
+    if "region" in keys(setMap_dic)
+        setMap_dic["region_from"] = setMap_dic["region"]
+        setMap_dic["region_to"] = setMap_dic["region"]
+    end
 
     # get relevant variables and filter which are specific
     relVar_arr = Symbol.(union(map(x -> map(y -> y["variable"], collect(values(x))), collect(values(allMapping_dic["variables"])))...))
@@ -543,23 +549,37 @@ function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, r
 	end
 
     # ! prepare all summary output files
-    allVar_df = DataFrame(timestep = String[], region = String[], variable = String[], value = Float64[])
+    allVar_df = DataFrame(timestep = String[], region = String[], region_from = String[], region_to = String[], variable = String[], value = Float64[])
     
     repData_dic = Dict{String,DataFrame}()
     for repFile in relFile_arr
     
-        repData_df = filter(x -> x.variable in relVar_arr, reportResults(repFile,anyM,rtnOpt = (:csvDf,), addRep = optVar_tup))
+        if csvInput[repFile] == ""
+            if isnothing(model) error("No model object or file provided to obtain data for $repFile") end
+            resData_df = reportResults(repFile,model,rtnOpt = (:csvDf,), addRep = optVar_tup)
+        elseif !(repFile in keys(csvInput))
+            error("The 'csvInput' dictionary does not provide an file for $repFile")
+        else
+            relVar_arr = String.(relVar_arr)
+            try
+                resData_df = CSV.read(csvInput[repFile],DataFrame)
+            catch
+                error("Unable to read the file $(csvInput[repFile]) for $repFile")
+            end
+        end
+        
+        repData_df = filter(x -> x.variable in relVar_arr, resData_df)
         # renames columns to match set names
         if repFile == :summary
             rename!(repData_df,"region_dispatch" => "region","timestep_superordinate_dispatch" => "timestep")
         elseif repFile == :exchange
-            rename!(repData_df,"region_from" => "region","timestep_superordinate_dispatch" => "timestep")
+            rename!(repData_df,"timestep_superordinate_dispatch" => "timestep")
         else
             rename!(repData_df,"timestep_superordinate_dispatch" => "timestep")
         end
         
         # replaces set names with names in mapping
-        for set in keys(setMap_dic)
+        for set in intersect(names(repData_df),keys(setMap_dic))
             repData_df[!,set] .= map(x -> x in keys(setMap_dic[set]) ? setMap_dic[set][x] : x,repData_df[!,set])
         end
         
@@ -572,7 +592,7 @@ function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, r
     for reportVar in keys(varMap_dic)
 
         mapInfo_arr = varMap_dic[reportVar]
-        reportVar_df = DataFrame(timestep = String[], region = String[], value = Float64[])
+        reportVar_df = DataFrame(timestep = String[], region = String[], region_from = String[], region_to = String[], value = Float64[])
 
         # loop over elements aggregated for reporting variable
         for aggCase in mapInfo_arr
@@ -586,11 +606,17 @@ function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, r
             # apply correction factor and add to dataframe for variable
             fltCsv_df[!,:value] .= fltCsv_df[!,:value] * aggCase["factor"]
 
-            append!(reportVar_df,combine(groupby(fltCsv_df,["timestep", "region"]),:value => (x -> sum(x)) => :value))
+            if aggCase["file"] == "exchange"
+                fltCsv_df[!,:region] .= ""
+            else
+                foreach(x -> fltCsv_df[!,x] .= "",[:region_from,:region_to])
+            end
+
+            append!(reportVar_df,combine(groupby(fltCsv_df,["timestep", "region", "region_from","region_to"]),:value => (x -> sum(x)) => :value))
         end
 
         # aggregate all entries for regions and timesteps
-        reportVar_df = combine(groupby(reportVar_df,["timestep", "region"]),:value => (x -> sum(x)) => :value)
+        reportVar_df = combine(groupby(reportVar_df,["timestep", "region", "region_from","region_to"]),:value => (x -> sum(x)) => :value)
 
         # add variable column
         reportVar_df[!,:variable] .= reportVar
@@ -602,31 +628,24 @@ function computeResults(ymlFile::String,anyM::anyModel; addObjName::Bool=true, r
     if !isnothing(agg_arr)
         for aggVar in agg_arr
             aggVar_df = select(filter(x -> occursin(aggVar,x.variable) ,noAggVar_df),Not([:variable]))
-            aggVar_df = combine(groupby(aggVar_df,["timestep", "region"]),:value => (x -> sum(x)) => :value)
+            aggVar_df = combine(groupby(aggVar_df,["timestep", "region", "region_from","region_to"]),:value => (x -> sum(x)) => :value)
             aggVar_df[!,:variable] .= aggVar
             append!(allVar_df,aggVar_df)
         end
     end
+    
+    # ! delete empty columns
+    for x in [:region, :region_from,:region_to]
+        if unique(allVar_df[!,x]) == [""] select!(allVar_df,Not([x])) end
+    end
 
 	# add column with name for model object/scenario
-    if addObjName allVar_df[!,:objName] .= anyM.options.objName end
+    if addName != "" allVar_df[!,:objName] .= addName end
 
 	# ! return dataframes and write csv files based on specified inputs
-	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allVar_df,anyM, fileName = string(split(ymlFile,".")[end-1]), rtnDf = (:csvDf,))
-	end
-
-	if :raw in rtnOpt
-		CSV.write("$(anyM.options.outDir)/$(split(ymlFile,".")[end-1])_$(anyM.options.outStamp).csv", allVar_df)
-	end
-
-	if :rawDf in rtnOpt && :csvDf in rtnOpt
-		return allVar_df, csvData_df
-	else
-		if :rawDf in rtnOpt return allVar_df end
-		if :csvDf in rtnOpt return csvData_df end
-	end
-
+	if :csv in rtnOpt CSV.write("$(outputDir)$(split(split(ymlFile,"/")[end],".")[end-1])$(addName == "" ? "" : "_" * addName).csv", allVar_df) end
+    if :df in rtnOpt return allVar_df end
+    
 end
 
 # ! print time series for in and out into separate tables
@@ -861,11 +880,7 @@ plotTree(tree_sym::Symbol, model_object::anyModel)
 Plots the hierarchical tree of nodes for the set specified by `tree_sym`. See [Node trees](@ref).
 
 """
-function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Float64} = (8.0,4.5), fontSize::Int = 12, useColor::Bool = true, wide::Array{Float64,1} = fill(1.0,30))
-
-    netw = pyimport("networkx")
-    plt = pyimport("matplotlib.pyplot")
-    PyCall.fixqtpath()
+function plotTree(tree_sym::Symbol, anyM::anyModel; fontSize::Int = 12, useColor::Bool = true, wide::Array{Float64,1} = fill(1.0,30))
 
     #region # * initialize variables
     treeName_dic = Dict(:region => :R,:timestep => :Ts,:carrier => :C,:technology => :Te)
@@ -923,7 +938,7 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
 	label_dic = Dict(x[1] => x[2] == "" ? "" : name_dic[x[2]] for x in enumerate(tree_df[!,:val]))
 
 	if useColor
-		col_arr = [col_dic[tree_sym]]
+		col_arr = fill(col_dic[tree_sym],nodes_int)
 	else
 		col_arr = getNodeColors(collect(1:nodes_int),label_dic,anyM)
 	end
@@ -931,67 +946,56 @@ function plotTree(tree_sym::Symbol, anyM::anyModel; plotSize::Tuple{Float64,Floa
 	#endregion
 
     #region # * draw final tree
-    # draw single nodes
-    edges_arr = Array{Tuple{Int,Int},1}()
 
-    for rowTree in eachrow(tree_df)[1:end-1]
-      # 0 node in tree_df becomes last node in graph, because there is 0 node within the plots
-      if rowTree[:up] == 0 pare_int = nodes_int else pare_int = idxPos_dic[rowTree[:up]] end
-      push!(edges_arr, (idxPos_dic[rowTree[:idx]], pare_int))
+    # get coordinates for positions
+    edgeX_arr = Union{Nothing,Float64}[]
+    edgeY_arr = Union{Nothing,Float64}[]
+
+    for rowTree in eachrow(tree_df)
+        # 0 node in tree_df becomes last node in graph, because there is 0 node within the plots
+        if rowTree[:up] == 0 pare_int = nodes_int else pare_int = idxPos_dic[rowTree[:up]] end
+        #push!(edges_arr, (idxPos_dic[rowTree[:idx]], pare_int))
+        push!(edgeX_arr, pos_dic[idxPos_dic[rowTree[:idx]]][1])
+        push!(edgeY_arr, pos_dic[idxPos_dic[rowTree[:idx]]][2])
+        push!(edgeX_arr, pos_dic[pare_int][1])
+        push!(edgeY_arr, pos_dic[pare_int][2])
+        push!(edgeX_arr, nothing)
+        push!(edgeY_arr, nothing)
     end
+    
+    # get coordinates for nodes
+    posX_arr, posY_arr = [map(x -> x[2][y], collect(sort(pos_dic))) for y in [1,2]]
 
-    # draw graph object
-    plt.clf()
-    graph_obj = netw.Graph()
+    # create plot
+    label_arr = map(x -> label_dic[x], sort(collect(keys(pos_dic))))
+    colStr_arr = "rgb" .* string.(map(x -> x .* 255,col_arr))
+    labelPos_arr = map(x -> isempty(x) ? "bottom center" : "top center", tree_df[!,:down])
 
-    netw.draw_networkx_nodes(graph_obj, pos_dic; nodelist = collect(1:nodes_int), node_color = col_arr)
-    netw.draw_networkx_edges(graph_obj, pos_dic; edgelist = edges_arr)
-    posLabOff_dic = netw.draw_networkx_labels(graph_obj, pos_dic, font_family = "arial", font_size = fontSize, labels = label_dic)
+    edgesTr_obj = scatter(mode="lines", x=edgeX_arr, y=edgeY_arr, line=attr(width=0.5,color="black"))
+    nodesTr_obj = scatter(x=posX_arr, y=posY_arr, text = label_arr, textfont_size = fontSize, textfont_color = "black", textfont_family = "Arial", textposition = labelPos_arr, mode="markers+text", hoverinfo = "text", marker=attr(size=24,color= colStr_arr))
+    layout_obj = Layout(hovermode="closest",titlefont_size=16,showlegend=false,showarrow=false,xaxis=attr(showgrid=false, zeroline=false, showticklabels=false),yaxis=attr(showgrid=false, zeroline=false, showticklabels=false),paper_bgcolor= "rgba(0,0,0,0)",plot_bgcolor= "rgba(0,0,0,0)")
 
-	figure = plt.gcf()
-	figure.set_size_inches(plotSize[1],plotSize[2])
-
-    r = figure.canvas.get_renderer()
-    trans = plt.gca().transData.inverted()
-    for x in collect(posLabOff_dic)
-        down_boo = isempty(tree_obj.nodes[posIdx_dic[x[1]]].down)
-        bb = x[2].get_window_extent(renderer=r)
-        bbdata = bb.transformed(trans)
-		# computes offset of label for leaves and non-leaves by first moving according to size auf letters itself (bbdata) and then by size of the node
-		# (node-size in pixel is devided by dpi and plot size to get relative offset)
-        offset_arr = [down_boo ? 0.0 : (bbdata.width/2.0 + (150/plotSize[1]/600)), down_boo ? (-bbdata.height/2.0 - 150/plotSize[2]/600) : 0.0]
-        x[2].set_position([x[2]."_x" + offset_arr[1],x[2]."_y" + offset_arr[2]])
-        x[2].set_clip_on(false)
-    end
-
-    # size plot and save
-    plt.axis("off")
-    plt.savefig("$(anyM.options.outDir)/$(tree_sym)_$(anyM.options.outStamp)", dpi = 600, bbox_inches="tight")
+    savefig(plot([edgesTr_obj, nodesTr_obj],layout_obj), "$(anyM.options.outDir)/$(tree_sym)_$(anyM.options.outStamp).html")
+    
     #endregion
+
 end
 
+# ! plot qualitative energy flow graph from model object or yml file
 """
 ```julia
-plotEnergyFlow(plotType::Symbol, model_object::anyModel)
+plotNetworkGraph(plotType::Symbol, model_object::anyModel)
 ```
 
-Plots the energy flow in a model. Set `plotType` to `:graph` for a qualitative node graph or to `:sankey` for a quantitative Sankey diagram. See [Energy flow](@ref).
+Plots the network graph for energy flows in a model.
 
 """
-plotEnergyFlow(plotType::Symbol,anyM::anyModel; kwargs...) = plotEnergyFlow(Val{plotType}(),anyM::anyModel; kwargs...)
-
-# ! plot qualitative energy flow graph (applies python modules networkx and matplotlib via PyCall package)
-function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, wrtYML::Bool = false, wrtGEXF::Bool = false, relC::Tuple = ())
-
-    # ! import python function
-    netw = pyimport("networkx")
-    plt = pyimport("matplotlib.pyplot")
-    PyCall.fixqtpath()
+function plotNetworkGraph(anyM::anyModel; fontSize::Int = 12, replot::Bool = true, scaDist::Number = 0.5, maxIter::Int = 5000, initTemp::Number = 2.0, useTeColor::Bool = false, wrtYML::Bool = false, relC::Tuple = ())
 
 	#region # * create graph and map edges
 	
 	# ! get relevant model and graph ids for carriers and technologies
-	
+
 	# graph and model ids of carriers
 	graC_arr = Array{Int,1}()
 	try
@@ -1009,21 +1013,15 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 
 	# ! create relevant edges for carriers and technologies
 
-    graph_obj = netw.DiGraph()
-    flowGrap_obj = anyM.graInfo.graph
-	flowGrap_obj.plotSize = plotSize
+	flowGrap_obj = anyM.graInfo.graph
 
 	cEdge_arr = filter(x -> x[1] in graC_arr || x[2] in graC_arr,collect.(flowGrap_obj.edgeC))
 	teEdge_arr = filter(x -> x[1] in graTe_arr || x[2] in graTe_arr, flowGrap_obj.edgeTe)
+	edges_arr =  vcat(cEdge_arr,collect.(teEdge_arr))
 
-    edges_arr =  vcat(cEdge_arr,collect.(teEdge_arr))
-    for x in edges_arr
-        graph_obj.add_edge(x[1],x[2])
-    end
+	#endregion
 
-    #endregion
-
-    #region # * obtain and order graph properties (colors, names, etc.)
+	#region # * obtain and order graph properties (colors, names, etc.)
 
 	# get carriers that should be plotted, because they are connected with a technology
 	relNodeC1_arr = filter(x -> x[2] in vcat(getindex.(flowGrap_obj.edgeTe,1),getindex.(flowGrap_obj.edgeTe,2)), collect(flowGrap_obj.nodeC))
@@ -1031,15 +1029,15 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 	relNodeC2_arr = filter(x -> any(map(y -> x[2] in y && !isempty(intersect(getindex.(relNodeC1_arr,2),y)) , collect.(flowGrap_obj.edgeC))), collect(flowGrap_obj.nodeC))
 
 	# maps node id to node names
-    idToC_arr = map(x -> x[2] => anyM.sets[:C].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), intersect(flowGrap_obj.nodeC, union(relNodeC1_arr,relNodeC2_arr))))
-    idToTe_arr  = map(x -> x[2] => anyM.sets[:Te].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), collect(flowGrap_obj.nodeTe)))
-    idToName_dic = Dict(vcat(idToC_arr,idToTe_arr))
+	idToC_arr = map(x -> x[2] => anyM.sets[:C].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), intersect(flowGrap_obj.nodeC, union(relNodeC1_arr,relNodeC2_arr))))
+	idToTe_arr  = map(x -> x[2] => anyM.sets[:Te].nodes[x[1]].val, filter(y -> y[2] in union(edges_arr...), collect(flowGrap_obj.nodeTe)))
+	idToName_dic = Dict(vcat(idToC_arr,idToTe_arr))
 
-    # obtain colors of nodes
-    ordC_arr = intersect(unique(vcat(edges_arr...)), getindex.(idToC_arr,1))
+	# obtain colors of nodes
+	ordC_arr = intersect(unique(vcat(edges_arr...)), getindex.(idToC_arr,1))
 	ordTe_arr = intersect(unique(vcat(edges_arr...)), getindex.(idToTe_arr,1))
-    nodeC_arr = getNodeColors(ordC_arr,idToName_dic,anyM)
-	nodeTe_arr = useTeColor ? getNodeColors(ordTe_arr,idToName_dic,anyM) : [(0.85,0.85,0.85)]
+	nodeC_arr = "rgb" .* string.(map(x -> x .* 255, getNodeColors(ordC_arr,idToName_dic,anyM)))
+	nodeTe_arr = "rgb" .* string.(useTeColor ? map(x -> x .* 255, getNodeColors(ordTe_arr,idToName_dic,anyM)) : fill((216.75,216.75,216.75),size(ordTe_arr,1)))
 
 	# obtain name of nodes
 	cLab_dic = Dict(y[1] => anyM.graInfo.names[y[2]] for y in filter(x -> x[1] in ordC_arr,idToName_dic))
@@ -1053,74 +1051,148 @@ function plotEnergyFlow(objGrp::Val{:graph},anyM::anyModel; plotSize::Tuple{Numb
 	foreach(x -> edges_mat[findall(id_arr .== x[1])[1],findall(id_arr .== x[2])[1]] = 1, filter(x -> x[1] in id_arr && x[2] in id_arr,edges_arr))
 	edges_smat = SparseArrays.sparse(edges_mat)
 
-    # compute position of nodes
-    if replot || !(isdefined(flowGrap_obj,:nodePos))
-        pos_dic = flowLayout(nodesCnt_int,edges_smat; scaDist = scaDist, maxIter = maxIter, initTemp = initTemp)
+	# compute position of nodes
+	if replot || !(isdefined(flowGrap_obj,:nodePos))
+		pos_dic = flowLayout(nodesCnt_int,edges_smat; scaDist = scaDist, maxIter = maxIter, initTemp = initTemp)
 		flowGrap_obj.nodePos = Dict(id_arr[x] => pos_dic[x] for x in keys(pos_dic))
-    end
+	end
 
-	# adjust positions for plot size
-	actNodePos_dic =  Dict(x[1] => [x[2][1]*plotSize[1]/plotSize[2],x[2][2]] for x in collect(flowGrap_obj.nodePos))
+	# separate into edges between technologies and carriers and between carriers, then get respective colors
+	edgeColC_arr = "rgb" .* string.(map(x -> anyM.graInfo.colors[idToName_dic[x[1]]] .* 255, cEdge_arr))
+	edgeColTe_arr = "rgb" .* string.(map(x -> (x[1] in ordC_arr ? anyM.graInfo.colors[idToName_dic[x[1]]] : anyM.graInfo.colors[idToName_dic[x[2]]]) .* 255, teEdge_arr))
 
-    # separate into edges between technologies and carriers and between carriers, then get respective colors
-    cEdges_arr = filter(x -> x[1] in ordC_arr && x[2] in ordC_arr, collect(graph_obj.edges))
-    edgeColC_arr = map(x -> anyM.graInfo.colors[idToName_dic[x[1]]], cEdges_arr)
+	#endregion
 
-    teEdges_arr = filter(x -> x[1] in ordTe_arr || x[2] in ordTe_arr, collect(graph_obj.edges))
-    edgeColTe_arr = map(x -> x[1] in ordC_arr ? anyM.graInfo.colors[idToName_dic[x[1]]] : anyM.graInfo.colors[idToName_dic[x[2]]], teEdges_arr)
+	#region # * draw and save graph
 
-    #endregion
+	edgeX_arr = Union{Nothing,Float64}[]
+	edgeY_arr = Union{Nothing,Float64}[]
 
-    #region # * draw and save graph with python
+	for x in vcat(cEdge_arr,teEdge_arr)
+		push!(edgeX_arr, flowGrap_obj.nodePos[x[1]][1])
+		push!(edgeY_arr, flowGrap_obj.nodePos[x[1]][2])
+		push!(edgeX_arr, flowGrap_obj.nodePos[x[2]][1])
+		push!(edgeY_arr, flowGrap_obj.nodePos[x[2]][2])
+		push!(edgeX_arr, nothing)
+		push!(edgeY_arr, nothing)
+	end
 
-    # plot final graph object
-    plt.clf()
+	# get coordinates for nodes
+	posX_arr, posY_arr = [map(x -> flowGrap_obj.nodePos[x][y], vcat(ordC_arr,ordTe_arr)) for y in [1,2]]
 
-    netw.draw_networkx_nodes(graph_obj, actNodePos_dic, nodelist = ordC_arr, node_shape="s", node_size = 300, node_color = nodeC_arr)
-    netw.draw_networkx_nodes(graph_obj, actNodePos_dic, nodelist = ordTe_arr, node_shape="o", node_size = 185,node_color = nodeTe_arr)
+	# create plot
+	label_arr = vcat(map(x -> cLab_dic[x], ordC_arr),map(x -> teLab_dic[x], ordTe_arr))
+	marker_arr = vcat(fill("square",size(ordC_arr,1)),fill("circle",size(ordTe_arr,1)))
 
-    netw.draw_networkx_edges(graph_obj, actNodePos_dic, edgelist = cEdges_arr, edge_color = edgeColC_arr, arrowsize  = 16.2, width = 1.62)
-    netw.draw_networkx_edges(graph_obj, actNodePos_dic, edgelist = teEdges_arr, edge_color = edgeColTe_arr)
+	nodesTr_obj = scatter(x=posX_arr[1:2], y=posY_arr[1:2], text = label_arr[1:2], marker_symbol = marker_arr[1:2] ,textfont_size = fontSize, textfont_color = "black", textfont_family = "Arial", textposition = "top center", mode="markers+text", hoverinfo = "text", marker=attr(size=18,color = vcat(nodeC_arr,nodeTe_arr)))
+	layout_obj = Layout(hovermode="closest", titlefont_size=16,showlegend=false,showarrow=false,xaxis=attr(showgrid=false, zeroline=false, showticklabels=false),yaxis=attr(showgrid=false, zeroline=false, showticklabels=false),paper_bgcolor= "rgba(0,0,0,0)",plot_bgcolor= "rgba(0,0,0,0)")
 
-    posLabC_dic = netw.draw_networkx_labels(graph_obj, actNodePos_dic, font_size = fontSize, labels = cLab_dic, font_weight = "bold", font_family = "arial")
-    posLabTe_dic = netw.draw_networkx_labels(graph_obj, actNodePos_dic, font_size = fontSize, font_family = "arial", labels = teLab_dic)
+	graph_pl = plot(nodesTr_obj,layout_obj)
+	edgeCol_arr = vcat(edgeColC_arr,edgeColTe_arr)
 
-	# export graph as gexf file 
-	if wrtGEXF netw.write_gexf(graph_obj, "$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).gexf") end
+	for i in 1:length(edgeCol_arr)
+		add_trace!(graph_pl, scatter(mode="lines+markers", marker=attr(symbol="arrow-up",size=10,angleref="previous"), x=edgeX_arr[1+(i-1)*3:3+(i-1)*3], y=edgeY_arr[1+(i-1)*3:3+(i-1)*3], line=attr(width=0.5,color = edgeCol_arr[i])))
+	end
 
-    # adjusts position of carrier labels so that they are right from node, uses code provided by ImportanceOfBeingErnest from here https://stackoverflow.com/questions/43894987/networkx-node-labels-relative-position
-	figure = plt.gcf()
-	figure.set_size_inches(plotSize[1],plotSize[2])
+	add_trace!(graph_pl,nodesTr_obj)
 
-    r = figure.canvas.get_renderer()
-    trans = plt.gca().transData.inverted()
-    for x in vcat(collect(posLabC_dic),collect(posLabTe_dic))
-		cNode_boo = x[1] in ordC_arr
-        bb = x[2].get_window_extent(renderer=r)
-        bbdata = bb.transformed(trans)
-		# computes offset of label for leaves and non-leaves by first moving according to size auf letters itself (bbdata) and then by size of the node
-		# (node-size in pixel is devided by dpi and plot size to get relative offset)
-		offset_arr = [cNode_boo ? (bbdata.width/2.0 + (500/plotSize[1]/600)) : 0.0, cNode_boo ? 0.0 : (bbdata.height/2.0 + 200/plotSize[2]/600)]
-		x[2].set_position([x[2]."_x" + offset_arr[1],x[2]."_y" + offset_arr[2]])
-        x[2].set_clip_on(false)
-    end
-
-    # size plot and save
-	plt.axis("off")
-    plt.savefig("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp)", dpi = 600)
+	savefig(graph_pl, "$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).html")
 
 	# write plot information to yaml file as well
 	if wrtYML
 		adjPos_dic = Dict(x[1] => (x[2] .+ 1) ./ 2 for x in collect(flowGrap_obj.nodePos))
-		techNode_arr = [Dict("label" => teLab_dic[n], "name" => string(n), "color" => collect(nodeTe_arr[length(nodeTe_arr) == 1 ? 1 : id]), "position" => adjPos_dic[n], "type" => "technology") for (id,n) in enumerate(ordTe_arr)]
-		carNode_arr = [Dict("label" => cLab_dic[n], "name" => string(n), "color" => collect(nodeC_arr[id]), "position" => adjPos_dic[n], "type" => "carrier") for (id,n) in enumerate(ordC_arr)]
-		YAML.write_file("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).yml", Dict("vertices" => vcat(techNode_arr,carNode_arr), "edges" => [string(e[1]) => string(e[2]) for e in vcat(cEdges_arr,teEdges_arr)]))
+		revName_dic = Dict(v => k for (k, v) in anyM.graInfo.names)
+		techNode_arr = [Dict("label" => teLab_dic[n], "name" => revName_dic[teLab_dic[n]], "color" => convertCol(nodeTe_arr[length(nodeTe_arr) == 1 ? 1 : id]), "position" => adjPos_dic[n], "type" => "technology") for (id,n) in enumerate(ordTe_arr)]
+		carNode_arr = [Dict("label" => cLab_dic[n], "name" => revName_dic[cLab_dic[n]], "color" => convertCol(nodeC_arr[id]), "position" => adjPos_dic[n], "type" => "carrier") for (id,n) in enumerate(ordC_arr)]
+		allLab_dic = merge(teLab_dic,cLab_dic)
+		YAML.write_file("$(anyM.options.outDir)/energyFlowGraph_$(anyM.options.outStamp).yml", Dict("vertices" => vcat(techNode_arr,carNode_arr), "edges" => [revName_dic[allLab_dic[e[1]]] => revName_dic[allLab_dic[e[2]]] for e in vcat(flowGrap_obj.edgeC,flowGrap_obj.edgeTe)]))
 	end
     #endregion
 end
+function plotNetworkGraph(inFile::String; fontSize::Int = 12)
 
+    # ! extract node data from yaml file and convert
+    graph_dic = YAML.load_file(inFile)
+
+    cData_arr, teData_arr = [filter(x -> x["type"] == z,graph_dic["vertices"]) for z in ["carrier","technology"]]
+
+
+    cNum_int = length(cData_arr)
+    nodePos_dic = vcat(cData_arr,teData_arr) |> (w -> Dict(x => w[x]["position"] |> (u -> [(u[1]*2-1),u[2]+2-1]) for x in 1:length(w))) # assign positions to nodes
+
+    # assign names to nodes
+    nameC_dic = Dict(y => cData_arr[y]["name"] for y in 1:length(cData_arr))
+    nameTe_dic = Dict(cNum_int+y => teData_arr[y]["name"] for y in 1:length(teData_arr))
+    revName_dic = merge(Dict(v => k for (k, v) in nameC_dic),Dict(v => k for (k, v) in nameTe_dic))
+
+    # assign colors to nodes
+    colorC_dic = Dict(y => "rgb" .* string(tuple(cData_arr[y]["color"]...) .* 255) for y in 1:length(cData_arr))
+    colorTe_dic = Dict(cNum_int+y => "rgb" .* string(tuple(teData_arr[y]["color"]...) .* 255) for y in 1:length(teData_arr))
+
+    # assign labels to nodes
+    labC_dic = Dict(y => cData_arr[y]["label"] for y in 1:length(cData_arr))
+    labTe_dic = Dict(cNum_int+y => teData_arr[y]["label"] for y in 1:length(teData_arr))
+
+    # prepare edges
+    allEdges_arr = map(x -> revName_dic[string(x[1])] => revName_dic[x[2]], getindex.(collect.(graph_dic["edges"]),1))
+    ordC_arr = collect(keys(labC_dic)) 
+    ordTe_arr = collect(keys(labTe_dic)) 
+
+    # separate into edges between technologies and carriers and between carriers, then get respective colors
+    cEdges_arr = filter(x -> x[1] in ordC_arr && x[2] in ordC_arr, allEdges_arr)
+    edgeColC_arr = map(x -> colorC_dic[x[1]], cEdges_arr)
+
+    teEdges_arr = collect(keys(labTe_dic)) |> (w -> filter(x -> x[1] in w || x[2] in w, allEdges_arr))
+    edgeColTe_arr = map(x -> x[1] in ordC_arr ? colorC_dic[x[1]] : colorC_dic[x[2]], teEdges_arr)
+
+    # ! create actual graph
+    # create graph and draw nodes and edges
+    edgeX_arr = Union{Nothing,Float64}[]
+    edgeY_arr = Union{Nothing,Float64}[]
+
+    for x in vcat(cEdges_arr,teEdges_arr)
+        push!(edgeX_arr, nodePos_dic[x[1]][1])
+        push!(edgeY_arr, nodePos_dic[x[1]][2])
+        push!(edgeX_arr, nodePos_dic[x[2]][1])
+        push!(edgeY_arr, nodePos_dic[x[2]][2])
+        push!(edgeX_arr, nothing)
+        push!(edgeY_arr, nothing)
+    end
+
+    # get coordinates for nodes
+    posX_arr, posY_arr = [map(x -> nodePos_dic[x][y], vcat(ordC_arr,ordTe_arr)) for y in [1,2]]
+
+    # create plot
+    label_arr = vcat(map(x -> labC_dic[x], ordC_arr),map(x -> labTe_dic[x], ordTe_arr))
+    color_arr = vcat(map(x -> colorC_dic[x], ordC_arr),map(x -> colorTe_dic[x], ordTe_arr))
+    marker_arr = vcat(fill("square",size(ordC_arr,1)),fill("circle",size(ordTe_arr,1)))
+
+    nodesTr_obj = scatter(x=posX_arr, y=posY_arr, text = label_arr, marker_symbol = marker_arr ,textfont_size = fontSize, textfont_color = "black", textfont_family = "Arial", textposition = "top center", mode="markers+text", hoverinfo = "text", marker=attr(size=18,color = color_arr))
+    layout_obj = Layout(hovermode="closest",titlefont_size=16,showlegend=false,showarrow=false,xaxis=attr(showgrid=false, zeroline=false, showticklabels=false),yaxis=attr(showgrid=false, zeroline=false, showticklabels=false),paper_bgcolor= "rgba(0,0,0,0)",plot_bgcolor= "rgba(0,0,0,0)")
+
+    graph_pl = plot(nodesTr_obj,layout_obj)
+    edgeCol_arr = vcat(edgeColC_arr,edgeColTe_arr)
+
+    for i in 1:length(edgeCol_arr)
+        add_trace!(graph_pl, scatter(mode="lines", x=edgeX_arr[1+(i-1)*3:3+(i-1)*3], y=edgeY_arr[1+(i-1)*3:3+(i-1)*3], line=attr(width=0.5,color = edgeCol_arr[i])))
+    end
+
+    add_trace!(graph_pl,nodesTr_obj)
+
+    savefig(graph_pl, replace(inFile,".yml" => ".html"))
+end
+
+# ! plot quantitative energy flow sankey diagramm (from model object or file)
+"""
+```julia
+plotNetworkGraph(plotType::Symbol, model_object::anyModel)
+```
+
+Plots the Sankey diagram for energy flows in a model.
+
+"""
 # ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Number,Number} = (16.0,9.0), minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = true, netExc::Bool = true, name::String = "")
+function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false, wrtVal::Bool = true, digVal::Int = 1, sgnVal::String = ";")
 
     flowGrap_obj = anyM.graInfo.graph
 
@@ -1130,31 +1202,50 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
     error("dropDown only accepts array :region and :timestep as content")
     end
 
-    # get mappings to create buttons of dropdown menue
-    drop_dic = Dict(:region => :R_dis, :timestep => :Ts_disSup, :scenario => :scr)
-    dropDim_arr = collect(map(x -> drop_dic[x], dropDown))
+	# get mappings to create buttons of dropdown menue
+	drop_dic = Dict(:region => :R_dis, :timestep => :Ts_disSup, :scenario => :scr)
+	dropDim_arr = collect(map(x -> drop_dic[x], dropDown))
 
-    # get summarised data and filter dispatch variables
-    data_df = select(reportResults(:summary,anyM,rtnOpt = (:rawDf,)),Not([:objName]))
-	filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
+	if isempty(dataIn)
+		# get summarised data and filter dispatch variables
+		data_df = select(reportResults(:summary,anyM,rtnOpt = (:rawDf,)),Not([:objName]))
+		filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
 
-	# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
-	c_dic, r_dic = [anyM.sets[x].nodes for x in [:C,:R]]
-	if :scr in namesSym(data_df)
-		data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.scr == x.scr && y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+		# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
+		c_dic, r_dic = [anyM.sets[x].nodes for x in [:C,:R]]
+		if :scr in namesSym(data_df)
+			data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.scr == x.scr && y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+		else
+			data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+		end
 	else
-		data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
+		data_df = CSV.read(dataIn,DataFrame)
+		filter!(x -> x.variable in ("demand","gen","use","stIn","stOut","trdBuy","trdSell","demand","import","export","lss","crt"),data_df)
+		if "objName" in names(data_df) select!(data_df,Not([:objName])) end
+		data_df[!,:timestep_superordinate_dispatch] = map(x -> lookupString(x,anyM.sets[:Ts]),data_df[!,:timestep_superordinate_dispatch])
+		data_df[!,:region_dispatch] = map(x -> lookupString(x,anyM.sets[:R]),data_df[!,:region_dispatch])
+		data_df[!,:technology] = map(x -> lookupString(x,anyM.sets[:Te]),data_df[!,:technology])
+		data_df[!,:carrier] = map(x -> lookupString(x,anyM.sets[:C]),data_df[!,:carrier])
+		data_df[!,:id] = map(x -> lookupString(x,anyM.sets[:id]),data_df[!,:id])
+		data_df[!,:variable] = Symbol.(data_df[!,:variable]) 
+		rename!(data_df,[:timestep_superordinate_dispatch => :Ts_disSup,:region_dispatch => :R_dis,:technology => :Te,:carrier => :C])
+	end
+
+	if savaData 
+		printObject(data_df,anyM, wrtGap = true, fileName = "sankeyData$(name == "" ? "" : "_" * name)")
 	end
 	
 	# converts export and import quantities into net values
 	if netExc
 		allExc_df = filter(x -> x.variable in (:import,:export),data_df)
-		joinedExc_df = joinMissing(select(rename(filter(x -> x.variable == :export,allExc_df),:value => :export),Not([:variable])),select(rename(filter(x -> x.variable == :import,allExc_df),:value => :import),Not([:variable])),intCol(data_df),:left,Dict(:export => 0.0,:import => 0.0))
-		joinedExc_df[!,:value] = joinedExc_df[!,:export] .+ joinedExc_df[!,:import]
-		select!(joinedExc_df,Not([:export,:import]))
-		joinedExc_df[!,:variable] = map(x -> x > 0.0 ? :netImport : :netExport, joinedExc_df[!,:value])
-		joinedExc_df[!,:value] = abs.(joinedExc_df[!,:value])
-		data_df = vcat(joinedExc_df,filter(x -> !(x.variable in (:export,:import)) ,data_df))
+		if !isempty(data_df)
+			joinedExc_df = joinMissing(select(rename(filter(x -> x.variable == :export,allExc_df),:value => :export),Not([:variable])),select(rename(filter(x -> x.variable == :import,allExc_df),:value => :import),Not([:variable])),intCol(data_df),:outer,Dict(:export => 0.0,:import => 0.0))
+			joinedExc_df[!,:value] = joinedExc_df[!,:export] .+ joinedExc_df[!,:import]
+			select!(joinedExc_df,Not([:export,:import]))
+			joinedExc_df[!,:variable] = map(x -> x > 0.0 ? :netImport : :netExport, joinedExc_df[!,:value])
+			joinedExc_df[!,:value] = abs.(joinedExc_df[!,:value])
+			data_df = vcat(joinedExc_df,filter(x -> !(x.variable in (:export,:import)) ,data_df))
+		end
 	end
 
     # filter non relevant entries
@@ -1168,42 +1259,89 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	end	
     othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(oth_df))))
 	othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
-	 
+
 	#endregion
 
-    #region # * prepare labels and colors
+	#region # * filter flows according to provided yaml file
+
+	if !isempty(ymlFilter)
+		graph_dic = YAML.load_file(ymlFilter)
+		# filters entries that aggregates several sub-categories
+		agg_arr = filter(x -> "aggregating" in keys(x), graph_dic["vertices"])
+		nonAgg_arr = graph_dic["vertices"]
+		aggTe_arr, aggCe_arr =  map(z -> vcat(map(y -> y["aggregating"],filter(x -> x["type"] == z, agg_arr))...),["technology","carrier"])
+		nonAggTe_arr, nonAggCe_arr = map(z -> map(y -> y["name"],filter(x -> x["type"] == z, nonAgg_arr)),["technology","carrier"])
+		# filters relevant technologies and carriers
+		te_arr = map(vcat(aggTe_arr...,nonAggTe_arr...)) do y
+			if y in getfield.(collect(values(anyM.sets[:Te].nodes)),:val)
+				return sysInt(Symbol(y),anyM.sets[:Te])
+			else 
+				error("technology " * y * " not defined!")
+			end
+		end
+		c_arr = map(vcat(aggCe_arr...,nonAggCe_arr...)) do y
+			if y in getfield.(collect(values(anyM.sets[:C].nodes)),:val)
+				return sysInt(Symbol(y),anyM.sets[:C])
+			else 
+				error("technology " * y * " not defined!")
+			end
+		end
+
+		filter!(x -> x.C in c_arr && (x.Te == 0 || x.Te in te_arr),data_df)
+		# perform aggregation
+		for u in (:Te,:C)
+			agg_dic = Dict(vcat(map(x -> map(y -> sysInt(Symbol(y),anyM.sets[u]) => sysInt(Symbol(x["name"]),anyM.sets[u]), vcat(x["name"],x["aggregating"]...)), filter(x -> x["type"] == (u == :Te ? "technology" : "carrier"), agg_arr))...))
+			data_df[!,u] = map(x -> x in keys(agg_dic) ? agg_dic[x] : x,data_df[!,u]) 
+			data_df = combine(groupby(data_df,intCol(data_df,:variable)), :value => (x -> sum(x)) => :value)
+		end
+	end
+
+	#endregion
+	
+	#region # * prepare labels and colors
 
     # prepare name and color assignment
-    names_dic = anyM.graInfo.names
-    revNames_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
-    col_dic = anyM.graInfo.colors
+    names_dic = isempty(ymlFilter) ? anyM.graInfo.names : Dict(x["name"] => x["label"] for x in collect(graph_dic["vertices"])) |> (z -> merge(z,filter(x -> !(x[1] in keys(z)),anyM.graInfo.names)))
+    revName_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
+
+	# use color from yaml, if any are provided
+	if !isempty(ymlFilter)
+		col_dic = Dict(x["name"] => tuple(x["color"]...) for x in graph_dic["vertices"])
+	else
+		col_dic = anyM.graInfo.colors
+	end
 
     sortTe_arr = getindex.(sort(collect(flowGrap_obj.nodeTe),by = x -> x[2]),1)
-    cColor_dic = Dict(x => anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[col_dic[z]] : (0.85,0.85,0.85))) for x in sort(collect(keys(flowGrap_obj.nodeC))))
+    cColor_dic = Dict(x => anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85,0.85,0.85)) for x in sort(collect(keys(flowGrap_obj.nodeC))))
 
     # create array of node labels
-    cLabel_arr = map(x -> names_dic[anyM.sets[:C].nodes[x].val],sort(collect(keys(flowGrap_obj.nodeC))))
-    teLabel_arr = map(x -> names_dic[anyM.sets[:Te].nodes[x].val],sortTe_arr)
+    cLabel_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z),sort(collect(keys(flowGrap_obj.nodeC))))
+    teLabel_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z),sortTe_arr)
     othLabel_arr = map(x -> names_dic[String(othNodeId_dic[x][2])],sort(collect(keys(othNodeId_dic))))
-    nodeLabel_arr = vcat(cLabel_arr, teLabel_arr, othLabel_arr)
-    revNodelLabel_arr = map(x -> revNames_dic[x],nodeLabel_arr)
+    nodeLabelAll_arr = vcat(cLabel_arr, teLabel_arr, othLabel_arr)
+    revNodelLabel_arr = map(x -> revName_dic[x],nodeLabelAll_arr)
 
     # create array of node colors
-    cColor_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(flowGrap_obj.nodeC))))
-    teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> useTeColor && z in keys(col_dic) ? col_dic[z] : (useTeColor && names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sortTe_arr)
-    othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (names_dic[z] in keys(col_dic) ? col_dic[names_dic[z]] : (0.85,0.85,0.85))),sort(collect(keys(othNodeId_dic))))
+    cColor_arr = map(x -> cColor_dic[x],sort(collect(keys(flowGrap_obj.nodeC))))
+    teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(col_dic) && useTeColor ? col_dic[z] : (0.85,0.85,0.85)),sortTe_arr)
+    othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85,0.85,0.85)),sort(collect(keys(othNodeId_dic))))
     nodeColor_arr = vcat(map(x -> replace.(string.("rgb",string.(map(z -> z .* 255.0,x)))," " => ""),[cColor_arr, teColor_arr, othColor_arr])...)
 	dropData_arr = PlotlyBase.PlotlyAttribute{Dict{Symbol, Any}}[]
+
+	if ymlFilter != "" && "removeSankey" in keys(graph_dic)
+		rmvNode = map(x -> collect(x)[1] |> (z -> string(z[1],"; ",z[2])), collect(graph_dic["removeSankey"])) |> (u ->  isempty(rmvNode) ? tuple(u...) : tuple(u...,rmvNode...))
+	end
 
 	# ! loop over potential buttons in dropdown menue
 	for drop in eachrow(unique(data_df[!,intersect(namesSym(data_df),dropDim_arr)]))
 	
 		#region # * filter data and create flow array
+		nodeLabel_arr = copy(nodeLabelAll_arr)
 	
 		dropData_df = copy(data_df)
 		if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,anyM.sets[:R],true)...] end
 		for d in dropDown
-		  filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
+			filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
 		end
 		
 		if netExc
@@ -1212,7 +1350,7 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 				allExc_df[!,:value] = map(x -> x.variable == :netExport ? x.value * -1 : x.value, eachrow(allExc_df))
 				aggExc_df = combine(groupby(allExc_df,[:Ts_disSup,:Te,:C]), :value => (x -> sum(x)) => :value)
 				aggExc_df[!,:variable] = map(x -> x.value > 0.0 ? :netImport : :netExport, eachrow(aggExc_df))
-				# renames net-export into storage losses in case regions does not appear in drop dropDown
+				# renames net-export into losses in case regions does not appear in drop dropDown
 				if !(:region in dropDown)
 					aggExc_df[!,:variable] = map(x -> x == :netExport ? :exchangeLoss : x, aggExc_df[!,:variable])
 					aggExc_df[!,:R_dis] .= 0
@@ -1227,91 +1365,90 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 	
 		# write flows reported in data summary
 		for x in eachrow(dropData_df)
-		  a = Array{Any,1}(undef,3)
-	
-		  # technology related entries
-		  if x.variable in (:demand,:export,:trdSell,:crt,:netExport,:exchangeLoss)
-			a[1] = flowGrap_obj.nodeC[x.C]
-			a[2] = othNode_dic[(x.C,x.variable)]
-		  elseif x.variable in (:import,:trdBuy,:lss,:netImport)
-			a[1] = othNode_dic[(x.C,x.variable)]
-			a[2] = flowGrap_obj.nodeC[x.C]
-		  elseif x.variable in (:gen,:stOut)
-	
-			  if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
-				  a[1] = flowGrap_obj.nodeTe[x.Te]
-			  else
-				  a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
-			  end
-	
-			  a[2] = flowGrap_obj.nodeC[x.C]
-		  else
-			a[1] = flowGrap_obj.nodeC[x.C]
-	
-			if x.Te in keys(flowGrap_obj.nodeTe)
-				a[2] = flowGrap_obj.nodeTe[x.Te]
+
+			a = Array{Any,1}(undef,3)
+		
+			# technology related entries
+			if x.variable in (:demand,:export,:trdSell,:crt,:netExport,:exchangeLoss)
+				a[1] = flowGrap_obj.nodeC[x.C]
+				a[2] = othNode_dic[(x.C,x.variable)]
+			elseif x.variable in (:import,:trdBuy,:lss,:netImport)
+				a[1] = othNode_dic[(x.C,x.variable)]
+				a[2] = flowGrap_obj.nodeC[x.C]
+			elseif x.variable in (:gen,:stOut)
+		
+				if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
+					a[1] = flowGrap_obj.nodeTe[x.Te]
+				else
+					a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+				end
+		
+				a[2] = flowGrap_obj.nodeC[x.C]
 			else
-				a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+				a[1] = flowGrap_obj.nodeC[x.C]
+		
+				if x.Te in keys(flowGrap_obj.nodeTe)
+					a[2] = flowGrap_obj.nodeTe[x.Te]
+				else
+					a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+				end
 			end
-		  end
-	
-		  a[3] = abs(x.value)
-	
-		  push!(flow_arr,tuple(a...))
+		
+			a[3] = abs(x.value)
+		
+			push!(flow_arr,tuple(a...))
 		end
 	
 		# create flows connecting different carriers
 		idToC_dic = Dict(map(x -> x[2] => x[1], collect(flowGrap_obj.nodeC)))
 		for x in filter(x -> anyM.sets[:C].up[x] != 0,intersect(union(getindex.(flow_arr,1),getindex.(flow_arr,2)),values(flowGrap_obj.nodeC)))
-		  a = Array{Any,1}(undef,3)
-		  a[1] = flowGrap_obj.nodeC[x]
-		  a[2] = flowGrap_obj.nodeC[anyM.sets[:C].up[x]]
-		  a[3] = (getindex.(filter(y -> y[2] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z))) - (getindex.(filter(y -> y[1] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z)))
-		  push!(flow_arr,tuple(a...))
+			a = Array{Any,1}(undef,3)
+			a[1] = flowGrap_obj.nodeC[x]
+			a[2] = flowGrap_obj.nodeC[anyM.sets[:C].up[x]]
+			a[3] = (getindex.(filter(y -> y[2] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z))) - (getindex.(filter(y -> y[1] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z)))
+			push!(flow_arr,tuple(a...))
 		end
 	
 		# merges flows for different regions that connect the same nodes
 		flow_arr = map(unique(map(x -> x[1:2],flow_arr))) do fl
-		  allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
-		  return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
+			allFl = filter(y -> y[1:2] == fl[1:2],flow_arr)
+			return (allFl[1][1],allFl[1][2],sum(getindex.(allFl,3)))
 		end
-		
-	
+
 		# removes nodes accoring function input provided
 		for rmv in rmvNode
-		  # splits remove expression by semicolon and searches for first part
-		  rmvStr_arr = split(rmv,"; ")
-		  relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
-		  if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
-		  if isempty(relNodes_arr) continue end
-	
-		  if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
-			relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
-			if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
-	
-			if isempty(relC_arr)
-				produceMessage(anyM.options,anyM.report, 1," - Remove string contained a carrier not found in graph, check for typos: "*rmv)
-				continue
-			else
-				c_int = relC_arr[1]
+			# splits remove expression by semicolon and searches for first part
+			rmvStr_arr = split(rmv,"; ")
+			relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
+			if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
+			if isempty(relNodes_arr) continue end
+
+			if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
+				relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
+				if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
+
+				if isempty(relC_arr)
+					continue
+				else
+					c_int = relC_arr[1]
+				end
+
+				filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)),flow_arr)
+				elseif length(rmvStr_arr) > 2
+				error("one remove string contained more then one semicolon, this is not supported")
+				else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
+				out_tup = filter(x -> x[1] == relNodes_arr[1],flow_arr)
+				in_tup = filter(x -> x[2] == relNodes_arr[1],flow_arr)
+
+				if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
+					filter!(x -> !(x in (out_tup[1],in_tup[1])),flow_arr)
+					push!(flow_arr,(in_tup[1][1],out_tup[1][2],in_tup[1][3]))
+				elseif length(out_tup) == 0 # only ingoing flows
+					filter!(x -> !(x in in_tup),flow_arr)
+				elseif length(in_tup) == 0 # only outgoing flows
+					filter!(x -> !(x in out_tup),flow_arr)
+				end
 			end
-	
-			filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)),flow_arr)
-		  elseif length(rmvStr_arr) > 2
-			error("one remove string contained more then one semicolon, this is not supported")
-		  else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
-			out_tup = filter(x -> x[1] == relNodes_arr[1],flow_arr)
-			in_tup = filter(x -> x[2] == relNodes_arr[1],flow_arr)
-	
-			if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
-			  filter!(x -> !(x in (out_tup[1],in_tup[1])),flow_arr)
-			  push!(flow_arr,(in_tup[1][1],out_tup[1][2],in_tup[1][3]))
-			elseif length(out_tup) == 0 # only ingoing flows
-			  filter!(x -> !(x in in_tup),flow_arr)
-			elseif length(in_tup) == 0 # only outgoing flows
-			  filter!(x -> !(x in out_tup),flow_arr)
-			end
-		  end
 		end
 	
 		#endregion
@@ -1323,6 +1460,23 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 		linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
 			(z -> replace(string("rgba",string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...)))," " => "")), flow_arr)
 		link_obj = attr(source = getindex.(flow_arr,1) .- 1, target = getindex.(flow_arr,2) .- 1, value = getindex.(flow_arr,3), color = linkColor_arr)
+
+
+		# compute values for each node to written to graph
+		if wrtVal
+			for x in 1:length(nodeLabel_arr)
+				relFlow_arr = filter(y -> y[1] == x, flow_arr)
+				if isempty(relFlow_arr)
+					relFlow_arr = filter(y -> y[2] == x, flow_arr)
+					if isempty(relFlow_arr) && nodeLabel_arr[x] != ""
+						nodeLabel_arr[x] = nodeLabel_arr[x] * ", " * string(0.0)
+					end
+				end
+				if nodeLabel_arr[x] != ""
+					nodeLabel_arr[x] = nodeLabel_arr[x] * sgnVal * " " * string(round(sum(getindex.(relFlow_arr,3)), digits = digVal))
+				end
+			end
+		end
 	
 		fullData_arr = [attr(link = link_obj, node = attr(label = nodeLabel_arr, color = nodeColor_arr))]
 	
@@ -1332,18 +1486,19 @@ function plotEnergyFlow(objGrp::Val{:sankey},anyM::anyModel; plotSize::Tuple{Num
 		push!(dropData_arr,attr(args = fullData_arr, label = label_str, method = "restyle"))
 	
 		#endregion
-	
 	end
+	#endregion
 	
 	#region # * create various dictionaries to define format and create plot
 	
-	data_obj = sankey(type = "sankey", orientation = "h", valueformat =".0f", hoverinfo = "skip")
-	menues_obj = attr(buttons = dropData_arr, direction = "down", pad_l = 10, pad_t = 10, font_size = 16, font_family = "Arial", showactive = true, x = 0.01, xanchor = "center", y = 1.1, yanchor = "middle")
-	layout_obj = Layout(;width = 125*plotSize[1], height = 125*plotSize[2], updatemenus = [menues_obj], font_size = 32, font_family = "Arial")
+	data_obj = sankey(type = "sankey", orientation = "h", valueformat =".0f", hoverinfo = "value", textfont_size = fontSize, textfont_color = "black")
+	menues_obj = attr(buttons = dropData_arr, direction = "down", pad_l = 10, pad_t = 10, font_size = 16, font_family = "Arial", textfont_color = "black", showactive = true, x = 0.01, xanchor = "center", y = 1.1, yanchor = "middle")
+	layout_obj = Layout(;updatemenus = [menues_obj], font_size = 32, font_family = "Arial")
 	
 	savefig(plot(data_obj, layout_obj), "$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown),"_"))$(name == "" ? "" : "_" * name)_$(anyM.options.outStamp).html")
+    
+	#endregion
 
-    #endregion
 end
 
 # ! define postions of nodes in energy flow graph
@@ -1442,7 +1597,7 @@ end
 moveNode!(model_object::anyModel, newPos_arr::Union{Array{Tuple{String,Array{Float64,1}},1},Tuple{String,Array{Float64,1}}})
 ```
 
-Moves a node within the current layout of the node graph created with `plotEnergyFlow`. See [Energy flow](@ref).
+Moves a node within the current layout of the node graph created with `plotNetworkGraph`. See [Energy flow](@ref).
 
 """
 function moveNode!(anyM::anyModel,newPos_arr::Union{Array{Tuple{String,Array{Float64,1}},1},Tuple{String,Array{Float64,1}}})
@@ -1450,7 +1605,7 @@ function moveNode!(anyM::anyModel,newPos_arr::Union{Array{Tuple{String,Array{Flo
     flowGrap_obj = anyM.graInfo.graph
 
     if !isdefined(flowGrap_obj,:nodePos)
-        error("Initial positions are not yet defined. Run 'plotEnergyFlow' first.")
+        error("Initial positions are not yet defined. Run 'plotNetworkGraph' first.")
     end
 
     # gets assignment between node ids and names
@@ -1484,93 +1639,48 @@ function moveNode!(anyM::anyModel,newPos_arr::Union{Array{Tuple{String,Array{Flo
     end
 end
 
-#endregion
 
-# ! plot energy flow graph from yaml file
+# ! convert energy flow graph in yaml file to gexf
 """
 ```julia
-plotGraphYML(inFile::String,plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12)
+convertYML2GEXF(yamlFile::String)
 ```
-
 """
-function plotGraphYML(inFile::String; plotSize::Tuple{Number,Number} = (16.0,9.0), fontSize::Int = 12, wrtGEXF::Bool = false)
+function convertYML2GEXF(yamlFile::String)
 
-    # ! import python function
-    netw = pyimport("networkx")
-    plt = pyimport("matplotlib.pyplot")
-    PyCall.fixqtpath()
+    # ! define default strings
+    header_str = "<?xml version='1.0' encoding='utf-8'?>
+    <gexf version=\"1.2\" xmlns=\"http://www.gexf.net/1.2draft\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xsi:schemaLocation=\"http://www.gexf.net/1.2draft http://www.gexf.net/1.2draft/gexf.xsd\">
+    <meta lastmodifieddate=\"2022-01-18\">
+        <creator>NetworkX 2.4</creator>
+        </meta>
+        <graph defaultedgetype=\"directed\" mode=\"static\" name=\"\">
+        <nodes>
+    "
 
-    # ! extract node data from yaml file and convert
-    graph_dic = YAML.load_file(inFile)
+    mid_str = "</nodes>
+    <edges>
+    "
 
-    cData_arr, techData_arr = [filter(x -> x["type"] == z,graph_dic["vertices"]) for z in ["carrier","technology"]]
-    nodeC_arr, nodeTe_arr = [map(x -> tuple(x["color"]...),z) for z in [cData_arr,techData_arr]]
+    bot_str = "</edges>
+    </graph>
+    </gexf>
+    "
 
-    cNum_int = length(cData_arr)
-    nodePos_dic = vcat(cData_arr,techData_arr) |> (w -> Dict(x => w[x]["position"] |> (u -> [(u[1]*2-1)*plotSize[1]/plotSize[2],u[2]+2-1]) for x in 1:length(w))) # assign positions to nodes
+    # ! write info on nodes and vertices
 
-    # assign names to nodes
-    nameC_dic = Dict(y => cData_arr[y]["name"] for y in 1:length(cData_arr))
-    nameTe_dic = Dict(cNum_int+y => techData_arr[y]["name"] for y in 1:length(techData_arr))
-    revName_dic = merge(Dict(v => k for (k, v) in nameC_dic),Dict(v => k for (k, v) in nameTe_dic))
+    graph_dic = YAML.load_file(yamlFile)
 
-    # assign labels to nodes
-    labC_dic = Dict(y => cData_arr[y]["label"] for y in 1:length(cData_arr))
-    labTe_dic = Dict(cNum_int+y => techData_arr[y]["label"] for y in 1:length(techData_arr))
+    node_arr = map(x -> "<node id=\"" * x["name"] *  "\" label=\"" * x["label"] * "\" /> \n",collect(values(graph_dic["vertices"])))
+    edge_arr = map(x -> "<edge id=\"" * string(x[1]) * "\" source=\"" * string(collect(keys(x[2]))[1]) * "\" target=\"" * collect(values(x[2]))[1] * "\" /> \n",enumerate(collect(values(graph_dic["edges"]))))
 
-    # assign colors to nodes
-    colC_dic = Dict(y => cData_arr[y]["color"] for y in 1:length(cData_arr))
+    text_str =header_str * string(node_arr...) * mid_str * string(edge_arr...) * bot_str
 
-    # prepare edges
-    allEdges_arr = map(x -> revName_dic[string(x[1])] => revName_dic[x[2]], getindex.(collect.(graph_dic["edges"]),1))
-    ordC_arr = collect(keys(nameC_dic)) 
+    write(replace(yamlFile,"yml" => "gexf"), text_str)
 
-    # separate into edges between technologies and carriers and between carriers, then get respective colors
-    cEdges_arr = filter(x -> x[1] in ordC_arr && x[2] in ordC_arr, allEdges_arr)
-    edgeColC_arr = map(x -> colC_dic[x[1]], cEdges_arr)
-
-    teEdges_arr = collect(keys(labTe_dic)) |> (w -> filter(x -> x[1] in w || x[2] in w, allEdges_arr))
-    edgeColTe_arr = map(x -> x[1] in ordC_arr ? colC_dic[x[1]] : colC_dic[x[2]], teEdges_arr)
-
-	# ! create actual graph
-    # create graph and draw nodes and edges
-    graph_obj = netw.DiGraph()
-    plt.clf()
-
-    netw.draw_networkx_nodes(graph_obj, nodePos_dic, nodelist = collect(1:length(cData_arr)), node_shape="s", node_size = 300, node_color = nodeC_arr)
-    netw.draw_networkx_nodes(graph_obj, nodePos_dic, nodelist = collect((1+cNum_int):(cNum_int+length(techData_arr))), node_shape="o", node_size = 185,node_color = nodeTe_arr)
-
-    netw.draw_networkx_edges(graph_obj, nodePos_dic, edgelist = cEdges_arr, edge_color = edgeColC_arr, arrowsize  = 16.2, width = 1.62)
-    netw.draw_networkx_edges(graph_obj, nodePos_dic, edgelist = teEdges_arr, edge_color = edgeColTe_arr)
-
-    # add labels and adjust their position
-    posLabC_dic = netw.draw_networkx_labels(graph_obj, nodePos_dic, font_size = fontSize, labels = labC_dic, font_weight = "bold", font_family = "arial")
-    posLabTe_dic = netw.draw_networkx_labels(graph_obj, nodePos_dic, font_size = fontSize, font_family = "arial", labels = labTe_dic)
-
-    # adjusts position of carrier labels so that they are right from node, uses code provided by ImportanceOfBeingErnest from here https://stackoverflow.com/questions/43894987/networkx-node-labels-relative-position
-    figure = plt.gcf()
-    figure.set_size_inches(plotSize[1],plotSize[2])
-
-    r = figure.canvas.get_renderer()
-    trans = plt.gca().transData.inverted()
-    for x in vcat(collect(posLabC_dic),collect(posLabTe_dic))
-        cNode_boo = x[1] in ordC_arr
-        bb = x[2].get_window_extent(renderer=r)
-        bbdata = bb.transformed(trans)
-        # computes offset of label for leaves and non-leaves by first moving according to size auf letters itself (bbdata) and then by size of the nodeteEdges_arr
-
-        # (node-size in pixel is devided by dpi and plot size to get relative offset)
-        offset_arr = [cNode_boo ? (bbdata.width/2.0 + (500/plotSize[1]/600)) : 0.0, cNode_boo ? 0.0 : (165/plotSize[2]/600)]
-        x[2].set_position([x[2]."_x" + offset_arr[1],x[2]."_y" + offset_arr[2]])
-        x[2].set_clip_on(false)
-    end
-
-    plt.axis("off")
-
-    # size plot and save
-    plt.savefig(replace(inFile,".yml" => ".png"), dpi = 600)
-    graph_obj = nothing
 end
+
+
 
 # ! dummy function just do provide a docstring for printIIS (docstring in printIIS wont work, because read-in is conditional)
 """

@@ -31,6 +31,30 @@ function lookupTupleTree(input_uni::Tuple{Vararg{Union{InlineString,String},N} w
 	return found_arr
 end
 
+# ! lookup a set defined by a text string (like they are written to result files)
+function lookupString(inTxt::Union{InlineString,String},tree::Tree)
+
+    if inTxt == 0
+        return 0
+    else
+        txt_arr = replace.(split(inTxt,"<")," " => "")
+        lookFull_arr = lookupTupleTree(tuple(txt_arr...),tree)
+        if !isempty(lookFull_arr) # if string as no "gaps" simple lookup will work
+            return lookFull_arr[end]
+        else
+            last_arr = getfield.(filter(x -> x.val == txt_arr[end], collect(values(tree.nodes))),:idx) # get idx for last string
+            # loop over next string and keep corresponding entries
+            for i in 1:(length(txt_arr)-1)
+                next_arr = getfield.(filter(x -> x.val == txt_arr[end-i], collect(values(tree.nodes))),:idx)
+                filter!(x -> !isempty(intersect(getAncestors(x,tree,:int,1),next_arr)),last_arr)
+            end
+
+        end
+        return last_arr[end]
+    end
+
+end
+
 # ! sorts inputs nodes according to their tree position
 function sortSiblings(nodesIndex_arr::Array{Int,1},tree_obj::Tree)
 	hertiLine_mat = map(x -> getAncestors(x, tree_obj,:tup),nodesIndex_arr)
@@ -162,4 +186,4 @@ function getUniName(nodeIdx_int::Int, tree_obj::Tree, wrtGap::Bool = false)
 	return tuple(vcat(nodeStr_arr...)...)
 end
 
-createFullString(nodeIdx_int::Int,tree_obj::Tree) = join(getUniName(nodeIdx_int,tree_obj)," < ")
+createFullString(nodeIdx_int::Int,tree_obj::Tree,wrtGap::Bool = false) = join(getUniName(nodeIdx_int,tree_obj,wrtGap)," < ")

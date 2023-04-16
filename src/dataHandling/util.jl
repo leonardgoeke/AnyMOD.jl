@@ -54,6 +54,9 @@ function produceMessageShort(mes_str::String,report_m::anyModel; testErr=false, 
 
 #region # * miscellaneous data processing
 
+# ! converts color string to rgb array
+convertCol(col_str::String) = split(col_str,", ") |> (u -> parse.(Float64,[u[1][5:end],u[2],u[3][1:end-1]])./255)
+
 # ! merges elements of named tuples for capacity preparation
 mergePrep(in_tup::NamedTuple) = isempty(in_tup.resi) ? in_tup.var : unique(vcat(in_tup.var,select(in_tup.resi,Not([:var]))))
 
@@ -112,6 +115,8 @@ filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in namesSym(var_df) ? 
 # ! makes first letter of string or symbol capital or non-capital
 makeUp(in::String) = isempty(in) ? "" : string(uppercase(in[1]),in[2:end])
 makeUp(in::Symbol) = Symbol(uppercase(string(in)[1]),string(in)[2:end])
+makeLow(in::String) = isempty(in) ? "" : string(lowercase(in[1]),in[2:end])
+makeLow(in::Symbol) = Symbol(lowercase(string(in)[1]),string(in)[2:end])
 
 # ! create dataframe with all potential dimensions for carrier provided
 function createPotDisp(c_arr::Array{Int,1},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
