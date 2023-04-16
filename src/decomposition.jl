@@ -38,10 +38,10 @@ end
 #region # * functions for computing and fixing solutions
 
 # ! run heuristic and return exact capacities plus heuristic cut
-function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_obj::DataType,rtrnMod_boo::Bool=true,solDet_boo::Bool=false)
+function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_obj::DataType;rtrnMod::Bool=true,solDet::Bool=false,fltSt::Bool=true)
 
 	# create and solve model
-	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, redStep = redFac, checkRng = (print = true, all = false), forceScr = solDet_boo ? Symbol() : nothing)
+	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * string(round(redFac,digits = 3)) * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, redStep = redFac, checkRng = (print = true, all = false), forceScr = solDet ? Symbol() : nothing)
 	
 	prepareMod!(heu_m,opt_obj,t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
@@ -52,9 +52,9 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 	# write results to benders object
 	heuData_obj = resData()
 	heuData_obj.objVal = sum(map(z -> sum(value.(heu_m.parts.cost.var[z][!,:var])), collect(filter(x -> any(occursin.(["costExp", "costOpr", "costMissCapa", "costRetro"],string(x))), keys(heu_m.parts.cost.var)))))
-	heuData_obj.capa = writeResult(heu_m,[:capa,:exp,:mustCapa,:mustExp])
+	heuData_obj.capa = writeResult(heu_m,[:capa,:exp,:mustCapa,:mustExp],fltSt = fltSt)
 	
-	if rtrnMod_boo
+	if rtrnMod
 		return heu_m, heuData_obj
 	else
 		return heuData_obj
@@ -62,7 +62,7 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 end
 
 # ! evaluate results of heuristic solution to determine fixed and limited variables
-function evaluateHeu(heu_m::anyModel,heuSca_obj::resData,heuCom_obj::resData,linPar::NamedTuple,wrtCapa::Bool=false)
+function evaluateHeu(heu_m::anyModel,heuSca_obj::resData,heuCom_obj::resData,linPar_tup::NamedTuple,wrtCapa::Bool=false)
 
 	# create empty dictionaries for limits and fixes
 	fix_dic = Dict(:tech => Dict{Symbol,Dict{Symbol,DataFrame}}(),:exc => Dict{Symbol,Dict{Symbol,DataFrame}}())
@@ -84,7 +84,7 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::resData,heuCom_obj::resData,lin
 				# match results from two different heuristic models
 				bothCapa_df = rename(heuSca_obj.capa[sys][sSym][varSym],:value => :value_1) |> (x -> innerjoin(x, rename(heuCom_obj.capa[sys][sSym][varSym],:value => :value_2), on = intCol(x,:dir)))
 				# determine cases for fix and limit
-				bothCapa_df[!,:limVal], bothCapa_df[!,:limCns] = map(x -> getLinTrust(x.value_1,x.value_2,linPar), eachrow(bothCapa_df)) |> (w -> map(x -> getindex.(w,x),[1,2]))
+				bothCapa_df[!,:limVal], bothCapa_df[!,:limCns] = map(x -> getLinTrust(x.value_1,x.value_2,linPar_tup), eachrow(bothCapa_df)) |> (w -> map(x -> getindex.(w,x),[1,2]))
 				bothCapa_df = flatten(select(bothCapa_df,Not([:value_1,:value_2])),[:limVal,:limCns])
 
 				# ! store limited variables
@@ -138,19 +138,19 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::resData,heuCom_obj::resData,lin
 end
 
 # ! get limits imposed on by linear trust region all limits are extended to avoid infeasbilites
-function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar::NamedTuple)
+function getLinTrust(val1_fl::Float64,val2_fl::Float64,linPar_tup::NamedTuple)
 
-	if (val1_fl <= linPar.thrsAbs && val2_fl <= linPar.thrsAbs) || (any([val1_fl <= linPar.thrsAbs,val2_fl <= linPar.thrsAbs]) && abs(val1_fl - val2_fl) < linPar.thrsAbs) # fix to zero, if both values are zero, or if one is zero and the other is very close to zero
+	if (val1_fl <= linPar_tup.thrsAbs && val2_fl <= linPar_tup.thrsAbs) || (any([val1_fl <= linPar_tup.thrsAbs,val2_fl <= linPar_tup.thrsAbs]) && abs(val1_fl - val2_fl) < linPar_tup.thrsAbs) # fix to zero, if both values are zero, or if one is zero and the other is very close to zero
 		val_arr, cns_arr = [0.0], [:Fix]
-	elseif val1_fl >= linPar.thrsAbs && val2_fl <= linPar.thrsAbs # set first value as upper limit, if other is zero
-		val_arr, cns_arr = [val1_fl+linPar.thrsAbs], [:Up]
-	elseif val1_fl <= linPar.thrsAbs && val2_fl >= linPar.thrsAbs # set second value as upper limit, if other zero
-		val_arr, cns_arr = [val2_fl+linPar.thrsAbs], [:Up]
-	elseif (abs(val1_fl/val2_fl-1) > linPar.thrsRel) # enforce lower and upper limits, if difference does exceed threshold
+	elseif val1_fl >= linPar_tup.thrsAbs && val2_fl <= linPar_tup.thrsAbs # set first value as upper limit, if other is zero
+		val_arr, cns_arr = [val1_fl+linPar_tup.thrsAbs], [:Up]
+	elseif val1_fl <= linPar_tup.thrsAbs && val2_fl >= linPar_tup.thrsAbs # set second value as upper limit, if other zero
+		val_arr, cns_arr = [val2_fl+linPar_tup.thrsAbs], [:Up]
+	elseif (abs(val1_fl/val2_fl-1) > linPar_tup.thrsRel) # enforce lower and upper limits, if difference does exceed threshold
 		val_arr, cns_arr = sort([val1_fl,val2_fl]), [:Low,:Up]
-		val_arr[2] = val_arr[2] + linPar.thrsAbs
-		if (val_arr[1] > linPar.thrsAbs) 
-			val_arr[1] = val_arr[1] - linPar.thrsAbs
+		val_arr[2] = val_arr[2] + linPar_tup.thrsAbs
+		if (val_arr[1] > linPar_tup.thrsAbs) 
+			val_arr[1] = val_arr[1] - linPar_tup.thrsAbs
 		else
 			val_arr, cns_arr = [val_arr[2]], [:Up]
 		end
@@ -671,12 +671,20 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = fal
 			if part_dic[sSym].type == :stock &&  part_dic[sSym].decomm == :none continue end	
 
 			varSym_arr = filter(x -> any(occursin.(string.(var_arr),string(x))), keys(part_dic[sSym].var))
-			var_dic[sys][sSym] = Dict(varSym => getResult(copy(part_dic[sSym].var[varSym])) for varSym in varSym_arr)
 
+			# get relevant capcities filtering fixed ones in case option is active
+			var_dic[sys][sSym] = Dict{Symbol, DataFrame}()
+			for varSym in varSym_arr
+				relVar_df = filter(x -> !isempty(x.var.terms), copy(part_dic[sSym].var[varSym]))
+				if isempty(relVar_df) continue end
+				var_dic[sys][sSym][varSym] = getResult(relVar_df)
+			end
+			
 			# check if storage expansion is fixed to storage output and removes variables in these cases
-			if sys == :Te && fltSt
+			if sys == :tech && fltSt
 				for stVar in collect(keys(var_dic[sys][sSym]))
-					var_dic[sys][sSym][stVar] = removeFixStorage(stVar,var_dic[sys][sSym],part_dic[sSym])
+					var_dic[sys][sSym][stVar] = removeFixStorage(stVar,var_dic[sys][sSym][stVar],part_dic[sSym])
+					if isempty(var_dic[sys][sSym][stVar]) delete!(var_dic[sys][sSym],stVar) end
 				end
 			end
 
@@ -814,10 +822,10 @@ end
 
 # ! removes cases where storage variables are fixed by a ratio (e.g. storage energy capacity fixed by e/p ratio) 
 function removeFixStorage(stVar_sym::Symbol,stVar_df::DataFrame,part_obj::TechPart)
-	fixPar_dic = Dict(:expStSize => :sizeToStOutFixExp, :expStIn => :stOutToStInFixExp, :capaStSize => :sizeToStOutFixCapa, :capaStIn => :stOutToStInFixCapa)
-	if stVar_sym in [:expStSize,:expStIn,:capaStSize,:capaStIn] && fixPar_dic[stVar_sym] in collect(keys(part_obj.cns))
+	fixPar_dic = Dict(:expStSize => :sizeToStOutFixExp, :expStIn => :stInToConvFixExp, :expStOut => :stOutToStInFixExp, :capaStSize => :sizeToStOutFixCapa, :capaStIn => :stInToConvFixCapa, :capaStOut => :stOutToStInFixCapa)
+	if stVar_sym in [:expStSize,:expStIn,:expStOut,:capaStSize,:capaStIn,:capaStOut] && fixPar_dic[stVar_sym] in collect(keys(part_obj.cns))
 		fixCns_df = select(part_obj.cns[fixPar_dic[stVar_sym]],Not([:cns]))
-		stVar_df = stVar_df |> (x -> antijoin(x,fixCns_df, on = intCol(x)))	
+		stVar_df = stVar_df |> (x -> antijoin(x,fixCns_df, on = intersect(intCol(x),intCol(fixCns_df))))
 	end
 	return stVar_df
 end

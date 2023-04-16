@@ -1150,7 +1150,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 		# controls variables ratio is applied
 		if capaRatio_boo && (part.type == :stock || (!isempty(anyM.subPro) && anyM.subPro != (0,0))) # removes expansion for stock technologies or for subproblem
 			limVa_arr = (ratioVar_dic[par][1],)
-		elseif capaRatio_boo && part.decomm == :none  # removes capacity in case without decomm
+		elseif capaRatio_boo && part.decomm == :none # removes capacity in case without decomm
 			limVa_arr = (ratioVar_dic[par][2],)
 		else
 			limVa_arr = ratioVar_dic[par]
