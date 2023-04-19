@@ -304,7 +304,7 @@ function filterQtrVar(allVal_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 				return part_dic[sSym].decomm == :none && expVar_sym in keys(varNum_dic) && varNum_dic[expVar_sym] <= varNum_dic[x] ? expVar_sym : x
 			end
 
-			for trstSym in trstVar_arr
+			for trstSym in intersect(keys(allVal_dic[sys][sSym]),trstVar_arr)
 				var_df = allVal_dic[sys][sSym][trstSym]
 				if trstSym == :capaExc && !part_dic[sSym].dir filter!(x -> x.R_from < x.R_to,var_df) end # only get relevant capacity variables of exchange
 				if sys == :tech var_df = removeFixStorage(trstSym,var_df,part_dic[sSym]) end # remove storage variables controlled by ratio
@@ -578,7 +578,6 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},
 		cut_var = filter(x -> x.Ts_disSup == top_m.supTs.step[sub[1]] && x.scr == sub[2], top_m.parts.obj.var[:cut])[1,:var]
 		cut_expr = @expression(top_m.optModel, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)))
 		
-		
 		#region # * remove extremely small terms and limit the coefficient of extremely large terms
 		limCoef_boo = false
 
@@ -617,7 +616,6 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},
 				end
 			end
 
-
 			# ! ensure scaling of factors does not move rhs out of range
 			scaRng_tup = top_m.options.coefRng.rhs ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
 
@@ -629,6 +627,17 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},
 					cut_expr.terms[x] = sign(cut_expr.terms[x]) * top_m.options.coefRng.mat[2]/scaRng_tup[1] # set to biggest factor possible within range
 					limCoef_boo = true
 				end
+			end
+		else # check if cut without variables can be scaled into range
+			cutFac_fl = abs(collect(values(cut_var.terms))[1]) # get scaling factor of cut variable
+			scaRng_tup = top_m.options.coefRng.rhs ./ cut_expr
+
+			if top_m.options.coefRng.mat[1]/cutFac_fl > scaRng_tup[2] 
+				cut_expr = top_m.options.coefRng.rhs[2] / (top_m.options.coefRng.mat[1]/cutFac_fl) # biggest rhs possible within range
+				limCoef_boo = true
+			elseif top_m.options.coefRng.mat[2]/cutFac_fl < scaRng_tup[1]
+				cut_expr = top_m.options.coefRng.rhs[1] / (top_m.options.coefRng.mat[2]/cutFac_fl) # smallest rhs possible within range
+				limCoef_boo = true
 			end
 		end
 
