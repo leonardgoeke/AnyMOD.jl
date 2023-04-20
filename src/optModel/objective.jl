@@ -69,6 +69,7 @@ function createObjective!(obj_dic::Dict{Symbol,NamedTuple},anyM::anyModel,minimi
 	obj_var = JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, !isnan(objBd_flt), objBd_flt, false, NaN, false, NaN, false, false)),"obj")
 	obj_eqn = @constraint(anyM.optModel, obj_var == sum(getindex.(collect.(keys.(getfield.(partObj.var[:objVar][!,:var],:terms))),1)))
 	partObj.var[:obj] = DataFrame(var = obj_var)
+	partObj.cns[:obj] = DataFrame(cns = obj_eqn)
 
 	if minimize
 		@objective(anyM.optModel, Min, obj_var)
