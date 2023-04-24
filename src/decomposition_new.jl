@@ -12,13 +12,13 @@ mutable struct stabObj
 	dynPar::Array{Float64,1} # array of dynamic parameters for each method
 	var::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}} # variables subject to stabilization
 	cns::ConstraintRef
-	function stabObj(meth_dic::Dict, ruleSw_ntup::NamedTuple, objVal_fl::Float64,lowBd_fl::Float64,relVar_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},top_m::anyModel)
+	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple, objVal_fl::Float64,lowBd_fl::Float64,relVar_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},top_m::anyModel)
 		stab_obj = new()
-		
+
 		# set fields for name and options of method
 		meth_arr = Symbol[]
 		methOpt_arr = NamedTuple[]
-		for (key,val) in meth_dic
+		for (key,val) in meth_tup
 			push!(meth_arr,key)
 			push!(methOpt_arr,val)
 			if key == :qtr && !isempty(setdiff(keys(val),(:start,:low,:thr,:fac)))
@@ -34,6 +34,11 @@ mutable struct stabObj
 			error("rule for switching stabilization method must be empty or have the fields 'itr', 'avgImp', and 'itrAvg'")
 		end
 
+		if !isempty(ruleSw_ntup) && ruleSw_ntup.itr < 2
+			error("parameter 'itr' for  minimum iterations before switching stabilization method must be at least 2")
+		end
+
+		if length(meth_arr) != length(unique(meth_arr)) error("stabilization methods must be unique") end
 		stab_obj.method = meth_arr
 		stab_obj.methodOpt = methOpt_arr
 
@@ -44,6 +49,9 @@ mutable struct stabObj
 				dynPar = objVal_fl * methOpt_arr[m].start # starting value for penalty
 			elseif meth_arr[m] == :lvl
 				dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * objVal_fl) / top_m.options.scaFac.obj # starting value for level
+				if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
+					error("lambda for level bundle must be strictly between 0 and 1")
+				end
 			elseif meth_arr[m] == :qtr
 				dynPar = methOpt_arr[m].start # starting value for radius
 			else
@@ -234,4 +242,123 @@ function computeL2Norm(allVar_df::DataFrame,stab_obj::stabObj,scaRng_tup::Tuple,
 
 	return capaSum_expr, scaFac_fl
 
+end
+
+# ! run top-problem
+function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},stab_obj::Union{Nothing,stabObj},i::Int)
+
+	capaData_obj = resData()
+
+	# add cuts
+	if !isempty(cutData_dic) addCuts!(top_m,cutData_dic,i) end
+	# solve model
+	set_optimizer_attribute(top_m.optModel, "Method", 2)
+	set_optimizer_attribute(top_m.optModel, "Crossover", 0)
+	set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
+	optimize!(top_m.optModel)
+	
+	# if infeasible and level bundle stabilization, increase level until feasible
+	if !isnothing(stab_obj) && stab_obj.method[stab_obj.actMet] == :lvl
+		opt_tup = stab_obj.methodOpt[stab_obj.actMet]
+		while termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
+			stab_obj.dynPar[stab_obj.actMet] = (opt_tup.la * stab_obj.dynPar[stab_obj.actMet]*1000  + (1 - opt_tup.la) * stab_obj.objVal) / top_m.options.scaFac.obj
+			set_upper_bound(top_m.parts.obj.var[:obj][1,1],stab_obj.dynPar[stab_obj.actMet])
+			optimize!(top_m.optModel)
+		end
+	end
+	checkIIS(top_m)
+
+	# write technology capacites and level of capacity balance to benders object
+	capaData_obj.capa, allVal_dic = [writeResult(top_m,x; rmvFix = true) for x in [[:capa,:mustCapa],[:capa,:exp]]] 
+	
+	# get objective value of top problem
+	objTop_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
+	lowLim_fl = objTop_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
+
+	return capaData_obj, allVal_dic, objTop_fl, lowLim_fl
+end
+
+# ! run sub-problem
+function runSub(sub_m::anyModel,capaData_obj::resData,sol_sym::Symbol,optTol_fl::Float64=1e-8,wrtRes_boo::Bool=false)
+
+	# fixing capacity
+	for sys in (:tech,:exc)
+		part_dic = getfield(sub_m.parts,sys)
+		for sSym in keys(capaData_obj.capa[sys])
+			for capaSym in sort(filter(x -> occursin("capa",lowercase(string(x))), collect(keys(capaData_obj.capa[sys][sSym]))),rev = true)
+				# filter capacity data for respective year
+				filter!(x -> x.Ts_disSup == sub_m.supTs.step[1], capaData_obj.capa[sys][sSym][capaSym])
+				# removes entry from capacity data, if capacity does not exist in respective year, otherwise fix to value
+				if !(sSym in keys(part_dic)) || !(capaSym in keys(part_dic[sSym].var)) || isempty(capaData_obj.capa[sys][sSym][capaSym])
+					delete!(capaData_obj.capa[sys][sSym],capaSym)
+				else
+					capaData_obj.capa[sys][sSym][capaSym] = limitVar!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m)
+				end
+			end
+			# remove system if no capacities exist
+			removeEmptyDic!(capaData_obj.capa[sys],sSym)
+		end
+	end
+
+	# set optimizer attributes and solves
+	if sol_sym == :barrier
+		set_optimizer_attribute(sub_m.optModel, "Method", 2)
+		set_optimizer_attribute(sub_m.optModel, "Crossover", 0)
+		set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
+		set_optimizer_attribute(sub_m.optModel, "BarConvTol", optTol_fl)
+	elseif sol_sym == :simplex
+		set_optimizer_attribute(sub_m.optModel, "Method", 1)
+		set_optimizer_attribute(sub_m.optModel, "Threads", 1)
+		set_optimizer_attribute(sub_m.optModel, "OptimalityTol", optTol_fl)
+		set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
+	end
+
+	optimize!(sub_m.optModel)
+	checkIIS(sub_m)
+
+	# write results into files (only used once optimum is obtained)
+	if wrtRes_boo
+		reportResults(:summary,sub_m)
+		reportResults(:cost,sub_m)
+	end
+
+	# add duals and objective value to capacity data
+	scaObj_fl = sub_m.options.scaFac.obj
+	capaData_obj.objVal = value(sum(sub_m.parts.obj.var[:objVar][!,:var]))
+
+	for sys in (:tech,:exc)
+		part_dic = getfield(sub_m.parts,sys)
+		for sSym in keys(capaData_obj.capa[sys])
+			for capaSym in filter(x -> occursin("capa",lowercase(string(x))), collect(keys(capaData_obj.capa[sys][sSym])))
+				if Symbol(capaSym,:BendersFix) in keys(part_dic[sSym].cns)
+					scaCapa_fl = getfield(sub_m.options.scaFac,occursin("StSize",string(capaSym)) ? :capaStSize : :capa)
+					capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].cns[Symbol(capaSym,:BendersFix)],scaObj_fl/scaCapa_fl)
+					# remove capacity if none exists (again necessary because dual can be zero)
+					removeEmptyDic!(capaData_obj.capa[sys][sSym],capaSym)
+				end
+			end
+			# remove system if no capacities exist (again necessary because dual can be zero)
+			removeEmptyDic!(capaData_obj.capa[sys],sSym)
+		end
+	end
+
+	return capaData_obj
+end
+
+# ! computes convergence tolerance for subproblems
+function getConvTol(gapCur_fl::Float64,gapEnd_fl::Float64,conSub_tup::NamedTuple{(:rng, :int), Tuple{Vector{Float64}, Symbol}})
+
+	if conSub_tup.int == :lin
+		m = (conSub_tup.rng[1] - conSub_tup.rng[2])/(1-gapEnd_fl)
+		b = conSub_tup.rng[1] - m
+		return b + m * gapCur_fl
+	elseif conSub_tup.int == :exp
+		m = log(conSub_tup.rng[1]/conSub_tup.rng[2])/(1-gapEnd_fl)
+		b = log(conSub_tup.rng[1]) - m
+		return exp(b + m * gapCur_fl)
+	elseif conSub_tup.int == :log
+		b = conSub_tup.rng[1]
+		m = (conSub_tup.rng[2] - b ) / log(gapEnd_fl)
+		return b + m * log(gapCur_fl)
+	end
 end
