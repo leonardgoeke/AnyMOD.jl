@@ -27,7 +27,7 @@ function createTradeVarCns!(partBal::OthPart,ts_dic::Dict{Tuple{Int64,Int64},Arr
 			if trdCap_sym in keys(partBal.par)
 				cns_df = matchSetParameter(var_df,partBal.par[trdCap_sym],anyM.sets,newCol = :cap)
 				sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
-				cns_df[!,:cap] = cns_df[!,:cap] .* sca_arr
+				multiExpr!(cns_df[!,:cap],sca_arr)
 
 				# prepare, scale and create constraints
 				cns_df[!,:cnsExpr] = cns_df[:var] .- cns_df[:cap]
@@ -134,7 +134,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 			excUse_df = vcat(map(x -> anyM.parts.exc[x].var[:useExc],relExcUse_arr)...)
 			
 			# attributes energy use equally to exporting and importing region
-			excUse_df[!,:var] = excUse_df[!,:var] .* 0.5 
+			multiExpr!(excUse_df[!,:var],0.5)
 			excUse_df = vcat(select(rename(excUse_df,:R_from => :R_dis),Not([:R_to])),select(rename(excUse_df,:R_to => :R_dis),Not([:R_from])))
 
 			# determine where an energy balance is required, because a use of exchange was defined
@@ -233,7 +233,7 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 			checkTechReso!(tRes_tup,cBalRes_tup,add_df,sets_dic)
 
 			# adds sign to variables and adds them to overall dataframe
-			add_df[!,:var] = add_df[!,:var] .* (x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
+			multiExpr!(add_df[!,:var],x[2] in (:use,:stExtIn) ? -1.0 : 1.0)
 			append!(allVar_df, add_df)
 		end
 
@@ -442,7 +442,7 @@ function createExpShareCns!(anyM::anyModel)
 
 		# join expansion variables with output values
 		allExp_df = unique(innerjoin(allExp_df,allMustOut_df,on = intCol(allMustOut_df)))
-		allExp_df[!,:var] .= allExp_df[!,:var] .* allExp_df[!,:val]
+		multiExpr!(allExp_df[!,:var],allExp_df[!,:val])
 
     	# ! loop to create actual constraints
 

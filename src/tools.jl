@@ -1252,16 +1252,8 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
     filter!(x -> abs(x.value) > minVal, data_df)
     filter!(filterFunc, data_df)
 
-	# create dictionaries for nodes that are neither technology nor carrier
-	oth_df = unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])
-	if netExc && !(:region in dropDown)
-		oth_df[!,:variable] =  map(x -> x == :netExport ? :exchangeLoss : x, oth_df[!,:variable])
-	end	
-    othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(oth_df))))
-	othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
-
 	#endregion
-
+	
 	#region # * filter flows according to provided yaml file
 
 	if !isempty(ymlFilter)
@@ -1299,6 +1291,14 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	#endregion
 	
 	#region # * prepare labels and colors
+
+	# create dictionaries for nodes that are neither technology nor carrier
+	oth_df = unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])
+	if netExc && !(:region in dropDown)
+		oth_df[!,:variable] =  map(x -> x == :netExport ? :exchangeLoss : x, oth_df[!,:variable])
+	end	
+	othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(oth_df))))
+	othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
 
     # prepare name and color assignment
     names_dic = isempty(ymlFilter) ? anyM.graInfo.names : Dict(x["name"] => x["label"] for x in collect(graph_dic["vertices"])) |> (z -> merge(z,filter(x -> !(x[1] in keys(z)),anyM.graInfo.names)))
@@ -1365,7 +1365,6 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	
 		# write flows reported in data summary
 		for x in eachrow(dropData_df)
-
 			a = Array{Any,1}(undef,3)
 		
 			# technology related entries

@@ -147,6 +147,10 @@ end
 sysSym(sInt::Int,sym_tree::Tree) = Symbol(getUniName(sInt,sym_tree)[end])
 sysInt(sSym::Symbol,sym_tree::Tree) = filter(x -> x.val == string(sSym),collect(values(sym_tree.nodes)))[1].idx
 
+# multiply an array of expressions and floats inplace (same as expr_arr = expr_arr .* mult_arr, but faster)
+multiExpr!(expr_arr::Array{AffExpr,1},mult_arr::Array{Float64,1}) = foreach(u -> map_coefficients_inplace!(i -> u[2] * i, u[1]), zip(expr_arr,mult_arr))
+multiExpr!(expr_arr::Array{AffExpr,1},mult_fl::Float64) = foreach(u -> map_coefficients_inplace!(i -> mult_fl * i, u), expr_arr)
+
 #endregion
 
 #region # * data frame based manipulations
@@ -463,10 +467,10 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 	
 			# splits costs of exchange across regions
 			if :R_from in intCol(var_df)
-				var_df[!,:var] = var_df[!,:var] .* 0.5
+				multiExpr!(var_df[!,:var],0.5)
 				var_df = rename(combine(groupby(flipExc(var_df),filter(x -> x != :R_to,intCol(var_df))),:var => (x -> sum(x)) => :var),:R_from => :R_dis)
 			end
-			
+
 			# adjust temporal column
 			tsCol_arr = intersect([:Ts_disSup,:Ts_exp],intCol(var_df))
 			if !isempty(tsCol_arr)
@@ -515,7 +519,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 			# get use expression from exchange
 			#=
 			allExcVar_df = getAllVariables(:useExc,anyM, filterFunc = x -> x.C in emC_arr)
-			allExcVar_df[!,:var] = allExcVar_df[!,:var] .* 0.5 # attributes energy use equally to exporting and importing region
+			multiExpr!(allExcVar_df[!,:var],0.5) # attributes energy use equally to exporting and importing region
 			allExcVar_df = vcat(select(rename(allExcVar_df,:R_from => :R_dis),Not([:R_to])),select(rename(allExcVar_df,:R_to => :R_dis),Not([:R_from])))
 			allExcVar_df[!,:Te] .= 0; allExcVar_df[!,:M] .= 0
 	
@@ -540,7 +544,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 							for st in keys(stVar_dic)
 								stVar_df = stVar_dic[st]
 								stVar_df = matchSetParameter(filter(x -> x.Te == tInt,stVar_df),part.par[Symbol(:eff,st)],anyM.sets)
-								stVar_df[!,:var] = stVar_df[!,:var] .* (1 .- stVar_df[!,:val])
+								multiExpr!(stVar_df[!,:var],1 .- stVar_df[!,:val])
 								select!(stVar_df,Not(:val))
 								append!(allVar_df,select(stVar_df,Not([:id])))
 							end
@@ -549,7 +553,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 							if :stDis in keys(part.par)
 								sca_arr = getResize(stLvl_df,anyM.sets[:Ts],anyM.supTs)
 								stLvl_df = matchSetParameter(filter(x -> x.Te == tInt,stLvl_df),part.par[:stDis],anyM.sets)
-								stLvl_df[!,:var] = stLvl_df[!,:var] .* (1 .- (1 .- stLvl_df[!,:val]) .^ sca_arr)
+								multiExpr!(stLvl_df[!,:var], 1 .- (1 .- stLvl_df[!,:val]) .^ sca_arr)
 								select!(stLvl_df,Not(:val))
 								append!(allVar_df,select(stLvl_df,Not([:id])))
 							end
@@ -562,7 +566,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 		end
 
 		if !isempty(allVar_df)
-			allVar_df[!,:var] = allVar_df[!,:val]  ./ 1e6 .* allVar_df[!,:var]
+			multiExpr!(allVar_df[!,:var],allVar_df[!,:val]  ./ 1e6 )
 			select!(allVar_df,Not(:val))
 		end
 	elseif va == :emissionInf
@@ -575,7 +579,7 @@ function getAllVariables(va::Symbol,anyM::anyModel; reflectRed::Bool = true, fil
 
 	# prevents scaling of variables that do have to be scaled or are scaled already because they are computed form scaled variables (e.g. emissions)
 	if va in (:stIn,:stExtIn,:stIntIn,:stOut,:stExtOut,:stIntOut, :convIn,:use,:gen,:convOut) && !isempty(allVar_df) && reflectRed
-		allVar_df[!,:var] .= allVar_df[!,:var] .* anyM.options.redStep
+		multiExpr!(allVar_df[!,:var], anyM.options.redStep)
 	end
 
 	return orderDf(filter(filterFunc,allVar_df))

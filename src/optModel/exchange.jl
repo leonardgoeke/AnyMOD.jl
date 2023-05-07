@@ -292,7 +292,8 @@ function createUseExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 	cns_df = expLvlDispExc(cns_df,ts_dic,r_dic,anyM.supTs.scr)
 
 	# correct useExc for actual use relative to exchange
-	useExc_df[!,:var] .= useExc_df[!,:var] .* useExc_df[!,:val]
+	multiExpr!(useExc_df[!,:var],useExc_df[!,:val])
+
 	select!(useExc_df,Not([:val]))
 	
 	# aggregate both variables to constraint entries
@@ -381,10 +382,10 @@ function addLossesExc(exc_df::DataFrame,partExc::ExcPart,sets_dic::Dict{Symbol,T
 	
 	# corrects input dataframe for losses or return only the loss itself
 	if onlyLoss_boo
-		exc_df[!,:var] = exc_df[!,:var] .*  exc_df[!,:val]
+		multiExpr!(exc_df[!,:var],exc_df[!,:val])
 		filter!(x -> x.var != AffExpr(),exc_df)
 	else
-		exc_df[!,:var] = exc_df[!,:var] .* (1.0 .- exc_df[!,:val])
+		multiExpr!(exc_df[!,:var],1.0 .- exc_df[!,:val])
 	end
 
 	return select(exc_df,Not([:val]))

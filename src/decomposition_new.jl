@@ -23,7 +23,7 @@ mutable struct stabObj
 			push!(methOpt_arr,val)
 			if key == :qtr && !isempty(setdiff(keys(val),(:start,:low,:thr,:fac)))
 				error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
-			elseif key == :prx && !isempty(setdiff(keys(val),(:start,:low,:ov,:fac)))
+			elseif key == :prx && !isempty(setdiff(keys(val),(:start,:low,:fac)))
 				error("options provided for proximal bundle do not match the defined options 'start', 'low', 'thr', and 'fac'")
 			elseif key == :lvl && !isempty(setdiff(keys(val),(:la,)))
 				error("options provided for level bundle do not match the defined options 'la'")
@@ -46,7 +46,7 @@ mutable struct stabObj
 		dynPar_arr = Float64[]
 		for m in 1:size(meth_arr,1)
 			if meth_arr[m] == :prx
-				dynPar = objVal_fl * methOpt_arr[m].start # starting value for penalty
+				dynPar = methOpt_arr[m].start # starting value for penalty
 			elseif meth_arr[m] == :lvl
 				dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * objVal_fl) / top_m.options.scaFac.obj # starting value for level
 				if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
