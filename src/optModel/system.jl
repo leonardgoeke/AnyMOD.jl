@@ -1032,7 +1032,8 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 			if type_sym in (:convOut,:stOut)
 				ava_arr = matchSetParameter(allVar_df,part.par[type_sym == :convOut ? :effConv : :effStOut],sets_dic,newCol = :eff)[!,:eff] .* ava_arr
 			end
-			multiExpr!(allVar_df[!,:var],1 ./ ava_arr)
+			#multiExpr!(allVar_df[!,:var],1 ./ ava_arr)
+			allVar_df[!,:var] = @expression(optModel, allVar_df[!,:var] .* 1 ./ ava_arr)
 		else
 			multiExpr!(allVar_df[!,:var],1 ./ ava_arr)
 			if !part.dir allVar_df = flipExc(allVar_df) end

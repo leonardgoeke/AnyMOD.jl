@@ -212,7 +212,9 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			# capacity replacing generation variables in case of valid inequalities if possible
 			if anyM.options.createVI && onlyGen_boo 
 				basis_df = innerjoin(basis_df,part.var[:capaConv], on = intCol(part.var[:capaConv])) 
-				multiExpr!(basis_df[!,:var], map(x -> anyM.supTs.sca[(x.Ts_disSup,anyM.cInfo[x.C].tsDis)], eachrow(basis_df[!,:])))	
+				#multiExpr!(basis_df[!,:var], map(x -> anyM.supTs.sca[(x.Ts_disSup,anyM.cInfo[x.C].tsDis)], eachrow(basis_df[!,:])))	
+
+				basis_df[!,:var]  = @expression(anyM.optModel,basis_df[!,:var] .* map(x -> anyM.supTs.sca[(x.Ts_disSup,anyM.cInfo[x.C].tsDis)], eachrow(basis_df[!,:])))
 			end 
 		elseif hasSt_boo && !(va in (:gen,:use))
 			basis_df = orderDf(copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[:capaStSize]))...))))
