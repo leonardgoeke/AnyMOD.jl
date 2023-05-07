@@ -362,3 +362,26 @@ function getConvTol(gapCur_fl::Float64,gapEnd_fl::Float64,conSub_tup::NamedTuple
 		return b + m * log(gapCur_fl)
 	end
 end
+
+# ! update dynamic parameter of stabilization method
+function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_boo::Bool,lowLimNoStab_fl::Float64,lowLim_fl::Float64,currentBest_fl::Float64,report_m::anyModel)
+
+	opt_tup = stab_obj.methodOpt[iUpd_int]
+	if stab_obj.method[iUpd_int] == :qtr # adjust radius of quadratic trust-region
+		if !adjCtr_boo && abs(1 - lowLimNoStab_fl / lowLim_fl) < opt_tup.thr && stab_obj.dynPar[iUpd_int] > opt_tup.low
+			stab_obj.dynPar[iUpd_int] = max(opt_tup.low,stab_obj.dynPar[iUpd_int] / opt_tup.fac)
+			produceMessage(report_m.options,report_m.report, 1," - Reduced quadratic trust-region!", testErr = false, printErr = false)	
+		end
+	elseif stab_obj.method[iUpd_int] == :prx # adjust penalty term
+		if adjCtr_boo
+			stab_obj.dynPar[iUpd_int] = max(opt_tup.low,stab_obj.dynPar[iUpd_int] / opt_tup.fac)
+			produceMessage(report_m.options,report_m.report, 1," - Reduced penalty term of proximal bundle!", testErr = false, printErr = false)
+		else
+			stab_obj.dynPar[iUpd_int] = max(opt_tup.low,stab_obj.dynPar[iUpd_int] * opt_tup.fac)
+			produceMessage(report_m.options,report_m.report, 1," - Increased penalty term of proximal bundle!", testErr = false, printErr = false)
+		end
+	elseif stab_obj.method[iUpd_int] == :lvl # adjust level
+		stab_obj.dynPar[iUpd_int] = (opt_tup.la * lowLimNoStab_fl  + (1 - opt_tup.la) * currentBest_fl) / top_m.options.scaFac.obj
+	end
+
+end

@@ -147,7 +147,6 @@ end
 sysSym(sInt::Int,sym_tree::Tree) = Symbol(getUniName(sInt,sym_tree)[end])
 sysInt(sSym::Symbol,sym_tree::Tree) = filter(x -> x.val == string(sSym),collect(values(sym_tree.nodes)))[1].idx
 
-# multiply an array of expressions and floats inplace (same as expr_arr = expr_arr .* mult_arr, but faster)
 #endregion
 
 #region # * data frame based manipulations
