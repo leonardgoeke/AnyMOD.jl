@@ -292,7 +292,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			if isempty(allDisp_df) continue end
 
 			# add scenario probability
-			multiExpr!(allDisp_df[!,:disp],map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allDisp_df)))
+			allDisp_df[!,:disp] = allDisp_df[!,:disp] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allDisp_df))
 
 			# renames dispatch regions to enable join with discount factors
 			allDisp_df[!,:disFac] = matchSetParameter(va != :exc ? rename(allDisp_df,:R_dis => :R_exp) : allDisp_df, partCost.par[va != :exc ? :disFac : :disFacExc],anyM.sets)[!,:val]
@@ -314,7 +314,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 			emVar_df = matchSetParameter(getAllVariables(:emission,anyM),partCost.par[:emissionPrc],anyM.sets,newCol = :emPrc)
 			emVar_df = matchSetParameter(rename(emVar_df,:R_dis => :R_exp),partCost.par[:disFac],anyM.sets,newCol = :disFac)
 			# add scenario probability
-			multiExpr!(emVar_df[!,:var], map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(emVar_df)))
+			emVar_df[!,:var] = emVar_df[!,:var] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(emVar_df))
 			# groups cost expressions scales groups expression and creates a variables for each grouped entry
 			emVar_df = combine(x -> (expr = sum(x.disFac .* x[!,:var] .* x.emPrc),) ,groupby(emVar_df, [:Ts_disSup,:R_exp,:C,:scr]))
 			if !isempty(emVar_df)
@@ -332,7 +332,7 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 				allVar_df = rename(matchSetParameter(anyM.parts.bal.var[va],anyM.parts.bal.par[cost_sym],anyM.sets,newCol = :cost),:var => va)
 				allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partCost.par[:disFac],anyM.sets,newCol = :disFac)
 				# add scenario probability
-				multiExpr!(allVar_df[!,va],map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allVar_df)))
+				allVar_df[!,va] = allVar_df[!,va] .* map(x -> anyM.supTs.scrProp[(x.Ts_disSup,x.scr)],eachrow(allVar_df))
 				# groups cost expressions scales groups expression and creates a variables for each grouped entry
 				allVar_df = rename(combine(x -> (expr = sum(x.disFac .* x[!,va] .* x.cost) ./ 1000.0 .* anyM.options.redStep,) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C,:scr])),:R_exp => :R_dis)
 				transferCostEle!(allVar_df, partCost,va in (:crt,:lls) ? cost_sym : Symbol(cost_sym),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM,(va == :trdSell ? NaN : 0.0))

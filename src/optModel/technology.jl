@@ -212,8 +212,6 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			# capacity replacing generation variables in case of valid inequalities if possible
 			if anyM.options.createVI && onlyGen_boo 
 				basis_df = innerjoin(basis_df,part.var[:capaConv], on = intCol(part.var[:capaConv])) 
-				#multiExpr!(basis_df[!,:var], map(x -> anyM.supTs.sca[(x.Ts_disSup,anyM.cInfo[x.C].tsDis)], eachrow(basis_df[!,:])))	
-
 				basis_df[!,:var]  = @expression(anyM.optModel,basis_df[!,:var] .* map(x -> anyM.supTs.sca[(x.Ts_disSup,anyM.cInfo[x.C].tsDis)], eachrow(basis_df[!,:])))
 			end 
 		elseif hasSt_boo && !(va in (:gen,:use))
@@ -269,7 +267,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			else
 
 			end
-			multiExpr!(allVar_df[!,:var], allVar_df[!,:out])
+			allVar_df[!,:var] = allVar_df[!,:var]  .* allVar_df[!,:out]
 			allVar_df = combine(x -> (var = sum(x.var)/length(unique(x.Ts_dis)),),groupby(allVar_df,filter(x -> x != :Ts_dis, intCol(allVar_df))))
 			allVar_df[!,:Ts_dis] = allVar_df[!,:Ts_disSup]
 			part.var[va] = orderDf(allVar_df)
@@ -398,9 +396,9 @@ function createStBal(part::TechPart,anyM::anyModel)
 			typExpr_arr = map(allType_arr) do va
 				typVar_df = filter(x -> x.C == bal[1],part.par[effPar_sym].data) |> (x -> innerjoin(part.var[va],x; on = intCol(x)))
 				if typ == :in
-					multiExpr!(typVar_df[!,:var], typVar_df[!,:val])
+					typVar_df[!,:var] = typVar_df[!,:var] .* typVar_df[!,:val]
 				else
-					multiExpr!(typVar_df[!,:var], 1.0 ./ typVar_df[!,:val])
+					typVar_df[!,:var] = typVar_df[!,:var] ./ typVar_df[!,:val]
 				end
 				return typVar_df[!,Not(:val)]
 			end
@@ -433,7 +431,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 			cnsC_df = matchSetParameter(cnsC_df,part.par[:stInflow],anyM.sets, newCol = :stInflow, defVal = 0.0)
 			cnsC_df[!,:stInflow] = cnsC_df[!,:stInflow] .* sca_arr
 			if !isempty(part.modes)
-				cnsC_df[!,:stInflow] = cnsC_df[!,:stInflow] ./ length(part.modes)
+            	cnsC_df[!,:stInflow] = cnsC_df[!,:stInflow] ./ length(part.modes)
 			end
 		else
 			cnsC_df[!,:stInflow] .= 0.0
@@ -709,7 +707,7 @@ function addEnergyCont(var_df::DataFrame,part::AbstractModelPart,sets_dic::Dict{
 	if :enCont in keys(part.par)
 		part.par[:enCont].defVal = 1.0
 		var_df = filter(x -> x.val != 0.0, matchSetParameter(var_df,part.par[:enCont],sets_dic))
-		multiExpr!(var_df[!,:var], var_df[!,:val])
+		var_df[!,:var] = var_df[!,:var] .* var_df[!,:val]
 		select!(var_df,Not([:val]))
 	end
 

@@ -828,7 +828,7 @@ function createRetroConst!(capaSym::Symbol,cnsDic_arr::Array{Dict{Symbol,cnsCont
 
 	# aggregate retrofitting variables (first try to aggregate starting entries to target entries => works if start is not less detailed than target, afterwards aggregate remaining cases)
 	start_df, target_df = [select(filter(x -> x.start == y, retro_df),Not([:start,:val])) for y in [1,0]]
-	multiExpr!(start_df[!,:var], -1.0)
+	start_df[!,:var] = -1 .* start_df[!,:var]
 	target_df[!,:var2] = aggDivVar(start_df,target_df,tuple(intCol(retro_df)...),anyM.sets)
 
 	more_df = select(filter(x -> x.var2 == AffExpr(),target_df),Not([:var2]))
@@ -880,16 +880,16 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			# add variables for missing capacities (only relevant in subproblems)
 			if :missCapa in keys(part.var)
 				missCapa_df = filter(x -> x.C in m.car, part.var[:missCapa])
-				multiExpr!(missCapa_df[!,:var], -1.0)
+				missCapa_df[!,:var] = missCapa_df[!,:var] .* (-1)
 				capaVar_df = vcat(missCapa_df,capaVar_df)
 			end
 
 			# match with design factor and aggregate capacities
 			capaVar_df = matchSetParameter(capaVar_df,part.par[:desFac],anyM.sets; newCol = :desFac)
-			multiExpr!(capaVar_df[!,:var],capaVar_df[!,:desFac])
+			capaVar_df[!,:var] = capaVar_df[!,:var] .* capaVar_df[!,:desFac]
 			capaVar_df = combine(groupby(capaVar_df,filter(x -> x != :id,intCol(capaVar_df))),:var => (x -> sum(x)) => :capa)
 			# resize capacity variables
-			multiExpr!(capaVar_df[!,:capa],map(x -> anyM.supTs.sca[(x,anyM.cInfo[m.car[1]].tsDis)], capaVar_df[!,:Ts_disSup]))
+			capaVar_df[!,:capa]  = capaVar_df[!,:capa] .* map(x -> anyM.supTs.sca[(x,anyM.cInfo[m.car[1]].tsDis)], capaVar_df[!,:Ts_disSup])
 
 			# get must-run parameter 
 			mustOut_df = filter(x -> x.C == m.car[1],rename(part.par[:mustOut].data,:val => :mustOut))
@@ -1032,10 +1032,9 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 			if type_sym in (:convOut,:stOut)
 				ava_arr = matchSetParameter(allVar_df,part.par[type_sym == :convOut ? :effConv : :effStOut],sets_dic,newCol = :eff)[!,:eff] .* ava_arr
 			end
-			#multiExpr!(allVar_df[!,:var],1 ./ ava_arr)
 			allVar_df[!,:var] = @expression(optModel, allVar_df[!,:var] .* 1 ./ ava_arr)
 		else
-			multiExpr!(allVar_df[!,:var],1 ./ ava_arr)
+			allVar_df[!,:var] = allVar_df[!,:var] .* 1 ./ ava_arr
 			if !part.dir allVar_df = flipExc(allVar_df) end
 		end
 
