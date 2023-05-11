@@ -1680,8 +1680,6 @@ function convertYML2GEXF(yamlFile::String)
 
 end
 
-
-
 # ! dummy function just do provide a docstring for printIIS (docstring in printIIS wont work, because read-in is conditional)
 """
 ```julia
@@ -1692,3 +1690,6 @@ Uses Gurobi's computeIIS function to determine the constraints of the optimizati
 """
 function printIIS(anyM::anyModel,d::Int)
 end
+
+# ! checks termination status and computes and prints IIS if infeasible
+checkIIS(mod_m::anyModel) = if termination_status(mod_m.optModel) != MOI.OPTIMAL && termination_status(mod_m.optModel) != MOI.LOCALLY_SOLVED && isdefined(AnyMOD,:printIIS) printIIS(mod_m) end
