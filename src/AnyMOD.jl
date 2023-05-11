@@ -28,7 +28,7 @@ module AnyMOD
     export anyModel, initializeModel, createOptModel!, setObjective!
     export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML, convertYAML2GEXF
     export plotTree, plotSankeyDiagram, plotNetworkGraph, moveNode!, produceMessage, produceMessageShort
-    export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
+    export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!, checkIIS
 
     export resData, runSub, runTop, deleteCuts!, getConvTol
     export prepareMod!, heuristicSolve, writeResult
