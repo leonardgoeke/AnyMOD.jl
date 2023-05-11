@@ -1,7 +1,6 @@
 module AnyMOD
 
     # ! enforce use of Julia's own python distribution to avoid interference with local python installations
-    #=
     using Pkg
 
     using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles, YAML, CategoricalArrays, Plotly
@@ -31,11 +30,9 @@ module AnyMOD
     export plotTree, plotSankeyDiagram, plotNetworkGraph, moveNode!, produceMessage, produceMessageShort
     export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
 
-    export trustRegion, bendersData, quadTrust
-    export prepareMod!, runSub, runTop, addCuts!, deleteCuts!, computeFeas, writeResult, writeFixToFiles
-    export heuristicSolve, getFeasResult, evaluateHeu, filterQtrVar, addLinearTrust!
-    export runTopWithoutQuadTrust, adjustQuadTrust, centerQuadTrust, checkLinearTrust, deleteLinearTrust!
-    
+    export resData, runSub, runTop, deleteCuts!, getConvTol
+    export prepareMod!, heuristicSolve, writeResult
+    export stabObj, centerStab!, filterStabVar, adjustDynPar!, runTopWithoutStab 
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
     function __init__()
