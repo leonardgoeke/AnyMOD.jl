@@ -371,7 +371,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	optimize!(top_m.optModel)
 	
 	# handle unsolved top problem
-	if !isnothing(stab_obj) && 
+	if !isnothing(stab_obj)
 		opt_tup = stab_obj.methodOpt[stab_obj.actMet]
 		# if infeasible and level bundle stabilization, increase level until feasible
 		while stab_obj.method[stab_obj.actMet] == :lvl || termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) 
