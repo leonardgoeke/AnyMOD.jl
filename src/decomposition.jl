@@ -370,12 +370,18 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
 	optimize!(top_m.optModel)
 	
-	# if infeasible and level bundle stabilization, increase level until feasible
-	if !isnothing(stab_obj) && stab_obj.method[stab_obj.actMet] == :lvl
+	# handle unsolved top problem
+	if !isnothing(stab_obj) && 
 		opt_tup = stab_obj.methodOpt[stab_obj.actMet]
-		while termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
+		# if infeasible and level bundle stabilization, increase level until feasible
+		while stab_obj.method[stab_obj.actMet] == :lvl || termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) 
 			stab_obj.dynPar[stab_obj.actMet] = (opt_tup.la * stab_obj.dynPar[stab_obj.actMet]*1000  + (1 - opt_tup.la) * stab_obj.objVal) / top_m.options.scaFac.obj
 			set_upper_bound(top_m.parts.obj.var[:obj][1,1],stab_obj.dynPar[stab_obj.actMet])
+			optimize!(top_m.optModel)
+		end
+		# if no solution and proximal bundle stabilization, remove penalty term temporarily
+		if stab_obj.method[stab_obj.actMet] == :prx && !(termination_status(top_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+			@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
 			optimize!(top_m.optModel)
 		end
 	end
