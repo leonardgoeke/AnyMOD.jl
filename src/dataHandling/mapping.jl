@@ -116,9 +116,10 @@ end
 function createTimestepMapping!(anyM::anyModel)
     # ! writes the superordinate dispatch level, the timesteps on this level and scaling factor for timesteps depending on the respective superordinate dispatch timestep and the level
     supTsLvl_int = maximum(map(x -> getfield(x,:tsExp),values(anyM.cInfo)))
+	minDis_int = minimum(map(x -> getfield(x,:tsDis),values(anyM.cInfo)))
 
 	if anyM.options.supTsLvl != 0
-		if minimum(map(x -> getfield(x,:tsDis),values(anyM.cInfo))) >= anyM.options.supTsLvl
+		if minDis_int >= anyM.options.supTsLvl
 			supTsLvl_int = anyM.options.supTsLvl
 			push!(anyM.report,(1,"timestep mapping","","superordinate dispatch level provided via options was used"))
 		else
@@ -140,6 +141,16 @@ function createTimestepMapping!(anyM::anyModel)
 		for c in keys(anyM.cInfo)
 			res_dic = anyM.cInfo[c]
 			anyM.cInfo[c] = (tsDis = anyM.supTs.lvl, tsExp = res_dic[:tsExp], rDis = res_dic[:rDis], rExp = res_dic[:rExp], balSign = res_dic[:balSign], stBalCapa = res_dic[:stBalCapa])
+		end
+	end
+
+	if anyM.options.lvlFrs != 0 
+		if anyM.options.supTsLvl >= anyM.options.lvlFrs
+			anyM.options.lvlFrs = 0
+			push!(anyM.report,(2,"timestep mapping","","specified foresight level is not more detailed than superordinate dispatch level, therefore model still uses perfect foresight"))
+		else minDis_int < anyM.options.lvlFrs
+			anyM.options.lvlFrs = minDis_int
+			push!(anyM.report,(1,"timestep mapping","","specified foresight level exceeds least detailed dispatch resolution, model uses level $(minDis_int) instead"))
 		end
 	end
 		

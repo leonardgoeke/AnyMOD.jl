@@ -197,7 +197,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		if onlyGen_boo filter!(x -> false, part.capaRestr) end
 	end
 
-	for va in  dispVar_arr # loop over all relevant kind of variables
+	for va in dispVar_arr # loop over all relevant kind of variables
 		conv_boo = va in (:gen,:use) && :capaConv in keys(prepTech_dic)
 		# dont create storage variables when only creating valid inequalities
 		if (va in (:stExtOut,:stExtIn,:stLvl) || (va == :stIntOut && :gen in dispVar_arr) || (va == :stIntIn && :use in dispVar_arr)) && anyM.options.createVI
@@ -250,6 +250,18 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 
 		allVar_df = joinMissing(allVar_df,modeDep_df,namesSym(modeDep_dic[va]),:left,Dict(:M => 0))
 
+		# adjust table for case of reduced foresight
+		if anyM.options.lvlFrs != 0 && va == :stLvl
+			# get time-steps that are at the start of a foresight period
+			frsStep_arr = [getDescendants(x,anyM.sets[:Ts],false,y) for x in getfield.(getNodesLvl(anyM.sets[:Ts],anyM.options.lvlFrs),:idx), y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x],:lvl), allVar_df[!,:Ts_dis]))]
+			frsStart_arr = vec(maximum.(frsStep_arr))
+			# save copy of variable table with all periods
+			allVarFull_df = copy(allVar_df)
+			# set scenario to zero for all time-steps at the start of a foresight period
+			allVar_df[!,:scr] = map(x ->  x.Ts_dis in frsStart_arr ? 0 : x.scr,eachrow(allVar_df))
+			allVar_df = unique(allVar_df)
+		end
+
 		# replace dispatch variables with maximum output, if technology does not need capacity constraints
 		if anyM.options.createVI && onlyGen_boo
 			# compute maximum output
@@ -285,7 +297,18 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			else
 				scaFac_fl = anyM.options.scaFac.dispSt
 			end
-			part.var[va] = orderDf(createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / scaFac_fl,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = scaFac_fl))
+			allVar_df = createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / scaFac_fl,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = scaFac_fl)
+		
+			# extend table again for case of reduced foresight 
+			if anyM.options.lvlFrs != 0 && va == :stLvl
+				# create entries for all conceivable scenarios for start of each period again
+				allVar_df[!,:scr] = map(x ->  x.scr == 0 ? anyM.supTs.scr[x.Ts_disSup] : [x.scr],eachrow(allVar_df))
+				allVar_df = flatten(allVar_df,:scr)
+				# joins with stored dataframe of all entries that sould exist 
+				allVar_df = innerjoin(allVarFull_df,allVar_df, on = intCol(allVarFull_df))
+			end
+			
+			part.var[va] = orderDf(allVar_df)
 		end
 	end
 end
