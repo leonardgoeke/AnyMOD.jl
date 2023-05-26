@@ -37,8 +37,8 @@ mutable struct stabObj
 			push!(methOpt_arr,val)
 			if key == :qtr && !isempty(setdiff(keys(val),(:start,:low,:thr,:fac)))
 				error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
-			elseif key == :prx && !isempty(setdiff(keys(val),(:start,:low,:fac)))
-				error("options provided for proximal bundle do not match the defined options 'start', 'low', 'thr', and 'fac'")
+			elseif key == :prx && !isempty(setdiff(keys(val),(:start,:max,:fac)))
+				error("options provided for proximal bundle do not match the defined options 'start', 'max', and 'fac'")
 			elseif key == :lvl && !isempty(setdiff(keys(val),(:la,)))
 				error("options provided for level bundle do not match the defined options 'la'")
 			end
@@ -668,10 +668,10 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 		end
 	elseif stab_obj.method[iUpd_int] == :prx # adjust penalty term
 		if adjCtr_boo
-			stab_obj.dynPar[iUpd_int] = max(opt_tup.low,stab_obj.dynPar[iUpd_int] / opt_tup.fac)
+			stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] / opt_tup.fac
 			produceMessage(report_m.options,report_m.report, 1," - Reduced penalty term of proximal bundle!", testErr = false, printErr = false)
-		else
-			stab_obj.dynPar[iUpd_int] = max(opt_tup.low,stab_obj.dynPar[iUpd_int] * opt_tup.fac)
+		elseif stab_obj.dynPar[iUpd_int] * opt_tup.fac < opt_tup.max
+			stab_obj.dynPar[iUpd_int] = min(opt_tup.max,stab_obj.dynPar[iUpd_int] * opt_tup.fac)
 			produceMessage(report_m.options,report_m.report, 1," - Increased penalty term of proximal bundle!", testErr = false, printErr = false)
 		end
 	elseif stab_obj.method[iUpd_int] == :lvl # adjust level
