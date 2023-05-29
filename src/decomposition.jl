@@ -673,6 +673,9 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 		elseif stab_obj.dynPar[iUpd_int] * opt_tup.fac < opt_tup.max
 			stab_obj.dynPar[iUpd_int] = min(opt_tup.max,stab_obj.dynPar[iUpd_int] * opt_tup.fac)
 			produceMessage(report_m.options,report_m.report, 1," - Increased penalty term of proximal bundle!", testErr = false, printErr = false)
+		else
+			stab_obj.dynPar[iUpd_int] = opt_tup.start
+			produceMessage(report_m.options,report_m.report, 1," - Re-set penalty term of proximal bundle!", testErr = false, printErr = false)
 		end
 	elseif stab_obj.method[iUpd_int] == :lvl # adjust level
 		stab_obj.dynPar[iUpd_int] = (opt_tup.la * lowLimNoStab_fl  + (1 - opt_tup.la) * currentBest_fl) / top_m.options.scaFac.obj
