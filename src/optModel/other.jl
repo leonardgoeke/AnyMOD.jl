@@ -98,7 +98,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	@threads for (idx,c) in itrC_arr
 
 		subC_arr = unique([c,getDescendants(c,anyM.sets[:C],true)...])
-		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
+		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = anyM.options.createVI ? 0 : x.rDis, C = anyM.sets[:C].nodes[c].lvl))
 
 		# ! add and scale demand values
 		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets) # demand for carrier being balanced
@@ -181,8 +181,6 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		aggCol!(cns_df,negVar_arr)
 		cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,posVar_arr[1]] .- cns_df[!,negVar_arr[1]])
 		filter!(x -> x.cnsExpr != AffExpr(),cns_df)
-
-		if anyM.options.createVI aggregateReg!(cns_df) end
 		
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
@@ -652,11 +650,6 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			relLim_df[!,:cnsExpr] = map(x -> x.var - x.Lim, eachrow(relLim_df))
 			relLim_df = orderDf(relLim_df[!,[intCol(relLim_df)...,:cnsExpr]])
 
-			# aggregate regions for valid inequalities
-			if va in (:emission, :use, :gen, :stIntIn, :stIntOut, :convIn, :convOut, :stIn, :stOut) && anyM.options.createVI
-				aggregateReg!(relLim_df) 
-			end
-
 			scaleCnsExpr!(relLim_df,anyM.options.coefRng,anyM.options.checkRng)
 			cns_dic[Symbol(va,lim)] = cnsCont(relLim_df,signLim_dic[lim])
 
@@ -787,12 +780,6 @@ function checkTechReso!(tRes_tup::Tuple{Int,Int},cBalRes_tup::Tuple{Int,Int},var
 			var_df[!,dim] = map(x -> dim_dic[x],var_df[!,dim])
 		end
 	end
-end
-
-# ! aggregate regions in constraint dataframe for valid inequalities
-function aggregateReg!(cns_df::DataFrame)
-	cns_df[!,:R_dis] .= 0
-	cns_df = combine(x -> (cnsExpr = sum(x.cnsExpr),), groupby(cns_df,intCol(cns_df)))
 end
 
 #endregion

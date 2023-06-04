@@ -1135,9 +1135,6 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 					# create corresponding constraint
 					subCns_df[!,:cnsExpr] = @expression(anyM.optModel,subCns_df[!,:allVar] .* subCns_df[!,:ratio] .- subCns_df[!,:ratioVar])
 					
-					# aggregate constraints for creation of valid inequalities
-					if anyM.options.createVI aggregateReg!(subCns_df) end
-					
 					allCns_arr[idx] = subCns_df
 				end
 				cns_df = vcat(allCns_arr...)

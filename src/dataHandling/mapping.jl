@@ -502,7 +502,7 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
     capaDispRestr_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
     # extract tech info
     carGrp_ntup = part.carrier
-    balLvl_ntup = part.balLvl
+    balLvl_ntup = part.balLvl |> (x -> anyM.options.createVI ? (exp = x.exp, ref = (x.ref[1],0)) : x)
     disAgg_boo  = part.disAgg
 
 	# ! writes dimension of capacity restrictions for conversion part (even if there are no inputs)
@@ -521,7 +521,7 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 			# get respective carrier and their reference level
 			carDis_arr = map(collect(getfield(carGrp_ntup,side))) do x
 				carRow_ntup = anyM.cInfo[x]
-				return x, carRow_ntup.tsDis, disAgg_boo ? balLvl_ntup.exp[2] : carRow_ntup.rDis
+				return x, carRow_ntup.tsDis, disAgg_boo ? balLvl_ntup.exp[2] : (anyM.options.createVI ? 0 : carRow_ntup.rDis)
 			end
 			
 			restrInfo_arr = mapCapaRestr(carDis_arr,side,anyM,carGrp_ntup,balLvl_ntup,ctrSide)
