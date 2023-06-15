@@ -127,8 +127,21 @@ function createTimestepMapping!(anyM::anyModel)
 		end
 	end
 
-    supTs_tup = tuple(sort(getfield.(filter(x -> x.lvl == supTsLvl_int,collect(values(anyM.sets[:Ts].nodes))),:idx))...)
-    scaSupTs_dic = Dict((x[1],x[2]) => (1/anyM.options.redStep)*8760/length(getDescendants(x[1],anyM.sets[:Ts],false,x[2])) for x in Iterators.product(supTs_tup,filter(x -> x >= supTsLvl_int,1:anyM.sets[:Ts].height)))
+	supTs_tup = tuple(sort(getfield.(filter(x -> x.lvl == supTsLvl_int,collect(values(anyM.sets[:Ts].nodes))),:idx))...)
+	ts_tr = anyM.sets[:Ts]
+	scaSupTs_dic = Dict{Int,Float64}()
+	
+	for sup in supTs_tup
+		# compute scaling factors on lowest level
+		tsBase_arr = getDescendants(sup,anyM.sets[:Ts],false,ts_tr.height)
+		foreach(x -> scaSupTs_dic[x] = 8760/(length(tsBase_arr)), tsBase_arr)
+		# compute other scaling factors as sum of lower levels
+		if ts_tr.height > supTsLvl_int
+			for l in reverse(supTsLvl_int:(ts_tr.height-1))
+				foreach(x -> scaSupTs_dic[x] = sum(map(y -> scaSupTs_dic[y], ts_tr.nodes[x].down)), getDescendants(sup,anyM.sets[:Ts],false,l))
+			end
+		end
+	end	
 
 	anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic, scr = Dict{Int,Array{Int,1}}(), scrProp = Dict{Tuple{Int,Int},Float64}())
 
@@ -669,10 +682,12 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 		foreach(y ->  delete!(anyM.sets[:scr].nodes,y),rmvId_tup.scr)
 
 		# rewrite information on superordinate time-steps
-		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(supTs_int,), sca = filter(x -> x[1][1] == supTs_int,anyM.supTs.sca),
+		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(supTs_int,), sca = filter(x -> getAncestors(x[1],anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] == supTs_int, scaSupTs_dic),
 																	scr = Dict(supTs_int => [subPro[2],]), scrProp = filter(x -> x[1] == (supTs_int,subPro[2]), anyM.supTs.scrProp))
 
 		# ! adjust dictionaries for expansion preparation
+
+		
 
 		# only keep capacity entries from 
 		for sys in collect(keys(prepSys_dic)), sSym in collect(keys(prepSys_dic[sys]))

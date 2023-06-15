@@ -460,7 +460,7 @@ mutable struct anyModel <: AbstractModel
 	report::Array{Tuple,1}
 	optModel::Model
 	lock::ReentrantLock
-	supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64}}}
+	supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Int,Float64}}}
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign,stBalCapa),Tuple{Int,Int,Int,Int,Symbol,Symbol}}}
 	sets::Dict{Symbol,Tree}
 	parts::NamedTuple{(:tech,:exc,:bal,:lim,:costs,:obj),Tuple{Dict{Symbol,TechPart},OthPart,OthPart,OthPart,OthPart,OthPart,OthPart}}
@@ -497,7 +497,7 @@ mutable struct anyModel <: AbstractModel
 	optModel::Model
 	lock::ReentrantLock
 
-	supTs::NamedTuple{(:lvl,:step,:sca,:scr,:scrProp),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Tuple{Int,Int},Float64},Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
+	supTs::NamedTuple{(:lvl,:step,:sca,:scr,:scrProp),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Int,Float64},Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
 	subPro::Union{Tuple{},Tuple{Int,Int}}
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign,:stBalCapa),Tuple{Int,Int,Int,Int,Symbol,Symbol}}}
 

@@ -888,8 +888,6 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			capaVar_df = matchSetParameter(capaVar_df,part.par[:desFac],anyM.sets; newCol = :desFac)
 			capaVar_df[!,:var] = capaVar_df[!,:var] .* capaVar_df[!,:desFac]
 			capaVar_df = combine(groupby(capaVar_df,filter(x -> x != :id,intCol(capaVar_df))),:var => (x -> sum(x)) => :capa)
-			# resize capacity variables
-			capaVar_df[!,:capa]  = capaVar_df[!,:capa] .* map(x -> anyM.supTs.sca[(x,anyM.cInfo[m.car[1]].tsDis)], capaVar_df[!,:Ts_disSup])
 
 			# get must-run parameter 
 			mustOut_df = filter(x -> x.C == m.car[1],rename(part.par[:mustOut].data,:val => :mustOut))
@@ -898,6 +896,9 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			mustOut_df[!,:Ts_disSup] = map(x -> yTs_dic[x],mustOut_df[!,:Ts_dis])
 			mustOut_df = innerjoin(mustOut_df,capaVar_df,on = intCol(capaVar_df))
 			select!(mustOut_df,Not([:Ts_disSup]))
+
+			# resize capacity variables
+			mustOut_df[!,:capa]  = mustOut_df[!,:capa] .* map(x -> anyM.supTs.sca[x], mustOut_df[!,:Ts_dis])
 
 			# gather relevant dispatch variables
 			dis_arr = collect(intersect(keys(part.var),[:gen,:stExtOut]))
@@ -985,11 +986,6 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	capaVar_df[!,:scr] = map(x -> supTs_ntup.scr[x], capaVar_df[!,:Ts_disSup])
 	capaVar_df = flatten(capaVar_df,:scr)
 
-	# resize capacity variables (expect for stSize since these are already provided in energy units)
-	if type_sym != :stSize
-		capaVar_df[!,:var]  = @expression(optModel,capaVar_df[!,:var] .* map(x -> supTs_ntup.sca[(x.Ts_disSup,x.lvlTs)],	eachrow(capaVar_df[!,[:Ts_disSup,:lvlTs]])))
-	end
-
 	# replaces expansion with dispatch regions and aggregates capacity variables accordingy if required
 	if type_sym != :exc
 		grpCapaVar_df = copy(select(capaVar_df,Not([:var]))) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
@@ -1053,6 +1049,12 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	# join capacity and dispatch variables to create final constraint
 	grpCapaVar_df = combine(groupby(grpCapaVar_df,replace(dim_arr,:Ts_dis => :Ts_disSup)), :var => (x -> sum(x)) => :capa)
 	cns_df = innerjoin(capaDim_df,grpCapaVar_df,on = intCol(grpCapaVar_df))
+
+	# resize capacity variables (expect for stSize since these are already provided in energy units)
+	if type_sym != :stSize
+		cns_df[!,:capa]  = @expression(optModel,cns_df[!,:capa] .* map(x -> supTs_ntup.sca[x],	cns_df[!,:Ts_dis]))
+	end
+
 	return cns_df
 end
 
