@@ -9,6 +9,11 @@ Create all elements of the model's underlying optimization problem except for th
 """
 function createOptModel!(anyM::anyModel)
 
+	if anyM.options.createVI && anyM.subPro != tuple(0,0)
+		push!(anyM.report,(3,"scenario","","valid inequalities are only supported for the investment part of a decomposed problem"))
+		errorTest(anyM.report,anyM.options) 
+	end
+
 	#region # * prepare dimensions of investment related variables
 	parDef_dic = defineParameter(anyM.options,anyM.report)
 
@@ -64,7 +69,6 @@ function createOptModel!(anyM::anyModel)
 	tech_itr = collect(enumerate(techSym_arr))
 
 	@threads for (idx,tSym) in tech_itr
-		println(tSym)
 		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,yTs_dic,r_dic,anyM)
 	end
 
