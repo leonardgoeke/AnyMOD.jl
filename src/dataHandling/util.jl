@@ -209,11 +209,11 @@ function joinMissing(leftData_df::DataFrame, rightData_df::DataFrame, key_arr::U
 end
 
 # ! get array of scaling factors for add_df
-function getResize(add_df::DataFrame,time_obj::Tree,supDis::NamedTuple)
-    tsDisLvl_dic = Dict(x => x == 0 ? 1 : getfield(time_obj.nodes[x],:lvl) for x in unique(add_df[!,:Ts_dis]))
+function getResize(add_df::DataFrame,ts_tr::Tree,supDis::NamedTuple)
+    tsDisLvl_dic = Dict(x => x == 0 ? 1 : getfield(ts_tr.nodes[x],:lvl) for x in unique(add_df[!,:Ts_dis]))
 	lvl_arr = map(x -> tsDisLvl_dic[x],add_df[!,:Ts_dis])
 	aboveSupResize_fl = maximum(values(supDis.sca)) * length(supDis.step) # scaling value used for variables above the superordinate dispatch level
-	sca_arr = map(x -> supDis.lvl > x[1] ? aboveSupResize_fl : supDis.sca[x[1]] ,zip(lvl_arr,add_df[!,:Ts_dis]))
+	sca_arr = map(x -> supDis.lvl > x[1] ? aboveSupResize_fl : supDis.sca[x[2]] ,zip(lvl_arr,add_df[!,:Ts_dis]))
     return sca_arr
 end
 
