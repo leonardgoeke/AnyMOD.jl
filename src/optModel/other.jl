@@ -309,7 +309,16 @@ function createCapaBal!(r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::any
 	for (idx,teCapa) in capa_itr
 		teCapa_df = DataFrame(teCapa)
 		part = anyM.parts.tech[sysSym(teCapa_df[1,:Te],anyM.sets[:Te])]
-		allDesFac_arr[idx] = matchSetParameter(teCapa_df,part.par[:desFac],anyM.sets; newCol = :desFac)
+		if :desFac in keys(part.par)
+			allDesFac_arr[idx] = matchSetParameter(teCapa_df,part.par[:desFac],anyM.sets; newCol = :desFac)
+		else
+			for t in unique(teCapa_df[!,:Te])
+				push!(anyM.report,(2,"must output","","expected must output or design factor '$(createFullString(t,anyM.sets[:Te]))', but nothing was defined"))
+			end
+			add_df = filter(x -> false,teCapa_df)
+			add_df[!,:desFac] .= Float64[]
+			allDesFac_arr[idx] = add_df
+		end
 	end
 
 	# merge all capacity variables with design factors
