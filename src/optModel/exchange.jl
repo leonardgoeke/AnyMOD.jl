@@ -289,7 +289,7 @@ function createUseExcVar!(part::ExcPart,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}
 	refTs_int, refR_int = [minimum([getproperty(anyM.cInfo[z],u) for z in allC_arr]) for u in [:tsDis,:rDis]]
 	cns_df = copy(capa_df)
 	cns_df[!,:lvlTs] .= refTs_int; cns_df[!,:lvlR] .= refR_int
-	cns_df = expLvlDispExc(cns_df,ts_dic,r_dic,anyM.supTs.scr)
+	cns_df = expLvlDispExc(cns_df,ts_dic,r_dic,anyM.sets[:Ts],anyM.scr)
 
 	# correct useExc for actual use relative to exchange
 	useExc_df[!,:var] .= useExc_df[!,:var] .* useExc_df[!,:val]
@@ -320,19 +320,21 @@ function getDispExc(capa_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}}
 	capa_df[!,:lvlTs] = map(x -> cToLvl_dic[x][1],capa_df[!,:C])
 	capa_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],capa_df[!,:C])
 
-	return expLvlDispExc(capa_df,ts_dic,r_dic,anyM.supTs.scr)
+	return expLvlDispExc(capa_df,ts_dic,r_dic,anyM.sets[:Ts],anyM.scr)
 end
 
 # ! further expands dispatch entries once levels are defined
-function expLvlDispExc(capa_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},scr_dic::Dict{Int64,Array{Int64,1}})
+function expLvlDispExc(capa_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},ts_tr::Tree,scr_ntup::NamedTuple)
+	# add regions
 	capa_df[!,:R_from] = map(x -> r_dic[x.R_from,x.lvlR],eachrow(capa_df[!,[:R_from,:lvlR]]))
 	capa_df[!,:R_to] = map(x -> r_dic[x.R_to,x.lvlR],eachrow(capa_df[!,[:R_to,:lvlR]]))
 	capa_df = flatten(select(capa_df,Not(:lvlR)),:R_from); capa_df = unique(flatten(capa_df,:R_to))
 
-	capa_df[!,:scr] = map(x -> scr_dic[x],capa_df[!,:Ts_disSup])
-	capa_df = flatten(capa_df,:scr)
+	# add time-steps and scenarios
+	capa_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],),groupby(capa_df,namesSym(capa_df)))[!,Not(:lvlTs)]
+	capa_df = addScenarios(capa_df,ts_tr,scr_ntup)
 
-	return combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],),groupby(capa_df,namesSym(capa_df)))[!,Not(:lvlTs)]
+	return capa_df
 end
 
 # ! matches exchange variables with directed and undirected parameters

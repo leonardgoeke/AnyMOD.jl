@@ -142,7 +142,12 @@ function convertReadIn(readIn_df::DataFrame,fileName_str::String,set_arr::Array{
 
 	# reports if scenario column exists but no scenarios were defined
 	if :scenario in namesSym(readIn_df) && !(:scenario in set_arr)
-		push!(report,(3,"parameter read-in","definition","scenario column provided in '$(fileName_str)', but scenarios were not defined in a set file"))
+		# get all non-scenario set columns 
+		relCol_arr = filter(x -> !(occursin("parameter",x) || occursin("value",x) || x == "scenario"), names(readIn_df))
+		# only use value for one scenario		
+		sort!(readIn_df,[:scenario])
+		readIn_df = combine(x -> x[1,:], groupby(readIn_df,relCol_arr))
+		push!(report,(2,"parameter read-in","definition","scenario column provided in '$(fileName_str)', but scenarios were not defined in a set file, only used values for smallest scenario"))
 	end
 
 	setNames_arr = filterSetColumns(readIn_df,set_arr)

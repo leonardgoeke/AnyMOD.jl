@@ -100,37 +100,16 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 	if :dem in keys(anyM.parts.bal.par)
 		dem_df = copy(anyM.parts.bal.par[:dem].data)
 		if !isempty(dem_df)
-			dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, :C in namesSym(dem_df) ? dem_df[!,:C] : filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx)))
 
-			# aggregates demand values
-
-			# artificially add dispatch dimensions, if none exist
-			if :Ts_dis in namesSym(dem_df)
-				ts_dic = Dict(x => anyM.sets[:Ts].nodes[x].lvl == anyM.supTs.lvl ? x : getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(dem_df[!,:Ts_dis]))
-				dem_df[!,:Ts_disSup] = map(x -> ts_dic[x],dem_df[!,:Ts_dis])
-			else
-				dem_df[!,:Ts_disSup] .= collect(anyM.supTs.step) |> (z -> map(x -> z,1:size(dem_df,1)))
-				dem_df = flatten(dem_df,:Ts_disSup)
-				dem_df[!,:Ts_dis] = dem_df[!,:Ts_disSup]
+			# loop over all energy balances and match with demand parameter
+			allDem_arr = DataFrame[]
+			for de in filter(x -> string(x)[1:5] == "enBal", keys(anyM.parts.bal.cns))
+				push!(allDem_arr,matchSetParameter(select(anyM.parts.bal.cns[de],Not([:cns])),partBal.par[:dem],anyM.sets))
 			end
-
-			# artificially add scenario dimensions, if none exist
-			if !(:scr in namesSym(dem_df))
-				dem_df[!,:scr] = map(x -> anyM.supTs.scr[x], dem_df[!,:Ts_disSup])
-				dem_df = flatten(dem_df,:scr)
-			end
-
+			dem_df = vcat(allDem_arr...)
 			dem_df[!,:val] = dem_df[!,:val]	.*  getResize(dem_df,anyM.sets[:Ts],anyM.supTs) .* anyM.options.redStep
-
-			allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
-			allLvlR_arr = unique(dem_df[!,:lvlR])
-			r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl < x[2] ? getDescendants(x[1], anyM.sets[:R],false,x[2]) : getAncestors(x[1],anyM.sets[:R],:int,x[2])[end]) for x in Iterators.product(allR_arr,allLvlR_arr))
-			if :R_dis in namesSym(dem_df)
-				dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis,x.lvlR],eachrow(dem_df[!,[:R_dis,:lvlR]]))
-			else
-				dem_df[!,:R_dis] .= 0
-			end
-
+			
+			# aggregate data and add columns
 			dem_df = combine(groupby(dem_df,[:Ts_disSup,:R_dis,:C,:scr]),:val => ( x -> sum(x) / 1000) => :value)
 			dem_df[!,:Te] .= 0
 			dem_df[!,:id] .= 0
@@ -216,7 +195,6 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 
 	# ! get exchange variables aggregated by import and export
 	allExc_df = getAllVariables(:exc,anyM)
-	
 
 	if !isempty(allExc_df)
 
@@ -245,7 +223,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 		for flhCapa in collect(keys(flh_dic))
 			# get capacities relevant for full load hours
 			capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
-			capaFlh_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaFlh_df[!,:Ts_disSup])
+			capaFlh_df[!,:scr] = map(x -> anyM.scr.scr, 1:size(capaFlh_df,1))
 			capaFlh_df = flatten(capaFlh_df,:scr)
 			
 			# get dispatch quantities relevant for full load hours
@@ -291,7 +269,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 
 		for cycCapa in collect(keys(cyc_dic))
 			capaCyc_df = filter(x -> x.variable == :capaStSize, allData_df)
-			capaCyc_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaCyc_df[!,:Ts_disSup])
+			capaCyc_df[!,:scr] = map(x -> anyM.scr.scr, 1:size(capaCyc_df,1))
 			capaCyc_df = flatten(capaCyc_df,:scr)
 			
 			# get dispatch quantities relevant for cycling
@@ -815,7 +793,6 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 			if length(unique(data_df[!,:scr])) == 1
 				select!(data_df,Not(:scr))
 			end
-
 
 			if :csv in rtnOpt || :csvDf in rtnOpt
 				csvData_df = printObject(data_df,anyM, fileName = string("timeSeries_",car_sym,"_",signItr), rtnDf = rtnOpt)

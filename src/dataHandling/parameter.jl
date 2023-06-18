@@ -282,13 +282,13 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     parDef_dic[:stIntInLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = ofHeritSt_tup, part = :lim)
     parDef_dic[:stIntInFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup,   part = :lim)
 
-    parDef_dic[:convInUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup, part = :lim)
-    parDef_dic[:convInLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
-    parDef_dic[:convInFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup, part = :lim)
-
     parDef_dic[:convOutUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup, part = :lim)
     parDef_dic[:convOutLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
     parDef_dic[:convOutFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup, part = :lim)
+
+    parDef_dic[:convInUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup, part = :lim)
+    parDef_dic[:convInLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = ofHerit_tup, part = :lim)
+    parDef_dic[:convInFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup, part = :lim)
 
     parDef_dic[:stOutUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = upHeritSt_tup, part = :lim)
     parDef_dic[:stOutLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = ofHeritSt_tup, part = :lim)
@@ -535,14 +535,14 @@ function defineParameter(options::modOptions,report::Array{Tuple,1})
     # ! further dispatch parameters
 
     # probability of dispatch scenarios
-    parDef_dic[:scrProp] = (dim = (:Ts_sup, :scr), problem = :sub, defVal = nothing, herit = (:scr => :up, :Ts_sup => :up, :Ts_sup => :avg_any), part = :obj)
+    parDef_dic[:scrProb] = (dim = (:Ts_dis, :scr), problem = :sub, defVal = nothing, herit = (:scr => :up, :Ts_dis => :up, :Ts_dis => :avg_any), part = :obj)
 
     # output capacity related parameters
     parDef_dic[:capaDem] =      (dim = (:Ts_disSup, :R_dis, :C), problem = :both, defVal = nothing, herit = (:R_dis => :sum_any, :Ts_disSup => :avg_any), part = :bal)
     parDef_dic[:costMissCapa] = (dim = (:Ts_disSup, :R_dis, :C), problem = :both, defVal = nothing, herit = (:Ts_disSup => :up, :R_dis => :up, :C => :up, :Ts_disSup => :avg_any, :R_dis => :avg_any, :C => :avg_any), part = :bal)
 
     # energy demand related parameters
-    parDef_dic[:dem]     = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :both, defVal = 0.0,     herit = (:Ts_dis => :avg_any, :R_dis  => :sum_any, :scr => :up),             					part = :bal)
+    parDef_dic[:dem]     = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :both, defVal = 0.0,     herit = (:Ts_dis => :avg_any, :R_dis => :sum_any, :scr => :up, :Ts_dis => :up), part = :bal)
     parDef_dic[:costCrt] = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub,  defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
     parDef_dic[:costLss] = (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub,  defVal = nothing, herit = (:Ts_dis => :up, :R_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :bal)
 
@@ -804,7 +804,7 @@ function presetDispatchParameter!(part::TechPart,prepTech_dic::Dict{Symbol,Named
 		end
        
         # expand based on code above to full table for pre-setting of dispatch paramters
-		dispReso_df = expandExpToDisp(capaLvl_df,ts_dic,r_dic,anyM.supTs.scr)
+		dispReso_df = expandExpToDisp(capaLvl_df,ts_dic,r_dic,anyM.sets[:Ts],anyM.scr)
 
 		# additionally creates mode specific table in case different modes exists for technology
 		if specMode_boo

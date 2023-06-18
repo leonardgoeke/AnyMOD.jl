@@ -977,32 +977,30 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	conv_boo = type_sym in (:convOut,:convIn) && type_sym != :exc
 	dim_arr = type_sym == :exc ? [:Ts_expSup,:Ts_dis,:R_from,:R_to,:Exc,:scr] : (conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:Te,:id,:scr])
 	agg_arr = type_sym == :exc ? [:Ts_expSup,:Ts_dis,:R_from,:R_to,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:scr] |> (x -> filter(x -> part.type == :emerging || x != :Ts_expSup,x))
+	aggCapa_arr = filter(x -> x != :scr, agg_arr)
 
 	# determines dimensions for aggregating dispatch variables
 	capaVar_df[!,:lvlTs] .= restr.lvlTs
 	capaVar_df[!,:lvlR] .= restr.lvlR
 
-	# extend dataframe with scenarios
-	capaVar_df[!,:scr] = map(x -> supTs_ntup.scr[x], capaVar_df[!,:Ts_disSup])
-	capaVar_df = flatten(capaVar_df,:scr)
-
 	# replaces expansion with dispatch regions and aggregates capacity variables accordingy if required
 	if type_sym != :exc
 		grpCapaVar_df = copy(select(capaVar_df,Not([:var]))) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
-		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
+		resExp_ntup = :Ts_expSup in aggCapa_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
 		sort!(grpCapaVar_df,orderDim(intCol(grpCapaVar_df)))
-		grpCapaVar_df[!,:var] = aggUniVar(rename(capaVar_df,:R_exp => :R_dis),grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
+		grpCapaVar_df[!,:var] = aggUniVar(rename(capaVar_df,:R_exp => :R_dis),grpCapaVar_df,replace(aggCapa_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 	else
 		grpCapaVar_df = rename(copy(select(capaVar_df,Not([:var]))),:R_from => :R_a,:R_to => :R_b) |> (y -> unique(combine(x -> (R_from = r_dic[(x.R_a[1],x.lvlR[1])],R_to = r_dic[(x.R_b[1],x.lvlR[1])]),groupby(y,namesSym(y)))[!,Not([:lvlR,:R_a,:R_b])]))
-		resExp_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_disSup = supTs_ntup.lvl, R_from = restr.lvlR, R_to = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
+		resExp_ntup = :Ts_expSup in aggCapa_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_disSup = supTs_ntup.lvl, R_from = restr.lvlR, R_to = restr.lvlR, scr = 1) : (Ts_disSup = supTs_ntup.lvl, R_dis = restr.lvlR, scr = 1)
 		sort!(grpCapaVar_df,orderDim(intCol(grpCapaVar_df)))
-		grpCapaVar_df[!,:var] = aggUniVar(capaVar_df,grpCapaVar_df,replace(agg_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
+		grpCapaVar_df[!,:var] = aggUniVar(capaVar_df,grpCapaVar_df,replace(aggCapa_arr,:Ts_dis => :Ts_disSup),resExp_ntup,sets_dic)
 	end
 
 	# expand capacity to dimension of dispatch
 	capaDim_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(grpCapaVar_df[!,Not(:var)],namesSym(grpCapaVar_df[!,Not(:var)])))[!,Not(:lvlTs)]
 	sort!(capaDim_df,orderDim(intCol(capaDim_df)))
 	select!(grpCapaVar_df,Not(:lvlTs))
+	capaDim_df = addScenarios(capaDim_df,anyM.sets[:Ts],anyM.scr)
 
 	# obtain all relevant dispatch variables
 	dispVar_arr = type_sym != :exc ? (type_sym != :stSize ? intersect(collect(keys(part.var)),info_ntup.dis) : collect(info_ntup.dis)) : [:exc]
@@ -1047,7 +1045,7 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	capaDim_df = filter(x -> !(x.disp == AffExpr()),capaDim_df)
 
 	# join capacity and dispatch variables to create final constraint
-	grpCapaVar_df = combine(groupby(grpCapaVar_df,replace(dim_arr,:Ts_dis => :Ts_disSup)), :var => (x -> sum(x)) => :capa)
+	grpCapaVar_df = combine(groupby(grpCapaVar_df,replace(filter(x -> x != :scr,dim_arr),:Ts_dis => :Ts_disSup)), :var => (x -> sum(x)) => :capa)
 	cns_df = innerjoin(capaDim_df,grpCapaVar_df,on = intCol(grpCapaVar_df))
 
 	# resize capacity variables (expect for stSize since these are already provided in energy units)
@@ -1180,8 +1178,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 
 				cns_df = combine(groupby(cns_df,intCol(cns_df)), :var => (x -> sum(x)) => :var)
 				# extend to scenarios
-				cns_df[!,:scr] = map(x -> anyM.supTs.scr[x], cns_df[!,:Ts_disSup])
-				cns_df = flatten(cns_df,:scr)
+				cns_df = addScenarios(cns_df,anyM.sets[:Ts],anyM.scr)
 			end
 
 			# matches variables with parameters denominator

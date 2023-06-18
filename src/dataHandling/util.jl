@@ -69,6 +69,19 @@ deSelectSys(in_df::DataFrame) = select(in_df,Not([:Te in namesSym(in_df) ? :Te :
 # ! removes entry from dictionary if it is empty 
 removeEmptyDic!(rmvDic::Dict,keySys::Symbol) = if isempty(rmvDic[keySys]) delete!(rmvDic,keySys) end
 
+# ! adds relevant scenarios based on timestep column
+function addScenarios(in_df::DataFrame,ts_tr::Tree,scr_ntup::NamedTuple)
+	if isempty(scr_ntup.scr)
+		in_df[!,:scr] .= 0
+	else
+		in_df[!,:scr] = map(x -> scr_ntup.scr[getAncestors(x,ts_tr,:int,scr_ntup.lvl)[end]], in_df[!,:Ts_dis])
+		in_df = flatten(in_df,:scr)
+	end
+	return in_df
+end
+
+getScrProb(ts_int::Int,scr_int::Int,ts_tr::Tree,scr_ntup::NamedTuple) = isempty(scr_ntup.scrProb) ? 1.0 : scr_ntup.scrProb[getAncestors(ts_int,ts_tr,:int,scr_ntup.lvl)[end],scr_int]
+
 # ! new plus function to avoid error when one element being added up is nothing
 plus(a::Int,b::Int) = a + b
 plus(a::Int,b::Nothing) = a
@@ -125,16 +138,17 @@ function createPotDisp(c_arr::Array{Int,1},ts_dic::Dict{Tuple{Int64,Int64},Array
 	allLvl_df = DataFrame(C = c_arr, lvlTs = lvl_arr[1], lvlR = lvl_arr[2])
 	rDis_dic = Dict(x => getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in unique(lvl_arr[2]))
 
+	# write superordinate and dispatch timesteps
 	allLvl_df[!,:Ts_disSup] .= fill(collect(anyM.supTs.step),size(allLvl_df,1))
 	allLvl_df = flatten(allLvl_df,:Ts_disSup)
-
-	allLvl_df[!,:scr]  = map(x -> anyM.supTs.scr[x],allLvl_df[!,:Ts_disSup])
-	allLvl_df = flatten(allLvl_df,:scr)
-
 	allLvl_df[!,:Ts_dis] = map(x -> ts_dic[x.Ts_disSup,x.lvlTs],eachrow(allLvl_df))
+	
+	# write regions 
 	allLvl_df[!,:R_dis] = map(x -> rDis_dic[x],allLvl_df[!,:lvlR])
 
+	# flatten to full table and add scenarios
 	var_df = flatten(flatten(select(allLvl_df,Not([:lvlTs,:lvlR])),:Ts_dis),:R_dis)
+	var_df = addScenarios(var_df,anyM.sets[:Ts],anyM.scr)
 
 	# add column for superordinate dispatch timestep
 	supTs_dic =  Dict(x => getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(var_df[!,:Ts_dis]))
@@ -388,17 +402,16 @@ function expandExpToCapa(in_df::DataFrame)
 end
 
 # ! expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
-function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},scr_dic::Dict{Int64,Array{Int64,1}},preserveTsSupTs::Bool = false)
-
-	inData_df[!,:scr] = map(x -> scr_dic[x], inData_df[!,:Ts_disSup])
-	inData_df = flatten(inData_df,:scr)
+function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},ts_tr::Tree,scr_ntup::NamedTuple,preserveTsSupTs::Bool = false)
 
 	# adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)
 	expR_df = unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],), groupby(inData_df,namesSym(inData_df)))[!,Not([:R_exp,:lvlR])])
 	expTs_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(expR_df,namesSym(expR_df)))[!,Not(:lvlTs)]
 
-    # adds dispatch timesteps to table and returns
+	expTs_df = addScenarios(expTs_df,ts_tr,scr_ntup)
+	
 	if !preserveTsSupTs select!(expTs_df,Not(:Ts_disSup)) end
+
 	return expTs_df
 end
 

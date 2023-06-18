@@ -241,7 +241,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 
 		# adds spatial level to dataframe
 		basis_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],basis_df[!,:C])
-		allVar_df = orderDf(expandExpToDisp(basis_df,ts_dic,r_dic,anyM.supTs.scr,true))
+		allVar_df = orderDf(expandExpToDisp(basis_df,ts_dic,r_dic,anyM.sets[:Ts],anyM.scr,true))
 
 		# add mode dependencies
 		modeDep_df = copy(modeDep_dic[va])
@@ -302,7 +302,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			# extend table again for case of reduced foresight 
 			if anyM.options.lvlFrs != 0 && va == :stLvl
 				# create entries for all conceivable scenarios for start of each period again
-				allVar_df[!,:scr] = map(x ->  x.scr == 0 ? anyM.supTs.scr[x.Ts_disSup] : [x.scr],eachrow(allVar_df))
+				allVar_df[!,:scr] = map(x ->  x.scr == 0 ? anyM.scr.scr[getAncestors(x.Ts_dis,anyM.sets[:Ts],:int,anyM.scr.lvl)[end]] : [x.scr],eachrow(allVar_df))
 				allVar_df = flatten(allVar_df,:scr)
 				# joins with stored dataframe of all entries that sould exist 
 				allVar_df = innerjoin(allVarFull_df,allVar_df, on = intCol(allVarFull_df))

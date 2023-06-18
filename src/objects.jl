@@ -476,6 +476,7 @@ The core model object containing all related data and subordinate objects.
 - `optModel::Model`: the actual [JuMP](https://github.com/JuliaOpt/JuMP.jl) object of the model's underlying optimization problem
 - `lock`: lock used for multi-threading
 - `supTs`: information and mappings for superordinate time-steps
+- `supTs`: information and mappings for scenarios
 - `cInfo`: information on resolution of energy carriers
 - `sets`: sets organized as [Tree](@ref) objects (see [Sets and mappings](@ref))
 - `parts::NamedTuple`: all part objects of the model (see [Parts](@ref))
@@ -497,7 +498,8 @@ mutable struct anyModel <: AbstractModel
 	optModel::Model
 	lock::ReentrantLock
 
-	supTs::NamedTuple{(:lvl,:step,:sca,:scr,:scrProp),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Int,Float64},Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
+	supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Int,Float64}}}
+	scr::NamedTuple{(:lvl,:scr,:scrProb),Tuple{Int,Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
 	subPro::Union{Tuple{},Tuple{Int,Int}}
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign,:stBalCapa),Tuple{Int,Int,Int,Int,Symbol,Symbol}}}
 

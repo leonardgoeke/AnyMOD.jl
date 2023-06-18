@@ -114,10 +114,11 @@ end
 
 # ! maps information about timesteps used
 function createTimestepMapping!(anyM::anyModel)
-    # ! writes the superordinate dispatch level, the timesteps on this level and scaling factor for timesteps depending on the respective superordinate dispatch timestep and the level
+    
+	# ! writes the superordinate dispatch level, the timesteps on this level and scaling factor for timesteps depending on the respective superordinate dispatch timestep and the level
     supTsLvl_int = maximum(map(x -> getfield(x,:tsExp),values(anyM.cInfo)))
 	minDis_int = minimum(map(x -> getfield(x,:tsDis),values(anyM.cInfo)))
-
+	
 	if anyM.options.supTsLvl != 0
 		if minDis_int >= anyM.options.supTsLvl
 			supTsLvl_int = anyM.options.supTsLvl
@@ -143,7 +144,7 @@ function createTimestepMapping!(anyM::anyModel)
 		end
 	end	
 
-	anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic, scr = Dict{Int,Array{Int,1}}(), scrProp = Dict{Tuple{Int,Int},Float64}())
+	anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic)
 
     if length(anyM.supTs.step) > 50
 		push!(anyM.report,(2,"timestep mapping","","problem specification resulted in more than 50 superordinate dispatch timesteps, this looks faulty"))
@@ -154,16 +155,6 @@ function createTimestepMapping!(anyM::anyModel)
 		for c in keys(anyM.cInfo)
 			res_dic = anyM.cInfo[c]
 			anyM.cInfo[c] = (tsDis = anyM.supTs.lvl, tsExp = res_dic[:tsExp], rDis = res_dic[:rDis], rExp = res_dic[:rExp], balSign = res_dic[:balSign], stBalCapa = res_dic[:stBalCapa])
-		end
-	end
-
-	if anyM.options.lvlFrs != 0 
-		if anyM.options.supTsLvl >= anyM.options.lvlFrs
-			anyM.options.lvlFrs = 0
-			push!(anyM.report,(2,"timestep mapping","","specified foresight level is not more detailed than superordinate dispatch level, therefore model still uses perfect foresight"))
-		else minDis_int < anyM.options.lvlFrs
-			anyM.options.lvlFrs = minDis_int
-			push!(anyM.report,(1,"timestep mapping","","specified foresight level exceeds least detailed dispatch resolution, model uses level $(minDis_int) instead"))
 		end
 	end
 		
@@ -601,39 +592,52 @@ function createScenarioMapping!(anyM::anyModel)
 
 	# checks if actually any scenarios are defined
 	if !(isempty(allScr_arr))
-		prop_df = flatten(flatten(DataFrame(Ts_disSup  = [collect(anyM.supTs.step)], scr = [allScr_arr]),:Ts_disSup),:scr)
+
+		minDis_int = minimum(map(x -> getfield(x,:tsDis),values(anyM.cInfo)))
+	
+		if anyM.options.lvlFrs != 0 
+			if anyM.options.supTsLvl >= anyM.options.lvlFrs
+				anyM.options.lvlFrs = 0
+				push!(anyM.report,(2,"scenario mapping","","specified foresight level is not more detailed than superordinate dispatch level, therefore model still uses perfect foresight"))
+			elseif minDis_int < anyM.options.lvlFrs
+				anyM.options.lvlFrs = minDis_int
+				push!(anyM.report,(1,"scenario mapping","","specified foresight level exceeds least detailed dispatch resolution, model uses level $(minDis_int) instead"))
+			end
+		end
+
+		# gets level for scenarios
+		lvl_int = anyM.options.lvlFrs == 0 ? anyM.supTs.lvl : anyM.options.lvlFrs
+		prop_df = flatten(flatten(DataFrame(Ts_dis  = [getfield.(getNodesLvl(anyM.sets[:Ts],lvl_int),:idx)], scr = [allScr_arr]),:Ts_dis),:scr)
 
 		# assigns probabilities defined as parameters
-		if :scrProp in collectKeys(keys(anyM.parts.obj.par))
-			propPar_df = matchSetParameter(prop_df,anyM.parts.obj.par[:scrProp],anyM.sets)
+		if :scrProb in collectKeys(keys(anyM.parts.obj.par))
+			propPar_df = matchSetParameter(prop_df,anyM.parts.obj.par[:scrProb],anyM.sets)
 		else
 			propPar_df = filter(x -> false,prop_df)
 			propPar_df[!,:val] = Float64[]
 		end
 
 		# compute default values in other cases
-		propDef_df = antijoin(prop_df,propPar_df,on = [:scr,:Ts_disSup])
-		propDef_df[!,:val] .= 1/length(anyM.supTs.step)
+		propDef_df = antijoin(prop_df,propPar_df,on = [:scr,:Ts_dis])
+		propDef_df[!,:val] .= 1/length(allScr_arr)
 
 		# merges collected data
 		prop_df = vcat(propPar_df,propDef_df)
 
 		# controls sum of probabilities
-		control_df = combine(groupby(prop_df, [:Ts_disSup]), :val => (x -> sum(x)) => :val)
-		sca_dic = Dict(control_df[!,:Ts_disSup] .=> control_df[!,:val])
+		control_df = combine(groupby(prop_df, [:Ts_dis]), :val => (x -> sum(x)) => :val)
+		sca_dic = Dict(control_df[!,:Ts_dis] .=> control_df[!,:val])
 
 		for x in eachrow(filter(x -> x.val != 1.0,control_df))
-			push!(anyM.report,(2,"scenario","probability","for superordinate dispatch timestep '$(createFullString(x.Ts_disSup,anyM.sets[:Ts]))' scenario probabilities do not sum up to 1.0, values were adjusted accordingly"))
+			push!(anyM.report,(2,"scenario","probability","for superordinate dispatch timestep '$(createFullString(x.Ts_dis,anyM.sets[:Ts]))' scenario probabilities do not sum up to 1.0, values were adjusted accordingly"))
 		end
-
-		prop_df[!,:val] .= map(x -> x.val/sca_dic[x.Ts_disSup] ,eachrow(prop_df))
-
+		prop_df[!,:val] .= map(x -> x.val/sca_dic[x.Ts_dis] ,eachrow(prop_df))
 
 		# creates final assignments
 		filter!(x -> x.val != 0.0,prop_df)
 
-		tsToScr_dic = Dict(y => filter(x -> x.Ts_disSup == y,prop_df)[!,:scr] for y in collect(anyM.supTs.step))
-		tsScrToProp_dic = Dict((x.Ts_disSup,x.scr) => x.val for x in eachrow(prop_df))
+		tsToScr_dic = Dict(y => sort(filter(x -> x.Ts_dis == y,prop_df)[!,:scr]) for y in unique(prop_df[!,:Ts_dis]))
+		tsScrToProp_dic = Dict((x.Ts_dis,x.scr) => x.val for x in eachrow(prop_df))
 
 		# re-defines into a deterministic model for the most likely scenario or specified scenario
 		if !isnothing(anyM.options.forceScr)
@@ -645,16 +649,22 @@ function createScenarioMapping!(anyM::anyModel)
 				propScr_int = sysInt(anyM.options.forceScr,anyM.sets[:scr])
 			end
 			# adjust elements to solve deterministic for one scenario
-			tsScrToProp_dic = Dict((x,propScr_int) => 1.0 for x in anyM.supTs.step)
-			tsToScr_dic = Dict(x => [propScr_int] for x in anyM.supTs.step)
+			relTs_arr = unique(prop_df[!,:Ts_dis])
+			tsScrToProp_dic = Dict((x,propScr_int) => 1.0 for x in relTs_arr)
+			tsToScr_dic = Dict(x => [propScr_int] for x in relTs_arr)
 		end
 	else
-		tsToScr_dic = Dict(y => [0,] for y in collect(anyM.supTs.step))
-		tsScrToProp_dic = Dict((y,0) => 1.0 for y in collect(anyM.supTs.step))
+		tsToScr_dic = Dict{Int64, Vector{Int64}}()
+		tsScrToProp_dic = Dict{Tuple{Int64, Int64}, Float64}()
+		lvl_int = 0
+		if anyM.options.lvlFrs != 0
+			anyM.options.lvlFrs = 0
+			push!(anyM.report,(2,"scenario mapping","","foresight level set but not scenarios specified"))
+		end
 	end
 
 	# assigns mappings to final object
-	anyM.supTs = (lvl = anyM.supTs.lvl, step = anyM.supTs.step, sca = anyM.supTs.sca, scr = tsToScr_dic, scrProp = tsScrToProp_dic)
+	anyM.scr = (lvl = lvl_int, scr = tsToScr_dic, scrProb = tsScrToProp_dic)
 end
 
 # ! adjusts model object according to distributed generation
@@ -674,12 +684,10 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 		foreach(y ->  delete!(anyM.sets[:scr].nodes,y),rmvId_tup.scr)
 
 		# rewrite information on superordinate time-steps
-		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(supTs_int,), sca = filter(x -> getAncestors(x[1],anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] == supTs_int, scaSupTs_dic),
-																	scr = Dict(supTs_int => [subPro[2],]), scrProp = filter(x -> x[1] == (supTs_int,subPro[2]), anyM.supTs.scrProp))
-
-		# ! adjust dictionaries for expansion preparation
-
+		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(supTs_int,), sca = filter(x -> getAncestors(x[1],anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] == supTs_int, scaSupTs_dic))
+		anyM.scr =  (lvl = anyM.scr.lvl, scr = Dict(supTs_int => [subPro[2],]), scrProb = filter(x -> x[1] == (supTs_int,subPro[2]), anyM.scr.scrProb))
 		
+		# ! adjust dictionaries for expansion preparation
 
 		# only keep capacity entries from 
 		for sys in collect(keys(prepSys_dic)), sSym in collect(keys(prepSys_dic[sys]))
