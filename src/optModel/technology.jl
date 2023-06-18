@@ -291,6 +291,27 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 				end
 			end
 
+			# filter cases where dispatch variable is fixed to zero
+			if Symbol(va,:Fix) in keys(anyM.parts.lim.par)
+				checkFix_boo = false
+				# checks, if trying to filter zero fixes is sensible because cases could exist based on technology column
+				if !(:Te in namesSym(anyM.parts.lim.par[Symbol(va,:Fix)].data)) 
+					checkFix_boo = true
+				else
+					fixTe_arr = unique(anyM.parts.lim.par[Symbol(va,:Fix)].data[!,:Te])
+					if 0 in fixTe_arr || sysInt(Symbol(part.name[end]),anyM.sets[:Te]) in fixTe_arr
+						checkFix_boo = true
+					end
+				end	
+				# actually filter zero fixes
+				if checkFix_boo
+					fixZero_df = select(filter(r -> r.val == 0, getFix(allVar_df,anyM.parts.lim.par[Symbol(va,:Fix)],anyM)),Not(:val))
+					if !isempty(fixZero_df) allVar_df = antijoin(allVar_df,fixZero_df, on = intCol(fixZero_df)) end
+				end
+			end
+			
+			if isempty(allVar_df) continue end
+
 			# computes value to scale up the global limit on dispatch variable that is provied per hour and create variable
 			if conv_boo
 				scaFac_fl = anyM.options.scaFac.dispConv
