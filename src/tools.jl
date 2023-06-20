@@ -104,7 +104,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 			# loop over all energy balances and match with demand parameter
 			allDem_arr = DataFrame[]
 			for de in filter(x -> string(x)[1:5] == "enBal", keys(anyM.parts.bal.cns))
-				push!(allDem_arr,matchSetParameter(select(anyM.parts.bal.cns[de],Not([:cns])),partBal.par[:dem],anyM.sets))
+				push!(allDem_arr,matchSetParameter(select(anyM.parts.bal.cns[de],Not([:cns])),anyM.parts.bal.par[:dem],anyM.sets))
 			end
 			dem_df = vcat(allDem_arr...)
 			dem_df[!,:val] = dem_df[!,:val]	.*  getResize(dem_df,anyM.sets[:Ts],anyM.supTs) .* anyM.options.redStep

@@ -252,14 +252,17 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 
 		# adjust table for case of reduced foresight
 		if anyM.options.lvlFrs != 0 && va == :stLvl
-			# get time-steps that are at the start of a foresight period
+			# get time-steps that are at the end of a foresight period
 			frsStep_arr = [getDescendants(x,anyM.sets[:Ts],false,y) for x in getfield.(getNodesLvl(anyM.sets[:Ts],anyM.options.lvlFrs),:idx), y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x],:lvl), allVar_df[!,:Ts_dis]))]
 			frsStart_arr = vec(maximum.(frsStep_arr))
 			# save copy of variable table with all periods
 			allVarFull_df = copy(allVar_df)
-			# set scenario to zero for all time-steps at the start of a foresight period
+			# set scenario to zero for all time-steps at the end of a foresight period
 			allVar_df[!,:scr] = map(x ->  x.Ts_dis in frsStart_arr ? 0 : x.scr,eachrow(allVar_df))
 			allVar_df = unique(allVar_df)
+			# extend table with storage levels needed but not existing yet since scenario does not exist for previous period
+			allVarFull_df = combine(x -> (scr = x.Ts_dis[end] in frsStart_arr ? [getStScr(x.Ts_dis[end],anyM.sets[:Ts],anyM.scr)] :  [x.scr],), groupby(allVarFull_df, filter(x -> x != :scr, intCol(allVarFull_df))))
+			allVarFull_df = flatten(allVarFull_df,:scr)
 		end
 
 		# replace dispatch variables with maximum output, if technology does not need capacity constraints
@@ -323,7 +326,8 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			# extend table again for case of reduced foresight 
 			if anyM.options.lvlFrs != 0 && va == :stLvl
 				# create entries for all conceivable scenarios for start of each period again
-				allVar_df[!,:scr] = map(x ->  x.scr == 0 ? anyM.scr.scr[getAncestors(x.Ts_dis,anyM.sets[:Ts],:int,anyM.scr.lvl)[end]] : [x.scr],eachrow(allVar_df))
+				allScr_arr = filter(x -> x != 0, collect(keys(anyM.sets[:scr].nodes)))
+				allVar_df[!,:scr] = map(x ->  x.scr == 0 ? allScr_arr : [x.scr],eachrow(allVar_df))
 				allVar_df = flatten(allVar_df,:scr)
 				# joins with stored dataframe of all entries that sould exist 
 				allVar_df = innerjoin(allVarFull_df,allVar_df, on = intCol(allVarFull_df))
@@ -333,6 +337,9 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		end
 	end
 end
+
+filter(x -> x.Ts_dis == 210 && x.R_dis == 5, allVar_df)
+filter(x -> x.Ts_dis == 210 && x.R_dis == 4, allVarFull_df)
 
 # ! create conversion balance
 function createConvBal(part::TechPart,anyM::anyModel)
@@ -401,6 +408,9 @@ function createStBal(part::TechPart,anyM::anyModel)
 
 	cns_df[!,:Ts_disPrev] = map(x -> x in firstTs_arr ? firstLastTs_dic[x] : x - 1, cns_df[!,:Ts_dis])
 	cns_df = rename(joinMissing(cns_df,part.var[:stLvl], intCol(part.var[:stLvl]) |> (x -> Pair.(replace(x,:Ts_dis => :Ts_disPrev),x)), :left, Dict(:var => AffExpr())),:var => :stLvlPrev)
+
+	# filter storage variables not enforcing a balance in case of interdependent subperiods (variables only exist to enforce right value at the start of the next period, occurs if number of scenarios varies)
+	if anyM.options.lvlFrs != 0 filter!(x -> x.scr in scr_ntup.scr[getAncestors(x.Ts_disPrev,anyM.sets[:Ts],:int,anyM.scr.lvl)[end]], cns_df) end
 
 	# determines dimensions for aggregating dispatch variables
 	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), cnsDim_arr)
