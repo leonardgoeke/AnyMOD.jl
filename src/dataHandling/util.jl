@@ -83,9 +83,9 @@ end
 getScrProb(ts_int::Int,scr_int::Int,ts_tr::Tree,scr_ntup::NamedTuple) = isempty(scr_ntup.scrProb) ? 1.0 : scr_ntup.scrProb[getAncestors(ts_int,ts_tr,:int,scr_ntup.lvl)[end],scr_int]
 
 # ! extends relevant scenarios for intersection of interdependent subperiods
-function getStScr(ts::Int,ts_tr::Tree,scr_ntup::NamedTuple)
+function getStScr(ts::Int,syCyc_int::Int,ts_tr::Tree,scr_ntup::NamedTuple)
 	# get previous time-step in storage balance for input time-step
-	presTs_int = getDescendants(getAncestors(ts,ts_tr,:int,part.stCyc)[end],ts_tr,false,ts_tr.nodes[ts].lvl) |> (v -> v[findall(v .== ts)[end] |> (w -> w < length(v) ? w + 1 : 1)])
+	presTs_int = getDescendants(getAncestors(ts,ts_tr,:int,syCyc_int)[end],ts_tr,false,ts_tr.nodes[ts].lvl) |> (v -> v[findall(v .== ts)[end] |> (w -> w < length(v) ? w + 1 : 1)])
 	# get relevant scenarios for current and previous time-step
 	return sort(union(map(x -> scr_ntup.scr[getAncestors(x,ts_tr,:int,scr_ntup.lvl)[end]],[ts,presTs_int])...))
 end

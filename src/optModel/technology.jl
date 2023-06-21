@@ -261,7 +261,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			allVar_df[!,:scr] = map(x ->  x.Ts_dis in frsStart_arr ? 0 : x.scr,eachrow(allVar_df))
 			allVar_df = unique(allVar_df)
 			# extend table with storage levels needed but not existing yet since scenario does not exist for previous period
-			allVarFull_df = combine(x -> (scr = x.Ts_dis[end] in frsStart_arr ? [getStScr(x.Ts_dis[end],anyM.sets[:Ts],anyM.scr)] :  [x.scr],), groupby(allVarFull_df, filter(x -> x != :scr, intCol(allVarFull_df))))
+			allVarFull_df = combine(x -> (scr = x.Ts_dis[end] in frsStart_arr ? [getStScr(x.Ts_dis[end],part.stCyc,anyM.sets[:Ts],anyM.scr)] :  [x.scr],), groupby(allVarFull_df, filter(x -> x != :scr, intCol(allVarFull_df))))
 			allVarFull_df = flatten(allVarFull_df,:scr)
 		end
 
@@ -338,9 +338,6 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 	end
 end
 
-filter(x -> x.Ts_dis == 210 && x.R_dis == 5, allVar_df)
-filter(x -> x.Ts_dis == 210 && x.R_dis == 4, allVarFull_df)
-
 # ! create conversion balance
 function createConvBal(part::TechPart,anyM::anyModel)
 
@@ -410,7 +407,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 	cns_df = rename(joinMissing(cns_df,part.var[:stLvl], intCol(part.var[:stLvl]) |> (x -> Pair.(replace(x,:Ts_dis => :Ts_disPrev),x)), :left, Dict(:var => AffExpr())),:var => :stLvlPrev)
 
 	# filter storage variables not enforcing a balance in case of interdependent subperiods (variables only exist to enforce right value at the start of the next period, occurs if number of scenarios varies)
-	if anyM.options.lvlFrs != 0 filter!(x -> x.scr in scr_ntup.scr[getAncestors(x.Ts_disPrev,anyM.sets[:Ts],:int,anyM.scr.lvl)[end]], cns_df) end
+	if anyM.options.lvlFrs != 0 filter!(x -> x.scr in anyM.scr.scr[getAncestors(x.Ts_dis,anyM.sets[:Ts],:int,anyM.scr.lvl)[end]], cns_df) end
 
 	# determines dimensions for aggregating dispatch variables
 	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), cnsDim_arr)
