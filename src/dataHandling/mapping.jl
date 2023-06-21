@@ -155,10 +155,9 @@ function createTimestepMapping!(anyM::anyModel)
 		for c in keys(anyM.cInfo)
 			res_dic = anyM.cInfo[c]
 			anyM.cInfo[c] = (tsDis = anyM.supTs.lvl, tsExp = res_dic[:tsExp], rDis = res_dic[:rDis], rExp = res_dic[:rExp], balSign = res_dic[:balSign], stBalCapa = res_dic[:stBalCapa])
-		end
+		end		
+		produceMessage(anyM.options,anyM.report, 2," - Adjusted temporal resolution for valid inequalities")
 	end
-		
-	produceMessage(anyM.options,anyM.report, 2," - Adjusted temporal resolution for valid inequalities")
 	
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for time steps")
 end
