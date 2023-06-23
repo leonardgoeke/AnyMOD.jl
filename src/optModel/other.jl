@@ -645,7 +645,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		end
 
 		# ! check for suspicious entries for dispatch variables that are constrained summed over several scenarios
-		if va in (:use, :gen, :stExtOut, :stExtIn, :stIntOut, :stIntIn, :convOut, :convIn, :stOut, :stIn, :exc, :useExc, :crt, :lss, :trdBuy, :trdSell, :emission) && !isempty(anyM.scr.scr) && !(:scr in names(allLimit_df))
+		if va in (:use, :gen, :stExtOut, :stExtIn, :stIntOut, :stIntIn, :convOut, :convIn, :stOut, :stIn, :exc, :useExc, :crt, :lss, :trdBuy, :trdSell, :emission) && !isempty(anyM.scr.scr) && !(:scr in namesSym(allLimit_df))
 			push!(anyM.report,(2,"limit",string(va),"enforced limit for sum of variables across all scenarios, to prevent this add a scenario column to the input file"))
 		end
 
