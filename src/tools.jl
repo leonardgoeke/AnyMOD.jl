@@ -35,7 +35,7 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
     end
 
 	# rename columns
-	colName_dic = Dict(:Ts_dis => :timestep_dispatch, :Ts_exp => :timestep_expansion, :Ts_expSup => :timestep_superordinate_expansion, :Ts_disSup => :timestep_superordinate_dispatch,
+	colName_dic = Dict(:Ts_dis => :timestep_dispatch, :Ts_frs => :timestep_foresight, :Ts_exp => :timestep_expansion, :Ts_expSup => :timestep_superordinate_expansion, :Ts_disSup => :timestep_superordinate_dispatch,
 															:R => :region, :R_tech => :region, :R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Sys => :system, :Te => :technology, :Exc => :exchange,
 																:dir => :directed, :scr => :scenario, :cns => :constraint, :var => :variable)
 
@@ -94,26 +94,71 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 	end
 
     techSym_arr = collect(keys(anyM.parts.tech))
-	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], id = Int[], variable = Symbol[], value = Float64[])
+	allData_df = DataFrame(Ts_disSup = Int[], Ts_frs = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], id = Int[], variable = Symbol[], value = Float64[])
+
+	# ! add scenario probabilities
+	if !isempty(anyM.scr.scr)
+		scrProb_df = copy(anyM.parts.obj.par[:scrProb].data)
+		rename!(scrProb_df,:val => :value,:Ts_dis => anyM.options.lvlFrs != 0 ? :Ts_frs : :Ts_disSup)
+		scrProbWrt_df = copy(scrProb_df)
+		scrProbWrt_df[!,:variable] .= :scrProb
+		foreach(x -> scrProbWrt_df[!,Symbol(x)] .= 0,setdiff(names(allData_df),names(scrProbWrt_df)))
+		append!(allData_df,scrProbWrt_df)
+	end
 
 	# ! get demand values
 	if :dem in keys(anyM.parts.bal.par)
 		dem_df = copy(anyM.parts.bal.par[:dem].data)
+		
 		if !isempty(dem_df)
+			dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, :C in namesSym(dem_df) ? dem_df[!,:C] : filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx)))
 
-			# loop over all energy balances and match with demand parameter
-			allDem_arr = DataFrame[]
-			for de in filter(x -> string(x)[1:5] == "enBal", keys(anyM.parts.bal.cns))
-				push!(allDem_arr,matchSetParameter(select(anyM.parts.bal.cns[de],Not([:cns])),anyM.parts.bal.par[:dem],anyM.sets))
+			# aggregates demand values
+
+			# artificially add dispatch dimensions, if none exist
+			if :Ts_dis in namesSym(dem_df)
+				ts_dic = Dict(x => anyM.sets[:Ts].nodes[x].lvl == anyM.supTs.lvl ? x : getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] for x in unique(dem_df[!,:Ts_dis]))
+				dem_df[!,:Ts_disSup] = map(x -> ts_dic[x],dem_df[!,:Ts_dis])
+			else
+				dem_df[!,:Ts_disSup] .= collect(anyM.supTs.step) |> (z -> map(x -> z,1:size(dem_df,1)))
+				dem_df = flatten(dem_df,:Ts_disSup)
+				dem_df[!,:Ts_dis] = dem_df[!,:Ts_disSup]
 			end
-			dem_df = vcat(allDem_arr...)
-			dem_df[!,:val] = dem_df[!,:val]	.*  getResize(dem_df,anyM.sets[:Ts],anyM.supTs) .* anyM.options.redStep
+
+			# adds reduced foresight period
+			dem_df[!,:Ts_frs] = getTsFrs(dem_df[!,:Ts_dis],anyM.sets[:Ts],anyM.options.lvlFrs,:dis)
 			
-			# aggregate data and add columns
-			dem_df = combine(groupby(dem_df,[:Ts_disSup,:R_dis,:C,:scr]),:val => ( x -> sum(x) / 1000) => :value)
+			# artificially add scenario dimensions, if none exist
+			if !(:scr in namesSym(dem_df))
+				dem_df[!,:scr] = map(x -> anyM.supTs.scr[x], dem_df[!,:Ts_disSup])
+				dem_df = flatten(dem_df,:scr)
+			end
+
+			# scale demand according to length of dispatch timesteps
+			dem_df[!,:val] = dem_df[!,:val]	.*  getResize(dem_df,anyM.sets[:Ts],anyM.supTs) .* anyM.options.redStep
+
+			# add relevant dispatch regions for each carrier
+			allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R],1),:idx)
+			allLvlR_arr = unique(dem_df[!,:lvlR])
+			r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl < x[2] ? getDescendants(x[1], anyM.sets[:R],false,x[2]) : getAncestors(x[1],anyM.sets[:R],:int,x[2])[end]) for x in Iterators.product(allR_arr,allLvlR_arr))
+			if :R_dis in namesSym(dem_df)
+				dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis,x.lvlR],eachrow(dem_df[!,[:R_dis,:lvlR]]))
+			else
+				dem_df[!,:R_dis] .= 0
+			end
+
+			# aggregate demand values
+			dem_df = combine(groupby(dem_df,[:Ts_disSup,:Ts_frs,:R_dis,:C,:scr]),:val => ( x -> sum(x) / 1000) => :value)
+
+			# add expected demand
+			if !isempty(anyM.scr.scr) append!(dem_df,computeExpDis(dem_df,scrProb_df)) end
+			
+			# add missing columns
 			dem_df[!,:Te] .= 0
 			dem_df[!,:id] .= 0
 			dem_df[!,:variable] .= :demand
+
+			# correct sign and add to all data
 			if wrtSgn dem_df[!,:value] = dem_df[!,:value] .* -1 end
 			append!(allData_df,flatten(dem_df,:R_dis))
 		end
@@ -133,7 +178,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 	# ! get expansion and capacity variables
 	for t in techSym_arr
 		part = anyM.parts.tech[t]
-		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], id = Int[], scr = Int[], variable = Symbol[], value = Float64[])
+		tech_df = DataFrame(Ts_disSup = Int[], Ts_frs = Int[], R_dis = Int[], Te = Int[], C = Int[], id = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
 		# get installed capacity values
 		for va in intersect(keys(part.var),(:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :insCapaConv, :insCapaStIn, :insCapaStOut, :insCapaStSize, :mustCapaConv, :mustCapaStOut))
@@ -153,6 +198,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 			# aggregate values and add to tech data frame
 			capa_df = combine(groupby(capa_df,[:Ts_disSup,:R_dis,:id,:Te]),:var => ( x -> value.(sum(x))) => :value)
 			capa_df[!,:variable] .= va
+			capa_df[!,:Ts_frs] .= 0
 			capa_df[!,:scr] .= 0
 			capa_df[!,:C] .= 0
 			append!(tech_df,capa_df)
@@ -164,6 +210,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 
 	# ! get dispatch variables
 	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :crt, :lss, :trdBuy, :trdSell, :emissionInf)
+
 		# get all variables, group them and get respective values
 		allVar_df = getAllVariables(va,anyM)
 		if isempty(allVar_df) continue end
@@ -173,9 +220,17 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 			allVar_df[!,:Ts_disSup] = map(x -> getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end],allVar_df[!,:Ts_dis])
 		end
 
-		disp_df = combine(groupby(allVar_df,intersect(intCol(allVar_df),[:Ts_disSup,:R_dis,:C,:Te,:scr])),:var => (x -> value(sum(x))) => :value)
-		# scales values to twh (except for emissions)
+		# adds reduced foresight period
+		allVar_df[!,:Ts_frs] = getTsFrs(allVar_df[!,:Ts_dis],anyM.sets[:Ts],anyM.options.lvlFrs,:dis)
+		
+		# aggregates dispatch variables and scales them (except for emissions)
+		disp_df = combine(groupby(allVar_df,intersect(intCol(allVar_df),[:Ts_disSup,:Ts_frs,:R_dis,:C,:Te,:scr])),:var => (x -> value(sum(x))) => :value)
 		if !(va in (:emission,:emissionInf)) disp_df[!,:value] = disp_df[!,:value]  ./ 1000 end
+		
+		# add expected values
+		if !isempty(anyM.scr.scr) append!(disp_df,computeExpDis(disp_df,scrProb_df)) end
+
+		# add variable column
 		disp_df[!,:variable] .= va
 
 		# add empty values for non-existing columns
@@ -195,19 +250,24 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 
 	# ! get exchange variables aggregated by import and export
 	allExc_df = getAllVariables(:exc,anyM)
-
+	
 	if !isempty(allExc_df)
+
+		# adds reduced foresight period
+		allExc_df[!,:Ts_frs] = getTsFrs(allExc_df[!,:Ts_dis],anyM.sets[:Ts],anyM.options.lvlFrs,:dis)
 
 		allExc_arr = unique(allExc_df[!,:Exc])
 		
 		# compute export and import of each region, losses are considered at import
-	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:R_from,:C,:scr]),:var => (x -> value(sum(x))/1000) => :value),:R_from => :R_dis)
-	    excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
+	    excFrom_df = rename(combine(groupby(allExc_df,[:Ts_disSup,:Ts_frs,:R_from,:C,:scr]),:var => (x -> value(sum(x))/1000) => :value),:R_from => :R_dis)
+	    if !isempty(anyM.scr.scr) append!(excFrom_df,computeExpDis(excFrom_df,scrProb_df)) end # add expected value
+		excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
 		if wrtSgn excFrom_df[!,:value] = excFrom_df[!,:value] .* -1 end
 
 		# add losses to all exchange variables
 		lossExc_df = vcat(map(x -> addLossesExc(filter(y -> y.Exc == x,allExc_df),anyM.parts.exc[sysSym(x,anyM.sets[:Exc])],anyM.sets), allExc_arr)...)
-		excTo_df = rename(combine(groupby(lossExc_df,[:Ts_disSup,:R_to,:C,:scr]),:var => (x -> value(sum(x))/1000) => :value),:R_to => :R_dis)
+		excTo_df = rename(combine(groupby(lossExc_df,[:Ts_disSup,:Ts_frs,:R_to,:C,:scr]),:var => (x -> value(sum(x))/1000) => :value),:R_to => :R_dis)
+		if !isempty(anyM.scr.scr) append!(excTo_df,computeExpDis(excTo_df,scrProb_df)) end # add expected value
 	    excTo_df[!,:variable] .= :import; excTo_df[!,:Te] .= 0
 
 		excFrom_df[!,:id] .= 0
@@ -222,10 +282,8 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 
 		for flhCapa in collect(keys(flh_dic))
 			# get capacities relevant for full load hours
-			capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
-			capaFlh_df[!,:scr] = map(x -> anyM.scr.scr, 1:size(capaFlh_df,1))
-			capaFlh_df = flatten(capaFlh_df,:scr)
-			
+			capaFlh_df = filter(x -> x.variable == flhCapa, select(allData_df,Not([:Ts_frs,:scr])))
+
 			# get dispatch quantities relevant for full load hours
 			if flhCapa == :capaConv
 				var_arr = [:use,:gen,:stIntIn,:stIntOut]
@@ -235,7 +293,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 				var_arr = [:stIntOut,:stExtOut]
 			end
 			
-			relDisp_df = filter(x -> x.variable in var_arr,allData_df)
+			relDisp_df = filter(x -> x.variable in var_arr && x.Ts_frs == 0 && x.scr == 0,allData_df)
 			if isempty(relDisp_df) continue end
 			if flhCapa == :capaConv
 				rename_dic = Dict(:use => :in, :gen => :out, :stIntIn => :out, :stIntOut => :in)
@@ -245,19 +303,22 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 			end
 
 			# group dispatch quantities and match with capacity data
-			aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr,:variable]), :value => (x -> sum(abs.(x))) => :value),:variable => :variable2, :value => :value2)
+			aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:variable]), :value => (x -> sum(abs.(x))) => :value),:variable => :variable2, :value => :value2)
 			
 			if flhCapa == :capaConv
 				# match with input quantities where they are defined, otherwise check of output quantities
-				convIn_df = innerjoin(capaFlh_df,filter(x -> x.variable2 == :in,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
-				contOut_df = innerjoin(antijoin(capaFlh_df,convIn_df,on = [:Ts_disSup,:R_dis,:Te,:scr]),filter(x -> x.variable2 == :out,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te,:scr])
+				convIn_df = innerjoin(capaFlh_df,filter(x -> x.variable2 == :in,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te])
+				contOut_df = innerjoin(antijoin(capaFlh_df,convIn_df,on = [:Ts_disSup,:R_dis,:Te]),filter(x -> x.variable2 == :out,aggDisp_df),on = [:Ts_disSup,:R_dis,:Te])
 				capaFlh_df = vcat(convIn_df,contOut_df)
 			else
-				capaFlh_df = innerjoin(capaFlh_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
+				capaFlh_df = innerjoin(capaFlh_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te])	
 			end
 
 			capaFlh_df[!,:value] = capaFlh_df[!,:value2] ./ capaFlh_df[!,:value] .* 1000
 			capaFlh_df[!,:variable] .= flh_dic[flhCapa]
+
+			# add missing columns
+			foreach(x -> capaFlh_df[!,x] .= 0, (:Ts_frs,:scr))
 
 			append!(allData_df,select(capaFlh_df,Not([:variable2,:value2])))
 		end
@@ -268,9 +329,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 		cyc_dic = Dict(:capaStIn => :cycStIn, :capaStOut => :cycStOut)
 
 		for cycCapa in collect(keys(cyc_dic))
-			capaCyc_df = filter(x -> x.variable == :capaStSize, allData_df)
-			capaCyc_df[!,:scr] = map(x -> anyM.scr.scr, 1:size(capaCyc_df,1))
-			capaCyc_df = flatten(capaCyc_df,:scr)
+			capaCyc_df = filter(x -> x.variable == :capaStSize, select(allData_df,Not([:Ts_frs,:scr])))
 			
 			# get dispatch quantities relevant for cycling
 			if cycCapa  == :capaStIn
@@ -282,28 +341,30 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 			relDisp_df = filter(x -> x.variable in var_arr,allData_df)
 			if isempty(relDisp_df) continue end
 			# group dispatch quantities and match with capacity data
-			aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te,:scr]), :value => (x -> sum(abs.(x))) => :value), :value => :value2)
+			aggDisp_df = rename(combine(groupby(relDisp_df,[:Ts_disSup,:R_dis,:Te]), :value => (x -> sum(abs.(x))) => :value), :value => :value2)
 
-			capaCyc_df = innerjoin(capaCyc_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te,:scr])	
+			capaCyc_df = innerjoin(capaCyc_df,aggDisp_df,on = [:Ts_disSup,:R_dis,:Te])	
 			
 			# get relevant dispatch variables for respective group
 			capaCyc_df[!,:value] = capaCyc_df[!,:value2] ./ capaCyc_df[!,:value] .* 1000
 			capaCyc_df[!,:variable] .= cyc_dic[cycCapa]
+
+			# add missing columns
+			foreach(x -> capaCyc_df[!,x] .= 0, (:Ts_frs,:scr))
 
 			append!(allData_df,select(capaCyc_df,Not([:value2])))
 		end
 	end
 
 	# ! comptue conversion efficiencies
-
 	if :effConv in addRep || :capaConvOut in addRep
-
+		
 		# get sum of input and output plus carrier-specific output
-		in_df =  filter(x -> x.variable in (:use,:stIntIn), allData_df) |> (w -> combine(groupby(w,filter(u -> !(u in (:C,:scr)), intCol(w))),:value => (x -> abs(sum(x))) => :in))
-		out_df = filter(x -> x.variable in (:gen,:stOutIn), allData_df) |> (w -> combine(groupby(w,filter(u -> u != :scr, intCol(w))),:value => (x -> abs(sum(x))) => :out))
+		in_df =  filter(x -> x.variable in (:use,:stIntIn), select(filter(x -> x.scr == 0 && x.Ts_frs == 0,allData_df),Not([:Ts_frs,:scr]))) |> (w -> combine(groupby(w,filter(u -> u != :C, intCol(w))),:value => (x -> abs(sum(x))) => :in))
+		out_df = filter(x -> x.variable in (:gen,:stOutIn), select(filter(x -> x.scr == 0 && x.Ts_frs == 0,allData_df),Not([:Ts_frs,:scr]))) |> (w -> combine(groupby(w,intCol(w)),:value => (x -> abs(sum(x))) => :out))
 		
 		# get capacity and add carriers variables
-		outCapa_df = select(rename(filter(x -> x.variable == :capaConv, allData_df),:value => :capa),Not([:variable,:C,:scr]))
+		outCapa_df = select(rename(filter(x -> x.variable == :capaConv, allData_df),:value => :capa),Not([:variable,:Ts_frs,:C,:scr]))
 		outCapa_df[!,:C] = map(x -> collect(anyM.parts.tech[sysSym(x,anyM.sets[:Te])].carrier.gen), outCapa_df[!,:Te]) # extend in with carrier column
 		outCapa_df = flatten(outCapa_df,:C)
 		
@@ -327,7 +388,10 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 		# compute efficiencies
 		outCapa_df[!,:eff] = map(x -> x.in == 0.0 ? 1.0 : x.out/x.in,eachrow(outCapa_df))
 		select!(outCapa_df,Not([:out,:in]))
+		
+		# add missing columns
 		outCapa_df[!,:scr] .= 0.0
+		outCapa_df[!,:Ts_frs] .= 0.0
 
 		# add output capacities to output
 		if :capaConvOut in addRep
@@ -338,15 +402,17 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 
 		# add efficiencies to output
 		if :effConv in addRep
-			eff_df[!,:variable] .= :effConv
-			append!(allData_df,rename(eff_df,:eff => :value))
+			outCapa_df[!,:variable] .= :effConv
+			append!(allData_df,rename(select(outCapa_df,Not([:capa])),:eff => :value))
 		end
 
 	end
 
-	# removes scenario column if only one scenario is defined
-	if length(unique(allData_df[!,:scr])) == 1
-		select!(allData_df,Not(:scr))
+	# removes scenario or foresight timestep column if not needed
+	for y in [:scr,:Ts_frs]
+		if length(unique(allData_df[!,y])) == 1
+			select!(allData_df,Not(y))
+		end
 	end
 
 	# add column with name for model object/scenario
@@ -372,7 +438,7 @@ end
 # ! results for costs
 function reportResults(objGrp::Val{:cost},anyM::anyModel; addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	# prepare empty dataframe
-	allData_df = DataFrame(Ts_disSup = Int[], R_tech = Int[], R_from = Int[], R_to = Int[], Te = Int[], Exc = Int[], C = Int[], scr = Int[], variable = Symbol[], value = Float64[])
+	allData_df = DataFrame(Ts_disSup = Int[], R_tech = Int[], R_from = Int[], R_to = Int[], Te = Int[], Exc = Int[], C = Int[], variable = Symbol[], value = Float64[])
 
 	# loops over all objective variables with keyword "cost" in it
 	for cst in keys(anyM.parts.cost.var)
@@ -382,7 +448,7 @@ function reportResults(objGrp::Val{:cost},anyM::anyModel; addObjName::Bool=true,
 			rename!(cost_df,(:R_dis in namesSym(cost_df) ? :R_dis : :R_exp) => :R_tech)
 		end
 		# add empty column for non-existing dimensions
-		for dim in (:Te,:Exc,:C,:R_tech,:R_from,:R_to,:scr)
+		for dim in (:Te,:Exc,:C,:R_tech,:R_from,:R_to)
 			if !(dim in namesSym(cost_df))
 				cost_df[:,dim] .= 0
 			end
@@ -392,11 +458,6 @@ function reportResults(objGrp::Val{:cost},anyM::anyModel; addObjName::Bool=true,
 		cost_df[:,:value] = value.(cost_df[:,:var])
         if :Ts_exp in namesSym(cost_df) cost_df = rename(cost_df,:Ts_exp => :Ts_disSup) end
 		append!(allData_df,select(cost_df,Not([:var])))
-	end
-
-	# removes scenario column if only one scenario is defined
-	if length(unique(allData_df[!,:scr])) == 1
-		select!(allData_df,Not(:scr))
 	end
 
 	# add column with name for model object/scenario
@@ -421,7 +482,8 @@ end
 
 # ! results for exchange
 function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
-	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
+	
+	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], Ts_frs = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc) error("No exchange data found") end
 
     # ! expansion variables
@@ -435,7 +497,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=t
 		exp_df[!,:dir] = map(x -> dirExc_dir[x],exp_df[!,:Exc])
 		exp_df = combine(groupby(exp_df,[:Ts_disSup,:R_from,:R_to,:Exc,:dir]), :var => (x -> value.(sum(x))) => :value)
 		exp_df[!,:variable] .= :expExc
-		foreach(x -> exp_df[!,x] .= 0,[:Ts_expSup,:C,:scr])
+		foreach(x -> exp_df[!,x] .= 0,[:Ts_expSup,:Ts_frs,:C,:scr])
 		append!(allData_df,exp_df)
 	end
 
@@ -445,7 +507,7 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=t
 		if !isempty(capa_df)
 			capa_df[!,:value] = value.(capa_df[!,:var])
 			capa_df[!,:variable] .= Symbol(capa,:Exc)
-			foreach(x -> capa_df[!,x] .= 0,[:C,:scr])
+			foreach(x -> capa_df[!,x] .= 0,[:Ts_frs,:C,:scr])
 			append!(allData_df,select(capa_df,Not([:var])))
 		end
 	end
@@ -454,7 +516,21 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=t
 
 	# ! dispatch variables
 	disp_df = getAllVariables(:exc,anyM)
-	disp_df = combine(groupby(disp_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:C,:Exc,:scr]), :var => (x -> value.(sum(x)) ./ 1000) => :value)
+	
+	# adds reduced foresight period
+	disp_df[!,:Ts_frs] = getTsFrs(disp_df[!,:Ts_dis],anyM.sets[:Ts],anyM.options.lvlFrs,:dis)
+
+	# aggregates dispatch variables and add expected exchange
+	disp_df = combine(groupby(disp_df,[:Ts_expSup,:Ts_disSup,:Ts_frs,:R_from,:R_to,:C,:Exc,:scr]), :var => (x -> value.(sum(x)) ./ 1000) => :value)
+
+	# get scenario probabilities
+	if !isempty(anyM.scr.scr)
+		scrProb_df = copy(anyM.parts.obj.par[:scrProb].data)
+		rename!(scrProb_df,:val => :value,:Ts_dis => anyM.options.lvlFrs != 0 ? :Ts_frs : :Ts_disSup)
+		append!(disp_df,computeExpDis(disp_df,scrProb_df)) 
+	end
+
+	# add columns and write to overall dataframe	
 	disp_df[!,:variable] .= :exc
 	disp_df[!,:dir] .= 0
 	filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),disp_df)
@@ -463,23 +539,25 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=t
 	# ! get full load hours
 
 	# obtain relevant dispatch and capacity values
-	aggDispC_df =  combine(groupby(disp_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc,:scr]), :value => (x -> sum(x)) => :from_to)
+	aggDispC_df =  combine(groupby(disp_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc]), :value => (x -> sum(x)) => :from_to)
 	capa_df = filter(x -> x.variable == :capaExc, select(allData_df,Not([:C,:scr])))
 
 	# joins energy exchanged in both direction to each capcity
 	flh_df = joinMissing(capa_df,aggDispC_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc],:left,Dict(:scr => 0,:from_to => 0.0))
-	flh_df = joinMissing(flh_df,rename(switchExcCol(aggDispC_df),:from_to => :to_from),[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc,:scr],:left,Dict(:to_from => 0.0))
+	flh_df = joinMissing(flh_df,rename(switchExcCol(aggDispC_df),:from_to => :to_from),[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc],:left,Dict(:to_from => 0.0))
 
 	# computs full load hours, considers energy exchanged in one or both directions depending on line type (directed or un-directed)
 	flh_df[!,:value] = map(x ->  (x.dir == 0 ? (x.from_to + x.to_from) : x.from_to) / x.value * 1000 ,eachrow(flh_df))
 	flh_df[!,:variable] .= :flhExc
-	flh_df[!,:C] .= 0
+	foreach(x -> flh_df[!,x] .= 0,[:C,:scr])
 
 	append!(allData_df,select(flh_df,Not([:from_to,:to_from])))
 
-	# removes scenario column if only one scenario is defined
-	if length(unique(allData_df[!,:scr])) == 1
-		select!(allData_df,Not(:scr))
+	# removes scenario or foresight timestep column if not needed
+	for y in [:scr,:Ts_frs]
+		if length(unique(allData_df[!,y])) == 1
+			select!(allData_df,Not(y))
+		end
 	end
 
 	# add column with name for model object/scenario
@@ -528,6 +606,7 @@ function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, 
 
     # ! prepare all summary output files
     allVar_df = DataFrame(timestep = String[], region = String[], region_from = String[], region_to = String[], variable = String[], value = Float64[])
+	strTypes_arr = [String, String1, String3, String7, String15, String31, String63, String127, String255]
     
     repData_dic = Dict{String,DataFrame}()
     for repFile in relFile_arr
@@ -562,8 +641,14 @@ function computeResults(ymlFile::String;model::Union{anyModel,Nothing}=nothing, 
         end
         
         # write variable names as string for correct string comparision below
+		for col in namesSym(repData_df)
+			if !any(eltype(repData_df[!,col]) .>: strTypes_arr) && col != :value
+				repData_df[!,col] = string.(repData_df[!,col])
+			end
+		end	
         repData_df[!,:variable] = string.(repData_df[!,:variable])
         repData_dic[string(repFile)] = combine(groupby(repData_df,filter(x -> x != "value",names(repData_df))),:value => (x -> sum(x)) => :value)
+
     end
 
     # ! loop over reporting variables that have to be created
@@ -757,10 +842,15 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		append!(allData_dic[:in],select(lss_df,Not(:C)))
 	end
 
+	# ! write foresight period
+	if anyM.options.lvlFrs != 0
+		foreach(x -> allData_dic[x][!,:Ts_frs] = getTsFrs(allData_dic[x][!,:Ts_dis],anyM.sets[:Ts],anyM.options.lvlFrs,:dis),(:in,:out))
+	end
+	
 	# ! unstack data and write to csv
 	if mergeVar
 		# merges in and out files and writes to same csv file
-		data_df = vcat(values(allData_dic)...)
+		data_df = orderDf(vcat(values(allData_dic)...))
 
 		if unstck && !isempty(data_df)
 			data_df[!,:variable] = CategoricalArray(string.(data_df[!,:variable]))
@@ -783,7 +873,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 	else
 		# loops over different signs and writes to different csv files
 		for signItr in signVar
-			data_df = allData_dic[signItr]
+			data_df = orderDf(allData_dic[signItr])
 			if unstck && !isempty(data_df)
 				data_df[!,:variable] = CategoricalArray(string.(data_df[!,:variable]))
 				data_df = unstack(data_df,:variable,:value)
@@ -793,6 +883,7 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 			if length(unique(data_df[!,:scr])) == 1
 				select!(data_df,Not(:scr))
 			end
+
 
 			if :csv in rtnOpt || :csvDf in rtnOpt
 				csvData_df = printObject(data_df,anyM, fileName = string("timeSeries_",car_sym,"_",signItr), rtnDf = rtnOpt)
@@ -1169,14 +1260,15 @@ Plots the Sankey diagram for energy flows in a model.
 
 """
 # ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false, wrtVal::Bool = true, digVal::Int = 1, sgnVal::String = ";")
+function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region,:timestep,:scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false, wrtVal::Bool = true, digVal::Int = 1, sgnVal::String = ";", frsScr::Dict = Dict(), formatScr::Tuple = (6,false))
 
     flowGrap_obj = anyM.graInfo.graph
+	sets_dic = deepcopy(anyM.sets)
 
     #region # * initialize data
 
     if !isempty(setdiff(dropDown,[:region,:timestep,:scenario]))
-    error("dropDown only accepts array :region and :timestep as content")
+    	error("dropDown only accepts array :region and :timestep as content")
     end
 
 	# get mappings to create buttons of dropdown menue
@@ -1189,7 +1281,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		filter!(x -> x.variable in (:demand,:gen,:use,:stIn,:stOut,:trdBuy,:trdSell,:demand,:import,:export,:lss,:crt),data_df)
 
 		# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
-		c_dic, r_dic = [anyM.sets[x].nodes for x in [:C,:R]]
+		c_dic, r_dic = [sets_dic[x].nodes for x in [:C,:R]]
 		if :scr in namesSym(data_df)
 			data_df[!,:value] = map(x -> x.value - (x.variable == :demand ? sum(filter(y -> y.scr == x.scr && y.variable == :demand && y.Ts_disSup == x.Ts_disSup && y.R_dis in vcat([x.R_dis],r_dic[x.R_dis].down) && y.C in c_dic[x.C].down,data_df)[!,:value]) : 0.0), eachrow(data_df))
 		else
@@ -1199,17 +1291,103 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		data_df = CSV.read(dataIn,DataFrame)
 		filter!(x -> x.variable in ("demand","gen","use","stIn","stOut","trdBuy","trdSell","demand","import","export","lss","crt"),data_df)
 		if "objName" in names(data_df) select!(data_df,Not([:objName])) end
-		data_df[!,:timestep_superordinate_dispatch] = map(x -> lookupString(x,anyM.sets[:Ts]),data_df[!,:timestep_superordinate_dispatch])
-		data_df[!,:region_dispatch] = map(x -> lookupString(x,anyM.sets[:R]),data_df[!,:region_dispatch])
-		data_df[!,:technology] = map(x -> lookupString(x,anyM.sets[:Te]),data_df[!,:technology])
-		data_df[!,:carrier] = map(x -> lookupString(x,anyM.sets[:C]),data_df[!,:carrier])
-		data_df[!,:id] = map(x -> lookupString(x,anyM.sets[:id]),data_df[!,:id])
+		data_df[!,:timestep_superordinate_dispatch] = map(x -> lookupString(x,sets_dic[:Ts]),data_df[!,:timestep_superordinate_dispatch])
+		data_df[!,:region_dispatch] = map(x -> lookupString(x,sets_dic[:R]),data_df[!,:region_dispatch])
+		data_df[!,:technology] = map(x -> lookupString(x,sets_dic[:Te]),data_df[!,:technology])
+		data_df[!,:carrier] = map(x -> lookupString(x,sets_dic[:C]),data_df[!,:carrier])
+		data_df[!,:id] = map(x -> lookupString(x,sets_dic[:id]),data_df[!,:id])
 		data_df[!,:variable] = Symbol.(data_df[!,:variable]) 
 		rename!(data_df,[:timestep_superordinate_dispatch => :Ts_disSup,:region_dispatch => :R_dis,:technology => :Te,:carrier => :C])
 	end
 
+	# save underlying data to file
 	if savaData 
 		printObject(data_df,anyM, wrtGap = true, fileName = "sankeyData$(name == "" ? "" : "_" * name)")
+	end
+
+	# ! edit data for scenario results
+	if !isempty(anyM.scr.scr)
+		
+		# computes values for specific scenario combinations provided via frsScr
+		if anyM.options.lvlFrs != 0
+			oldScr_int = length(sets_dic[:scr].nodes)-1
+
+			# loop over superordinate timesteps
+			for supTs in anyM.supTs.step
+				# get foresight periods of superordinate timestep
+				frsTs_arr = getDescendants(supTs,sets_dic[:Ts],true, anyM.options.lvlFrs)
+				
+				for x in keys(frsScr)
+					
+					# get relevant foresight timestep and scenario combination
+					scrCombTup_boo = typeof(frsScr[x]) <: Tuple # boo is later used to avoid double error reporting if scenario combinations are not year specific
+					
+					if scrCombTup_boo
+						scrStr_arr = frsScr[x]
+					elseif sets_dic[:Ts].nodes[supTs].val in keys(frsScr[x])
+						scrStr_arr = frsScr[x][sets_dic[:Ts].nodes[supTs].val]
+					else
+						continue
+					end
+
+					# check if all scenario names exist
+					allScrName_arr = getfield.(values(sets_dic[:scr].nodes),:val)
+					if any(map(x -> !(x in allScrName_arr),scrStr_arr))
+						noName_int = findall(map(x -> !(x in allScrName_arr),scrStr_arr))[1]
+						if !scrCombTup_boo || supTs == anyM.supTs.step[1]
+							@warn "the scenario name '" * scrStr_arr[noName_int] * "' for foresight period '" * sets_dic[:Ts].nodes[frsTs_arr[noName_int]].val * "' does not exist, no sankey created for combination of foresight periods '" * x * "'"
+						end
+						continue
+					end
+					
+					relScr_arr = map(x -> lookupString(x,sets_dic[:scr]),scrStr_arr) 
+					relFrsScr_arr = collect(zip(frsTs_arr,relScr_arr))
+
+					# reports on wrong numbers of specified scenarios
+					if length(frsTs_arr) != length(relScr_arr)
+						if !scrCombTup_boo || supTs == anyM.supTs.step[1]
+							@warn "the number of scenarios does not match the number of foresight periods for '" * x * "', no sankey created"
+						end
+						continue
+					end
+
+					# reports on scenario with zero probability
+					if any(map(x -> !(x in keys(anyM.scr.scrProb)),relFrsScr_arr)) && (!scrCombTup_boo || supTs == anyM.supTs.step[1])
+						zeroPer_int = findall(map(x -> !(x in keys(anyM.scr.scrProb)),relFrsScr_arr))[1]
+						if !scrCombTup_boo || supTs == anyM.supTs.step[1]
+							@warn "the probability of scenario '" * scrStr_arr[zeroPer_int] * "' for foresight period '" * sets_dic[:Ts].nodes[frsTs_arr[zeroPer_int]].val * "' is zero, no sankey created for combination of foresight periods '" * x * "'"
+						end
+						continue
+					end
+
+					# add entry for aggregated scenario to tree
+					numScr_int = length(sets_dic[:scr].nodes)
+					scrProb_arr = map(x -> anyM.scr.scrProb[(x[1],x[2])],relFrsScr_arr)
+
+					scrProb_fl = prod(scrProb_arr)
+					scr_str = string(x,", ",round(scrProb_fl * (formatScr[2] ? 1000 : 100), digits = formatScr[1]),formatScr[2] ? "‰" : "%")
+					sets_dic[:scr].nodes[numScr_int] = Node(numScr_int,scr_str,1,numScr_int,Int64[])
+
+					# filter relvant data for aggregated scenario
+					aggScr_df = filter(x -> (x.Ts_frs,x.scr) in relFrsScr_arr,data_df)
+					# correct expected value and write new scenario number
+					aggScr_df[!,:value] = map(x -> x.value,eachrow(aggScr_df))
+					aggScr_df[!,:scr] .= numScr_int
+					append!(data_df,aggScr_df)
+				end
+			end
+			# remove non-relevant data
+			filter!(x -> x.scr == 0 || x.scr > oldScr_int, data_df)
+			select!(data_df,Not([:Ts_frs]))
+		end
+
+		# removes everything except expected values if there is no scenario dropdown
+		if !(:scenario in dropDown) 
+			@warn "Dropdown does not include scenarios. Sankey only shows expected values as a result."
+			filter!(x -> x.scr == 0,data_df)
+		end
+	else
+		dropDown = tuple(filter(x -> x != :scenario, collect(dropDown))...)
 	end
 	
 	# converts export and import quantities into net values
@@ -1229,16 +1407,8 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
     filter!(x -> abs(x.value) > minVal, data_df)
     filter!(filterFunc, data_df)
 
-	# create dictionaries for nodes that are neither technology nor carrier
-	oth_df = unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])
-	if netExc && !(:region in dropDown)
-		oth_df[!,:variable] =  map(x -> x == :netExport ? :exchangeLoss : x, oth_df[!,:variable])
-	end	
-    othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(oth_df))))
-	othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
-
 	#endregion
-
+	
 	#region # * filter flows according to provided yaml file
 
 	if !isempty(ymlFilter)
@@ -1250,15 +1420,15 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		nonAggTe_arr, nonAggCe_arr = map(z -> map(y -> y["name"],filter(x -> x["type"] == z, nonAgg_arr)),["technology","carrier"])
 		# filters relevant technologies and carriers
 		te_arr = map(vcat(aggTe_arr...,nonAggTe_arr...)) do y
-			if y in getfield.(collect(values(anyM.sets[:Te].nodes)),:val)
-				return sysInt(Symbol(y),anyM.sets[:Te])
+			if y in getfield.(collect(values(sets_dic[:Te].nodes)),:val)
+				return sysInt(Symbol(y),sets_dic[:Te])
 			else 
 				error("technology " * y * " not defined!")
 			end
 		end
 		c_arr = map(vcat(aggCe_arr...,nonAggCe_arr...)) do y
-			if y in getfield.(collect(values(anyM.sets[:C].nodes)),:val)
-				return sysInt(Symbol(y),anyM.sets[:C])
+			if y in getfield.(collect(values(sets_dic[:C].nodes)),:val)
+				return sysInt(Symbol(y),sets_dic[:C])
 			else 
 				error("technology " * y * " not defined!")
 			end
@@ -1267,7 +1437,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		filter!(x -> x.C in c_arr && (x.Te == 0 || x.Te in te_arr),data_df)
 		# perform aggregation
 		for u in (:Te,:C)
-			agg_dic = Dict(vcat(map(x -> map(y -> sysInt(Symbol(y),anyM.sets[u]) => sysInt(Symbol(x["name"]),anyM.sets[u]), vcat(x["name"],x["aggregating"]...)), filter(x -> x["type"] == (u == :Te ? "technology" : "carrier"), agg_arr))...))
+			agg_dic = Dict(vcat(map(x -> map(y -> sysInt(Symbol(y),sets_dic[u]) => sysInt(Symbol(x["name"]),sets_dic[u]), vcat(x["name"],x["aggregating"]...)), filter(x -> x["type"] == (u == :Te ? "technology" : "carrier"), agg_arr))...))
 			data_df[!,u] = map(x -> x in keys(agg_dic) ? agg_dic[x] : x,data_df[!,u]) 
 			data_df = combine(groupby(data_df,intCol(data_df,:variable)), :value => (x -> sum(x)) => :value)
 		end
@@ -1276,6 +1446,14 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	#endregion
 	
 	#region # * prepare labels and colors
+
+	# create dictionaries for nodes that are neither technology nor carrier
+	oth_df = unique(filter(x -> x.Te == 0,data_df)[!,[:variable,:C]])
+	if netExc && !(:region in dropDown)
+		oth_df[!,:variable] =  map(x -> x == :netExport ? :exchangeLoss : x, oth_df[!,:variable])
+	end	
+	othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C,x[2].variable) => x[1] + z for x in enumerate(eachrow(oth_df))))
+	othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z,2),getindex.(z,1))))
 
     # prepare name and color assignment
     names_dic = isempty(ymlFilter) ? anyM.graInfo.names : Dict(x["name"] => x["label"] for x in collect(graph_dic["vertices"])) |> (z -> merge(z,filter(x -> !(x[1] in keys(z)),anyM.graInfo.names)))
@@ -1289,19 +1467,19 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	end
 
     sortTe_arr = getindex.(sort(collect(flowGrap_obj.nodeTe),by = x -> x[2]),1)
-    cColor_dic = Dict(x => anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85,0.85,0.85)) for x in sort(collect(keys(flowGrap_obj.nodeC))))
+    cColor_dic = Dict(x => sets_dic[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85,0.85,0.85)) for x in sort(collect(keys(flowGrap_obj.nodeC))))
 
     # create array of node labels
-    cLabel_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z),sort(collect(keys(flowGrap_obj.nodeC))))
-    teLabel_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z),sortTe_arr)
+    cLabel_arr = map(x -> sets_dic[:C].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z),sort(collect(keys(flowGrap_obj.nodeC))))
+    teLabel_arr = map(x -> sets_dic[:Te].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z),sortTe_arr)
     othLabel_arr = map(x -> names_dic[String(othNodeId_dic[x][2])],sort(collect(keys(othNodeId_dic))))
     nodeLabelAll_arr = vcat(cLabel_arr, teLabel_arr, othLabel_arr)
     revNodelLabel_arr = map(x -> revName_dic[x],nodeLabelAll_arr)
 
     # create array of node colors
     cColor_arr = map(x -> cColor_dic[x],sort(collect(keys(flowGrap_obj.nodeC))))
-    teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(col_dic) && useTeColor ? col_dic[z] : (0.85,0.85,0.85)),sortTe_arr)
-    othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85,0.85,0.85)),sort(collect(keys(othNodeId_dic))))
+    teColor_arr = map(x -> sets_dic[:Te].nodes[x].val |> (z -> z in keys(col_dic) && useTeColor ? col_dic[z] : (0.85,0.85,0.85)),sortTe_arr)
+    othColor_arr = map(x -> sets_dic[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85,0.85,0.85)),sort(collect(keys(othNodeId_dic))))
     nodeColor_arr = vcat(map(x -> replace.(string.("rgb",string.(map(z -> z .* 255.0,x)))," " => ""),[cColor_arr, teColor_arr, othColor_arr])...)
 	dropData_arr = PlotlyBase.PlotlyAttribute{Dict{Symbol, Any}}[]
 
@@ -1316,16 +1494,16 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		nodeLabel_arr = copy(nodeLabelAll_arr)
 	
 		dropData_df = copy(data_df)
-		if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,anyM.sets[:R],true)...] end
+		if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis,sets_dic[:R],true)...] end
 		for d in dropDown
-			filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
+			filter!(x -> d == :region ? x.R_dis in subR_arr : (d == :timestep ? x.Ts_disSup == drop.Ts_disSup : x.scr == drop.scr), dropData_df)
 		end
-		
+
 		if netExc
 			allExc_df = filter(x -> x.variable in (:netImport,:netExport),dropData_df)
 			if !isempty(allExc_df)
 				allExc_df[!,:value] = map(x -> x.variable == :netExport ? x.value * -1 : x.value, eachrow(allExc_df))
-				aggExc_df = combine(groupby(allExc_df,[:Ts_disSup,:Te,:C]), :value => (x -> sum(x)) => :value)
+				aggExc_df = combine(groupby(allExc_df,intersect([:Ts_disSup,:Te,:C,:scr],intCol(allExc_df))), :value => (x -> sum(x)) => :value)
 				aggExc_df[!,:variable] = map(x -> x.value > 0.0 ? :netImport : :netExport, eachrow(aggExc_df))
 				# renames net-export into losses in case regions does not appear in drop dropDown
 				if !(:region in dropDown)
@@ -1342,7 +1520,6 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	
 		# write flows reported in data summary
 		for x in eachrow(dropData_df)
-
 			a = Array{Any,1}(undef,3)
 		
 			# technology related entries
@@ -1357,7 +1534,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 				if x.Te in keys(flowGrap_obj.nodeTe) # if technology is not directly part of the graph, use its smallest parent that its
 					a[1] = flowGrap_obj.nodeTe[x.Te]
 				else
-					a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+					a[1] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,sets_dic[:Te],:int)))]
 				end
 		
 				a[2] = flowGrap_obj.nodeC[x.C]
@@ -1367,7 +1544,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 				if x.Te in keys(flowGrap_obj.nodeTe)
 					a[2] = flowGrap_obj.nodeTe[x.Te]
 				else
-					a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,anyM.sets[:Te],:int)))]
+					a[2] = flowGrap_obj.nodeTe[minimum(intersect(keys(flowGrap_obj.nodeTe),getAncestors(x.Te,sets_dic[:Te],:int)))]
 				end
 			end
 		
@@ -1378,10 +1555,10 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	
 		# create flows connecting different carriers
 		idToC_dic = Dict(map(x -> x[2] => x[1], collect(flowGrap_obj.nodeC)))
-		for x in filter(x -> anyM.sets[:C].up[x] != 0,intersect(union(getindex.(flow_arr,1),getindex.(flow_arr,2)),values(flowGrap_obj.nodeC)))
+		for x in filter(x -> sets_dic[:C].up[x] != 0,intersect(union(getindex.(flow_arr,1),getindex.(flow_arr,2)),values(flowGrap_obj.nodeC)))
 			a = Array{Any,1}(undef,3)
 			a[1] = flowGrap_obj.nodeC[x]
-			a[2] = flowGrap_obj.nodeC[anyM.sets[:C].up[x]]
+			a[2] = flowGrap_obj.nodeC[sets_dic[:C].up[x]]
 			a[3] = (getindex.(filter(y -> y[2] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z))) - (getindex.(filter(y -> y[1] == x,flow_arr),3) |> (z -> isempty(z) ? 0.0 : sum(z)))
 			push!(flow_arr,tuple(a...))
 		end
@@ -1458,7 +1635,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		fullData_arr = [attr(link = link_obj, node = attr(label = nodeLabel_arr, color = nodeColor_arr))]
 	
 		# pushes dictionary to overall array
-		label_str = string("<b>",join(map(y -> anyM.sets[Symbol(split(String(y),"_")[1])].nodes[drop[y]].val,intersect(namesSym(data_df),dropDim_arr)),", "),"</b>")
+		label_str = string("<b>",join(map(y -> sets_dic[Symbol(split(String(y),"_")[1])].nodes[drop[y]].val,intersect(namesSym(data_df),dropDim_arr)),", "),"</b>")
 		
 		push!(dropData_arr,attr(args = fullData_arr, label = label_str, method = "restyle"))
 	
@@ -1669,4 +1846,4 @@ function printIIS(anyM::anyModel,d::Int)
 end
 
 # ! checks termination status and computes and prints IIS if infeasible
-checkIIS(mod_m::anyModel) = if termination_status(mod_m.optModel) != MOI.OPTIMAL && termination_status(mod_m.optModel) != MOI.LOCALLY_SOLVED && isdefined(AnyMOD,:printIIS) printIIS(mod_m) end
+checkIIS(mod_m::anyModel) = if termination_status in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) && isdefined(AnyMOD,:printIIS) printIIS(mod_m) end

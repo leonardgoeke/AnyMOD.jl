@@ -615,6 +615,7 @@ function createScenarioMapping!(anyM::anyModel)
 			propPar_df = filter(x -> false,prop_df)
 			propPar_df[!,:val] = Float64[]
 		end
+		
 
 		# compute default values in other cases
 		propDef_df = antijoin(prop_df,propPar_df,on = [:scr,:Ts_dis])
@@ -637,6 +638,7 @@ function createScenarioMapping!(anyM::anyModel)
 
 		tsToScr_dic = Dict(y => sort(filter(x -> x.Ts_dis == y,prop_df)[!,:scr]) for y in unique(prop_df[!,:Ts_dis]))
 		tsScrToProp_dic = Dict((x.Ts_dis,x.scr) => x.val for x in eachrow(prop_df))
+		anyM.parts.obj.par[:scrProb].data = prop_df
 
 		# re-defines into a deterministic model for the most likely scenario or specified scenario
 		if !isnothing(anyM.options.forceScr)

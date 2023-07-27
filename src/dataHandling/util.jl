@@ -69,27 +69,6 @@ deSelectSys(in_df::DataFrame) = select(in_df,Not([:Te in namesSym(in_df) ? :Te :
 # ! removes entry from dictionary if it is empty 
 removeEmptyDic!(rmvDic::Dict,keySys::Symbol) = if isempty(rmvDic[keySys]) delete!(rmvDic,keySys) end
 
-# ! adds relevant scenarios based on timestep column
-function addScenarios(in_df::DataFrame,ts_tr::Tree,scr_ntup::NamedTuple)
-	if isempty(scr_ntup.scr)
-		in_df[!,:scr] .= 0
-	else
-		in_df[!,:scr] = map(x -> scr_ntup.scr[getAncestors(x,ts_tr,:int,scr_ntup.lvl)[end]], in_df[!,:Ts_dis])
-		in_df = flatten(in_df,:scr)
-	end
-	return in_df
-end
-
-getScrProb(ts_int::Int,scr_int::Int,ts_tr::Tree,scr_ntup::NamedTuple) = isempty(scr_ntup.scrProb) ? 1.0 : scr_ntup.scrProb[getAncestors(ts_int,ts_tr,:int,scr_ntup.lvl)[end],scr_int]
-
-# ! extends relevant scenarios for intersection of interdependent subperiods
-function getStScr(ts::Int,syCyc_int::Int,ts_tr::Tree,scr_ntup::NamedTuple)
-	# get previous time-step in storage balance for input time-step
-	presTs_int = getDescendants(getAncestors(ts,ts_tr,:int,syCyc_int)[end],ts_tr,false,ts_tr.nodes[ts].lvl) |> (v -> v[findall(v .== ts)[end] |> (w -> w < length(v) ? w + 1 : 1)])
-	# get relevant scenarios for current and previous time-step
-	return sort(union(map(x -> scr_ntup.scr[getAncestors(x,ts_tr,:int,scr_ntup.lvl)[end]],[ts,presTs_int])...))
-end
-
 # ! new plus function to avoid error when one element being added up is nothing
 plus(a::Int,b::Int) = a + b
 plus(a::Int,b::Nothing) = a
@@ -121,8 +100,8 @@ intCol(in_df::DataFrame,add_sym::Array) = union(intCol(in_df),intersect(namesSym
 countStGrp(carGrp_ntup::NamedTuple) = intersect((:stExtIn,:stExtOut,:stIntIn,:stIntOut),collect(keys(carGrp_ntup))) |> (z ->  isempty(z) ? 0 : maximum(map(x -> length(getfield(carGrp_ntup,x)),z)))
 
 # ! puts relevant dimensions in consistent order and adds remaining entries at the end
-orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts, :Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
-orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts, :Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_dis, :R, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1},intCol_arr::Array{Symbol,1}) = intersect([:Ts, :Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_frs, :Ts_dis, :R, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr,:variable,:value], intersect(inDim_arr,intCol_arr)) |> (x -> [x...,setdiff(inDim_arr,x)...])
+orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts, :Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_frs, :Ts_dis, :R, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr,:variable,:value], inDim_arr) |> (x -> [x...,setdiff(inDim_arr,x)...])
 
 # ! puts dataframes columns in consistent order
 orderDf(in_df::DataFrame) = select(in_df,orderDim(namesSym(in_df),intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))
@@ -621,5 +600,60 @@ end
 
 # ! collapse input expansion dataframe to acutal variables by timestep of expansion instead of superordinate dispatch timesteps
 collapseExp(exp_df::DataFrame) = unique(select(exp_df,Not([:Ts_expSup,:Ts_disSup])))
+
+#endregion
+
+#region # * processing for stochastic model 
+
+# ! adds relevant scenarios based on timestep column
+function addScenarios(in_df::DataFrame,ts_tr::Tree,scr_ntup::NamedTuple)
+	if isempty(scr_ntup.scr)
+		in_df[!,:scr] .= 0
+	else
+		in_df[!,:scr] = map(x -> scr_ntup.scr[getAncestors(x,ts_tr,:int,scr_ntup.lvl)[end]], in_df[!,:Ts_dis])
+		in_df = flatten(in_df,:scr)
+	end
+	return in_df
+end
+
+getScrProb(ts_int::Int,scr_int::Int,ts_tr::Tree,scr_ntup::NamedTuple) = isempty(scr_ntup.scrProb) ? 1.0 : scr_ntup.scrProb[getAncestors(ts_int,ts_tr,:int,scr_ntup.lvl)[end],scr_int]
+
+# ! extends relevant scenarios for intersection of interdependent subperiods
+function getStScr(ts::Int,syCyc_int::Int,ts_tr::Tree,scr_ntup::NamedTuple)
+	# get previous time-step in storage balance for input time-step
+	presTs_int = getDescendants(getAncestors(ts,ts_tr,:int,syCyc_int)[end],ts_tr,false,ts_tr.nodes[ts].lvl) |> (v -> v[findall(v .== ts)[end] |> (w -> w < length(v) ? w + 1 : 1)])
+	# get relevant scenarios for current and previous time-step
+	return sort(union(map(x -> scr_ntup.scr[getAncestors(x,ts_tr,:int,scr_ntup.lvl)[end]],[ts,presTs_int])...))
+end
+
+# ! adds reduced foresight timestep based on dispatch timestep
+getTsFrs(ts_arr::Array{Int64, 1},ts_tr::Tree,lvlFrs_int::Int,varType::Symbol) = getTsFrs(ts_arr::Array{Int64, 1},ts_tr::Tree,lvlFrs_int::Int,Val{varType}())
+
+function getTsFrs(ts_arr::Array{Int64, 1},ts_tr::Tree,lvlFrs_int::Int,objGrp::Val{:dis})
+	if lvlFrs_int != 0
+		frsTs_arr = map(x -> getAncestors(x,ts_tr,:int,lvlFrs_int) |> (x -> isempty(x) ? 0 : x[end]),ts_arr)
+	else
+		frsTs_arr = fill(0,length(ts_arr))
+	end
+	return frsTs_arr
+end
+
+function getTsFrs(ts_arr::Array{Int64, 1},ts_tr::Tree,lvlFrs_int::Int,objGrp::Val{:capa})
+	if lvlFrs_int != 0
+		frsTs_arr = map(x -> getDescendants(x,ts_tr,false, lvlFrs_int),ts_arr)
+	else
+		frsTs_arr = fill([0],length(ts_arr))
+	end
+	return frsTs_arr
+end
+
+# ! compute expected value for input dataframe
+function computeExpDis(in_df::DataFrame,scrProb_df::DataFrame)
+	in_df = innerjoin(in_df,rename(scrProb_df,:value => :prob),on = intCol(scrProb_df))
+	in_df[!,:value] = in_df[!,:value] .* in_df[!,:prob]
+	select!(in_df,Not([:prob]))
+	in_df = combine(x -> (scr = 0, value = sum(x.value)), groupby(in_df,filter(x -> x != :scr,intCol(in_df))))
+	return in_df
+end
 
 #endregion

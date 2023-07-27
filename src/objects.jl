@@ -476,7 +476,7 @@ The core model object containing all related data and subordinate objects.
 - `optModel::Model`: the actual [JuMP](https://github.com/JuliaOpt/JuMP.jl) object of the model's underlying optimization problem
 - `lock`: lock used for multi-threading
 - `supTs`: information and mappings for superordinate time-steps
-- `supTs`: information and mappings for scenarios
+- `scr`: information and mappings for scenarios
 - `cInfo`: information on resolution of energy carriers
 - `sets`: sets organized as [Tree](@ref) objects (see [Sets and mappings](@ref))
 - `parts::NamedTuple`: all part objects of the model (see [Parts](@ref))
