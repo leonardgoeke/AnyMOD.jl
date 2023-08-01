@@ -129,9 +129,13 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 			dem_df[!,:Ts_frs] = getTsFrs(dem_df[!,:Ts_dis],anyM.sets[:Ts],anyM.options.lvlFrs,:dis)
 			
 			# artificially add scenario dimensions, if none exist
-			if !(:scr in namesSym(dem_df))
-				dem_df[!,:scr] = map(x -> anyM.supTs.scr[x], dem_df[!,:Ts_disSup])
-				dem_df = flatten(dem_df,:scr)
+			if !(:scr in namesSym(dem_df)) 
+				if isempty(anyM.scr.scr)
+					dem_df[!,:scr] .= 0
+				else
+					dem_df[!,:scr] = map(x -> anyM.scr.scr[x], dem_df[!,:Ts_disSup])
+					dem_df = flatten(dem_df,:scr)
+				end
 			end
 
 			# scale demand according to length of dispatch timesteps
