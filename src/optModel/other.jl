@@ -53,16 +53,18 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	agg_arr = [:Ts_dis, :R_dis, :C, :scr]
 
 	#region # * create potential curtailment and loss loss load variables
-	for varType in (:crt,:lss)
-		# get defined entries
-		var_df = DataFrame()
-		for par in intersect(keys(partBal.par),vcat(varType == :crt ? :costCrt : :costLss, Symbol.(varType,[:Up,:Low,:Fix])...))
-			append!(var_df,matchSetParameter(allDim_df,partBal.par[par],anyM.sets)[!,Not(:val)])
-		end
+	if !anyM.options.createVI
+		for varType in (:crt,:lss)
+			# get defined entries
+			var_df = DataFrame()
+			for par in intersect(keys(partBal.par),vcat(varType == :crt ? :costCrt : :costLss, Symbol.(varType,[:Up,:Low,:Fix])...))
+				append!(var_df,matchSetParameter(allDim_df,partBal.par[par],anyM.sets)[!,Not(:val)])
+			end
 
-		# obtain upper bound for variables and create them
-		if !isempty(var_df)
-			partBal.var[varType] = orderDf(createVar(var_df,string(varType),getUpBound(var_df,anyM.options.bound.disp / anyM.options.scaFac.dispTrd,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispTrd))
+			# obtain upper bound for variables and create them
+			if !isempty(var_df)
+				partBal.var[varType] = orderDf(createVar(var_df,string(varType),getUpBound(var_df,anyM.options.bound.disp / anyM.options.scaFac.dispTrd,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = anyM.options.scaFac.dispTrd))
+			end
 		end
 	end
 	#endregion
@@ -96,7 +98,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	@threads for (idx,c) in itrC_arr
 
 		subC_arr = unique([c,getDescendants(c,anyM.sets[:C],true)...])
-		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[c].lvl))
+		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = anyM.options.createVI ? 0 : x.rDis, C = anyM.sets[:C].nodes[c].lvl))
 
 		# ! add and scale demand values
 		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets) # demand for carrier being balanced
@@ -182,7 +184,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
-		cns_arr[idx] = Symbol(c_str) => cnsCont(cns_df,anyM.cInfo[c].balSign == :eq ? :equal : :greater)
+		cns_arr[idx] = Symbol(c_str) => cnsCont(cns_df,anyM.cInfo[c].balSign == :eq && !anyM.options.createVI ? :equal : :greater)
 
 		produceMessage(anyM.options,anyM.report, 2," - Prepared energy balance for $(c_str)")
 	end
@@ -529,7 +531,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		end
 
 		# ! infeas variables for emissions
-		if va == :emission && :emissionInf in keys(partLim.par)
+		if va == :emission && :emissionInf in keys(partLim.par) && !anyM.options.createVI
 			# check if corresponding parameter is defined
 			infVar_df = matchSetParameter(select(allLimit_df,intCol(allLimit_df)),partLim.par[:emissionInf],anyM.sets)
 			if !isempty(infVar_df)
@@ -661,6 +663,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 			# prepare, scale and save constraints to dictionary
 			relLim_df[!,:cnsExpr] = map(x -> x.var - x.Lim, eachrow(relLim_df))
 			relLim_df = orderDf(relLim_df[!,[intCol(relLim_df)...,:cnsExpr]])
+
 			scaleCnsExpr!(relLim_df,anyM.options.coefRng,anyM.options.checkRng)
 			cns_dic[Symbol(va,lim)] = cnsCont(relLim_df,signLim_dic[lim])
 

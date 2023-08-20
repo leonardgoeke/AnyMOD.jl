@@ -28,7 +28,7 @@ function createOptModel!(anyM::anyModel)
 	removeFixed!(prepSys_dic,allCapaDf_dic,anyM) # remove entries were capacities are fixed to zero
 
 	# ! remove unrequired elements in case of distributed model creation
-	if !isempty(anyM.subPro)
+	if !isempty(anyM.subPro) && !anyM.options.createVI
 	    distributedMapping!(anyM,prepSys_dic)
 	end
 	# abort if there is already an error
@@ -57,6 +57,7 @@ function createOptModel!(anyM::anyModel)
 
     # creates dictionary that assigns combination of expansion region and dispatch level to dispatch region
     allLvlR_arr = union(getindex.(getfield.(getfield.(values(anyM.parts.tech),:balLvl),:exp),2),map(x -> x.rDis,values(anyM.cInfo)))
+	if anyM.options.createVI push!(allLvlR_arr,0) end
 
     allRExp_arr = union([getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in allLvlR_arr]...)
     r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl <= x[2] ? getDescendants(x[1], anyM.sets[:R],false,x[2]) : getAncestors(x[1],anyM.sets[:R],:int,x[2])[end]) |> (z -> typeof(z) <: Array ? z : [z]) for x in Iterators.product(allRExp_arr,allLvlR_arr))
@@ -112,7 +113,7 @@ function createOptModel!(anyM::anyModel)
 
 	#region # * create variables and constraints for trade, the energy balance and costs
 	
-	if isempty(anyM.subPro) || anyM.subPro != (0,0)
+	if isempty(anyM.subPro) || anyM.subPro != (0,0) || (anyM.subPro == (0,0) && anyM.options.createVI)
 		createTradeVarCns!(anyM.parts.bal,ts_dic,anyM)
 		createEnergyBal!(techSym_arr,ts_dic,anyM)
 	end

@@ -65,6 +65,15 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 			if :stLvl in keys(part.var) && part.balSign.st != :none && !anyM.options.createVI
 				cns_dic[:stBal] = createStBal(part,anyM)
 				produceMessage(anyM.options,anyM.report, 3," - Prepared storage balance for technology $(tech_str)")
+			# only create storage inflows as generation for valid inequalities
+			elseif :stInflow in keys(part.par) && anyM.options.createVI 
+				inPar_df = rename(copy(part.par[:stInflow].data),:Ts_expSup => :Ts_disSup)
+				inPar_df[!,:Ts_expSup] = inPar_df[!,:Ts_disSup]
+				inPar_df[!,:Ts_disSup] .= inPar_df[!,:Ts_dis]
+				inPar_df[!,:val] = inPar_df[!,:val] .* getResize(inPar_df,anyM.sets[:Ts],anyM.supTs)
+				inPar_df[!,:R_dis] .= 0
+				inPar_df[!,:M] .= 0
+				part.var[:gen] = combine(x -> (var = AffExpr(sum(x.val)),),groupby(inPar_df,filter(x -> x != :id, intCol(inPar_df))))
 			end
 
 			# create capacity restrictions
@@ -212,7 +221,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			# capacity replacing generation variables in case of valid inequalities if possible
 			if anyM.options.createVI && onlyGen_boo 
 				basis_df = innerjoin(basis_df,part.var[:capaConv], on = intCol(part.var[:capaConv])) 
-				basis_df[!,:var]  = @expression(anyM.optModel,basis_df[!,:var] .* map(x -> anyM.supTs.sca[x.Ts_disSup], eachrow(basis_df[!,:])))
+				basis_df[!,:var]  = @expression(anyM.optModel,basis_df[!,:var] .* map(x -> anyM.supTs.sca[(x.Ts_disSup,anyM.cInfo[x.C].tsDis)], eachrow(basis_df[!,:])))
 			end 
 		elseif hasSt_boo && !(va in (:gen,:use))
 			basis_df = orderDf(copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[:capaStSize]))...))))
@@ -238,10 +247,15 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			end
 			basis_df[!,:lvlTs] .= part.stTrack
 		end
-
+		
 		# adds spatial level to dataframe
+<<<<<<< HEAD
 		basis_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],basis_df[!,:C])
 		allVar_df = orderDf(expandExpToDisp(basis_df,ts_dic,r_dic,anyM.sets[:Ts],anyM.scr,true))
+=======
+		basis_df[!,:lvlR] = map(x -> anyM.options.createVI && !onlyGen_boo ? 0 : cToLvl_dic[x][2],basis_df[!,:C])
+		allVar_df = orderDf(expandExpToDisp(basis_df,ts_dic,r_dic,anyM.supTs.scr,true))
+>>>>>>> dev_bd
 
 		# add mode dependencies
 		modeDep_df = copy(modeDep_dic[va])
@@ -252,23 +266,34 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 
 		# adjust table for case of reduced foresight
 		if anyM.options.lvlFrs != 0 && va == :stLvl
+<<<<<<< HEAD
 			# get time-steps that are at the end of a foresight period
+=======
+			# get time-steps that are at the start of a foresight period
+>>>>>>> dev_bd
 			frsStep_arr = [getDescendants(x,anyM.sets[:Ts],false,y) for x in getfield.(getNodesLvl(anyM.sets[:Ts],anyM.options.lvlFrs),:idx), y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x],:lvl), allVar_df[!,:Ts_dis]))]
 			frsStart_arr = vec(maximum.(frsStep_arr))
 			# save copy of variable table with all periods
 			allVarFull_df = copy(allVar_df)
+<<<<<<< HEAD
 			# set scenario to zero for all time-steps at the end of a foresight period
 			allVar_df[!,:scr] = map(x ->  x.Ts_dis in frsStart_arr ? 0 : x.scr,eachrow(allVar_df))
 			allVar_df = unique(allVar_df)
 			# extend table with storage levels needed but not existing yet since scenario does not exist for previous period
 			allVarFull_df = combine(x -> (scr = x.Ts_dis[end] in frsStart_arr ? [getStScr(x.Ts_dis[end],part.stCyc,anyM.sets[:Ts],anyM.scr)] :  [x.scr],), groupby(allVarFull_df, filter(x -> x != :scr, intCol(allVarFull_df))))
 			allVarFull_df = flatten(allVarFull_df,:scr)
+=======
+			# set scenario to zero for all time-steps at the start of a foresight period
+			allVar_df[!,:scr] = map(x ->  x.Ts_dis in frsStart_arr ? 0 : x.scr,eachrow(allVar_df))
+			allVar_df = unique(allVar_df)
+>>>>>>> dev_bd
 		end
 
 		# replace dispatch variables with maximum output, if technology does not need capacity constraints
 		if anyM.options.createVI && onlyGen_boo
 			# compute maximum output
 			allVar_df = matchSetParameter(allVar_df,part.par[relAva_dic[va][1]],anyM.sets,newCol = :out)
+<<<<<<< HEAD
 			if va == :gen
 				if :desFac in keys(part.par)
 					allVar_df = matchSetParameter(allVar_df,part.par[:desFac],anyM.sets,newCol = :desFac)
@@ -285,6 +310,21 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			allVar_df[!,:var] = allVar_df[!,:var]  .* allVar_df[!,:out]
 			allVar_df = combine(x -> (var = sum(x.var)/length(unique(x.Ts_dis)),),groupby(allVar_df,filter(x -> x != :Ts_dis, intCol(allVar_df))))
 			allVar_df[!,:Ts_dis] = allVar_df[!,:Ts_disSup]
+=======
+			if :desFac in keys(part.par)
+				allVar_df = matchSetParameter(allVar_df,part.par[:desFac],anyM.sets,newCol = :desFac)
+				allVar_df = matchSetParameter(allVar_df,part.par[:mustOut],anyM.sets,newCol = :mustOut)
+				allVar_df[!,:out] = allVar_df[!,:desFac] .* allVar_df[!,:mustOut]
+			else
+				allVar_df = matchSetParameter(allVar_df,part.par[:effConv],anyM.sets,newCol = :eff)
+				allVar_df[!,:out] = allVar_df[!,:out] .* allVar_df[!,:eff]
+				select!(allVar_df,Not([:eff]))
+			end
+			allVar_df[!,:var] = allVar_df[!,:var]  .* allVar_df[!,:out]
+			allVar_df = combine(x -> (var = sum(x.var)/length(unique(x.Ts_dis)),),groupby(allVar_df,filter(x -> !(x in (:Ts_dis,:R_dis)), intCol(allVar_df))))
+			allVar_df[!,:Ts_dis] = allVar_df[!,:Ts_disSup]
+			allVar_df[!,:R_dis] .= 0
+>>>>>>> dev_bd
 			part.var[va] = orderDf(allVar_df)
 		else
 			# filter entries where availability is zero
@@ -294,6 +334,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 				end
 			end
 
+<<<<<<< HEAD
 			# filter cases where dispatch variable is fixed to zero
 			if Symbol(va,:Fix) in keys(anyM.parts.lim.par)
 				checkFix_boo = false
@@ -315,6 +356,8 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			
 			if isempty(allVar_df) continue end
 
+=======
+>>>>>>> dev_bd
 			# computes value to scale up the global limit on dispatch variable that is provied per hour and create variable
 			if conv_boo
 				scaFac_fl = anyM.options.scaFac.dispConv
@@ -326,8 +369,12 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			# extend table again for case of reduced foresight 
 			if anyM.options.lvlFrs != 0 && va == :stLvl
 				# create entries for all conceivable scenarios for start of each period again
+<<<<<<< HEAD
 				allScr_arr = filter(x -> x != 0, collect(keys(anyM.sets[:scr].nodes)))
 				allVar_df[!,:scr] = map(x ->  x.scr == 0 ? allScr_arr : [x.scr],eachrow(allVar_df))
+=======
+				allVar_df[!,:scr] = map(x ->  x.scr == 0 ? anyM.supTs.scr[x.Ts_disSup] : [x.scr],eachrow(allVar_df))
+>>>>>>> dev_bd
 				allVar_df = flatten(allVar_df,:scr)
 				# joins with stored dataframe of all entries that sould exist 
 				allVar_df = innerjoin(allVarFull_df,allVar_df, on = intCol(allVarFull_df))
@@ -342,14 +389,21 @@ end
 function createConvBal(part::TechPart,anyM::anyModel)
 
 	cns_df = rename(part.par[:effConv].data,:val => :eff)
+
 	sort!(cns_df,orderDim(intCol(cns_df)))
 	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), intCol(cns_df))
 
 	# defines tuple specificing dimension of aggregation later
 	if part.type == :emerging
-		srcRes_ntup = part.balLvl |> (x -> (Ts_expSup = anyM.supTs.lvl, Ts_dis = x.ref[1], R_dis = x.ref[2]))
+		srcRes_ntup = part.balLvl |> (x -> (Ts_expSup = anyM.supTs.lvl, Ts_dis = x.ref[1], R_dis = anyM.options.createVI ? 0 : x.ref[2]))
 	else
-		srcRes_ntup = part.balLvl |> (x -> (Ts_dis = x.ref[1], R_dis = x.ref[2]))
+		srcRes_ntup = part.balLvl |> (x -> (Ts_dis = x.ref[1], R_dis = anyM.options.createVI ? 0 : x.ref[2]))
+	end
+
+	# aggregate table spatially in case of valid inequalities
+	if anyM.options.createVI
+		cns_df[!,:R_dis] .= 0
+		cns_df = combine(x -> (eff = maximum(x.eff),), groupby(cns_df,intCol(cns_df)))
 	end
 
 	# if modes are specified, gets rows of conversion dataframe where they are relevant and creates different tuples to define grouping dimensions
@@ -383,9 +437,12 @@ function createConvBal(part::TechPart,anyM::anyModel)
 	aggCol!(cns_df,out_arr)
 	
 	cns_df[!,:cnsExpr] = @expression(anyM.optModel,cns_df[!,in_arr[1]] .* cns_df[!,:eff] .- cns_df[!,out_arr[1]])
+<<<<<<< HEAD
 	
 	# aggregate regions for valid inequalities
 	if anyM.options.createVI aggregateReg!(cns_df) end
+=======
+>>>>>>> dev_bd
 
 	return cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]), part.balSign.conv == :eq ? :equal : :greater)
 end

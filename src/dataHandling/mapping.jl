@@ -118,7 +118,6 @@ function createTimestepMapping!(anyM::anyModel)
 	# ! writes the superordinate dispatch level, the timesteps on this level and scaling factor for timesteps depending on the respective superordinate dispatch timestep and the level
     supTsLvl_int = maximum(map(x -> getfield(x,:tsExp),values(anyM.cInfo)))
 	minDis_int = minimum(map(x -> getfield(x,:tsDis),values(anyM.cInfo)))
-	
 	if anyM.options.supTsLvl != 0
 		if minDis_int >= anyM.options.supTsLvl
 			supTsLvl_int = anyM.options.supTsLvl
@@ -155,8 +154,27 @@ function createTimestepMapping!(anyM::anyModel)
 		for c in keys(anyM.cInfo)
 			res_dic = anyM.cInfo[c]
 			anyM.cInfo[c] = (tsDis = anyM.supTs.lvl, tsExp = res_dic[:tsExp], rDis = res_dic[:rDis], rExp = res_dic[:rExp], balSign = res_dic[:balSign], stBalCapa = res_dic[:stBalCapa])
-		end		
-		produceMessage(anyM.options,anyM.report, 2," - Adjusted temporal resolution for valid inequalities")
+		end
+	end
+
+	if anyM.options.lvlFrs != 0 
+		if anyM.options.supTsLvl >= anyM.options.lvlFrs
+			anyM.options.lvlFrs = 0
+			push!(anyM.report,(2,"timestep mapping","","specified foresight level is not more detailed than superordinate dispatch level, therefore model still uses perfect foresight"))
+		else minDis_int < anyM.options.lvlFrs
+			anyM.options.lvlFrs = minDis_int
+			push!(anyM.report,(1,"timestep mapping","","specified foresight level exceeds least detailed dispatch resolution, model uses level $(minDis_int) instead"))
+		end
+	end
+		
+	produceMessage(anyM.options,anyM.report, 2," - Adjusted temporal resolution for valid inequalities")
+	
+	# ! checks, if all levels for actual dispatch are "well-formed", meaning each step relates to the same number of steps on the lowest level
+	for l in unique([x.tsDis for x in values(anyM.cInfo)])
+		if anyM.sets[:Ts].height == l continue end # no need to check lowest level itself
+		if length(unique(map(x -> length(getDescendants(x.idx,anyM.sets[:Ts],false,anyM.sets[:Ts].height)), getNodesLvl(anyM.sets[:Ts],l)))) != 1
+			push!(anyM.report,(3,"timestep mapping","","timestep level $l is a dispatch resolution, but steps on level vary in length, this is not supported"))
+		end
 	end
 	
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for time steps")
@@ -497,7 +515,7 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
     capaDispRestr_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
     # extract tech info
     carGrp_ntup = part.carrier
-    balLvl_ntup = part.balLvl
+    balLvl_ntup = part.balLvl |> (x -> anyM.options.createVI ? (exp = x.exp, ref = (x.ref[1],0)) : x)
     disAgg_boo  = part.disAgg
 
 	# ! writes dimension of capacity restrictions for conversion part (even if there are no inputs)
@@ -516,7 +534,7 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 			# get respective carrier and their reference level
 			carDis_arr = map(collect(getfield(carGrp_ntup,side))) do x
 				carRow_ntup = anyM.cInfo[x]
-				return x, carRow_ntup.tsDis, disAgg_boo ? balLvl_ntup.exp[2] : carRow_ntup.rDis
+				return x, carRow_ntup.tsDis, disAgg_boo ? balLvl_ntup.exp[2] : (anyM.options.createVI ? 0 : carRow_ntup.rDis)
 			end
 			
 			restrInfo_arr = mapCapaRestr(carDis_arr,side,anyM,carGrp_ntup,balLvl_ntup,ctrSide)

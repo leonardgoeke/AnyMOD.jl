@@ -983,6 +983,15 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	capaVar_df[!,:lvlTs] .= restr.lvlTs
 	capaVar_df[!,:lvlR] .= restr.lvlR
 
+	# extend dataframe with scenarios
+	capaVar_df[!,:scr] = map(x -> supTs_ntup.scr[x], capaVar_df[!,:Ts_disSup])
+	capaVar_df = flatten(capaVar_df,:scr)
+
+	# resize capacity variables (expect for stSize since these are already provided in energy units)
+	if type_sym != :stSize
+		capaVar_df[!,:var]  = @expression(optModel,capaVar_df[!,:var] .* map(x -> supTs_ntup.sca[(x.Ts_disSup,x.lvlTs)], eachrow(capaVar_df[!,[:Ts_disSup,:lvlTs]])))
+	end
+
 	# replaces expansion with dispatch regions and aggregates capacity variables accordingy if required
 	if type_sym != :exc
 		grpCapaVar_df = copy(select(capaVar_df,Not([:var]))) |> (y -> unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],),groupby(y,namesSym(y)))[!,Not([:R_exp,:lvlR])]))
@@ -1134,6 +1143,7 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 
 					# create corresponding constraint
 					subCns_df[!,:cnsExpr] = @expression(anyM.optModel,subCns_df[!,:allVar] .* subCns_df[!,:ratio] .- subCns_df[!,:ratioVar])
+					
 					allCns_arr[idx] = subCns_df
 				end
 				cns_df = vcat(allCns_arr...)
