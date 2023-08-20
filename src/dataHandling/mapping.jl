@@ -155,26 +155,7 @@ function createTimestepMapping!(anyM::anyModel)
 			res_dic = anyM.cInfo[c]
 			anyM.cInfo[c] = (tsDis = anyM.supTs.lvl, tsExp = res_dic[:tsExp], rDis = res_dic[:rDis], rExp = res_dic[:rExp], balSign = res_dic[:balSign], stBalCapa = res_dic[:stBalCapa])
 		end
-	end
-
-	if anyM.options.lvlFrs != 0 
-		if anyM.options.supTsLvl >= anyM.options.lvlFrs
-			anyM.options.lvlFrs = 0
-			push!(anyM.report,(2,"timestep mapping","","specified foresight level is not more detailed than superordinate dispatch level, therefore model still uses perfect foresight"))
-		else minDis_int < anyM.options.lvlFrs
-			anyM.options.lvlFrs = minDis_int
-			push!(anyM.report,(1,"timestep mapping","","specified foresight level exceeds least detailed dispatch resolution, model uses level $(minDis_int) instead"))
-		end
-	end
-		
-	produceMessage(anyM.options,anyM.report, 2," - Adjusted temporal resolution for valid inequalities")
-	
-	# ! checks, if all levels for actual dispatch are "well-formed", meaning each step relates to the same number of steps on the lowest level
-	for l in unique([x.tsDis for x in values(anyM.cInfo)])
-		if anyM.sets[:Ts].height == l continue end # no need to check lowest level itself
-		if length(unique(map(x -> length(getDescendants(x.idx,anyM.sets[:Ts],false,anyM.sets[:Ts].height)), getNodesLvl(anyM.sets[:Ts],l)))) != 1
-			push!(anyM.report,(3,"timestep mapping","","timestep level $l is a dispatch resolution, but steps on level vary in length, this is not supported"))
-		end
+		produceMessage(anyM.options,anyM.report, 2," - Adjusted temporal resolution for valid inequalities")
 	end
 	
 	produceMessage(anyM.options,anyM.report, 3," - Created mapping for time steps")
