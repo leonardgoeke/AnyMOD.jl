@@ -638,6 +638,11 @@ function createScenarioMapping!(anyM::anyModel)
 
 		tsToScr_dic = Dict(y => sort(filter(x -> x.Ts_dis == y,prop_df)[!,:scr]) for y in unique(prop_df[!,:Ts_dis]))
 		tsScrToProp_dic = Dict((x.Ts_dis,x.scr) => x.val for x in eachrow(prop_df))
+		# create parameter object if not existing yet
+		if !(:scrProb in keys(anyM.parts.obj.par)) 
+			parDef_ntup = (dim = (:Ts_dis, :scr), problem = :sub, defVal = nothing, herit = (:scr => :up, :Ts_dis => :up, :Ts_dis => :avg_any), part = :obj)
+			anyM.parts.obj.par[:scrProb] = ParElement(DataFrame(),parDef_ntup,:desFac,anyM.report)
+		end
 		anyM.parts.obj.par[:scrProb].data = prop_df
 
 		# re-defines into a deterministic model for the most likely scenario or specified scenario

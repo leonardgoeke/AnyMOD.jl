@@ -174,7 +174,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 		if !isempty(missCapa_df)
 			missCapa_df[!,:value] .= value.(missCapa_df[!,:var])
 			missCapa_df[!,:variable] .= :missCapa
-			foreach(x -> missCapa_df[!,x] .= 0,(:Te,:scr,:id))
+			foreach(x -> missCapa_df[!,x] .= 0,(:Ts_frs,:Te,:scr,:id))
 			append!(allData_df,select(missCapa_df,Not([:var])))
 		end
 	end
