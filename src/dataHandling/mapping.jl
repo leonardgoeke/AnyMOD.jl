@@ -686,9 +686,9 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 																scr = filter(x -> x != subPro[2] && x != 0,getfield.(values(anyM.sets[:scr].nodes),:idx)))
 
 		# remove unrequired nodes from trees of scenarios
-		foreach(y ->  delete!(anyM.sets[:scr].nodes,y),rmvId_tup.scr)
 
-		# rewrite information on superordinate time-steps
+		# rewrite information on superordinate time-steps 
+		scaSupTs_dic = getDescendants(supTs_int,anyM.sets[:Ts],:true) |> (z -> Dict(filter(x -> x[1] in vcat([supTs_int],z) ,collect(anyM.supTs.sca))...))
 		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(supTs_int,), sca = filter(x -> getAncestors(x[1],anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] == supTs_int, scaSupTs_dic))
 		anyM.scr =  (lvl = anyM.scr.lvl, scr = Dict(supTs_int => [subPro[2],]), scrProb = filter(x -> x[1] == (supTs_int,subPro[2]), anyM.scr.scrProb))
 		

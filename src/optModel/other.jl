@@ -50,7 +50,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	partBal = anyM.parts.bal
 	c_arr = filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx))
 	allDim_df = createPotDisp(c_arr,ts_dic,anyM)
-	agg_arr = [:Ts_dis, :R_dis, :C, :scr]
+	agg_arr = anyM.options.createVI ? [:Ts_dis, :C, :scr] :  [:Ts_dis, :R_dis, :C, :scr]
 
 	#region # * create potential curtailment and loss loss load variables
 	if !anyM.options.createVI
@@ -108,9 +108,10 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		# ! get relevant variables
 		sort!(cns_df,orderDim(intCol(cns_df)))
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
+		if anyM.options.createVI select!(src_df,Not([:R_dis])) end
 
 		# add tech variables
-		cns_df[!,:techVar], unEtr_arr = getTechEnerBal(c,subC_arr,src_df,anyM.parts.tech,anyM.cInfo,anyM.sets)
+		cns_df[!,:techVar], unEtr_arr = getTechEnerBal(c,subC_arr,anyM.options.createVI,src_df,anyM.parts.tech,anyM.cInfo,anyM.sets)
 		
 		# determine where an energy balance is required because a specific demand was defined
 		unEtr_arr = map(x -> x == 0.0 ,cns_df[!,:dem]) .* unEtr_arr
@@ -200,7 +201,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 end
 
 # ! aggregate all technology variables for energy balance
-function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,tech_dic::Dict{Symbol,TechPart},
+function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},vi_boo::Bool,src_df::DataFrame,tech_dic::Dict{Symbol,TechPart},
 																				cInfo_dic::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign,:stBalCapa),Tuple{Int,Int,Int,Int,Symbol,Symbol}}},sets_dic::Dict{Symbol,Tree})
 	techVar_arr = Array{Array{AffExpr,1}}(undef,length(subC_arr))
 
@@ -239,8 +240,9 @@ function getTechEnerBal(cBal_int::Int,subC_arr::Array{Int,1},src_df::DataFrame,t
 		if isempty(allVar_df)
 			techVar_arr[idx]  = fill(AffExpr(),size(src_df,1))
 		else
-			grpVar_df = combine(groupby(allVar_df, [:Ts_dis, :R_dis, :scr]), :var => (x -> sum(x)) => :var)
-			joined_df = joinMissing(src_df,grpVar_df, [:Ts_dis, :R_dis,:scr], :left, Dict(:var => AffExpr()))
+			relCol_arr = vi_boo ? [:Ts_dis, :scr] : [:Ts_dis, :R_dis,:scr]
+			grpVar_df = combine(groupby(allVar_df, relCol_arr), :var => (x -> sum(x)) => :var)
+			joined_df = joinMissing(src_df,grpVar_df, relCol_arr, :left, Dict(:var => AffExpr()))
             sort!(joined_df,orderDim(intCol(joined_df)))
             techVar_arr[idx] = joined_df[!,:var]
 		end

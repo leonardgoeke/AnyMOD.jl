@@ -936,7 +936,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 
 	capaRestr_gdf = groupby(filter(x -> x.cnstrType != "must",part.capaRestr),:cnstrType)
 
-	# loop over groups of capacity restrictions except for must-runn (like out, stIn, ...)
+	# loop over groups of capacity restrictions except for must-run (like out, stIn, ...)
 	for restrGrp in capaRestr_gdf
 
 		# relevant capacity variables
@@ -982,15 +982,6 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	# determines dimensions for aggregating dispatch variables
 	capaVar_df[!,:lvlTs] .= restr.lvlTs
 	capaVar_df[!,:lvlR] .= restr.lvlR
-
-	# extend dataframe with scenarios
-	capaVar_df[!,:scr] = map(x -> supTs_ntup.scr[x], capaVar_df[!,:Ts_disSup])
-	capaVar_df = flatten(capaVar_df,:scr)
-
-	# resize capacity variables (expect for stSize since these are already provided in energy units)
-	if type_sym != :stSize
-		capaVar_df[!,:var]  = @expression(optModel,capaVar_df[!,:var] .* map(x -> supTs_ntup.sca[(x.Ts_disSup,x.lvlTs)], eachrow(capaVar_df[!,[:Ts_disSup,:lvlTs]])))
-	end
 
 	# replaces expansion with dispatch regions and aggregates capacity variables accordingy if required
 	if type_sym != :exc

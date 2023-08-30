@@ -100,7 +100,6 @@ end
 function prepareTechs!(techSym_arr::Array{Symbol,1},prepAllTech_dic::Dict{Symbol,Dict{Symbol,NamedTuple}},tsYear_dic::Dict{Int,Int},anyM::anyModel)
 
 	for tSym in techSym_arr
-
 		prepTech_dic = Dict{Symbol,NamedTuple}()
 		part = anyM.parts.tech[tSym]
         tInt = sysInt(tSym,anyM.sets[:Te])
@@ -201,7 +200,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 	onlyGen_boo =  :gen in dispVar_arr && isempty(intersect([:use,:stIntIn],dispVar_arr))
 
 	# filter map of capacity restrictions based on actually created dispatch variables
-	if anyM.options.createVI
+	if anyM.options.createVI && isdefined(part,:capaRestr)
 		if !hasSt_boo filter!(x -> !any(occursin.(["stIn","stOut","stSize"],x.cnstrType)),part.capaRestr) end
 		if onlyGen_boo filter!(x -> false, part.capaRestr) end
 	end
@@ -209,7 +208,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 	for va in dispVar_arr # loop over all relevant kind of variables
 		conv_boo = va in (:gen,:use) && :capaConv in keys(prepTech_dic)
 		# dont create storage variables when only creating valid inequalities
-		if (va in (:stExtOut,:stExtIn,:stLvl) || (va == :stIntOut && :gen in dispVar_arr) || (va == :stIntIn && :use in dispVar_arr)) && anyM.options.createVI
+		if (va in (:stExtOut,:stExtIn,:stLvl) || (va == :stIntIn && :gen in dispVar_arr) || (va == :stIntOut && :use in dispVar_arr)) && anyM.options.createVI
 			continue 
 		end
 		# obtains relevant capacity variable
@@ -218,11 +217,6 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			if isempty(basis_df) continue end
 			basis_df[!,:C] .= [collect(getfield(part.carrier,va))]
 			basis_df = orderDf(flatten(basis_df,:C))
-			# capacity replacing generation variables in case of valid inequalities if possible
-			if anyM.options.createVI && onlyGen_boo 
-				basis_df = innerjoin(basis_df,part.var[:capaConv], on = intCol(part.var[:capaConv])) 
-				basis_df[!,:var]  = @expression(anyM.optModel,basis_df[!,:var] .* map(x -> anyM.supTs.sca[(x.Ts_disSup,anyM.cInfo[x.C].tsDis)], eachrow(basis_df[!,:])))
-			end 
 		elseif hasSt_boo && !(va in (:gen,:use))
 			basis_df = orderDf(copy(unique(vcat(map(x -> select(x,intCol(x)),collect(prepTech_dic[:capaStSize]))...))))
 			if isempty(basis_df) continue end
@@ -249,8 +243,8 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		end
 		
 		# adds spatial level to dataframe
-		basis_df[!,:lvlR] = map(x -> anyM.options.createVI && !onlyGen_boo ? 0 : cToLvl_dic[x][2],basis_df[!,:C])
-		allVar_df = orderDf(expandExpToDisp(basis_df,ts_dic,r_dic,anyM.supTs.scr,true))
+        basis_df[!,:lvlR] = map(x -> cToLvl_dic[x][2],basis_df[!,:C])
+        allVar_df = orderDf(expandExpToDisp(basis_df,ts_dic,r_dic,anyM.sets[:Ts],anyM.scr,true))
 
 		# add mode dependencies
 		modeDep_df = copy(modeDep_dic[va])
@@ -274,76 +268,53 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			allVarFull_df = flatten(allVarFull_df,:scr)
 		end
 
-		# replace dispatch variables with maximum output, if technology does not need capacity constraints
-		if anyM.options.createVI && onlyGen_boo
-			# compute maximum output
-			allVar_df = matchSetParameter(allVar_df,part.par[relAva_dic[va][1]],anyM.sets,newCol = :out)
-			if va == :gen
-				if :desFac in keys(part.par)
-					allVar_df = matchSetParameter(allVar_df,part.par[:desFac],anyM.sets,newCol = :desFac)
-					allVar_df = matchSetParameter(allVar_df,part.par[:mustOut],anyM.sets,newCol = :mustOut)
-					allVar_df[!,:out] = allVar_df[!,:desFac] .* allVar_df[!,:mustOut]
-				else
-					allVar_df = matchSetParameter(allVar_df,part.par[:effConv],anyM.sets,newCol = :eff)
-					allVar_df[!,:out] = allVar_df[!,:out] .* allVar_df[!,:eff]
-					select!(allVar_df,Not([:eff]))
-				end
-			else
-
+		# filter entries where availability is zero
+		for avaPar in relAva_dic[va]
+			if avaPar in keys(part.par) && !isempty(part.par[avaPar].data) && 0.0 in part.par[avaPar].data[!,:val]
+				allVar_df = filter(x -> x.val != 0.0,  matchSetParameter(allVar_df,part.par[avaPar],anyM.sets))[!,Not(:val)]
 			end
-			allVar_df[!,:var] = allVar_df[!,:var]  .* allVar_df[!,:out]
-			allVar_df = combine(x -> (var = sum(x.var)/length(unique(x.Ts_dis)),),groupby(allVar_df,filter(x -> x != :Ts_dis, intCol(allVar_df))))
-			allVar_df[!,:Ts_dis] = allVar_df[!,:Ts_disSup]
-			part.var[va] = orderDf(allVar_df)
-		else
-			# filter entries where availability is zero
-			for avaPar in relAva_dic[va]
-				if avaPar in keys(part.par) && !isempty(part.par[avaPar].data) && 0.0 in part.par[avaPar].data[!,:val]
-					allVar_df = filter(x -> x.val != 0.0,  matchSetParameter(allVar_df,part.par[avaPar],anyM.sets))[!,Not(:val)]
-				end
-			end
-
-			# filter cases where dispatch variable is fixed to zero
-			if Symbol(va,:Fix) in keys(anyM.parts.lim.par)
-				checkFix_boo = false
-				# checks, if trying to filter zero fixes is sensible because cases could exist based on technology column
-				if !(:Te in namesSym(anyM.parts.lim.par[Symbol(va,:Fix)].data)) 
-					checkFix_boo = true
-				else
-					fixTe_arr = unique(anyM.parts.lim.par[Symbol(va,:Fix)].data[!,:Te])
-					if 0 in fixTe_arr || sysInt(Symbol(part.name[end]),anyM.sets[:Te]) in fixTe_arr
-						checkFix_boo = true
-					end
-				end	
-				# actually filter zero fixes
-				if checkFix_boo
-					fixZero_df = select(filter(r -> r.val == 0, getFix(allVar_df,anyM.parts.lim.par[Symbol(va,:Fix)],anyM)),Not(:val))
-					if !isempty(fixZero_df) allVar_df = antijoin(allVar_df,fixZero_df, on = intCol(fixZero_df)) end
-				end
-			end
-			
-			if isempty(allVar_df) continue end
-
-			# computes value to scale up the global limit on dispatch variable that is provied per hour and create variable
-			if conv_boo
-				scaFac_fl = anyM.options.scaFac.dispConv
-			else
-				scaFac_fl = anyM.options.scaFac.dispSt
-			end
-			allVar_df = createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / scaFac_fl,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = scaFac_fl)
-		
-			# extend table again for case of reduced foresight 
-			if anyM.options.lvlFrs != 0 && va == :stLvl
-				# create entries for all conceivable scenarios for start of each period again
-				allScr_arr = filter(x -> x != 0, collect(keys(anyM.sets[:scr].nodes)))
-				allVar_df[!,:scr] = map(x ->  x.scr == 0 ? allScr_arr : [x.scr],eachrow(allVar_df))
-				allVar_df = flatten(allVar_df,:scr)
-				# joins with stored dataframe of all entries that sould exist 
-				allVar_df = innerjoin(allVarFull_df,allVar_df, on = intCol(allVarFull_df))
-			end
-			
-			part.var[va] = orderDf(allVar_df)
 		end
+
+		# filter cases where dispatch variable is fixed to zero
+		if Symbol(va,:Fix) in keys(anyM.parts.lim.par) && !(anyM.options.createVI && va == :use && :stIntOut in dispVar_arr)
+			checkFix_boo = false
+			# checks, if trying to filter zero fixes is sensible because cases could exist based on technology column
+			if !(:Te in namesSym(anyM.parts.lim.par[Symbol(va,:Fix)].data)) 
+				checkFix_boo = true
+			else
+				fixTe_arr = unique(anyM.parts.lim.par[Symbol(va,:Fix)].data[!,:Te])
+				if 0 in fixTe_arr || sysInt(Symbol(part.name[end]),anyM.sets[:Te]) in fixTe_arr
+					checkFix_boo = true
+				end
+			end	
+			# actually filter zero fixes
+			if checkFix_boo
+				fixZero_df = select(filter(r -> r.val == 0, getFix(allVar_df,anyM.parts.lim.par[Symbol(va,:Fix)],anyM)),Not(:val))
+				if !isempty(fixZero_df) allVar_df = antijoin(allVar_df,fixZero_df, on = intCol(fixZero_df)) end
+			end
+		end
+		
+		if isempty(allVar_df) continue end
+
+		# computes value to scale up the global limit on dispatch variable that is provied per hour and create variable
+		if conv_boo
+			scaFac_fl = anyM.options.scaFac.dispConv
+		else
+			scaFac_fl = anyM.options.scaFac.dispSt
+		end
+		allVar_df = createVar(allVar_df,string(va), getUpBound(allVar_df,anyM.options.bound.disp / scaFac_fl,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets, scaFac = scaFac_fl)
+	
+		# extend table again for case of reduced foresight 
+		if anyM.options.lvlFrs != 0 && va == :stLvl
+			# create entries for all conceivable scenarios for start of each period again
+			allScr_arr = filter(x -> x != 0, collect(keys(anyM.sets[:scr].nodes)))
+			allVar_df[!,:scr] = map(x ->  x.scr == 0 ? allScr_arr : [x.scr],eachrow(allVar_df))
+			allVar_df = flatten(allVar_df,:scr)
+			# joins with stored dataframe of all entries that sould exist 
+			allVar_df = innerjoin(allVarFull_df,allVar_df, on = intCol(allVarFull_df))
+		end
+		
+		part.var[va] = orderDf(allVar_df)
 	end
 end
 
