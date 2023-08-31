@@ -41,6 +41,8 @@ mutable struct stabObj
 				error("options provided for proximal bundle do not match the defined options 'start', 'max', and 'fac'")
 			elseif key == :lvl && !isempty(setdiff(keys(val),(:la,)))
 				error("options provided for level bundle do not match the defined options 'la'")
+			elseif key == :box && !isempty(setdiff(keys(val),(:low,:up,:minUp)))
+				error("options provided for trust-region do not match the defined options 'low', 'up', and 'minUp'")
 			end
 		end
 		
@@ -68,8 +70,10 @@ mutable struct stabObj
 				end
 			elseif meth_arr[m] == :qtr
 				dynPar = methOpt_arr[m].start # starting value for radius
+			elseif meth_arr[m] == :box
+				dynPar = 0.0 # dummy value since boxstep implementation does not have a dynamic parameter
 			else
-				error("unknown stabilization method provided, method must either be 'prx', 'lvl', or 'qtr'")
+				error("unknown stabilization method provided, method must either be 'prx', 'lvl', 'qtr', or 'box'")
 			end
 			push!(dynPar_arr,dynPar)
 		end
@@ -637,6 +641,19 @@ function centerStab!(method::Val{:lvl},stab_obj::stabObj,top_m::anyModel)
 	set_upper_bound(top_m.parts.obj.var[:obj][1,1],stab_obj.dynPar[stab_obj.actMet])
 end
 
+# function for box step method
+function centerStab!(method::Val{:box},stab_obj::stabObj,top_m::anyModel)
+
+	# match values with variables in model
+	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
+	allVar_df = vcat(vcat(vcat(map(x -> expExpr_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+
+	# set lower and upper bound
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], x.value*(1-stab_obj.methodOpt[stab_obj.actMet].low) |> (y -> y < top_m.options.coefRng.rhs[1]/1e2 ? 0.0 : y))), eachrow(allVar_df))
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], max(stab_obj.methodOpt[stab_obj.actMet].minUp/z[2], x.value*(1+stab_obj.methodOpt[stab_obj.actMet].up)))), eachrow(allVar_df))
+
+end
+
 # ! compute scaled l2 norm
 function computeL2Norm(allVar_df::DataFrame,stab_obj::stabObj,scaRng_tup::Tuple,top_m::anyModel)
 
@@ -704,13 +721,13 @@ function filterStabVar(allVal_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame
 				var_df = allVal_dic[sys][sSym][trstSym]
 				if trstSym == :capaExc && !part_dic[sSym].dir filter!(x -> x.R_from < x.R_to,var_df) end # only get relevant capacity variables of exchange
 				if sys == :tech var_df = removeFixStorage(trstSym,var_df,part_dic[sSym]) end # remove storage variables controlled by ratio
-				# filter cases where acutal variables are defined
+				# filter cases where actual variables are defined
 				var_dic[sys][sSym][trstSym] = intCol(var_df) |> (w ->innerjoin(var_df,unique(select(filter(x -> !isempty(x.var.terms), part_dic[sSym].var[trstSym]),w)), on = w))
 				# remove if no capacities remain
 				removeEmptyDic!(var_dic[sys][sSym],trstSym)
 			end
 			
-			# remove entire system if not capacities
+			# remove entire system if no capacities
 			removeEmptyDic!(var_dic[sys],sSym)
 		end
 	end
@@ -727,6 +744,14 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
 	elseif stab_obj.method[stab_obj.actMet] == :lvl
 		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
 		delete_upper_bound(top_m.parts.obj.var[:obj][1,1])
+	elseif stab_obj.method[stab_obj.actMet] == :box
+		stabVar_dic = matchValWithVar(stab_obj.var,top_m)
+		for sys in keys(stabVar_dic), sSym in keys(stabVar_dic[sys]), capaSym in keys(stabVar_dic[sys][sSym])
+			relVar_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[sys][sSym][capaSym][!,:var])
+			delete_lower_bound.(relVar_arr)
+			set_lower_bound.(relVar_arr,0.0)
+			delete_upper_bound.(relVar_arr)
+		end
 	end
 	
 	set_optimizer_attribute(top_m.optModel, "Method", 0)
