@@ -112,6 +112,9 @@ mixedTupToTup(x) = typeof(x) <: Pair ? map(y -> mixedTupToTup(y),collect(x)) :  
 # ! check if dataframe should be considered, if energy balance is created for carriers in array
 filterCarrier(var_df::DataFrame,c_arr::Array{Int,1}) = :C in namesSym(var_df) ? filter(r -> r.C in c_arr,var_df) : var_df
 
+# ! use string to get id of node itself and all descendants (only works for nodes with unique name!!) 
+getDescFromName(name::Symbol,tree_obj::Tree) = lookupString(string(name),tree_obj) |> (x -> vcat([x],getDescendants(x,tree_obj,true)))
+
 # ! makes first letter of string or symbol capital or non-capital
 makeUp(in::String) = isempty(in) ? "" : string(uppercase(in[1]),in[2:end])
 makeUp(in::Symbol) = Symbol(uppercase(string(in)[1]),string(in)[2:end])

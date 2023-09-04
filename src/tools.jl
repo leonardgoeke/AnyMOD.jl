@@ -476,28 +476,30 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=t
 
 	# ! dispatch variables
 	disp_df = getAllVariables(:exc,anyM)
-	disp_df = combine(groupby(disp_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:C,:Exc,:scr]), :var => (x -> value.(sum(x)) ./ 1000) => :value)
-	disp_df[!,:variable] .= :exc
-	disp_df[!,:dir] .= 0
-	filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),disp_df)
-	append!(allData_df,disp_df)
+	if !isempty(disp_df)
+		disp_df = combine(groupby(disp_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:C,:Exc,:scr]), :var => (x -> value.(sum(x)) ./ 1000) => :value)
+		disp_df[!,:variable] .= :exc
+		disp_df[!,:dir] .= 0
+		filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),disp_df)
+		append!(allData_df,disp_df)
+		
+		# ! get full load hours
 
-	# ! get full load hours
+		# obtain relevant dispatch and capacity values
+		aggDispC_df =  combine(groupby(disp_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc,:scr]), :value => (x -> sum(x)) => :from_to)
+		capa_df = filter(x -> x.variable == :capaExc, select(allData_df,Not([:C,:scr])))
 
-	# obtain relevant dispatch and capacity values
-	aggDispC_df =  combine(groupby(disp_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc,:scr]), :value => (x -> sum(x)) => :from_to)
-	capa_df = filter(x -> x.variable == :capaExc, select(allData_df,Not([:C,:scr])))
+		# joins energy exchanged in both direction to each capcity
+		flh_df = joinMissing(capa_df,aggDispC_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc],:left,Dict(:scr => 0,:from_to => 0.0))
+		flh_df = joinMissing(flh_df,rename(switchExcCol(aggDispC_df),:from_to => :to_from),[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc,:scr],:left,Dict(:to_from => 0.0))
 
-	# joins energy exchanged in both direction to each capcity
-	flh_df = joinMissing(capa_df,aggDispC_df,[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc],:left,Dict(:scr => 0,:from_to => 0.0))
-	flh_df = joinMissing(flh_df,rename(switchExcCol(aggDispC_df),:from_to => :to_from),[:Ts_expSup,:Ts_disSup,:R_from,:R_to,:Exc,:scr],:left,Dict(:to_from => 0.0))
+		# computs full load hours, considers energy exchanged in one or both directions depending on line type (directed or un-directed)
+		flh_df[!,:value] = map(x ->  (x.dir == 0 ? (x.from_to + x.to_from) : x.from_to) / x.value * 1000 ,eachrow(flh_df))
+		flh_df[!,:variable] .= :flhExc
+		flh_df[!,:C] .= 0
 
-	# computs full load hours, considers energy exchanged in one or both directions depending on line type (directed or un-directed)
-	flh_df[!,:value] = map(x ->  (x.dir == 0 ? (x.from_to + x.to_from) : x.from_to) / x.value * 1000 ,eachrow(flh_df))
-	flh_df[!,:variable] .= :flhExc
-	flh_df[!,:C] .= 0
-
-	append!(allData_df,select(flh_df,Not([:from_to,:to_from])))
+		append!(allData_df,select(flh_df,Not([:from_to,:to_from])))
+	end
 
 	# removes scenario column if only one scenario is defined
 	if length(unique(allData_df[!,:scr])) == 1

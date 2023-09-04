@@ -667,7 +667,7 @@ function computeL2Norm(allVar_df::DataFrame,stab_obj::stabObj,scaRng_tup::Tuple,
 	end
 
 	# computes left hand side expression and scaling factor
-	capaSum_expr = sum(map(x -> collect(keys(x.var.terms))[1] |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allVar_df)))
+	capaSum_expr = sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allVar_df)))
 	scaFac_fl =  top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)) |> (z -> isempty(z) ? [1.0] : z)))
 
 	return capaSum_expr, scaFac_fl
@@ -692,7 +692,7 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 			produceMessage(report_m.options,report_m.report, 1," - Increased penalty term of proximal bundle!", testErr = false, printErr = false)
 		else
 			stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] * (1 - lowLimNoStab_fl/currentBest_fl)
-			produceMessage(report_m.options,report_m.report, 1," - Re-set penalty term of proximal bundle!", testErr = false, printErr = false)
+			produceMessage(report_m.options,report_m.report, 1," - Reset penalty term of proximal bundle!", testErr = false, printErr = false)
 		end
 	elseif stab_obj.method[iUpd_int] == :lvl # adjust level
 		stab_obj.dynPar[iUpd_int] = (opt_tup.la * lowLimNoStab_fl  + (1 - opt_tup.la) * currentBest_fl) / top_m.options.scaFac.obj
@@ -767,15 +767,64 @@ end
 
 #endregion
 
+#region # * near-optimal
+
+# ! adapt top-problem for the computation of near-optimal solutions
+function adaptNearOpt!(top_m::anyModel,nearOpt_ntup::NamedTuple,costOpt_fl::Float64,nOpt_int::Int)
+	
+	obj_arr = Pair[]
+	for obj in nearOpt_ntup.obj[nOpt_int][2][2]
+		# build filter function
+		flt_tup = obj[2]
+		te_boo = !(flt_tup.variable in (:capaExc,:expExc))
+		exp_boo = flt_tup.variable in (:expConv,:expStIn,:expStOut,:expStSize,:expExc)
+		flt_func = x -> (:system in keys(flt_tup) ? ((te_boo ? x.Te : x.Exc) in getDescFromName(flt_tup.system,top_m.sets[(te_boo ? :Te : :Exc)])) : true) && (:region in keys(flt_tup) ? (x.R_exp in getDescFromName(flt_tup.region,top_m.sets[:R])) : true) && (:region_from in keys(flt_tup) ? (x.R_from in getDescFromName(flt_tup.region_from,top_m.sets[:R])) : true) && (:region_to in keys(flt_tup) ? (x.R_to in getDescFromName(flt_tup.region_to,top_m.sets[:R])) : true) && (:timestep in keys(flt_tup) ? ((exp_boo ? x.Ts_exp : x.Ts_expSup) in getDescFromName(flt_tup.timestep,top_m.sets[:Ts])) : true)
+		# write description of objective
+		push!(obj_arr,(flt_tup.variable => (fac = obj[1],flt = flt_func)))
+	end
+	# change objective according to near-optimal
+	objFunc_tup = tuple(vcat([:cost => (fac = 0.0,flt = x -> true)], obj_arr)...)
+	@suppress setObjective!(objFunc_tup,top_m,nearOpt_ntup.obj[nOpt_int][2][1] == :min)
+	
+	# delete old restriction to near optimum
+	if :nearOpt in keys(top_m.parts.obj.cns) delete(top_m.optModel,top_m.parts.obj.cns[:nearOpt][1,:cns]) end
+	
+	# restrict system costs to near-optimum
+	cost_expr = sum(filter(x -> x.name in (:cost,:benders), top_m.parts.obj.var[:objVar])[!,:var])
+	nearOpt_eqn = @constraint(top_m.optModel, costOpt_fl * (1 + nearOpt_ntup.optThres)  >= cost_expr)
+	top_m.parts.obj.cns[:nearOpt] = DataFrame(cns = nearOpt_eqn)
+end
+
+# ! get capacity results for near optimal analysis
+function getCapaResult(anyM::anyModel)
+
+	# get capacities from summary file
+	sum_df = rename(reportResults(:summary,anyM,rtnOpt = (:csvDf,)),:region_dispatch => :region, :technology => :system)
+	sum_df = filter(x -> x.variable in (:capaStOut,:capaStIn,:capaStSize,:capaConv), sum_df)
+	select!(sum_df, setdiff(namesSym(sum_df),[:scenario,:carrier,:objName]))
+
+	# get capacity from exchange file
+	exc_df = rename(filter(x -> x.variable == :capaExc, reportResults(:exchange,anyM,rtnOpt = (:csvDf,))), :exchange => :system)
+	exc_df[!,:region] = string.(exc_df[!,:region_from]) .* " - " .* string.(exc_df[!,:region_to])
+	exc_df[!,:id] .= ""
+	select!(exc_df,setdiff(namesSym(exc_df),[:timestep_superordinate_expansion,:region_from,:region_to,:scenario,:directed,:carrier,:objName]))
+
+	return rename(vcat(sum_df,exc_df),:timestep_superordinate_dispatch => :timestep,:variable => :capacity_variable,:value => :capacity_value)
+end
+
+#endregion
+
 #region # * other refinements
 
 # ! delete cuts that have not been binding for a while
 function deleteCuts!(top_m::anyModel,delCut_int::Int,i::Int)
-	# tracking latest binding iteration for cuts
-	top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> dual(x.cns) != 0.0 ? i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
-	# delete cuts that were not binding long enough
-	delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < i,top_m.parts.obj.cns[:bendersCuts])[!,:cns])
-	filter!(x -> (x.actItr + delCut_int > i),top_m.parts.obj.cns[:bendersCuts])
+	if delCut_int < Inf
+		# tracking latest binding iteration for cuts
+		top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> dual(x.cns) != 0.0 ? i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
+		# delete cuts that were not binding long enough
+		delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < i,top_m.parts.obj.cns[:bendersCuts])[!,:cns])
+		filter!(x -> (x.actItr + delCut_int > i),top_m.parts.obj.cns[:bendersCuts])
+	end
 end
 
 # ! computes convergence tolerance for subproblems
@@ -804,7 +853,7 @@ end
 mergeVar(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},outCol::Array{Symbol,1}) = vcat(vcat(vcat(map(x -> var_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,outCol],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
 
 # ! matches values in dictionary with variables of provided problem
-function matchValWithVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},mod_m::anyModel)
+function matchValWithVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},mod_m::anyModel,prsvExp::Bool=false)
 	# ! match values with variables
 	expExpr_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
 	for sys in (:tech,:exc)
@@ -816,7 +865,9 @@ function matchValWithVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame
 				val_df = deSelectSys(capa_dic[sys][sSym][varSym])
 				# correct scaling and storage values together with corresponding variables
 				val_df[!,:value] = val_df[!,:value] ./ getfield(mod_m.options.scaFac, occursin("exp",string(varSym)) ? :insCapa : (occursin("StSize",string(varSym)) ? :capaStSize : :capa))
-				expExpr_dic[sys][sSym][varSym] = unique(select(innerjoin(deSelectSys(part_dic[sSym].var[varSym]),val_df, on = intCol(val_df,:dir)),[:var,:value]))
+				sel_arr = prsvExp ? (:Ts_exp in intCol(val_df) ? [:Ts_exp,:var,:value] : [:Ts_disSup,:var,:value]) : [:var,:value]
+				join_df = unique(select(innerjoin(deSelectSys(part_dic[sSym].var[varSym]),val_df, on = intCol(val_df,:dir)),sel_arr))
+				expExpr_dic[sys][sSym][varSym] = prsvExp && :Ts_exp in intCol(val_df) ? rename(join_df,:Ts_exp => :Ts_disSup) : join_df
 			end
 		end
 	end
