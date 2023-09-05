@@ -29,23 +29,6 @@ mutable struct stabObj
 	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple, objVal_fl::Float64,lowBd_fl::Float64,relVar_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},top_m::anyModel)
 		stab_obj = new()
 
-		# set fields for name and options of method
-		meth_arr = Symbol[]
-		methOpt_arr = NamedTuple[]
-		for (key,val) in meth_tup
-			push!(meth_arr,key)
-			push!(methOpt_arr,val)
-			if key == :qtr && !isempty(setdiff(keys(val),(:start,:low,:thr,:fac)))
-				error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
-			elseif key == :prx && !isempty(setdiff(keys(val),(:start,:max,:fac)))
-				error("options provided for proximal bundle do not match the defined options 'start', 'max', and 'fac'")
-			elseif key == :lvl && !isempty(setdiff(keys(val),(:la,)))
-				error("options provided for level bundle do not match the defined options 'la'")
-			elseif key == :box && !isempty(setdiff(keys(val),(:low,:up,:minUp)))
-				error("options provided for trust-region do not match the defined options 'low', 'up', and 'minUp'")
-			end
-		end
-		
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr,:avgImp,:itrAvg),Tuple{Int64,Float64,Int64}})
 			error("rule for switching stabilization method must be empty or have the fields 'itr', 'avgImp', and 'itrAvg'")
 		end
@@ -54,30 +37,7 @@ mutable struct stabObj
 			error("parameter 'itr' for  minimum iterations before switching stabilization method must be at least 2")
 		end
 
-		if length(meth_arr) != length(unique(meth_arr)) error("stabilization methods must be unique") end
-		stab_obj.method = meth_arr
-		stab_obj.methodOpt = methOpt_arr
-
-		# method specific adjustments (e.g. starting value for dynamic parameter, new variables for objective function)
-		dynPar_arr = Float64[]
-		for m in 1:size(meth_arr,1)
-			if meth_arr[m] == :prx
-				dynPar = methOpt_arr[m].start # starting value for penalty
-			elseif meth_arr[m] == :lvl
-				dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * objVal_fl) / top_m.options.scaFac.obj # starting value for level
-				if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
-					error("lambda for level bundle must be strictly between 0 and 1")
-				end
-			elseif meth_arr[m] == :qtr
-				dynPar = methOpt_arr[m].start # starting value for radius
-			elseif meth_arr[m] == :box
-				dynPar = 0.0 # dummy value since boxstep implementation does not have a dynamic parameter
-			else
-				error("unknown stabilization method provided, method must either be 'prx', 'lvl', 'qtr', or 'box'")
-			end
-			push!(dynPar_arr,dynPar)
-		end
-		stab_obj.dynPar = dynPar_arr
+		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup)
 		
 		# set other fields
 		stab_obj.ruleSw = ruleSw_ntup
@@ -90,6 +50,51 @@ mutable struct stabObj
 
 		return stab_obj, size(stabExpr_arr,1)
 	end
+end
+
+# write options of stabilization method
+function writeStabOpt(meth_tup::Tuple)
+
+	# set fields for name and options of method
+	meth_arr = Symbol[]
+	methOpt_arr = NamedTuple[]
+	for (key,val) in meth_tup
+		push!(meth_arr,key)
+		push!(methOpt_arr,val)
+		if key == :qtr && !isempty(setdiff(keys(val),(:start,:low,:thr,:fac)))
+			error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
+		elseif key == :prx && !isempty(setdiff(keys(val),(:start,:max,:fac)))
+			error("options provided for proximal bundle do not match the defined options 'start', 'max', and 'fac'")
+		elseif key == :lvl && !isempty(setdiff(keys(val),(:la,)))
+			error("options provided for level bundle do not match the defined options 'la'")
+		elseif key == :box && !isempty(setdiff(keys(val),(:low,:up,:minUp)))
+			error("options provided for trust-region do not match the defined options 'low', 'up', and 'minUp'")
+		end
+	end
+
+	if length(meth_arr) != length(unique(meth_arr)) error("stabilization methods must be unique") end
+
+	# method specific adjustments (e.g. starting value for dynamic parameter, new variables for objective function)
+	dynPar_arr = Float64[]
+	for m in 1:size(meth_arr,1)
+		if meth_arr[m] == :prx
+			dynPar = methOpt_arr[m].start # starting value for penalty
+		elseif meth_arr[m] == :lvl
+			dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * objVal_fl) / top_m.options.scaFac.obj # starting value for level
+			if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
+				error("lambda for level bundle must be strictly between 0 and 1")
+			end
+		elseif meth_arr[m] == :qtr
+			dynPar = methOpt_arr[m].start # starting value for radius
+		elseif meth_arr[m] == :box
+			dynPar = 0.0 # dummy value since boxstep implementation does not have a dynamic parameter
+		else
+			error("unknown stabilization method provided, method must either be 'prx', 'lvl', 'qtr', or 'box'")
+		end
+		push!(dynPar_arr,dynPar)
+	end
+	
+	return meth_arr, methOpt_arr, dynPar_arr
 end
 
 #endregion
@@ -395,10 +400,10 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	capaData_obj.capa, allVal_dic = [writeResult(top_m,x; rmvFix = true) for x in [[:capa,:mustCapa],[:capa,:exp]]] 
 	
 	# get objective value of top problem
-	objTop_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
-	lowLim_fl = objTop_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
+	topCost_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
+	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
 
-	return capaData_obj, allVal_dic, objTop_fl, lowLim_fl
+	return capaData_obj, allVal_dic, topCost_fl, estCost_fl
 end
 
 # ! run sub-problem
@@ -675,11 +680,11 @@ function computeL2Norm(allVar_df::DataFrame,stab_obj::stabObj,scaRng_tup::Tuple,
 end
 
 # ! update dynamic parameter of stabilization method
-function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_boo::Bool,lowLimNoStab_fl::Float64,lowLim_fl::Float64,currentBest_fl::Float64,report_m::anyModel)
+function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_boo::Bool,estCostNoStab_fl::Float64,estCost_fl::Float64,currentBest_fl::Float64,nearOpt_boo::Bool,report_m::anyModel)
 
 	opt_tup = stab_obj.methodOpt[iUpd_int]
 	if stab_obj.method[iUpd_int] == :qtr # adjust radius of quadratic trust-region
-		if !adjCtr_boo && abs(1 - lowLimNoStab_fl / lowLim_fl) < opt_tup.thr && stab_obj.dynPar[iUpd_int] > opt_tup.low
+		if nearOpt_boo ? !adjCtr_boo : abs(1 - estCostNoStab_fl / estCost_fl) < opt_tup.thr && stab_obj.dynPar[iUpd_int] > opt_tup.low
 			stab_obj.dynPar[iUpd_int] = max(opt_tup.low,stab_obj.dynPar[iUpd_int] / opt_tup.fac)
 			produceMessage(report_m.options,report_m.report, 1," - Reduced quadratic trust-region!", testErr = false, printErr = false)	
 		end
@@ -691,11 +696,11 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 			stab_obj.dynPar[iUpd_int] = min(opt_tup.max,stab_obj.dynPar[iUpd_int] * opt_tup.fac)
 			produceMessage(report_m.options,report_m.report, 1," - Increased penalty term of proximal bundle!", testErr = false, printErr = false)
 		else
-			stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] * (1 - lowLimNoStab_fl/currentBest_fl)
+			stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] * (1 - estCostNoStab_fl/currentBest_fl)
 			produceMessage(report_m.options,report_m.report, 1," - Reset penalty term of proximal bundle!", testErr = false, printErr = false)
 		end
 	elseif stab_obj.method[iUpd_int] == :lvl # adjust level
-		stab_obj.dynPar[iUpd_int] = (opt_tup.la * lowLimNoStab_fl  + (1 - opt_tup.la) * currentBest_fl) / top_m.options.scaFac.obj
+		stab_obj.dynPar[iUpd_int] = (opt_tup.la * estCostNoStab_fl  + (1 - opt_tup.la) * currentBest_fl) / top_m.options.scaFac.obj
 	end
 
 end
@@ -759,10 +764,10 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
 	optimize!(top_m.optModel)
 
 	# obtain different objective values
-	objTop_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
-	lowLim_fl = objTop_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
+	topCost_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
+	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
 
-	return objTop_fl, lowLim_fl
+	return topCost_fl, estCost_fl
 end
 
 #endregion
