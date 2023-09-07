@@ -29,21 +29,6 @@ mutable struct stabObj
 	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple, objVal_fl::Float64,lowBd_fl::Float64,relVar_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},top_m::anyModel)
 		stab_obj = new()
 
-		# set fields for name and options of method
-		meth_arr = Symbol[]
-		methOpt_arr = NamedTuple[]
-		for (key,val) in meth_tup
-			push!(meth_arr,key)
-			push!(methOpt_arr,val)
-			if key == :qtr && !isempty(setdiff(keys(val),(:start,:low,:thr,:fac)))
-				error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
-			elseif key == :prx && !isempty(setdiff(keys(val),(:start,:max,:fac)))
-				error("options provided for proximal bundle do not match the defined options 'start', 'max', and 'fac'")
-			elseif key == :lvl && !isempty(setdiff(keys(val),(:la,)))
-				error("options provided for level bundle do not match the defined options 'la'")
-			end
-		end
-		
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr,:avgImp,:itrAvg),Tuple{Int64,Float64,Int64}})
 			error("rule for switching stabilization method must be empty or have the fields 'itr', 'avgImp', and 'itrAvg'")
 		end
@@ -52,28 +37,7 @@ mutable struct stabObj
 			error("parameter 'itr' for  minimum iterations before switching stabilization method must be at least 2")
 		end
 
-		if length(meth_arr) != length(unique(meth_arr)) error("stabilization methods must be unique") end
-		stab_obj.method = meth_arr
-		stab_obj.methodOpt = methOpt_arr
-
-		# method specific adjustments (e.g. starting value for dynamic parameter, new variables for objective function)
-		dynPar_arr = Float64[]
-		for m in 1:size(meth_arr,1)
-			if meth_arr[m] == :prx
-				dynPar = methOpt_arr[m].start # starting value for penalty
-			elseif meth_arr[m] == :lvl
-				dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * objVal_fl) / top_m.options.scaFac.obj # starting value for level
-				if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
-					error("lambda for level bundle must be strictly between 0 and 1")
-				end
-			elseif meth_arr[m] == :qtr
-				dynPar = methOpt_arr[m].start # starting value for radius
-			else
-				error("unknown stabilization method provided, method must either be 'prx', 'lvl', or 'qtr'")
-			end
-			push!(dynPar_arr,dynPar)
-		end
-		stab_obj.dynPar = dynPar_arr
+		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup)
 		
 		# set other fields
 		stab_obj.ruleSw = ruleSw_ntup
@@ -86,6 +50,51 @@ mutable struct stabObj
 
 		return stab_obj, size(stabExpr_arr,1)
 	end
+end
+
+# write options of stabilization method
+function writeStabOpt(meth_tup::Tuple)
+
+	# set fields for name and options of method
+	meth_arr = Symbol[]
+	methOpt_arr = NamedTuple[]
+	for (key,val) in meth_tup
+		push!(meth_arr,key)
+		push!(methOpt_arr,val)
+		if key == :qtr && !isempty(setdiff(keys(val),(:start,:low,:thr,:fac)))
+			error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
+		elseif key == :prx && !isempty(setdiff(keys(val),(:start,:max,:fac)))
+			error("options provided for proximal bundle do not match the defined options 'start', 'max', and 'fac'")
+		elseif key == :lvl && !isempty(setdiff(keys(val),(:la,)))
+			error("options provided for level bundle do not match the defined options 'la'")
+		elseif key == :box && !isempty(setdiff(keys(val),(:low,:up,:minUp)))
+			error("options provided for trust-region do not match the defined options 'low', 'up', and 'minUp'")
+		end
+	end
+
+	if length(meth_arr) != length(unique(meth_arr)) error("stabilization methods must be unique") end
+
+	# method specific adjustments (e.g. starting value for dynamic parameter, new variables for objective function)
+	dynPar_arr = Float64[]
+	for m in 1:size(meth_arr,1)
+		if meth_arr[m] == :prx
+			dynPar = methOpt_arr[m].start # starting value for penalty
+		elseif meth_arr[m] == :lvl
+			dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * objVal_fl) / top_m.options.scaFac.obj # starting value for level
+			if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
+				error("lambda for level bundle must be strictly between 0 and 1")
+			end
+		elseif meth_arr[m] == :qtr
+			dynPar = methOpt_arr[m].start # starting value for radius
+		elseif meth_arr[m] == :box
+			dynPar = 0.0 # dummy value since boxstep implementation does not have a dynamic parameter
+		else
+			error("unknown stabilization method provided, method must either be 'prx', 'lvl', 'qtr', or 'box'")
+		end
+		push!(dynPar_arr,dynPar)
+	end
+	
+	return meth_arr, methOpt_arr, dynPar_arr
 end
 
 #endregion
@@ -391,10 +400,10 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	capaData_obj.capa, allVal_dic = [writeResult(top_m,x; rmvFix = true) for x in [[:capa,:mustCapa],[:capa,:exp]]] 
 	
 	# get objective value of top problem
-	objTop_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
-	lowLim_fl = objTop_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
+	topCost_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
+	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
 
-	return capaData_obj, allVal_dic, objTop_fl, lowLim_fl
+	return capaData_obj, allVal_dic, topCost_fl, estCost_fl
 end
 
 # ! run sub-problem
@@ -637,6 +646,19 @@ function centerStab!(method::Val{:lvl},stab_obj::stabObj,top_m::anyModel)
 	set_upper_bound(top_m.parts.obj.var[:obj][1,1],stab_obj.dynPar[stab_obj.actMet])
 end
 
+# function for box step method
+function centerStab!(method::Val{:box},stab_obj::stabObj,top_m::anyModel)
+
+	# match values with variables in model
+	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
+	allVar_df = vcat(vcat(vcat(map(x -> expExpr_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+
+	# set lower and upper bound
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], x.value*(1-stab_obj.methodOpt[stab_obj.actMet].low) |> (y -> y < top_m.options.coefRng.rhs[1]/1e2 ? 0.0 : y))), eachrow(allVar_df))
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], max(stab_obj.methodOpt[stab_obj.actMet].minUp/z[2], x.value*(1+stab_obj.methodOpt[stab_obj.actMet].up)))), eachrow(allVar_df))
+
+end
+
 # ! compute scaled l2 norm
 function computeL2Norm(allVar_df::DataFrame,stab_obj::stabObj,scaRng_tup::Tuple,top_m::anyModel)
 
@@ -650,7 +672,7 @@ function computeL2Norm(allVar_df::DataFrame,stab_obj::stabObj,scaRng_tup::Tuple,
 	end
 
 	# computes left hand side expression and scaling factor
-	capaSum_expr = sum(map(x -> collect(keys(x.var.terms))[1] |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allVar_df)))
+	capaSum_expr = sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allVar_df)))
 	scaFac_fl =  top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)) |> (z -> isempty(z) ? [1.0] : z)))
 
 	return capaSum_expr, scaFac_fl
@@ -658,11 +680,11 @@ function computeL2Norm(allVar_df::DataFrame,stab_obj::stabObj,scaRng_tup::Tuple,
 end
 
 # ! update dynamic parameter of stabilization method
-function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_boo::Bool,lowLimNoStab_fl::Float64,lowLim_fl::Float64,currentBest_fl::Float64,report_m::anyModel)
+function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_boo::Bool,estCostNoStab_fl::Float64,estCost_fl::Float64,currentBest_fl::Float64,nearOpt_boo::Bool,report_m::anyModel)
 
 	opt_tup = stab_obj.methodOpt[iUpd_int]
 	if stab_obj.method[iUpd_int] == :qtr # adjust radius of quadratic trust-region
-		if !adjCtr_boo && abs(1 - lowLimNoStab_fl / lowLim_fl) < opt_tup.thr && stab_obj.dynPar[iUpd_int] > opt_tup.low
+		if nearOpt_boo ? !adjCtr_boo : abs(1 - estCostNoStab_fl / estCost_fl) < opt_tup.thr && stab_obj.dynPar[iUpd_int] > opt_tup.low
 			stab_obj.dynPar[iUpd_int] = max(opt_tup.low,stab_obj.dynPar[iUpd_int] / opt_tup.fac)
 			produceMessage(report_m.options,report_m.report, 1," - Reduced quadratic trust-region!", testErr = false, printErr = false)	
 		end
@@ -674,11 +696,11 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 			stab_obj.dynPar[iUpd_int] = min(opt_tup.max,stab_obj.dynPar[iUpd_int] * opt_tup.fac)
 			produceMessage(report_m.options,report_m.report, 1," - Increased penalty term of proximal bundle!", testErr = false, printErr = false)
 		else
-			stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] * (1 - lowLimNoStab_fl/currentBest_fl)
-			produceMessage(report_m.options,report_m.report, 1," - Re-set penalty term of proximal bundle!", testErr = false, printErr = false)
+			stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] * (1 - estCostNoStab_fl/currentBest_fl)
+			produceMessage(report_m.options,report_m.report, 1," - Reset penalty term of proximal bundle!", testErr = false, printErr = false)
 		end
 	elseif stab_obj.method[iUpd_int] == :lvl # adjust level
-		stab_obj.dynPar[iUpd_int] = (opt_tup.la * lowLimNoStab_fl  + (1 - opt_tup.la) * currentBest_fl) / top_m.options.scaFac.obj
+		stab_obj.dynPar[iUpd_int] = (opt_tup.la * estCostNoStab_fl  + (1 - opt_tup.la) * currentBest_fl) / top_m.options.scaFac.obj
 	end
 
 end
@@ -704,13 +726,13 @@ function filterStabVar(allVal_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame
 				var_df = allVal_dic[sys][sSym][trstSym]
 				if trstSym == :capaExc && !part_dic[sSym].dir filter!(x -> x.R_from < x.R_to,var_df) end # only get relevant capacity variables of exchange
 				if sys == :tech var_df = removeFixStorage(trstSym,var_df,part_dic[sSym]) end # remove storage variables controlled by ratio
-				# filter cases where acutal variables are defined
+				# filter cases where actual variables are defined
 				var_dic[sys][sSym][trstSym] = intCol(var_df) |> (w ->innerjoin(var_df,unique(select(filter(x -> !isempty(x.var.terms), part_dic[sSym].var[trstSym]),w)), on = w))
 				# remove if no capacities remain
 				removeEmptyDic!(var_dic[sys][sSym],trstSym)
 			end
 			
-			# remove entire system if not capacities
+			# remove entire system if no capacities
 			removeEmptyDic!(var_dic[sys],sSym)
 		end
 	end
@@ -727,6 +749,14 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
 	elseif stab_obj.method[stab_obj.actMet] == :lvl
 		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
 		delete_upper_bound(top_m.parts.obj.var[:obj][1,1])
+	elseif stab_obj.method[stab_obj.actMet] == :box
+		stabVar_dic = matchValWithVar(stab_obj.var,top_m)
+		for sys in keys(stabVar_dic), sSym in keys(stabVar_dic[sys]), capaSym in keys(stabVar_dic[sys][sSym])
+			relVar_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[sys][sSym][capaSym][!,:var])
+			delete_lower_bound.(relVar_arr)
+			set_lower_bound.(relVar_arr,0.0)
+			delete_upper_bound.(relVar_arr)
+		end
 	end
 	
 	set_optimizer_attribute(top_m.optModel, "Method", 0)
@@ -734,10 +764,57 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
 	optimize!(top_m.optModel)
 
 	# obtain different objective values
-	objTop_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
-	lowLim_fl = objTop_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
+	topCost_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
+	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
 
-	return objTop_fl, lowLim_fl
+	return topCost_fl, estCost_fl
+end
+
+#endregion
+
+#region # * near-optimal
+
+# ! adapt top-problem for the computation of near-optimal solutions
+function adaptNearOpt!(top_m::anyModel,nearOpt_ntup::NamedTuple,costOpt_fl::Float64,nOpt_int::Int)
+	
+	obj_arr = Pair[]
+	for obj in nearOpt_ntup.obj[nOpt_int][2][2]
+		# build filter function
+		flt_tup = obj[2]
+		te_boo = !(flt_tup.variable in (:capaExc,:expExc))
+		exp_boo = flt_tup.variable in (:expConv,:expStIn,:expStOut,:expStSize,:expExc)
+		flt_func = x -> (:system in keys(flt_tup) ? ((te_boo ? x.Te : x.Exc) in getDescFromName(flt_tup.system,top_m.sets[(te_boo ? :Te : :Exc)])) : true) && (:region in keys(flt_tup) ? (x.R_exp in getDescFromName(flt_tup.region,top_m.sets[:R])) : true) && (:region_from in keys(flt_tup) ? (x.R_from in getDescFromName(flt_tup.region_from,top_m.sets[:R])) : true) && (:region_to in keys(flt_tup) ? (x.R_to in getDescFromName(flt_tup.region_to,top_m.sets[:R])) : true) && (:timestep in keys(flt_tup) ? ((exp_boo ? x.Ts_exp : x.Ts_expSup) in getDescFromName(flt_tup.timestep,top_m.sets[:Ts])) : true)
+		# write description of objective
+		push!(obj_arr,(flt_tup.variable => (fac = obj[1],flt = flt_func)))
+	end
+	# change objective according to near-optimal
+	objFunc_tup = tuple(vcat([:cost => (fac = 0.0,flt = x -> true)], obj_arr)...)
+	@suppress setObjective!(objFunc_tup,top_m,nearOpt_ntup.obj[nOpt_int][2][1] == :min)
+	
+	# delete old restriction to near optimum
+	if :nearOpt in keys(top_m.parts.obj.cns) delete(top_m.optModel,top_m.parts.obj.cns[:nearOpt][1,:cns]) end
+	
+	# restrict system costs to near-optimum
+	cost_expr = sum(filter(x -> x.name in (:cost,:benders), top_m.parts.obj.var[:objVar])[!,:var])
+	nearOpt_eqn = @constraint(top_m.optModel, costOpt_fl * (1 + nearOpt_ntup.optThres)  >= cost_expr)
+	top_m.parts.obj.cns[:nearOpt] = DataFrame(cns = nearOpt_eqn)
+end
+
+# ! get capacity results for near optimal analysis
+function getCapaResult(anyM::anyModel)
+
+	# get capacities from summary file
+	sum_df = rename(reportResults(:summary,anyM,rtnOpt = (:csvDf,)),:region_dispatch => :region, :technology => :system)
+	sum_df = filter(x -> x.variable in (:capaStOut,:capaStIn,:capaStSize,:capaConv), sum_df)
+	select!(sum_df, setdiff(namesSym(sum_df),[:scenario,:carrier,:objName]))
+
+	# get capacity from exchange file
+	exc_df = rename(filter(x -> x.variable == :capaExc, reportResults(:exchange,anyM,rtnOpt = (:csvDf,))), :exchange => :system)
+	exc_df[!,:region] = string.(exc_df[!,:region_from]) .* " - " .* string.(exc_df[!,:region_to])
+	exc_df[!,:id] .= ""
+	select!(exc_df,setdiff(namesSym(exc_df),[:timestep_superordinate_expansion,:region_from,:region_to,:scenario,:directed,:carrier,:objName]))
+
+	return rename(vcat(sum_df,exc_df),:timestep_superordinate_dispatch => :timestep,:variable => :capacity_variable,:value => :capacity_value)
 end
 
 #endregion
@@ -746,11 +823,13 @@ end
 
 # ! delete cuts that have not been binding for a while
 function deleteCuts!(top_m::anyModel,delCut_int::Int,i::Int)
-	# tracking latest binding iteration for cuts
-	top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> dual(x.cns) != 0.0 ? i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
-	# delete cuts that were not binding long enough
-	delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < i,top_m.parts.obj.cns[:bendersCuts])[!,:cns])
-	filter!(x -> (x.actItr + delCut_int > i),top_m.parts.obj.cns[:bendersCuts])
+	if delCut_int < Inf
+		# tracking latest binding iteration for cuts
+		top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> dual(x.cns) != 0.0 ? i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
+		# delete cuts that were not binding long enough
+		delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < i,top_m.parts.obj.cns[:bendersCuts])[!,:cns])
+		filter!(x -> (x.actItr + delCut_int > i),top_m.parts.obj.cns[:bendersCuts])
+	end
 end
 
 # ! computes convergence tolerance for subproblems
@@ -779,7 +858,7 @@ end
 mergeVar(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},outCol::Array{Symbol,1}) = vcat(vcat(vcat(map(x -> var_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,outCol],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
 
 # ! matches values in dictionary with variables of provided problem
-function matchValWithVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},mod_m::anyModel)
+function matchValWithVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},mod_m::anyModel,prsvExp::Bool=false)
 	# ! match values with variables
 	expExpr_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
 	for sys in (:tech,:exc)
@@ -791,7 +870,9 @@ function matchValWithVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame
 				val_df = deSelectSys(capa_dic[sys][sSym][varSym])
 				# correct scaling and storage values together with corresponding variables
 				val_df[!,:value] = val_df[!,:value] ./ getfield(mod_m.options.scaFac, occursin("exp",string(varSym)) ? :insCapa : (occursin("StSize",string(varSym)) ? :capaStSize : :capa))
-				expExpr_dic[sys][sSym][varSym] = unique(select(innerjoin(deSelectSys(part_dic[sSym].var[varSym]),val_df, on = intCol(val_df,:dir)),[:var,:value]))
+				sel_arr = prsvExp ? (:Ts_exp in intCol(val_df) ? [:Ts_exp,:var,:value] : [:Ts_disSup,:var,:value]) : [:var,:value]
+				join_df = unique(select(innerjoin(deSelectSys(part_dic[sSym].var[varSym]),val_df, on = intCol(val_df,:dir)),sel_arr))
+				expExpr_dic[sys][sSym][varSym] = prsvExp && :Ts_exp in intCol(val_df) ? rename(join_df,:Ts_exp => :Ts_disSup) : join_df
 			end
 		end
 	end
