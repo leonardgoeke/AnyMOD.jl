@@ -28,9 +28,8 @@ function createOptModel!(anyM::anyModel)
 	removeFixed!(prepSys_dic,allCapaDf_dic,anyM) # remove entries were capacities are fixed to zero
 
 	# ! remove unrequired elements in case of distributed model creation
-	if !isempty(anyM.subPro) && !anyM.options.createVI
-	    distributedMapping!(anyM,prepSys_dic)
-	end
+	if !isempty(anyM.subPro) && !anyM.options.createVI distributedMapping!(anyM,prepSys_dic) end
+
 	# abort if there is already an error
     if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
 

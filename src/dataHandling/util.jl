@@ -393,13 +393,13 @@ function expandExpToCapa(in_df::DataFrame)
 end
 
 # ! expands any table including columns with temporal and spatial dispatch levels and the corresponding expansion regions and superordinate dispatch steps to full dispatch table
-function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},ts_tr::Tree,scr_ntup::NamedTuple,preserveTsSupTs::Bool = false)
+function expandExpToDisp(inData_df::DataFrame,ts_dic::Dict{Tuple{Int,Int},Array{Int,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},ts_tr::Tree,scr_ntup::NamedTuple,preserveTsSupTs::Bool = false,defScr_arr::Array{Int,1} = Int[])
 
 	# adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)
 	expR_df = unique(combine(x -> (R_dis = r_dic[(x.R_exp[1],x.lvlR[1])],), groupby(inData_df,namesSym(inData_df)))[!,Not([:R_exp,:lvlR])])
 	expTs_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(expR_df,namesSym(expR_df)))[!,Not(:lvlTs)]
 
-	expTs_df = addScenarios(expTs_df,ts_tr,scr_ntup)
+	expTs_df = addScenarios(expTs_df,ts_tr,scr_ntup,defScr_arr)
 	
 	if !preserveTsSupTs select!(expTs_df,Not(:Ts_disSup)) end
 
@@ -613,11 +613,13 @@ collapseExp(exp_df::DataFrame) = unique(select(exp_df,Not([:Ts_expSup,:Ts_disSup
 #region # * processing for stochastic model 
 
 # ! adds relevant scenarios based on timestep column
-function addScenarios(in_df::DataFrame,ts_tr::Tree,scr_ntup::NamedTuple)
+function addScenarios(in_df::DataFrame,ts_tr::Tree,scr_ntup::NamedTuple,defScr_arr::Array{Int,1} = Int[])
 	if isempty(scr_ntup.scr)
 		in_df[!,:scr] .= 0
 	else
-		in_df[!,:scr] = map(x -> scr_ntup.scr[getAncestors(x,ts_tr,:int,scr_ntup.lvl)[end]], in_df[!,:Ts_dis])
+		tsToScr_dic = Dict(x => getAncestors(x,ts_tr,:int,scr_ntup.lvl)[end] for x in in_df[!,:Ts_dis])
+		if isempty(defScr_arr) filter!(x -> tsToScr_dic[x.Ts_dis] in keys(scr_ntup.scr),in_df) end
+		in_df[!,:scr] = map(x -> tsToScr_dic[x] in keys(scr_ntup.scr) ? scr_ntup.scr[tsToScr_dic[x]] : defScr_arr, in_df[!,:Ts_dis])
 		in_df = flatten(in_df,:scr)
 	end
 	return in_df

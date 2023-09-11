@@ -597,7 +597,7 @@ function createScenarioMapping!(anyM::anyModel)
 			if anyM.options.supTsLvl >= anyM.options.lvlFrs
 				anyM.options.lvlFrs = 0
 				push!(anyM.report,(2,"scenario mapping","","specified foresight level is not more detailed than superordinate dispatch level, therefore model still uses perfect foresight"))
-			elseif minDis_int < anyM.options.lvlFrs
+			elseif minDis_int < anyM.options.lvlFrs 
 				anyM.options.lvlFrs = minDis_int
 				push!(anyM.report,(1,"scenario mapping","","specified foresight level exceeds least detailed dispatch resolution, model uses level $(minDis_int) instead"))
 			end
@@ -614,7 +614,6 @@ function createScenarioMapping!(anyM::anyModel)
 			propPar_df = filter(x -> false,prop_df)
 			propPar_df[!,:val] = Float64[]
 		end
-		
 
 		# compute default values in other cases
 		propDef_df = antijoin(prop_df,propPar_df,on = [:scr,:Ts_dis])
@@ -676,21 +675,46 @@ end
 function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple}}})
 
 	subPro = anyM.subPro
+	exTsDis_arr = Int[]
 
 	if subPro != (0,0) # ! case of sub-problem
-		supTs_int = anyM.supTs.step[subPro[1]]
 
-		# get tuple of unrequired time-steps and scenarios
-		rmvId_tup = (Ts_dis = map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x != supTs_int,collect(anyM.supTs.step))) |> (y -> isempty(y) ? Int[] : union(y...)),
-							Ts_exp = map(x -> getDescendants(x,anyM.sets[:Ts],true),filter(x -> x > supTs_int,collect(anyM.supTs.step))) |> (y -> isempty(y) ? Int[] : union(y...)),
-																scr = filter(x -> x != subPro[2] && x != 0,getfield.(values(anyM.sets[:scr].nodes),:idx)))
+		# find relevant time-steps for sub-problem
+		relTsDis_arr = Int[]
+		
+		supTs_int = getAncestors(subPro[1],anyM.sets[:Ts],:int,anyM.supTs.lvl)[end]
+		for i in (anyM.supTs.lvl+1):anyM.sets[:Ts].height	
+			relLvl_arr = getDescendants(subPro[1],anyM.sets[:Ts],false,i)
+			append!(relTsDis_arr,relLvl_arr)
+			# gathers time-steps only relevant with limited foresight 
+			if anyM.options.lvlFrs != 0
+				allLvl_arr = getDescendants(supTs_int,anyM.sets[:Ts],false,i)
+				nonRelLvl_arr = setdiff(allLvl_arr,relLvl_arr)
+				exRel_int = minimum(relLvl_arr) - 1 in allLvl_arr ? minimum(relLvl_arr) - 1 : maximum(nonRelLvl_arr)
+				push!(exTsDis_arr,exRel_int)
+			end
+		end
 
-		# remove unrequired nodes from trees of scenarios
+		# prepare removing unrequired time-steps and scenarios
+		rmvTs_arr = collect(setdiff(keys(anyM.sets[:Ts].nodes),vcat(relTsDis_arr,collect(anyM.supTs.step),getAncestors(subPro[1],anyM.sets[:Ts],:int))))
+		rmvId_tup = (Ts_dis = rmvTs_arr, Ts_exp = rmvTs_arr,
+						scr = filter(x -> x != subPro[2] && x != 0,getfield.(values(anyM.sets[:scr].nodes),:idx)))
 
-		# rewrite information on superordinate time-steps 
-		scaSupTs_dic = getDescendants(supTs_int,anyM.sets[:Ts],:true) |> (z -> Dict(filter(x -> x[1] in vcat([supTs_int],z) ,collect(anyM.supTs.sca))...))
-		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(supTs_int,), sca = filter(x -> getAncestors(x[1],anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] == supTs_int, scaSupTs_dic))
-		anyM.scr =  (lvl = anyM.scr.lvl, scr = Dict(supTs_int => [subPro[2],]), scrProb = filter(x -> x[1] == (supTs_int,subPro[2]), anyM.scr.scrProb))
+		# remove unrequired scenarios
+		foreach(y ->  delete!(anyM.sets[:scr].nodes,y),rmvId_tup.scr)
+
+		# remove unrequired timesteps
+		foreach(y ->  delete!(anyM.sets[:Ts].nodes,y),filter(x -> !(x in exTsDis_arr),rmvId_tup.Ts_dis))
+		foreach(y ->  delete!(anyM.sets[:Ts].up,y),filter(x -> !(x in exTsDis_arr),rmvId_tup.Ts_dis))
+
+		relTs_arr = collect(keys(anyM.sets[:Ts].nodes))
+		for x in keys(anyM.sets[:Ts].nodes) 
+			anyM.sets[:Ts].nodes[x].down = intersect(relTs_arr,anyM.sets[:Ts].nodes[x].down)
+		end
+
+		# rewrite information on scenarios and superordinate time-steps
+		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(getAncestors(subPro[1],anyM.sets[:Ts],:int,anyM.supTs.lvl)[end],), sca = filter(x -> x[1] in relTsDis_arr, anyM.supTs.sca))
+		anyM.scr =  (lvl = anyM.scr.lvl, scr = Dict(subPro[1] => [subPro[2],]), scrProb = filter(x -> x[1] == subPro, anyM.scr.scrProb))
 		
 		# ! adjust dictionaries for expansion preparation
 
@@ -755,7 +779,7 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 			end
 		end
 
-		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be a sub-problem for time-step '$(createFullString(supTs_int,anyM.sets[:Ts]))'$(getScrName(subPro[2],anyM.sets[:scr]))")
+		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be a sub-problem for time-step '$(createFullString(subPro[1],anyM.sets[:Ts]))'$(getScrName(subPro[2],anyM.sets[:scr]))")
 	else # ! case of top-problem
 		# ! remove parameter data
 		# remove unrequired parameter data from technology parts
@@ -772,6 +796,7 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 		end
 		produceMessage(anyM.options,anyM.report, 1," - Adjusted model to be the top-problem")
 	end
+	
 end
 
 # ! maps capacity restriction for one type (e.g. gen, use, st, or exc)

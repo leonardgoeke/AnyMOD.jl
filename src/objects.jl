@@ -513,6 +513,10 @@ mutable struct anyModel <: AbstractModel
 																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true), forceScr = nothing, lvlFrs = 0, createVI = false)
 		anyM = new()
 
+		if lvlFrs != 0 && createVI
+			error("Valid inequalities cannot be used with reduced foresight!")
+		end
+		
 		#region # * initialize report and options
 
 		# ! creates dataframe to which reporting is written

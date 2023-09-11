@@ -5,7 +5,8 @@
 mutable struct resData
 	objVal::Float64
 	capa::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}
-	resData() = new(0.0,Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}())
+	stLvl::Dict{Symbol,DataFrame}
+	resData() = new(0.0,Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(),Dict{Symbol,DataFrame}())
 end
 
 # ! copy functions for model results
@@ -13,6 +14,7 @@ function copy(ben_obj::resData)
 	out = resData()
 	out.objVal = ben_obj.objVal
 	out.capa = deepcopy(ben_obj.capa)
+	out.stLvl = deepcopy(ben_obj.stLvl)
 	return out
 end
 
@@ -24,9 +26,9 @@ mutable struct stabObj
 	actMet::Int # index of currently active stabilization method
 	objVal::Float64 # array of objective value for current center
 	dynPar::Array{Float64,1} # array of dynamic parameters for each method
-	var::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}} # variables subject to stabilization
+	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
-	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple, objVal_fl::Float64,lowBd_fl::Float64,relVar_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},top_m::anyModel)
+	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple,resData_obj::resData,top_m::anyModel)
 		stab_obj = new()
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr,:avgImp,:itrAvg),Tuple{Int64,Float64,Int64}})
@@ -42,11 +44,13 @@ mutable struct stabObj
 		# set other fields
 		stab_obj.ruleSw = ruleSw_ntup
 		stab_obj.actMet = 1
-		stab_obj.objVal = objVal_fl
-		stab_obj.var = filterStabVar(relVar_dic,top_m)
+		stab_obj.objVal = resData_obj.objVal
+		stab_obj.var = filterStabVar(resData_obj.capa,resData_obj.stLvl,top_m)
 		
 		# compute number of variables subject to stabilization
-		stabExpr_arr = vcat(vcat(vcat(map(x -> stab_obj.var[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+		stabCapa_arr = vcat(vcat(vcat(map(x -> stab_obj.var[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+		stLvl_arr = vcat(map(x -> stab_obj.var[:stLvl][x][!,:value],collect(keys(stab_obj.var[:stLvl])))...)
+		stabExpr_arr = vcat(stabCapa_arr,stLvl_arr)
 
 		return stab_obj, size(stabExpr_arr,1)
 	end
@@ -116,7 +120,7 @@ function heuristicSolve(modOpt_tup::NamedTuple,redFac::Float64,t_int::Int,opt_ob
 	# write results to benders object
 	heuData_obj = resData()
 	heuData_obj.objVal = sum(map(z -> sum(value.(heu_m.parts.cost.var[z][!,:var])), collect(filter(x -> any(occursin.(["costExp", "costOpr", "costMissCapa", "costRetro"],string(x))), keys(heu_m.parts.cost.var)))))
-	heuData_obj.capa = writeResult(heu_m,[:capa,:exp,:mustCapa,:mustExp],fltSt = fltSt)
+	heuData_obj.capa, ~ = writeResult(heu_m,[:capa,:exp,:mustCapa,:mustExp],fltSt = fltSt)
 	
 	if rtrnMod
 		return heu_m, heuData_obj
@@ -369,7 +373,8 @@ end
 # ! run top-problem
 function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},stab_obj::Union{Nothing,stabObj},i::Int)
 
-	capaData_obj = resData()
+	resData_obj = resData()
+	stabVar_obj = resData()
 
 	# add cuts
 	if !isempty(cutData_dic) addCuts!(top_m,cutData_dic,i) end
@@ -397,34 +402,45 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	checkIIS(top_m)
 
 	# write technology capacites and level of capacity balance to benders object
-	capaData_obj.capa, allVal_dic = [writeResult(top_m,x; rmvFix = true) for x in [[:capa,:mustCapa],[:capa,:exp]]] 
+	resData_obj.capa, resData_obj.stLvl = writeResult(top_m,[:capa,:mustCapa,:stLvl]; rmvFix = true)
+	stabVar_obj.capa, stabVar_obj.stLvl = writeResult(top_m,[:capa,:exp,:stLvl]; rmvFix = true)
 	
 	# get objective value of top problem
 	topCost_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
 	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
 
-	return capaData_obj, allVal_dic, topCost_fl, estCost_fl
+	return resData_obj, stabVar_obj, topCost_fl, estCost_fl
 end
 
 # ! run sub-problem
-function runSub(sub_m::anyModel,capaData_obj::resData,sol_sym::Symbol,optTol_fl::Float64=1e-8,wrtRes_boo::Bool=false)
+function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::Float64=1e-8,wrtRes_boo::Bool=false)
 
 	# fixing capacity
 	for sys in (:tech,:exc)
 		part_dic = getfield(sub_m.parts,sys)
-		for sSym in keys(capaData_obj.capa[sys])
-			for capaSym in sort(filter(x -> occursin("capa",lowercase(string(x))), collect(keys(capaData_obj.capa[sys][sSym]))),rev = true)
+		for sSym in keys(resData_obj.capa[sys])
+			for capaSym in sort(filter(x -> occursin("capa",lowercase(string(x))), collect(keys(resData_obj.capa[sys][sSym]))),rev = true)
 				# filter capacity data for respective year
-				filter!(x -> x.Ts_disSup == sub_m.supTs.step[1], capaData_obj.capa[sys][sSym][capaSym])
+				filter!(x -> x.Ts_disSup == sub_m.supTs.step[1], resData_obj.capa[sys][sSym][capaSym])
 				# removes entry from capacity data, if capacity does not exist in respective year, otherwise fix to value
-				if !(sSym in keys(part_dic)) || !(capaSym in keys(part_dic[sSym].var)) || isempty(capaData_obj.capa[sys][sSym][capaSym])
-					delete!(capaData_obj.capa[sys][sSym],capaSym)
+				if !(sSym in keys(part_dic)) || !(capaSym in keys(part_dic[sSym].var)) || isempty(resData_obj.capa[sys][sSym][capaSym])
+					delete!(resData_obj.capa[sys][sSym],capaSym)
 				else
-					capaData_obj.capa[sys][sSym][capaSym] = limitVar!(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m)
+					resData_obj.capa[sys][sSym][capaSym] = limitVar!(resData_obj.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],capaSym,part_dic[sSym],sub_m)
 				end
 			end
 			# remove system if no capacities exist
-			removeEmptyDic!(capaData_obj.capa[sys],sSym)
+			removeEmptyDic!(resData_obj.capa[sys],sSym)
+		end
+	end
+
+	# fixing storage levels
+	if !isempty(resData_obj.stLvl)
+		for sSym in keys(resData_obj.stLvl)
+			if sSym in keys(sub_m.parts.tech)
+				part_obj = sub_m.parts.tech[sSym]
+				resData_obj.stLvl[sSym] = limitVar!(select(resData_obj.stLvl[sSym],Not([:scr])),select(part_obj.var[:stLvl],Not([:scr])),:stLvl,part_obj,sub_m)
+			end
 		end
 	end
 
@@ -450,34 +466,46 @@ function runSub(sub_m::anyModel,capaData_obj::resData,sol_sym::Symbol,optTol_fl:
 		reportResults(:cost,sub_m)
 	end
 
-	# add duals and objective value to capacity data
+	# get objective value
 	scaObj_fl = sub_m.options.scaFac.obj
-	capaData_obj.objVal = value(sum(sub_m.parts.obj.var[:objVar][!,:var]))
+	resData_obj.objVal = value(sum(sub_m.parts.obj.var[:objVar][!,:var]))
 
+	# get duals on capacity
 	for sys in (:tech,:exc)
 		part_dic = getfield(sub_m.parts,sys)
-		for sSym in keys(capaData_obj.capa[sys])
-			for capaSym in filter(x -> occursin("capa",lowercase(string(x))), collect(keys(capaData_obj.capa[sys][sSym])))
+		for sSym in keys(resData_obj.capa[sys])
+			for capaSym in filter(x -> occursin("capa",lowercase(string(x))), collect(keys(resData_obj.capa[sys][sSym])))
 				if Symbol(capaSym,:BendersFix) in keys(part_dic[sSym].cns)
 					scaCapa_fl = getfield(sub_m.options.scaFac,occursin("StSize",string(capaSym)) ? :capaStSize : :capa)
-					capaData_obj.capa[sys][sSym][capaSym] = addDual(capaData_obj.capa[sys][sSym][capaSym],part_dic[sSym].cns[Symbol(capaSym,:BendersFix)],scaObj_fl/scaCapa_fl)
+					resData_obj.capa[sys][sSym][capaSym] = addDual(resData_obj.capa[sys][sSym][capaSym],part_dic[sSym].cns[Symbol(capaSym,:BendersFix)],scaObj_fl/scaCapa_fl)
 					# remove capacity if none exists (again necessary because dual can be zero)
-					removeEmptyDic!(capaData_obj.capa[sys][sSym],capaSym)
+					removeEmptyDic!(resData_obj.capa[sys][sSym],capaSym)
 				end
 			end
 			# remove system if no capacities exist (again necessary because dual can be zero)
-			removeEmptyDic!(capaData_obj.capa[sys],sSym)
+			removeEmptyDic!(resData_obj.capa[sys],sSym)
 		end
 	end
 
-	return capaData_obj
+	# get duals on storage levels
+	if !isempty(resData_obj.stLvl)
+		for sSym in keys(resData_obj.stLvl)
+			if sSym in keys(sub_m.parts.tech)
+				part_obj = sub_m.parts.tech[sSym]
+				resData_obj.stLvl[sSym] = addDual(resData_obj.stLvl[sSym],part_obj.cns[:stLvlBendersFix],scaObj_fl/sub_m.options.scaFac.dispSt)
+				removeEmptyDic!(resData_obj.stLvl,sSym)
+			end
+		end
+	end
+
+	return resData_obj
 end
 
 # ! add all cuts from input dictionary to top problem
 function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},i::Int)
 	
 	# create array of expressions with duals for sub-problems
-	cut_df = DataFrame(i = Int[], Ts_disSup = Int[],scr = Int[], limCoef = Bool[], actItr = Int[], cnsExpr = AffExpr[])
+	cut_df = DataFrame(i = Int[], Ts_dis = Int[],scr = Int[], limCoef = Bool[], actItr = Int[], cnsExpr = AffExpr[])
 	for sub in keys(cutData_dic)
 		subCut = cutData_dic[sub]
 		cutExpr_arr = Array{GenericAffExpr,1}()
@@ -490,9 +518,19 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},
 				push!(cutExpr_arr,getBendersCut(subCut.capa[sys][sSym][capaSym],part_dic[sSym].var[capaSym],scaCapa_fl))
 			end
 		end
+
+		# compute cut element for each storage level
+		if !isempty(subCut.stLvl)
+			for sSym in keys(subCut.stLvl)
+				if sSym in keys(top_m.parts.tech)
+					part_obj = top_m.parts.tech[sSym]
+					push!(cutExpr_arr,getBendersCut(subCut.stLvl[sSym],part_obj.var[:stLvl],top_m.options.scaFac.dispSt))
+				end
+			end
+		end
 		
 		# get cut variable and compute cut expression 
-		cut_var = filter(x -> x.Ts_disSup == top_m.supTs.step[sub[1]] && x.scr == sub[2], top_m.parts.obj.var[:cut])[1,:var]
+		cut_var = filter(x -> x.Ts_dis == sub[1] && x.scr == sub[2], top_m.parts.obj.var[:cut])[1,:var]
 		cut_expr = @expression(top_m.optModel, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)))
 		
 		#region # * remove extremely small terms and limit the coefficient of extremely large terms
@@ -561,7 +599,7 @@ function addCuts!(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},
 		#endregion
 
 		# add benders variable to cut and push to dataframe of all cuts
-		push!(cut_df,(i = i, Ts_disSup = top_m.supTs.step[sub[1]], scr = sub[2], limCoef = limCoef_boo, actItr = i, cnsExpr = cut_expr - cut_var))
+		push!(cut_df,(i = i, Ts_dis = sub[1], scr = sub[2], limCoef = limCoef_boo, actItr = i, cnsExpr = cut_expr - cut_var))
 	end
 
 	# scale cuts and add to dataframe of benders cuts in model
@@ -582,8 +620,10 @@ function centerStab!(method::Val{:qtr},stab_obj::stabObj,top_m::anyModel)
 
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
-	allVar_df = vcat(vcat(vcat(map(x -> expExpr_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
-	
+	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...)
+	allVar_df = vcat(allCapa_df,allStLvl_df)
+
 	# sets values of variables that will violate range to zero
 	minFac_fl = (2*maximum(allVar_df[!,:value]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
 	allVar_df[!,:value] = map(x -> 2*x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
@@ -605,7 +645,9 @@ function centerStab!(method::Val{:prx},stab_obj::stabObj,top_m::anyModel)
 	
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
-	allVar_df = vcat(vcat(vcat(map(x -> expExpr_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...)
+	allVar_df = vcat(allCapa_df,allStLvl_df)
 
 	pen_fl = stab_obj.dynPar[stab_obj.actMet]
 	
@@ -629,8 +671,10 @@ function centerStab!(method::Val{:lvl},stab_obj::stabObj,top_m::anyModel)
 	
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
-	allVar_df = vcat(vcat(vcat(map(x -> expExpr_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
-	
+	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...)
+	allVar_df = vcat(allCapa_df,allStLvl_df)
+
 	# sets values of variables that will violate range to zero
 	minFac_fl = (maximum(allVar_df[!,:value]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
 	allVar_df[!,:value] = map(x -> x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
@@ -706,14 +750,17 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 end
 
 # filter variables used for stabilization
-function filterStabVar(allVal_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},top_m::anyModel)
+function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},stLvl_dic::Dict{Symbol,DataFrame},top_m::anyModel)
 
-	var_dic = Dict(x => Dict{Symbol,Dict{Symbol,DataFrame}}() for x in [:tech,:exc])
+	var_dic = Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}()
+
+	# write capacity values
+	var_dic[:capa] = Dict(x => Dict{Symbol,Dict{Symbol,DataFrame}}() for x in [:tech,:exc])
 
 	for sys in (:exc,:tech)
 		part_dic = getfield(top_m.parts,sys)
-		for sSym in keys(allVal_dic[sys])
-			var_dic[sys][sSym] = Dict{Symbol,Dict{Symbol,DataFrame}}() # create empty dataframe for values
+		for sSym in keys(capa_dic[sys])
+			var_dic[:capa][sys][sSym] = Dict{Symbol,Dict{Symbol,DataFrame}}() # create empty dataframe for values
 			
 			# determine where using expansion rather than capacity is possible and more efficient
 			varNum_dic = Dict(x => size(unique(getfield.(part_dic[sSym].var[x][!,:var],:terms)),1) for x in collect(keys(part_dic[sSym].var))) # number of unique variables
@@ -722,20 +769,34 @@ function filterStabVar(allVal_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame
 				return part_dic[sSym].decomm == :none && expVar_sym in keys(varNum_dic) && varNum_dic[expVar_sym] <= varNum_dic[x] ? expVar_sym : x
 			end
 
-			for trstSym in intersect(keys(allVal_dic[sys][sSym]),trstVar_arr)
-				var_df = allVal_dic[sys][sSym][trstSym]
+			for trstSym in intersect(keys(capa_dic[sys][sSym]),trstVar_arr)
+				var_df = capa_dic[sys][sSym][trstSym]
 				if trstSym == :capaExc && !part_dic[sSym].dir filter!(x -> x.R_from < x.R_to,var_df) end # only get relevant capacity variables of exchange
 				if sys == :tech var_df = removeFixStorage(trstSym,var_df,part_dic[sSym]) end # remove storage variables controlled by ratio
 				# filter cases where actual variables are defined
-				var_dic[sys][sSym][trstSym] = intCol(var_df) |> (w ->innerjoin(var_df,unique(select(filter(x -> !isempty(x.var.terms), part_dic[sSym].var[trstSym]),w)), on = w))
+				var_dic[:capa][sys][sSym][trstSym] = intCol(var_df) |> (w ->innerjoin(var_df,unique(select(filter(x -> !isempty(x.var.terms), part_dic[sSym].var[trstSym]),w)), on = w))
 				# remove if no capacities remain
-				removeEmptyDic!(var_dic[sys][sSym],trstSym)
+				removeEmptyDic!(var_dic[:capa][sys][sSym],trstSym)
 			end
 			
 			# remove entire system if no capacities
-			removeEmptyDic!(var_dic[sys],sSym)
+			removeEmptyDic!(var_dic[:capa][sys],sSym)
 		end
 	end
+
+	# write storage values
+	var_dic[:stLvl] = Dict{Symbol,DataFrame}()
+
+	if !isempty(stLvl_dic)
+		for sSym in keys(stLvl_dic)
+			if sSym in keys(top_m.parts.tech)
+				part_obj = top_m.parts.tech[sSym]
+				var_df = stLvl_dic[sSym]
+				var_dic[:stLvl][sSym] = intCol(var_df) |> (w ->innerjoin(var_df,unique(select(filter(x -> !isempty(x.var.terms), part_obj.var[:stLvl]),w)), on = w))
+			end
+		end
+	end
+
 	return var_dic
 end
 
@@ -858,21 +919,39 @@ end
 mergeVar(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},outCol::Array{Symbol,1}) = vcat(vcat(vcat(map(x -> var_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,outCol],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
 
 # ! matches values in dictionary with variables of provided problem
-function matchValWithVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},mod_m::anyModel,prsvExp::Bool=false)
-	# ! match values with variables
-	expExpr_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
+function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, Dict{Symbol, DataFrame}}}, Dict{Symbol, DataFrame}}},mod_m::anyModel,prsvExp::Bool=false)
+	
+	expExpr_dic = Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}()
+	
+	# match capacity values with variables
+	expExpr_dic[:capa] = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
 	for sys in (:tech,:exc)
-		expExpr_dic[sys] = Dict{Symbol,Dict{Symbol,DataFrame}}()
+		expExpr_dic[:capa][sys] = Dict{Symbol,Dict{Symbol,DataFrame}}()
 		part_dic = getfield(mod_m.parts,sys)
-		for sSym in keys(capa_dic[sys])
-			expExpr_dic[sys][sSym] = Dict{Symbol,DataFrame}()
-			for varSym in keys(capa_dic[sys][sSym])
-				val_df = deSelectSys(capa_dic[sys][sSym][varSym])
+		for sSym in keys(var_dic[:capa][sys])
+			expExpr_dic[:capa][sys][sSym] = Dict{Symbol,DataFrame}()
+			for varSym in keys(var_dic[:capa][sys][sSym])
+				val_df = deSelectSys(var_dic[:capa][sys][sSym][varSym])
 				# correct scaling and storage values together with corresponding variables
 				val_df[!,:value] = val_df[!,:value] ./ getfield(mod_m.options.scaFac, occursin("exp",string(varSym)) ? :insCapa : (occursin("StSize",string(varSym)) ? :capaStSize : :capa))
 				sel_arr = prsvExp ? (:Ts_exp in intCol(val_df) ? [:Ts_exp,:var,:value] : [:Ts_disSup,:var,:value]) : [:var,:value]
 				join_df = unique(select(innerjoin(deSelectSys(part_dic[sSym].var[varSym]),val_df, on = intCol(val_df,:dir)),sel_arr))
-				expExpr_dic[sys][sSym][varSym] = prsvExp && :Ts_exp in intCol(val_df) ? rename(join_df,:Ts_exp => :Ts_disSup) : join_df
+				expExpr_dic[:capa][sys][sSym][varSym] = prsvExp && :Ts_exp in intCol(val_df) ? rename(join_df,:Ts_exp => :Ts_disSup) : join_df
+			end
+		end
+	end
+
+	# match storage level values with variables
+	expExpr_dic[:stLvl] = Dict{Symbol,DataFrame}()
+
+	if !isempty(var_dic[:stLvl])
+		for sSym in keys(var_dic[:stLvl])
+			if sSym in keys(mod_m.parts.tech)
+				sel_arr = prsvExp ? (:Ts_exp in intCol(val_df) ? [:Ts_exp,:var,:value] : [:Ts_disSup,:var,:value]) : [:var,:value]
+				val_df = var_dic[:stLvl][sSym] 
+				val_df[!,:value] = val_df[!,:value] ./ getfield(mod_m.options.scaFac,:dispSt)
+				join_df = select(innerjoin(val_df,mod_m.parts.tech[sSym].var[:stLvl], on  = intCol(var_dic[:stLvl][sSym])),sel_arr)
+				expExpr_dic[:stLvl][sSym] = prsvExp && :Ts_exp in intCol(val_df) ? rename(join_df,:Ts_exp => :Ts_disSup) : join_df
 			end
 		end
 	end
@@ -883,10 +962,11 @@ end
 # ! write capacities or expansion in input model to returned capacity dictionary
 function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = false, fltSt::Bool = true)
 	
-	var_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
+	# write expansion value
+	capa_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
 	
 	for sys in (:tech,:exc)
-		var_dic[sys] = Dict{Symbol,Dict{Symbol,DataFrame}}()
+		capa_dic[sys] = Dict{Symbol,Dict{Symbol,DataFrame}}()
 		part_dic = getfield(in_m.parts,sys)
 		for sSym in filter(x -> part_dic[x].type in (:stock,:mature,:emerging),keys(part_dic))
 			
@@ -896,18 +976,18 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = fal
 			varSym_arr = filter(x -> any(occursin.(string.(var_arr),string(x))), keys(part_dic[sSym].var))
 
 			# get relevant capcities filtering fixed ones in case option is active
-			var_dic[sys][sSym] = Dict{Symbol, DataFrame}()
+			capa_dic[sys][sSym] = Dict{Symbol, DataFrame}()
 			for varSym in varSym_arr
 				relVar_df = filter(x -> !isempty(x.var.terms), copy(part_dic[sSym].var[varSym]))
 				if isempty(relVar_df) continue end
-				var_dic[sys][sSym][varSym] = getResult(relVar_df)
+				capa_dic[sys][sSym][varSym] = getResult(relVar_df)
 			end
 			
 			# check if storage expansion is fixed to storage output and removes variables in these cases
 			if sys == :tech && fltSt
-				for stVar in collect(keys(var_dic[sys][sSym]))
-					var_dic[sys][sSym][stVar] = removeFixStorage(stVar,var_dic[sys][sSym][stVar],part_dic[sSym])
-					if isempty(var_dic[sys][sSym][stVar]) delete!(var_dic[sys][sSym],stVar) end
+				for stVar in collect(keys(capa_dic[sys][sSym]))
+					capa_dic[sys][sSym][stVar] = removeFixStorage(stVar,capa_dic[sys][sSym][stVar],part_dic[sSym])
+					if isempty(capa_dic[sys][sSym][stVar]) delete!(capa_dic[sys][sSym],stVar) end
 				end
 			end
 
@@ -917,7 +997,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = fal
 					must_boo = occursin("must",string(varSym))
 					fixVar_sym = part_dic[sSym].decomm == :none ? Symbol(replace(string(varSym),must_boo ? "Capa" => "Exp" : "capa" => "exp")) : varSym
 					if Symbol(fixVar_sym,"BendersFix") in collect(keys(part_dic[sSym].cns))
-						var_df = var_dic[sys][sSym][varSym]
+						var_df = capa_dic[sys][sSym][varSym]
 						expCns_df = select(part_dic[sSym].cns[Symbol(fixVar_sym,"BendersFix")],Not([:cns,:fac,]))
 						# in case of no decommissioning capacites are fixed if all corresponding expansion variables are fixed
 						if part_dic[sSym].decomm == :none	
@@ -926,12 +1006,12 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = fal
 							if !isempty(expCnsY_df)
 								expCnsY_df = select(flatten(expCnsY_df,:Ts_disSup),Not(:Ts_exp))
 								join_arr = part_dic[sSym].type == :emerging ? intCol(var_df) : filter(x -> x != :Ts_expSup,intCol(var_df))
-								var_dic[sys][sSym][varSym] = innerjoin(var_df,unique(select(expCnsY_df,join_arr)), on = join_arr)
+								capa_dic[sys][sSym][varSym] = innerjoin(var_df,unique(select(expCnsY_df,join_arr)), on = join_arr)
 							else
-								var_dic[sys][sSym][varSym] = DataFrame()
+								capa_dic[sys][sSym][varSym] = DataFrame()
 							end
 						else
-							var_dic[sys][sSym][varSym] = innerjoin(var_df,expCns_df, on = intCol(var_df))
+							capa_dic[sys][sSym][varSym] = innerjoin(var_df,expCns_df, on = intCol(var_df))
 						end
 						
 					end
@@ -939,17 +1019,29 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = fal
 			end
 
 			# removes redundant varibles for undirected exchange capacity
-			if sys == :exc && !part_dic[sSym].dir && :capaExc in keys(var_dic[sys][sSym])
-				filter!(x -> x.R_from < x.R_to,var_dic[sys][sSym][:capaExc])
+			if sys == :exc && !part_dic[sSym].dir && :capaExc in keys(capa_dic[sys][sSym])
+				filter!(x -> x.R_from < x.R_to,capa_dic[sys][sSym][:capaExc])
 			end
 
 			# remove empty fields
-			filter!(x -> !isempty(x[2]),var_dic[sys][sSym])
-			removeEmptyDic!(var_dic[sys],sSym)	
+			filter!(x -> !isempty(x[2]),capa_dic[sys][sSym])
+			removeEmptyDic!(capa_dic[sys],sSym)	
 		end
 	end
 
-	return var_dic
+	# write storage levels in case of reduced foresight
+	stLvl_dic = Dict{Symbol,DataFrame}()
+
+	if :stLvl in var_arr && in_m.options.lvlFrs != 0
+		for sSym in keys(in_m.parts.tech)
+			if :stLvl in keys(in_m.parts.tech[sSym].var)
+				stLvl_dic[sSym] = getResult(copy(in_m.parts.tech[sSym].var[:stLvl]))	
+				removeEmptyDic!(stLvl_dic,sSym)
+			end
+		end
+	end
+
+	return capa_dic, stLvl_dic
 end
 
 # ! replaces the variable column with a column storing the value of the variable
