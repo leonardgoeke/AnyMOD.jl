@@ -37,7 +37,7 @@ function printObject(print_df::DataFrame,anyM::anyModel; fileName::String = "", 
 	# rename columns
 	colName_dic = Dict(:Ts_dis => :timestep_dispatch, :Ts_exp => :timestep_expansion, :Ts_expSup => :timestep_superordinate_expansion, :Ts_disSup => :timestep_superordinate_dispatch,
 															:R => :region, :R_tech => :region, :R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Sys => :system, :Te => :technology, :Exc => :exchange,
-																:dir => :directed, :scr => :scenario, :cns => :constraint, :var => :variable)
+																:M => :mode, :dir => :directed, :scr => :scenario, :cns => :constraint, :var => :variable)
 
 	rename!(print_df,map(x -> x in keys(colName_dic) ? colName_dic[x] : x, namesSym(print_df)) )
 	if :csv in rtnDf
@@ -116,7 +116,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 
 			# artificially add scenario dimensions, if none exist
 			if !(:scr in namesSym(dem_df))
-				dem_df[!,:scr] = map(x -> anyM.supTs.scr[x], dem_df[!,:Ts_disSup])
+				dem_df[!,:scr] = map(x -> anyM.scr.lvl == 0 ? [0] : anyM.scr[getAncestors(x,anyM.sets[:Ts],:int,anyM.scr.lvl)[end]], dem_df[!,:Ts_disSup])
 				dem_df = flatten(dem_df,:scr)
 			end
 
