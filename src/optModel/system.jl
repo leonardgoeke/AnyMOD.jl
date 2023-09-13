@@ -954,10 +954,19 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 		else
 			continue
 		end
-
+		
+		# check special cases relevant for reduced foresight and storage level
+		if typeof(part) == TechPart
+			topFrs_boo = anyM.subPro == (0,0) && anyM.options.lvlFrs != 0
+			subFrs_boo = anyM.subPro != (0,0) && !isempty(anyM.subPro ) && anyM.options.lvlFrs != 0 && anyM.scr.lvl > part.stCyc
+		else
+			topFrs_boo = false
+			subFrs_boo = false
+		end
+		
 		# loop over indiviudal constraints
 		for (idx,restr) in enumerate(eachrow(restrGrp))
-			allCns_arr[idx] = createRestr(part,copy(capaVar_df),restr,type_sym,info_ntup,ts_dic,r_dic,anyM.sets,anyM.supTs,anyM.scr,anyM.optModel)
+			allCns_arr[idx] = createRestr(part,copy(capaVar_df),restr,type_sym,info_ntup,ts_dic,r_dic,anyM.sets,anyM.supTs,anyM.scr,anyM.optModel,topFrs_boo,subFrs_boo)
 		end
 
 		allCns_df = vcat(filter(x -> !isempty(x),allCns_arr)...)
@@ -972,7 +981,7 @@ end
 
 # ! sub-function to create restriction
 function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::DataFrameRow, type_sym::Symbol, info_ntup::NamedTuple,
-															ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple, scr_ntup::NamedTuple, optModel::Model)
+															ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple, scr_ntup::NamedTuple, optModel::Model, topFrs_boo::Bool, subFrs_boo::Bool)
 
 	conv_boo = type_sym in (:convOut,:convIn) && type_sym != :exc
 	dim_arr = type_sym == :exc ? [:Ts_expSup,:Ts_dis,:R_from,:R_to,:Exc,:scr] : (conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:Te,:id,:scr])
@@ -1000,7 +1009,20 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	capaDim_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(grpCapaVar_df[!,Not(:var)],namesSym(grpCapaVar_df[!,Not(:var)])))[!,Not(:lvlTs)]
 	sort!(capaDim_df,orderDim(intCol(capaDim_df)))
 	select!(grpCapaVar_df,Not(:lvlTs))
-	capaDim_df = addScenarios(capaDim_df,sets_dic[:Ts],scr_ntup)
+	
+	# add scenarios if required
+	if !topFrs_boo
+		capaDim_df = addScenarios(capaDim_df,sets_dic[:Ts],scr_ntup)
+	else occursin("stSize",restr.cnstrType)
+		capaDim_df[!,:scr] .= 0
+	end
+
+	# delete for benders cases where storage variable will be fixed anyway
+	if subFrs_boo && occursin("stSize",restr.cnstrType)
+		rmvTs_df = combine(x -> (Ts_dis = maximum(x.Ts_dis),),groupby(capaDim_df,filter(x -> x != :Ts_dis,intCol(capaDim_df))))
+		capaDim_df = antijoin(capaDim_df,rmvTs_df,on = intCol(rmvTs_df))
+		if isempty(capaDim_df) return DataFrame() end
+	end
 
 	# obtain all relevant dispatch variables
 	dispVar_arr = type_sym != :exc ? (type_sym != :stSize ? intersect(collect(keys(part.var)),info_ntup.dis) : collect(info_ntup.dis)) : [:exc]

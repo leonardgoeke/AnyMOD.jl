@@ -464,6 +464,7 @@ function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::
 	if wrtRes_boo
 		reportResults(:summary,sub_m)
 		reportResults(:cost,sub_m)
+		reportResults(:exchange,sub_m)
 	end
 
 	# get objective value
@@ -621,7 +622,7 @@ function centerStab!(method::Val{:qtr},stab_obj::stabObj,top_m::anyModel)
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
-	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...)
+	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[]) : z)
 	allVar_df = vcat(allCapa_df,allStLvl_df)
 
 	# sets values of variables that will violate range to zero
@@ -1073,7 +1074,8 @@ function limitVar!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_ob
 	fix_df = deSelectSys(value_df) |>  (z -> leftjoin(var_df,z,on = intCol(z,:dir))) |> (y -> y[completecases(y),:])
 
 	# correct values with scaling factor
-	fix_df[!,:value]  = lowercase(string(var_sym)) |> (z -> fix_df[!,:value] ./ getfield(fix_m.options.scaFac,occursin("exp",z) ? :insCapa : occursin("stsize",string(z)) ? :capaStSize : :capa))
+	scaFac_sym = lowercase(string(var_sym)) |> (z -> occursin("stlvl",z) ? :dispSt : (occursin("exp",z) ? :insCapa : occursin("stsize",string(z)) ? :capaStSize : :capa))
+	fix_df[!,:value]  = fix_df[!,:value] ./ getfield(fix_m.options.scaFac,scaFac_sym)
 	
 	# filter cases where no variable exists
 	filter!(x -> !isempty(x.var.terms),fix_df)
@@ -1194,5 +1196,52 @@ function deleteLinearTrust!(top_m::anyModel)
 		end
 	end
 end
+
+#endregion
+
+#region # * reporting
+
+# write storage levels for case of reduced foresight
+function writeStLvlRes(top_m::anyModel,sub_dic::Dict{Tuple{Int64, Int64},anyModel},sub_tup::Tuple,i::Int,stReport_df::DataFrame)
+
+	# get levels from top-problem
+	for x in filter(x -> :stLvl in keys(top_m.parts.tech[x].var),keys(top_m.parts.tech))
+		data_df = printObject(top_m.parts.tech[x].var[:stLvl],top_m,rtnDf = (:csvDf,))
+		data_df[!,:iteration] .= i
+		append!(stReport_df,rename(data_df,:variable => :value))
+	end
+
+	# get levels from subproblems
+	for s in collect(sub_tup)
+		for x in filter(x -> :stLvl in keys(sub_dic[s].parts.tech[x].var),keys(sub_dic[s].parts.tech))
+			data_df = printObject(sub_dic[s].parts.tech[x].var[:stLvl],sub_dic[s],rtnDf = (:csvDf,))
+			data_df[!,:iteration] .= i
+			append!(stReport_df,rename(data_df,:variable => :value))
+		end
+	end
+
+	CSV.write(modOpt_tup.resultDir * "/stLvl_$(replace(top_m.options.objName,"topModel" => "")).csv",stReport_df)
+
+	return stReport_df
+end
+
+# write capacity results for near optimal
+function writeCapaRes(top_m::anyModel,sub_dic::Dict{Tuple{Int64, Int64},anyModel},sub_tup::Tuple,nearOpt_df::DataFrame,i::Int,nOpt_int::Int,nearOpt_ntup::NamedTuple,topCost_fl::Float64,subCost_fl::Float64,costOpt_fl::Float64,lssOpt_fl::Float64)
+	if !isempty(nearOpt_ntup)
+		lss_fl = sum(map(x -> sum(value.(sub_dic[x].parts.bal.var[:lss][!,:var])),sub_tup))
+		if nOpt_int == 0 || ((topCost_fl + subCost_fl) <= costOpt_fl * (1 + nearOpt_ntup.cutThres) && lss_fl <= lssOpt_fl * (1 + nearOpt_ntup.lssThres))
+			newRes_df = getCapaResult(top_m)
+			newRes_df[!,:iteration] .= i
+			newRes_df[!,:cost] .= topCost_fl + subCost_fl
+			newRes_df[!,:lss] .= lss_fl
+			if nOpt_int != 0 newRes_df[!,:thrs] .= (topCost_fl + subCost_fl)/costOpt_fl - 1 end
+			append!(nearOpt_df,newRes_df)
+		end
+	end
+	
+	return nearOpt_df, lss_fl
+end
+
+
 
 #endregion

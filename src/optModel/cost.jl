@@ -268,9 +268,9 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 		end
 
 		# ! add elements for variable costs of systems
-		for va in (:use,:gen,:stIn,:stOut,:in,:out,:exc)
+		for va in (:use,:gen,:stIn,:stOut,:in,:out,:exc,:stLvlInfeasIn,:stLvlInfeasOut)
 
-			costPar_sym = string(va) |> (x -> Symbol(:costVar,uppercase(x[1]),x[2:end]))
+			costPar_sym = string(va) |> (x -> va in (:stLvlInfeasIn,:stLvlInfeasOut) ? :costStLvlLss : Symbol(:costVar,uppercase(x[1]),x[2:end]))
 
 			if !(costPar_sym in parObj_arr) continue end
 
@@ -299,7 +299,8 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 
 			# ! group cost expressions by system, scales groups expression and creates a variables for each grouped entry
 			allDisp_df = combine(x -> (expr = sum(x.disFac .* x.disp .* x.costVar) ./ 1000.0,) ,groupby(allDisp_df,va != :exc ? [:Ts_disSup,:R_dis,:Te] : [:Ts_disSup,:R_from,:R_to,:C]))
-			transferCostEle!(allDisp_df, partCost,costPar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM)
+			costVar_sym = va in (:stLvlInfeasIn,:stLvlInfeasOut) ? (va == :stLvlInfeasIn ? Symbol(costPar_sym,:In) : Symbol(costPar_sym,:Out)) : costPar_sym
+			transferCostEle!(allDisp_df, partCost,costVar_sym,anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM)
 			reachEnd_boo = true
 		end
 		
@@ -398,22 +399,27 @@ function computeAnn(va_sym::Symbol,type_sym::Symbol,allData_df::DataFrame,anyM::
 end
 
 # ! creates new parameter objects for discount factors from discount rates provided
-function computeDisFac!(partObj::OthPart,anyM::anyModel)
+function computeDisFac!(partCost::OthPart,anyM::anyModel)
 
 	# ! discount factor for technologies
 	rExp_arr = union(map(x -> getfield.(getNodesLvl(anyM.sets[:R],x),:idx), unique(getfield.(values(anyM.cInfo),:rExp)))...)
-	discR_df = matchSetParameter(flatten(flatten(DataFrame(Ts_disSup = anyM.supTs.step, R_exp = rExp_arr),:Ts_disSup),:R_exp),partObj.par[:rateDisc],anyM.sets)
+	discR_df = matchSetParameter(flatten(flatten(DataFrame(Ts_disSup = anyM.supTs.step, R_exp = rExp_arr),:Ts_disSup),:R_exp),partCost.par[:rateDisc],anyM.sets)
 
-	factY_int = !isempty(anyM.subPro) && anyM.subPro != (0,0) ? anyM.subPro[1] : 1 # factor to correct discount factor in case of distributed model generation
+	# factor to correct discount factor in case of distributed model generation
+	if !isempty(anyM.subPro) && anyM.subPro != (0,0) 
+		factY_int= 1 + getAncestors(anyM.subPro[1],anyM.sets[:Ts],:int,anyM.supTs.lvl)[end] - minimum(getfield.(getNodesLvl(anyM.sets[:Ts],anyM.supTs.lvl),:idx))
+	else 
+		factY_int = 1
+	end
 
 	discR_df[!,:disFac] = 1 ./ (1 .+ discR_df[!,:val]).^(anyM.options.shortExp * factY_int)
 	discR_df[!,:disFac] = map(x -> filter(y -> y < x.Ts_disSup ,collect(anyM.supTs.step)) |> (z -> prod(filter(y -> y.R_exp == x.R_exp && y.Ts_disSup in z, discR_df)[!,:disFac])*x.disFac),eachrow(discR_df))
 	select!(discR_df,Not(:val))
 
-	discPar_obj = copy(partObj.par[:rateDisc],rename(discR_df,:disFac => :val))
+	discPar_obj = copy(partCost.par[:rateDisc],rename(discR_df,:disFac => :val))
 	discPar_obj.name = :discFac
 	discPar_obj.defVal = nothing
-	partObj.par[:disFac] = discPar_obj
+	partCost.par[:disFac] = discPar_obj
 
 	# ! discount factor for exchange (average of from and to region)
 	discRExc_df = rename(copy(discR_df),:R_exp => :R_from,:disFac => :disFacFrom)
@@ -424,12 +430,12 @@ function computeDisFac!(partObj::OthPart,anyM::anyModel)
 	discRExc_df[!,:disFac] = (discRExc_df[!,:disFac] + discRExc_df[!,:disFacFrom]) * 0.5
 	select!(discRExc_df,Not(:disFacFrom))
 
-	discPar_obj = copy(partObj.par[:rateDisc],rename(discRExc_df,:disFac => :val))
+	discPar_obj = copy(partCost.par[:rateDisc],rename(discRExc_df,:disFac => :val))
 	discPar_obj.name = :disFacExc
 	discPar_obj.defVal = nothing
 	discPar_obj.dim = (:Ts_dis, :R_from, :R_to)
 	discPar_obj.herit = (:Ts_disSup => :up, :R_from => :up, :R_to => :up, :Ts_disSup => :avg_any, :R_from => :avg_any, :R_to => :avg_any)
-	partObj.par[:disFacExc] = discPar_obj
+	partCost.par[:disFacExc] = discPar_obj
 end
 
 # ! matches exchange variables with cost parameters, matchExcParameter cannot be applied directly, because cost parameters are stored in other model part
@@ -448,7 +454,7 @@ function matchCostExcParameter(par_sym::Symbol,data_df::DataFrame,anyM::anyModel
 end
 
 # ! transfers provided cost dataframe into dataframe of overall objective variables and equations (and scales them)
-function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symbol,optModel::Model,lock_::ReentrantLock,sets_dic::Dict{Symbol,Tree},
+function transferCostEle!(cost_df::DataFrame, partCost::OthPart,costPar_sym::Symbol,optModel::Model,lock_::ReentrantLock,sets_dic::Dict{Symbol,Tree},
 	coefRng_tup::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}, scaCost_fl::Float64, checkRng_ntup::NamedTuple{(:print,:all),Tuple{Bool,Bool}}, anyM::anyModel,lowBd::Float64 = 0.0)
 
 	# create variables for cost entry and builds corresponding expression for equations controlling them
@@ -460,6 +466,6 @@ function transferCostEle!(cost_df::DataFrame, partObj::OthPart,costPar_sym::Symb
 	scaleCnsExpr!(cost_df,coefRng_tup,checkRng_ntup)
 
 	# writes equations and variables
-	partObj.cns[costPar_sym] = createCns(cnsCont(select(cost_df,Not(:var)),:equal),optModel,anyM.options.holdFixed)
-	partObj.var[costPar_sym] = select(cost_df,Not(:cnsExpr))
+	partCost.cns[costPar_sym] = createCns(cnsCont(select(cost_df,Not(:var)),:equal),optModel,anyM.options.holdFixed)
+	partCost.var[costPar_sym] = select(cost_df,Not(:cnsExpr))
 end

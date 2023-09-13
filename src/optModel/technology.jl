@@ -54,9 +54,8 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		if isempty(anyM.subPro) || anyM.subPro != (0,0) || anyM.options.createVI || anyM.options.lvlFrs != 0
 			createDispVar!(part,modeDep_dic,ts_dic,r_dic,prepTech_dic,anyM)
 			produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
-
-			if isempty(anyM.subPro) || anyM.subPro != (0,0) || anyM.options.createVI
-
+ 
+			if anyM.subPro != (0,0) || anyM.options.createVI
 				# create conversion balance for conversion technologies
 				if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && (:capaConv in keys(part.var) || part.type == :unrestricted) && part.balSign.conv != :none
 					cns_dic[:convBal] = createConvBal(part,anyM)
@@ -77,13 +76,15 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 					inPar_df[!,:M] .= 0
 					part.var[:gen] = combine(x -> (var = AffExpr(sum(x.val)),),groupby(inPar_df,filter(x -> x != :id, intCol(inPar_df))))
 				end
-
-				# create capacity restrictions
-				if part.type != :unrestricted
-					createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM,yTs_dic,rmvOutC_arr)
-				end
-				produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for technology $(tech_str)")
 			end
+
+			# create capacity restrictions
+			sizeRestr_boo =  anyM.options.lvlFrs != 0 && :stLvl in keys(part.var) && anyM.subPro == (0,0) 
+			if part.type != :unrestricted && (anyM.subPro != (0,0) || anyM.options.createVI || sizeRestr_boo)
+				if sizeRestr_boo filter!(x -> occursin("stSize",x.cnstrType),part.capaRestr) end
+				createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM,yTs_dic,rmvOutC_arr)
+			end
+			produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for technology $(tech_str)")
 		end
 
 		# create ratio constraints
@@ -216,7 +217,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 			continue 
 		end
 
-		# dont create storage level if cycling is within foresight level
+		# dont create storage level for top problem if cycling is within foresight level
 		if va == :stLvl && anyM.subPro == (0,0) && anyM.options.lvlFrs != 0 && anyM.scr.lvl <= part.stCyc continue end
 
 		# obtains relevant capacity variable
@@ -490,6 +491,29 @@ function createStBal(part::TechPart,anyM::anyModel)
 			end
 		else
 			cnsC_df[!,:stInflow] .= 0.0
+		end
+
+		# add infeasibility variables
+		if anyM.options.lvlFrs != 0 && !isempty(anyM.subPro) && anyM.scr.lvl > part.stCyc && :costStLvlLss in keys(anyM.parts.cost.par)
+			# check if infeasibility costs for storage level defined
+			relTs_df = combine(x -> (Ts_dis = maximum(x.Ts_dis),),groupby(cnsC_df,filter(x -> !(x in (:Ts_dis,:Ts_disPrev)),intCol(cnsC_df))))
+			matchTs_df = select(matchSetParameter(relTs_df,anyM.parts.cost.par[:costStLvlLss],anyM.sets),Not([:val]))
+			if !isempty(matchTs_df)
+				# create infeasibility variables
+				part.var[:stLvlInfeasIn] = createVar(matchTs_df,"stLvlInfeasIn",getUpBound(matchTs_df,anyM.options.bound.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets)
+				if part.balSign == :eq
+					part.var[:stLvlInfeasOut] = createVar(matchTs_df,"stLvlInfeasOut",getUpBound(matchTs_df,anyM.options.bound.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets)
+					# compute net-expression for infeasibility variables
+					bothInf_df = copy(part.var[:stLvlInfeasIn])
+					bothInf_df[!,:var] .= bothInf_df[!,:var] .- part.var[:stLvlInfeasOut][!,:var]
+				else
+					bothInf_df = copy(part.var[:stLvlInfeasIn])
+				end
+				# add expression to constraint
+				cnsC_df = joinMissing(cnsC_df,rename(bothInf_df,:var => :infeas), intCol(bothInf_df), :left, Dict(:infeas => AffExpr()))
+				cnsC_df[!,:stInflow] .= cnsC_df[!,:stInflow] .+ cnsC_df[!,:infeas]
+				select!(cnsC_df,Not([:infeas]))
+			end
 		end
 
 		# ! create final equation	
