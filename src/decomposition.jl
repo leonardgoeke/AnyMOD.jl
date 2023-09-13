@@ -380,6 +380,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	# solve model
 	set_optimizer_attribute(top_m.optModel, "Method", 2)
 	set_optimizer_attribute(top_m.optModel, "Crossover", 0)
+	set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
 	optimize!(top_m.optModel)
 	
 	# handle unsolved top problem
