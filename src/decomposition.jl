@@ -231,7 +231,6 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 	for sys in (:tech,:exc)
 		partTop_dic = getfield(top_m.parts,sys)
 		for sSym in keys(var_dic[sys])
-			println(sSym)
 			part = partTop_dic[sSym]
 			relVar_arr = filter(x -> any(occursin.(part.decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(var_dic[sys][sSym])))
 			# create variabbles and writes constraints to minimize absolute value of capacity delta
@@ -381,7 +380,6 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	# solve model
 	set_optimizer_attribute(top_m.optModel, "Method", 2)
 	set_optimizer_attribute(top_m.optModel, "Crossover", 0)
-	set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
 	optimize!(top_m.optModel)
 	
 	# handle unsolved top problem
@@ -440,7 +438,10 @@ function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::
 			if sSym in keys(sub_m.parts.tech)
 				part_obj = sub_m.parts.tech[sSym]
 				resData_obj.stLvl[sSym] = limitVar!(select(resData_obj.stLvl[sSym],Not([:scr])),select(part_obj.var[:stLvl],Not([:scr])),:stLvl,part_obj,sub_m)
+				# remove system if no storage level exists
+				removeEmptyDic!(resData_obj.stLvl,sSym)
 			end
+
 		end
 	end
 
