@@ -979,12 +979,9 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 
 end
 
-# ! sub-function to create restriction
-function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::DataFrameRow, type_sym::Symbol, info_ntup::NamedTuple,
-															ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple, scr_ntup::NamedTuple, optModel::Model, topFrs_boo::Bool, subFrs_boo::Bool)
+# adjust capacity variables spatially for match with dispatch variables
+function getCapaToRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::DataFrameRow, type_sym::Symbol, ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple)
 
-	conv_boo = type_sym in (:convOut,:convIn) && type_sym != :exc
-	dim_arr = type_sym == :exc ? [:Ts_expSup,:Ts_dis,:R_from,:R_to,:Exc,:scr] : (conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:Te,:id,:scr])
 	agg_arr = type_sym == :exc ? [:Ts_expSup,:Ts_dis,:R_from,:R_to,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:scr] |> (x -> filter(x -> part.type == :emerging || x != :Ts_expSup,x))
 	aggCapa_arr = filter(x -> x != :scr, agg_arr)
 
@@ -1009,6 +1006,18 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	capaDim_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1],x.lvlTs[1])],), groupby(grpCapaVar_df[!,Not(:var)],namesSym(grpCapaVar_df[!,Not(:var)])))[!,Not(:lvlTs)]
 	sort!(capaDim_df,orderDim(intCol(capaDim_df)))
 	select!(grpCapaVar_df,Not(:lvlTs))
+
+	return capaDim_df, grpCapaVar_df,  agg_arr 
+
+end
+
+# ! sub-function to create restriction
+function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::DataFrameRow, type_sym::Symbol, info_ntup::NamedTuple,
+															ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, sets_dic::Dict{Symbol,Tree}, supTs_ntup::NamedTuple, scr_ntup::NamedTuple, optModel::Model, topFrs_boo::Bool, subFrs_boo::Bool)
+
+	conv_boo = type_sym in (:convOut,:convIn) && type_sym != :exc
+	dim_arr = type_sym == :exc ? [:Ts_expSup,:Ts_dis,:R_from,:R_to,:Exc,:scr] : (conv_boo ? [:Ts_expSup,:Ts_dis,:R_dis,:Te,:scr] : [:Ts_expSup,:Ts_dis,:R_dis,:Te,:id,:scr])
+	capaDim_df, grpCapaVar_df, agg_arr = getCapaToRestr(part, capaVar_df, restr, type_sym, ts_dic, r_dic, sets_dic, supTs_ntup)
 	
 	# add scenarios if required
 	if !topFrs_boo
@@ -1017,7 +1026,7 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 		capaDim_df[!,:scr] .= 0
 	end
 
-	# delete for benders cases where storage variable will be fixed anyway
+	# delete benders cases where storage variable will be fixed anyway
 	if subFrs_boo && occursin("stSize",restr.cnstrType)
 		rmvTs_df = combine(x -> (Ts_dis = maximum(x.Ts_dis),),groupby(capaDim_df,filter(x -> x != :Ts_dis,intCol(capaDim_df))))
 		capaDim_df = antijoin(capaDim_df,rmvTs_df,on = intCol(rmvTs_df))
