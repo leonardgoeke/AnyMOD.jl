@@ -25,7 +25,7 @@ mutable struct stabObj
 	ruleSw::Union{NamedTuple{(), Tuple{}}, NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}}} # rule for switching between stabilization methods
 	actMet::Int # index of currently active stabilization method
 	objVal::Float64 # array of objective value for current center
-	dynPar::Array{Float64,1} # array of dynamic parameters for each method
+	dynPar::Array{Union{Float64,Array{Float64},1}} # array of dynamic parameters for each method
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
 	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple,resData_obj::resData,top_m::anyModel)
@@ -650,7 +650,7 @@ function centerStab!(method::Val{:prx},stab_obj::stabObj,top_m::anyModel)
 	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
 	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...)
-	allVar_df = vcat(allCapa_df,allStLvl_df)
+	allVar_df = vcat(allCapa_df,allStLvl_df)[1]
 
 	pen_fl = stab_obj.dynPar[stab_obj.actMet]
 	
