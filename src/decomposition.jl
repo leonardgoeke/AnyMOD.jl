@@ -1126,7 +1126,8 @@ function limitVar!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_ob
 
 	# correct value_df to values actually enforced
 	value_df = innerjoin(select(value_df,Not([:value])), select(fix_df,Not([:var,:value,:cns,:setZero])), on = intCol(value_df,:dir))
-	value_df[!,:value] .=  value_df[!,:rhs] ./ value_df[!,:fac] .* getfield(fix_m.options.scaFac,occursin("StSize",string(var_sym)) ? :capaStSize : :capa)
+	corSca_fl = getfield(fix_m.options.scaFac,var_sym == :stLvl ? :dispSt : (occursin("StSize",string(var_sym)) ? :capaStSize : :capa))
+	value_df[!,:value] .=  value_df[!,:rhs] ./ value_df[!,:fac] .* corSca_fl
 	select!(value_df,Not([:fac,:rhs]))
 
 	return value_df
