@@ -6,7 +6,7 @@ mutable struct resData
 	objVal::Float64
 	capa::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}
 	stLvl::Dict{Symbol,DataFrame}
-	resData() = new(0.0,Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(),Dict{Symbol,DataFrame}())
+	resData() = new(Inf,Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(),Dict{Symbol,DataFrame}())
 end
 
 # ! copy functions for model results
@@ -205,7 +205,7 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::resData,heuCom_obj::resData,lin
 	return fix_dic, lim_dic, cntHeu_arr
 end
 
-# ! returns a feasible as close as possible to the input dictionary
+# ! returns a feasible solution as close as possible to the input dictionary
 function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int,zeroThrs_fl::Float64,opt_obj::DataType)
 
 	# create top-problem
@@ -225,7 +225,7 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 end
 
 # ! runs top problem again with optimal results
-function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},zeroThrs_fl::Float64,cutSmall_boo::Bool=false)
+function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},zeroThrs_fl::Float64;cutSmall_boo::Bool=false,wrtRes_boo::Bool=false)
 	
 	# create absolute value constraints for capacities or expansion variables
 	for sys in (:tech,:exc)
@@ -233,7 +233,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 		for sSym in keys(var_dic[sys])
 			part = partTop_dic[sSym]
 			relVar_arr = filter(x -> any(occursin.(part.decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(var_dic[sys][sSym])))
-			# create variabbles and writes constraints to minimize absolute value of capacity delta
+			# create variables and writes constraints to minimize absolute value of capacity delta
 			for varSym in relVar_arr
 				var_df = part.var[varSym] |> (w -> occursin("exp",string(varSym)) ? collapseExp(w) : w)
 				filter!(x -> !isempty(x.var.terms), var_df)
@@ -293,6 +293,13 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 	
 	optimize!(top_m.optModel)
 	checkIIS(top_m)
+
+	# write results into files (only used once optimum is obtained)
+	if wrtRes_boo
+		reportResults(:summary,top_m)
+		reportResults(:cost,top_m)
+		reportResults(:exchange,top_m)
+	end
 
 	return top_m
 end
@@ -442,7 +449,6 @@ function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::
 				# remove system if no storage level exists
 				removeEmptyDic!(resData_obj.stLvl,sSym)
 			end
-
 		end
 	end
 
@@ -1133,10 +1139,12 @@ function addDual(dual_df::DataFrame,cns_df::DataFrame,scaFac_fl::Float64)
 	return select(filter(x -> x.dual != 0.0,new_df),Not([:cns,:fac]))
 end
 
+getBendersCut(subCut.stLvl[sSym],part_obj.var[:stLvl],top_m.options.scaFac.dispSt)
+
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
-function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaCapa_fl::Float64)
+function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaFac_fl::Float64)
 	ben_df = deSelectSys(sub_df) |> (z -> innerjoin(deSelectSys(var_df),z, on = intCol(z,:dir)))
-	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual * scaCapa_fl * (collect(keys(x.var.terms))[1] - x.value / scaCapa_fl),eachrow(ben_df)))
+	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual * scaFac_fl * (collect(keys(x.var.terms))[1] - x.value / scaFac_fl),eachrow(ben_df)))
 end
 
 # ! removes cases where storage variables are fixed by a ratio (e.g. storage energy capacity fixed by e/p ratio) 
@@ -1209,7 +1217,7 @@ function writeStLvlRes(top_m::anyModel,sub_dic::Dict{Tuple{Int64, Int64},anyMode
 	# get levels from top-problem
 	for x in filter(x -> :stLvl in keys(top_m.parts.tech[x].var),keys(top_m.parts.tech))
 		data_df = printObject(top_m.parts.tech[x].var[:stLvl],top_m,rtnDf = (:csvDf,))
-		data_df[!,:iteration] .= i
+		data_df[!,:i] .= i
 		append!(stReport_df,rename(data_df,:variable => :value))
 	end
 
@@ -1217,7 +1225,7 @@ function writeStLvlRes(top_m::anyModel,sub_dic::Dict{Tuple{Int64, Int64},anyMode
 	for s in collect(sub_tup)
 		for x in filter(x -> :stLvl in keys(sub_dic[s].parts.tech[x].var),keys(sub_dic[s].parts.tech))
 			data_df = printObject(sub_dic[s].parts.tech[x].var[:stLvl],sub_dic[s],rtnDf = (:csvDf,))
-			data_df[!,:iteration] .= i
+			data_df[!,:i] .= i
 			append!(stReport_df,rename(data_df,:variable => :value))
 		end
 	end
@@ -1233,7 +1241,7 @@ function writeCapaRes(top_m::anyModel,sub_dic::Dict{Tuple{Int64, Int64},anyModel
 		lss_fl = sum(map(x -> sum(value.(sub_dic[x].parts.bal.var[:lss][!,:var])),sub_tup))
 		if nOpt_int == 0 || ((topCost_fl + subCost_fl) <= costOpt_fl * (1 + nearOpt_ntup.cutThres) && lss_fl <= lssOpt_fl * (1 + nearOpt_ntup.lssThres))
 			newRes_df = getCapaResult(top_m)
-			newRes_df[!,:iteration] .= i
+			newRes_df[!,:i] .= i
 			newRes_df[!,:cost] .= topCost_fl + subCost_fl
 			newRes_df[!,:lss] .= lss_fl
 			if nOpt_int != 0 newRes_df[!,:thrs] .= (topCost_fl + subCost_fl)/costOpt_fl - 1 end
