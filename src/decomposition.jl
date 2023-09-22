@@ -1140,8 +1140,6 @@ function addDual(dual_df::DataFrame,cns_df::DataFrame,scaFac_fl::Float64)
 	return select(filter(x -> x.dual != 0.0,new_df),Not([:cns,:fac]))
 end
 
-getBendersCut(subCut.stLvl[sSym],part_obj.var[:stLvl],top_m.options.scaFac.dispSt)
-
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
 function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaFac_fl::Float64)
 	ben_df = deSelectSys(sub_df) |> (z -> innerjoin(deSelectSys(var_df),z, on = intCol(z,:dir)))
