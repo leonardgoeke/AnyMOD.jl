@@ -50,10 +50,10 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	partBal = anyM.parts.bal
 	c_arr = filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx))
 	allDim_df = createPotDisp(c_arr,ts_dic,anyM)
-	agg_arr = anyM.options.createVI ? [:Ts_dis, :C, :scr] :  [:Ts_dis, :R_dis, :C, :scr]
+	agg_arr = anyM.options.createVI.bal ? [:Ts_dis, :C, :scr] :  [:Ts_dis, :R_dis, :C, :scr]
 
 	#region # * create potential curtailment and loss loss load variables
-	if !anyM.options.createVI
+	if !anyM.options.createVI.bal
 		for varType in (:crt,:lss)
 			# get defined entries
 			var_df = DataFrame()
@@ -98,7 +98,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 	@threads for (idx,c) in itrC_arr
 
 		subC_arr = unique([c,getDescendants(c,anyM.sets[:C],true)...])
-		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = anyM.options.createVI ? 0 : x.rDis, C = anyM.sets[:C].nodes[c].lvl))
+		cRes_tup = anyM.cInfo[c] |> (x -> (Ts_dis = x.tsDis, R_dis = anyM.options.createVI.bal ? 0 : x.rDis, C = anyM.sets[:C].nodes[c].lvl))
 
 		# ! add and scale demand values
 		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets) # demand for carrier being balanced
@@ -108,10 +108,10 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		# ! get relevant variables
 		sort!(cns_df,orderDim(intCol(cns_df)))
 		src_df = cns_df[!,Not([:Ts_disSup,:dem])]
-		if anyM.options.createVI select!(src_df,Not([:R_dis])) end
+		if anyM.options.createVI.bal select!(src_df,Not([:R_dis])) end
 
 		# add tech variables
-		cns_df[!,:techVar], unEtr_arr = getTechEnerBal(c,subC_arr,anyM.options.createVI,src_df,anyM.parts.tech,anyM.cInfo,anyM.sets)
+		cns_df[!,:techVar], unEtr_arr = getTechEnerBal(c,subC_arr,anyM.options.createVI.bal,src_df,anyM.parts.tech,anyM.cInfo,anyM.sets)
 		
 		# determine where an energy balance is required because a specific demand was defined
 		unEtr_arr = map(x -> x == 0.0 ,cns_df[!,:dem]) .* unEtr_arr
@@ -185,7 +185,7 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		scaleCnsExpr!(cns_df,anyM.options.coefRng,anyM.options.checkRng)
-		cns_arr[idx] = Symbol(c_str) => cnsCont(cns_df,anyM.cInfo[c].balSign == :eq && !anyM.options.createVI ? :equal : :greater)
+		cns_arr[idx] = Symbol(c_str) => cnsCont(cns_df,anyM.cInfo[c].balSign == :eq && !anyM.options.createVI.bal ? :equal : :greater)
 
 		produceMessage(anyM.options,anyM.report, 2," - Prepared energy balance for $(c_str)")
 	end
@@ -533,7 +533,7 @@ function createLimitCns!(partLim::OthPart,anyM::anyModel)
 		end
 
 		# ! infeas variables for emissions
-		if va == :emission && :emissionInf in keys(partLim.par) && !anyM.options.createVI
+		if va == :emission && :emissionInf in keys(partLim.par) && !anyM.options.createVI.bal
 			# check if corresponding parameter is defined
 			infVar_df = matchSetParameter(select(allLimit_df,intCol(allLimit_df)),partLim.par[:emissionInf],anyM.sets)
 			if !isempty(infVar_df)

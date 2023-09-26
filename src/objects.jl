@@ -333,7 +333,7 @@ mutable struct modOptions
 	checkRng::NamedTuple{(:print,:all),Tuple{Bool,Bool}}
 	# stochastic and decomposition
 	forceScr::Union{Symbol,Nothing}
-	createVI::Bool
+	createVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}
 	lvlFrs::Int
 	# reporting related options
 	reportLvl::Int
@@ -510,11 +510,11 @@ mutable struct anyModel <: AbstractModel
 	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, holdFixed = false, emissionLoss = true,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e4), rhs = (1e-2,1e2)),
 																											scaFac = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
-																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true), forceScr = nothing, lvlFrs = 0, createVI = false)
+																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true), forceScr = nothing, lvlFrs = 0, createVI = (bal = false, st = false))
 		anyM = new()
 
-		if lvlFrs != 0 && createVI
-			error("Valid inequalities cannot be used with reduced foresight!")
+		if lvlFrs != 0 && createVI.bal
+			error("Valid inequalities on energy balances cannot be used with reduced foresight!")
 		end
 		
 		#region # * initialize report and options

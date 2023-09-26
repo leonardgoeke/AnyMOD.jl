@@ -1752,4 +1752,4 @@ function printIIS(anyM::anyModel,d::Int)
 end
 
 # ! checks termination status and computes and prints IIS if infeasible
-checkIIS(mod_m::anyModel) = if termination_status in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) && isdefined(AnyMOD,:printIIS) printIIS(mod_m) end
+checkIIS(mod_m::anyModel) = if termination_status(mod_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) && isdefined(AnyMOD,:printIIS) printIIS(mod_m) end
