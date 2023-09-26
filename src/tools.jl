@@ -442,7 +442,7 @@ function reportResults(objGrp::Val{:cost},anyM::anyModel; addObjName::Bool=true,
 end
 
 # ! results for exchange
-function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
+function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=true, wrtNet::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc) error("No exchange data found") end
 
@@ -482,7 +482,19 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=t
 		disp_df[!,:dir] .= 0
 		filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),disp_df)
 		append!(allData_df,disp_df)
-		
+
+		# write values for net-exchange
+		if wrtNet
+			# join variables in both directions
+			netDisp_df = joinMissing(disp_df,select(rename(disp_df,:value => :value_2),Not([:variable])), intCol(disp_df) .=> map(x -> x == :R_from ? :R_to : (x == :R_to ? :R_from : x), intCol(disp_df)), :left,Dict(:value_2 => 0.0,))
+			# compute net values
+			netDisp_df[!,:value] = netDisp_df[!,:value] .- netDisp_df[!,:value_2]
+			# add to dataframe
+			netDisp_df[!,:variable] .= :netExc
+			filter!(x -> x.value > 0.0, netDisp_df)
+			append!(allData_df,select(netDisp_df,Not([:value_2])))
+		end
+
 		# ! get full load hours
 
 		# obtain relevant dispatch and capacity values
