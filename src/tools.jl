@@ -869,6 +869,53 @@ function printDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x ->
 	end
 end
 
+function printAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}},anyM::anyModel)
+
+    # assigns variables to scaling factors for correting duals for scaling later
+    scaFac_dic = Dict(:stExtIn => :dispSt, :stExtOut => :dispSt, :stIntIn => :dispSt, :stIntOut => :dispSt, :stLvl => :dispSt, :exc => :dispExc, :gen => :dispConv, :use => :dispConv, :trdBuy => :dispTrd, :trdSell => :dispTrd, :crt => :dispTrd ,:lss => :dispTrd,
+                    :capaExc => :capa, :capaConv => :capa, :capaStIn => :capa, :capaStOut => :capa, :capaStSize => :capaStSize)
+
+    # fill dataframe with relevant duals
+    dual_df = DataFrame(Ts_disSup = Int[], Ts_dis = Int[], scr = Int[], bal = Symbol[], cat = Symbol[], value = Float64[])
+
+    for x in keys(cns_dic)
+        for y in cns_dic[x]
+            # get specific constraint
+            if x == :enBal  
+                cnsDual_df = copy(anyM.parts.bal.cns[Symbol(:enBal,makeUp(y))])
+
+                cnsDual_df[1,:cns]
+                anyM.options.scaFac
+            elseif x == :excRestr
+                cnsDual_df = copy(anyM.parts.exc[y].cns[:excRestr])
+            elseif x == :stBal
+                cnsDual_df = copy(anyM.parts.tech[y].cns[:stBal])
+                cnsDual_df[!,:Ts_disSup] = map(x -> getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end],cnsDual_df[!,:Ts_dis])
+            end
+
+            # determine scaling applied to equations
+            scaFac_arr = map(cnsDual_df[!,:cns]) do z
+                firstVar_str = filter(y -> y != "",vcat(map(x -> split.(x,"-"),split(constraint_string(MIME("text/plain"),z),"+"))...))[1]
+                firstFac_fl = parse(Float64,split(firstVar_str," ")[1])
+                firstVar_sym = Symbol(split(split(firstVar_str," ")[2],"[")[1])
+                return getfield(anyM.options.scaFac,scaFac_dic[firstVar_sym])/firstFac_fl
+            end
+            
+            # get dual and aggregate
+            cnsDual_df[!,:value] .= dual.(cnsDual_df[!,:cns]) .* scaFac_arr
+            cnsDual_df = combine(x -> (value = sum(x.value),),groupby(cnsDual_df,[:Ts_disSup,:Ts_dis,:scr]))
+            
+            # add infos and write to overall object
+            cnsDual_df[!,:bal] .= x
+            cnsDual_df[!,:cat] .= y
+            append!(dual_df,cnsDual_df)
+        end
+    end
+
+    printObject(dual_df,anyM, fileName = "dualValues")
+
+end
+
 #endregion
 
 #region # * plotting tools
