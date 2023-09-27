@@ -631,6 +631,7 @@ function centerStab!(method::Val{:qtr},stab_obj::stabObj,top_m::anyModel)
 	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
 	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[]) : z)
+	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...) |> (z -> true ? DataFrame(var = AffExpr[], value = Float64[]) : z)
 	allVar_df = vcat(allCapa_df,allStLvl_df)
 
 	# sets values of variables that will violate range to zero

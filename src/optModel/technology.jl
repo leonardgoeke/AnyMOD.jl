@@ -516,6 +516,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 						bothInf_df[!,:var] .= bothInf_df[!,:var] .- part.var[:stLvlInfeasOut][!,:var]
 					else
 						bothInf_df = copy(part.var[:stLvlInfeasOut])
+						bothInf_df[!,:var] .= -1 .* bothInf_df[!,:var]
 					end
 				end 
 				# add expression to constraint, if any infeasibility variables exist
