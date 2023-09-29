@@ -30,7 +30,7 @@ mutable struct stabObj
 	dynPar::Array{Float64,1} # array of dynamic parameters for each method
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
-	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple,weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}},resData_obj::resData,addVio_fl::Float64,top_m::anyModel)
+	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple,weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}},resData_obj::resData,lowBd_fl::Float64,addVio_fl::Float64,top_m::anyModel)
 		stab_obj = new()
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr,:avgImp,:itrAvg),Tuple{Int64,Float64,Int64}})
@@ -41,7 +41,7 @@ mutable struct stabObj
 			error("parameter 'itr' for  minimum iterations before switching stabilization method must be at least 2")
 		end
 
-		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup)
+		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup,lowBd_fl,resData_obj.objVal)
 		
 		# set other fields
 		stab_obj.ruleSw = ruleSw_ntup
@@ -61,7 +61,7 @@ mutable struct stabObj
 end
 
 # write options of stabilization method
-function writeStabOpt(meth_tup::Tuple)
+function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64)
 
 	# set fields for name and options of method
 	meth_arr = Symbol[]
@@ -88,7 +88,7 @@ function writeStabOpt(meth_tup::Tuple)
 		if meth_arr[m] == :prx
 			dynPar = methOpt_arr[m].start # starting value for penalty
 		elseif meth_arr[m] == :lvl
-			dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * objVal_fl) / top_m.options.scaFac.obj # starting value for level
+			dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * upBd_fl) / top_m.options.scaFac.obj # starting value for level
 			if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
 				error("lambda for level bundle must be strictly between 0 and 1")
 			end
@@ -389,12 +389,12 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	# add cuts
 	if !isempty(cutData_dic) addCuts!(top_m,cutData_dic,i) end
 	# solve model
-	@suppress begin
+	#@suppress begin
 		set_optimizer_attribute(top_m.optModel, "Method", 2)
 		set_optimizer_attribute(top_m.optModel, "Crossover", 0)
-		set_optimizer_attribute(top_m.optModel, "NumericFocus", 1)
+		set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
 		optimize!(top_m.optModel)
-	end
+	#end
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -642,7 +642,7 @@ function centerStab!(method::Val{:qtr},stab_obj::stabObj,top_m::anyModel,report_
 	allVar_df[!,:value] = map(x -> 2*x.value*x.scaFac < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
 
 	# absolute value for rhs of equation (sets default value of 15 to avoid zero radius if values are very small)
-	abs_fl = sum(allVar_df[!,:value] .* sqrt.(allVar_df[!,:scaFac]) ) |> (x -> x < 0.01 * size(allVar_df,1) ? sum(10 .* allVar_df[!,:scaFac]) : x)
+	abs_fl = sum(allVar_df[!,:value] .* sqrt.(allVar_df[!,:scaFac]) ) |> (x -> x < 0.01 * size(allVar_df,1) ? sum(allVar_df[!,:scaFac]) : x)
 	
 	# compute possible range of scaling factors with rhs still in range
 	scaRng_tup = top_m.options.coefRng.rhs ./ abs((abs_fl * stab_obj.dynPar[stab_obj.actMet])^2 - sum(allVar_df[!,:scaFac] .* allVar_df[!,:value].^2))
