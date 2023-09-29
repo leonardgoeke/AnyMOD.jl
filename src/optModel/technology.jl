@@ -503,14 +503,11 @@ function createStBal(part::TechPart,anyM::anyModel)
 			relTs_df = combine(x -> (Ts_dis = maximum(x.Ts_dis),),groupby(cnsC_df,filter(x -> !(x in (:Ts_dis,:Ts_disPrev)),intCol(cnsC_df))))
 			matchTs_df = select(matchSetParameter(relTs_df,anyM.parts.cost.par[:costStLvlLss],anyM.sets),Not([:val]))
 			if !isempty(matchTs_df)
-				# on net-increase, only needed if there is no valid inequality for storage level or it is insufficient in case of self-discharge
-				if !top_m.options.createVI.st || :stDis in keys(part.par)
-					part.var[:stLvlInfeasIn] = createVar(matchTs_df,"stLvlInfeasIn",getUpBound(matchTs_df,anyM.options.bound.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets)
-					bothInf_df = copy(part.var[:stLvlInfeasIn])
-				end
-				# on net-decrease, only needed for output if storage balance is an equality constraint, 
-				# and there is no valid inequality for storage levels paired with an inequality constraint for the corresponding energy balance, or if the valid inequality is insufficient in case of self-discharge
-				if part.balSign.st != :ineq && (!(top_m.options.createVI.st && anyM.cInfo[bal[1]].balSign != :eq) || :stDis in keys(part.par))
+				# on net-increase
+				part.var[:stLvlInfeasIn] = createVar(matchTs_df,"stLvlInfeasIn",getUpBound(matchTs_df,anyM.options.bound.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets)
+				bothInf_df = copy(part.var[:stLvlInfeasIn])
+				# on net-decrease, only needed for output if storage balance is an equality constraint
+				if part.balSign.st != :ineq
 					part.var[:stLvlInfeasOut] = createVar(matchTs_df,"stLvlInfeasOut",getUpBound(matchTs_df,anyM.options.bound.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets)
 					if :stLvlInfeasIn in keys(part.var)
 						bothInf_df[!,:var] .= bothInf_df[!,:var] .- part.var[:stLvlInfeasOut][!,:var]
@@ -608,8 +605,8 @@ function createStVI(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1
 					# filter redundant constraints 
 					cns_df = combine(x -> fltRedIn(x), groupby(cns_df,filter(x -> x != :scr,intCol(cns_df))))
 						
-					# create constraint expression (round down inflows to avoid infeasibility in sub-problem due to numerical errors)
-					expr_arr = map(x -> getScaFac(x.Ts_dis,anyM) |> (y -> x.stLvlCur - x.stLvlPrev - x.capa * x.avaEff * y - floor(x.inf * y, digits = 2)), eachrow(cns_df))
+					# create constraint expression
+					expr_arr = map(x -> getScaFac(x.Ts_dis,anyM) |> (y -> x.stLvlCur - x.stLvlPrev - x.capa * x.avaEff * y - x.inf * y), eachrow(cns_df))
 				else
 					# correct output capacity with availability
 					if !isempty(part.par[:avaStOut].data)
@@ -645,7 +642,7 @@ function createStVI(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1
 					cns_df = combine(x -> fltRedOut(x), groupby(cns_df,filter(x -> x != :scr,intCol(cns_df))))
 
 					# create constraint expression
-					expr_arr = map(x -> getScaFac(x.Ts_dis,anyM) |> (y -> x.stLvlPrev - x.stLvlCur + ceil(x.inf * y, digits = 2) - (x.capa * x.ava + x.maxStDis) * y), eachrow(cns_df))
+					expr_arr = map(x -> getScaFac(x.Ts_dis,anyM) |> (y -> x.stLvlPrev - x.stLvlCur + x.inf * y - (x.capa * x.ava + x.maxStDis) * y), eachrow(cns_df))
 				end
 
 				cns_df[!,:cnsExpr] = @expression(anyM.optModel,expr_arr)
