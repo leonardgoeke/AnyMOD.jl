@@ -499,9 +499,15 @@ function createStBal(part::TechPart,anyM::anyModel)
 
 		# add infeasibility variables for reduced foresight with cutting plane algorithm
 		if anyM.options.lvlFrs != 0 && !isempty(anyM.subPro) && anyM.scr.lvl > part.stCyc && :costStLvlLss in keys(anyM.parts.cost.par)
-			# check if infeasibility costs for storage level defined
-			relTs_df = combine(x -> (Ts_dis = maximum(x.Ts_dis),),groupby(cnsC_df,filter(x -> !(x in (:Ts_dis,:Ts_disPrev)),intCol(cnsC_df))))
-			matchTs_df = select(matchSetParameter(relTs_df,anyM.parts.cost.par[:costStLvlLss],anyM.sets),Not([:val]))
+			# get time-steps at end of foresight period
+			endTs_df = combine(x -> (Ts_dis = maximum(x.Ts_dis),),groupby(cnsC_df,filter(x -> !(x in (:Ts_dis,:Ts_disPrev)),intCol(cnsC_df))))
+			# add times-steps at start of foresight period, if option is set
+			if anyM.options.dbInf
+				startTs_df = combine(x -> (Ts_dis = minimum(x.Ts_dis),),groupby(cnsC_df,filter(x -> !(x in (:Ts_dis,:Ts_disPrev)),intCol(cnsC_df))))
+				endTs_df = vcat(startTs_df,endTs_df)
+			end
+			
+			matchTs_df = select(matchSetParameter(endTs_df,anyM.parts.cost.par[:costStLvlLss],anyM.sets),Not([:val]))
 			if !isempty(matchTs_df)
 				# on net-increase
 				part.var[:stLvlInfeasIn] = createVar(matchTs_df,"stLvlInfeasIn",getUpBound(matchTs_df,anyM.options.bound.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets)

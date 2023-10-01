@@ -335,6 +335,7 @@ mutable struct modOptions
 	forceScr::Union{Symbol,Nothing}
 	createVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}
 	lvlFrs::Int
+	dbInf::Bool
 	# reporting related options
 	reportLvl::Int
 	errCheckLvl::Int
@@ -500,6 +501,7 @@ mutable struct anyModel <: AbstractModel
 
 	supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Int,Float64}}}
 	scr::NamedTuple{(:lvl,:scr,:scrProb),Tuple{Int,Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
+	dbInf::Bool
 	subPro::Union{Tuple{},Tuple{Int,Int}}
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign,:stBalCapa),Tuple{Int,Int,Int,Int,Symbol,Symbol}}}
 
@@ -510,7 +512,7 @@ mutable struct anyModel <: AbstractModel
 	function anyModel(inDir::Union{String,Array{String,1}},outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, holdFixed = false, emissionLoss = true,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e4), rhs = (1e-2,1e2)),
 																											scaFac = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
-																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true), forceScr = nothing, lvlFrs = 0, createVI = (bal = false, st = false))
+																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true), forceScr = nothing, lvlFrs = 0, createVI = (bal = false, st = false), dbInf = false)
 		anyM = new()
 
 		if lvlFrs != 0 && createVI.bal
@@ -529,7 +531,7 @@ mutable struct anyModel <: AbstractModel
 		outStamp_str = string(objName,"_",Dates.format(now(),"yyyymmddHHMM"))
 		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, interCapa = interCapa, supTsLvl = supTsLvl, shortExp = shortExp, 
 																										redStep = redStep, holdFixed = holdFixed, emissionLoss = emissionLoss, coefRng = coefRng, scaFac = scaFac, bound = bound,
-																											avaMin = avaMin, checkRng = checkRng, forceScr = forceScr, createVI = createVI, lvlFrs = lvlFrs, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
+																											avaMin = avaMin, checkRng = checkRng, forceScr = forceScr, createVI = createVI, lvlFrs = lvlFrs, dbInf = dbInf, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
 
 		anyM.options = modOptions(defOpt_ntup...)
 

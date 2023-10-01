@@ -24,13 +24,12 @@ mutable struct stabObj
 	methodOpt::Array{NamedTuple,1} # array of options for adjustment of stabilization parameters
 	ruleSw::Union{NamedTuple{(), Tuple{}}, NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}}} # rule for switching between stabilization methods
 	weight::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}} # weight of variables in stabilization
-	addVio::Float64 # factor by that rhs for stabilzation constraint may violate rhs range of top model
 	actMet::Int # index of currently active stabilization method
 	objVal::Float64 # objective value of current center
 	dynPar::Array{Float64,1} # array of dynamic parameters for each method
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
-	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple,weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}},resData_obj::resData,lowBd_fl::Float64,addVio_fl::Float64,top_m::anyModel)
+	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple,weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}},resData_obj::resData,lowBd_fl::Float64,top_m::anyModel)
 		stab_obj = new()
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr,:avgImp,:itrAvg),Tuple{Int64,Float64,Int64}})
@@ -46,7 +45,6 @@ mutable struct stabObj
 		# set other fields
 		stab_obj.ruleSw = ruleSw_ntup
 		stab_obj.weight = weight_ntup
-		stab_obj.addVio = addVio_fl
 		stab_obj.actMet = 1
 		stab_obj.objVal = resData_obj.objVal
 		stab_obj.var = filterStabVar(resData_obj.capa,resData_obj.stLvl,weight_ntup,top_m)
@@ -381,7 +379,7 @@ function prepareMod!(mod_m::anyModel,opt_obj::DataType, t_int::Int)
 end
 
 # ! run top-problem
-function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},stab_obj::Union{Nothing,stabObj},i::Int)
+function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},stab_obj::Union{Nothing,stabObj},numFoc_int::Int,i::Int)
 
 	resData_obj = resData()
 	stabVar_obj = resData()
@@ -392,7 +390,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	#@suppress begin
 		set_optimizer_attribute(top_m.optModel, "Method", 2)
 		set_optimizer_attribute(top_m.optModel, "Crossover", 0)
-		set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
+		set_optimizer_attribute(top_m.optModel, "NumericFocus", numFoc_int)
 		optimize!(top_m.optModel)
 	#end
 	
@@ -629,10 +627,10 @@ end
 #region # * stabilization
 
 # function to update the center of stabilization method
-centerStab!(method::Symbol,stab_obj::stabObj,top_m::anyModel,report_m::anyModel) = centerStab!(Val{method}(),stab_obj::stabObj,top_m::anyModel,report_m::anyModel)
+centerStab!(method::Symbol,stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel) = centerStab!(Val{method}(),stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 
 # function for quadratic trust region
-function centerStab!(method::Val{:qtr},stab_obj::stabObj,top_m::anyModel,report_m::anyModel)
+function centerStab!(method::Val{:qtr},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj,top_m)
@@ -654,20 +652,20 @@ function centerStab!(method::Val{:qtr},stab_obj::stabObj,top_m::anyModel,report_
 	rhs_fl = ((abs_fl * stab_obj.dynPar[stab_obj.actMet])^2 - capaSum_expr.aff.constant)  * scaEq_fl
  
 	# create final constraint
-	if top_m.options.coefRng.rhs[1] / stab_obj.addVio < abs(rhs_fl) && top_m.options.coefRng.rhs[2] * stab_obj.addVio > abs(rhs_fl)
+	if top_m.options.coefRng.rhs[1] / addVio_fl < abs(rhs_fl) && top_m.options.coefRng.rhs[2] * addVio_fl > abs(rhs_fl)
 		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= (abs_fl * stab_obj.dynPar[stab_obj.actMet])^2  * scaEq_fl)
 	else
-		if top_m.options.coefRng.rhs[2] * stab_obj.addVio < abs(rhs_fl)
-			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[2]* stab_obj.addVio + capaSum_expr.aff.constant * scaEq_fl)
+		if top_m.options.coefRng.rhs[2] * addVio_fl < abs(rhs_fl)
+			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[2]* addVio_fl + capaSum_expr.aff.constant * scaEq_fl)
 		else 
-			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[1]* stab_obj.addVio + capaSum_expr.aff.constant * scaEq_fl)
+			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[1]* addVio_fl + capaSum_expr.aff.constant * scaEq_fl)
 		end
 		produceMessage(report_m.options,report_m.report, 1," - Adjusted radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
 	end
 end
 
 # function for proximal bundle method
-function centerStab!(method::Val{:prx},stab_obj::stabObj,top_m::anyModel,report_m::anyModel)
+function centerStab!(method::Val{:prx},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 	
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj,top_m)
@@ -690,7 +688,7 @@ function centerStab!(method::Val{:prx},stab_obj::stabObj,top_m::anyModel,report_
 end
 
 # function for level bundle method
-function centerStab!(method::Val{:lvl},stab_obj::stabObj,top_m::anyModel,report_m::anyModel)
+function centerStab!(method::Val{:lvl},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 	
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj,top_m)
@@ -711,7 +709,7 @@ function centerStab!(method::Val{:lvl},stab_obj::stabObj,top_m::anyModel,report_
 end
 
 # function for box step method
-function centerStab!(method::Val{:box},stab_obj::stabObj,top_m::anyModel)
+function centerStab!(method::Val{:box},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(stab_obj.var,stab_obj.weightSt,top_m)
