@@ -97,7 +97,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], id = Int[], variable = Symbol[], value = Float64[])
 
 	# ! get demand values
-	if :dem in keys(anyM.parts.bal.par)
+	if :dem in keys(anyM.parts.bal.par) && (anyM.subPro != tuple(0,0) || anyM.options.createVI.bal)
 		dem_df = copy(anyM.parts.bal.par[:dem].data)
 		if !isempty(dem_df)
 			dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, :C in namesSym(dem_df) ? dem_df[!,:C] : filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx)))
