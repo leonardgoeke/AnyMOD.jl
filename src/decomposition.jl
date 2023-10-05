@@ -25,7 +25,7 @@ mutable struct stabObj
 	ruleSw::Union{NamedTuple{(), Tuple{}}, NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}}} # rule for switching between stabilization methods
 	actMet::Int # index of currently active stabilization method
 	objVal::Float64 # array of objective value for current center
-	dynPar::Array{Union{Float64,Array{Float64},1}} # array of dynamic parameters for each method
+	dynPar::Array{Union{Float64,Dict{Symbol,Float64}},1} # array of dynamic parameters for each method
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
 	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple,resData_obj::resData,top_m::anyModel)
@@ -67,8 +67,8 @@ function writeStabOpt(meth_tup::Tuple)
 		push!(methOpt_arr,val)
 		if key == :qtr && !isempty(setdiff(keys(val),(:start,:low,:thr,:fac)))
 			error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
-		elseif key == :prx && !isempty(setdiff(keys(val),(:start,:max,:fac)))
-			error("options provided for proximal bundle do not match the defined options 'start', 'max', and 'fac'")
+		elseif key == :prx && !isempty(setdiff(keys(val),(:start,:min,:a)))
+			error("options provided for proximal bundle do not match the defined options 'start', 'min', and 'a'")
 		elseif key == :lvl && !isempty(setdiff(keys(val),(:la,)))
 			error("options provided for level bundle do not match the defined options 'la'")
 		elseif key == :box && !isempty(setdiff(keys(val),(:low,:up,:minUp)))
@@ -79,10 +79,10 @@ function writeStabOpt(meth_tup::Tuple)
 	if length(meth_arr) != length(unique(meth_arr)) error("stabilization methods must be unique") end
 
 	# method specific adjustments (e.g. starting value for dynamic parameter, new variables for objective function)
-	dynPar_arr = Float64[]
+	dynPar_arr = []
 	for m in 1:size(meth_arr,1)
 		if meth_arr[m] == :prx
-			dynPar = methOpt_arr[m].start # starting value for penalty
+			dynPar = Dict(:prx => methOpt_arr[m].start, :prx_aux => methOpt_arr[m].start) # starting value for penalty
 		elseif meth_arr[m] == :lvl
 			dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * objVal_fl) / top_m.options.scaFac.obj # starting value for level
 			if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
@@ -658,7 +658,7 @@ function centerStab!(method::Val{:prx},stab_obj::stabObj,top_m::anyModel)
 	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...)
 	allVar_df = vcat(allCapa_df,allStLvl_df)[1]
 
-	pen_fl = stab_obj.dynPar[stab_obj.actMet]
+	pen_fl = stab_obj.dynPar[stab_obj.actMet][:prx]
 	
 	# sets values of variables that will violate range to zero
 	minFac_fl = (2*pen_fl*maximum(allVar_df[!,:value]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
@@ -671,7 +671,7 @@ function centerStab!(method::Val{:prx},stab_obj::stabObj,top_m::anyModel)
 	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df,stab_obj,scaRng_tup,top_m)
 
 	# adjust objective function
-	@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] + pen_fl * capaSum_expr  * scaFac_fl)
+	@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] + 1/(2*pen_fl) * capaSum_expr  * scaFac_fl)
 
 end
 
@@ -733,7 +733,7 @@ function computeL2Norm(allVar_df::DataFrame,stab_obj::stabObj,scaRng_tup::Tuple,
 end
 
 # ! update dynamic parameter of stabilization method
-function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_boo::Bool,estCostNoStab_fl::Float64,estCost_fl::Float64,currentBest_fl::Float64,nearOpt_boo::Bool,report_m::anyModel)
+function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_boo::Bool,adjCtr_count::Int,null_step_count::Int,estCostNoStab_fl::Float64,estCost_fl::Float64,currentBest_fl::Float64,nearOpt_boo::Bool,report_m::anyModel)
 
 	opt_tup = stab_obj.methodOpt[iUpd_int]
 	if stab_obj.method[iUpd_int] == :qtr # adjust radius of quadratic trust-region
@@ -741,17 +741,33 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 			stab_obj.dynPar[iUpd_int] = max(opt_tup.low,stab_obj.dynPar[iUpd_int] / opt_tup.fac)
 			produceMessage(report_m.options,report_m.report, 1," - Reduced quadratic trust-region!", testErr = false, printErr = false)	
 		end
-	elseif stab_obj.method[iUpd_int] == :prx # adjust penalty term
+	elseif stab_obj.method[iUpd_int] == :prx # adjust penalty term "#DOI 10.1007/s10107-015-0873-6 section 5.1.2
+		# Step 1: Compute τ_aux
+			aux_term = (stab_obj.objVal - currentBest_fl)/(stab_obj.objVal - estCost_fl)
+			stab_obj.dynPar[iUpd_int][:prx_aux] = 2 * stab_obj.dynPar[iUpd_int][:prx] * (1+aux_term)
+		# Step 2: Check if current step is serious or not
 		if adjCtr_boo
-			stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] / opt_tup.fac
-			produceMessage(report_m.options,report_m.report, 1," - Reduced penalty term of proximal bundle!", testErr = false, printErr = false)
-		elseif stab_obj.dynPar[iUpd_int] * opt_tup.fac < opt_tup.max
-			stab_obj.dynPar[iUpd_int] = min(opt_tup.max,stab_obj.dynPar[iUpd_int] * opt_tup.fac)
-			produceMessage(report_m.options,report_m.report, 1," - Increased penalty term of proximal bundle!", testErr = false, printErr = false)
-		else
-			stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] * (1 - estCostNoStab_fl/currentBest_fl)
-			produceMessage(report_m.options,report_m.report, 1," - Reset penalty term of proximal bundle!", testErr = false, printErr = false)
+			# Step 2.1: If serious and has been serious for more than 5 times adjust τ_aux
+			if adjCtr_count > 5
+				stab_obj.dynPar[iUpd_int][:prx_aux] = opt_tup.a * stab_obj.dynPar[iUpd_int][:prx_aux]
+			end
+			# Step 2.2: Update proximal parameter
+			stab_obj.dynPar[iUpd_int][:prx] = min(stab_obj.dynPar[iUpd_int][:prx_aux],10 * stab_obj.dynPar[iUpd_int][:prx])
+		else # if null-step
+			if null_step_count > 10
+				stab_obj.dynPar[iUpd_int][:prx] = (opt_tup.a) * stab_obj.dynPar[iUpd_int][:prx]
+			end
+			stab_obj.dynPar[iUpd_int][:prx] = min(stab_obj.dynPar[iUpd_int][:prx],max(stab_obj.dynPar[iUpd_int][:prx_aux],stab_obj.dynPar[iUpd_int][:prx]/opt_tup.a,opt_tup.min))
 		end
+		#	stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] / opt_tup.fac
+		#	produceMessage(report_m.options,report_m.report, 1," - Reduced penalty term of proximal bundle!", testErr = false, printErr = false)
+		#elseif stab_obj.dynPar[iUpd_int] * opt_tup.fac < opt_tup.max
+		#	stab_obj.dynPar[iUpd_int] = min(opt_tup.max,stab_obj.dynPar[iUpd_int] * opt_tup.fac)
+		#	produceMessage(report_m.options,report_m.report, 1," - Increased penalty term of proximal bundle!", testErr = false, printErr = false)
+		#else
+		#	stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] * (1 - estCostNoStab_fl/currentBest_fl)
+		#	produceMessage(report_m.options,report_m.report, 1," - Reset penalty term of proximal bundle!", testErr = false, printErr = false)
+		#end
 	elseif stab_obj.method[iUpd_int] == :lvl # adjust level
 		stab_obj.dynPar[iUpd_int] = (opt_tup.la * estCostNoStab_fl  + (1 - opt_tup.la) * currentBest_fl) / top_m.options.scaFac.obj
 	end
@@ -1139,7 +1155,7 @@ function addDual(dual_df::DataFrame,cns_df::DataFrame,scaFac_fl::Float64)
 	return select(filter(x -> x.dual != 0.0,new_df),Not([:cns,:fac]))
 end
 
-getBendersCut(subCut.stLvl[sSym],part_obj.var[:stLvl],top_m.options.scaFac.dispSt)
+#getBendersCut(subCut.stLvl[sSym],part_obj.var[:stLvl],top_m.options.scaFac.dispSt)
 
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
 function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaFac_fl::Float64)
