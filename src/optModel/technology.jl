@@ -51,11 +51,11 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 		produceMessage(anyM.options,anyM.report, 3," - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
 
 		# create dispatch variables and constraints
-		if isempty(anyM.subPro) || anyM.subPro != (0,0) || anyM.options.createVI || anyM.options.lvlFrs != 0
+		if isempty(anyM.subPro) || anyM.subPro != (0,0) || anyM.options.createVI.bal || anyM.options.lvlFrs != 0
 			createDispVar!(part,modeDep_dic,ts_dic,r_dic,prepTech_dic,anyM)
 			produceMessage(anyM.options,anyM.report, 3," - Created all dispatch variables for technology $(tech_str)")
  
-			if anyM.subPro != (0,0) || anyM.options.createVI
+			if anyM.subPro != (0,0) || anyM.options.createVI.bal
 				# create conversion balance for conversion technologies
 				if keys(part.carrier) |> (x -> any(map(y -> y in x,(:use,:stIntOut))) && any(map(y -> y in x,(:gen,:stIntIn)))) && (:capaConv in keys(part.var) || part.type == :unrestricted) && part.balSign.conv != :none
 					cns_dic[:convBal] = createConvBal(part,anyM)
@@ -63,11 +63,11 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 				end
 
 				# create storage balance for storage technologies
-				if :stLvl in keys(part.var) && part.balSign.st != :none && !anyM.options.createVI
+				if :stLvl in keys(part.var) && part.balSign.st != :none && !anyM.options.createVI.bal
 					cns_dic[:stBal] = createStBal(part,anyM)
 					produceMessage(anyM.options,anyM.report, 3," - Prepared storage balance for technology $(tech_str)")
 				# only create storage inflows as generation for valid inequalities
-				elseif :stInflow in keys(part.par) && anyM.options.createVI 
+				elseif :stInflow in keys(part.par) && anyM.options.createVI.bal 
 					inPar_df = rename(copy(part.par[:stInflow].data),:Ts_expSup => :Ts_disSup)
 					inPar_df[!,:Ts_expSup] = inPar_df[!,:Ts_disSup]
 					inPar_df[!,:Ts_disSup] .= inPar_df[!,:Ts_dis]
@@ -80,13 +80,13 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 
 			# create capacity restrictions
 			sizeRestr_boo =  anyM.options.lvlFrs != 0 && :stLvl in keys(part.var) && anyM.subPro == (0,0)
-			if part.type != :unrestricted && (anyM.subPro != (0,0) || anyM.options.createVI || sizeRestr_boo)
+			if part.type != :unrestricted && (anyM.subPro != (0,0) || anyM.options.createVI.bal || sizeRestr_boo)
 				if sizeRestr_boo filter!(x -> occursin("stSize",x.cnstrType),part.capaRestr) end
 				createCapaRestr!(part,ts_dic,r_dic,cns_dic,anyM,yTs_dic,rmvOutC_arr)
 			end
 
 			# enforce achievable storage levels
-			# if anyM.options.lvlFrs != 0 && anyM.subPro == (0,0) && :stLvl in keys(part.var) cns_dic = restrStLvl(part,ts_dic,r_dic,cns_dic,anyM) end
+			if anyM.options.createVI.st && anyM.options.lvlFrs != 0 && anyM.subPro == (0,0) && :stLvl in keys(part.var) cns_dic = createStVI(part,ts_dic,r_dic,cns_dic,anyM) end
 
 			produceMessage(anyM.options,anyM.report, 3," - Prepared capacity restrictions for technology $(tech_str)")
 		end
@@ -203,13 +203,13 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 	
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,))
-	hasSt_boo = :capaStSize in keys(prepTech_dic) && (!anyM.options.createVI || anyM.options.lvlFrs != 0)
+	hasSt_boo = :capaStSize in keys(prepTech_dic) && (!anyM.options.createVI.bal || anyM.options.lvlFrs != 0)
 	dispVar_arr = collectKeys(keys(part.carrier)) |> (x -> hasSt_boo  ? [:stLvl,x...]  : x)
-	if anyM.subPro == (0,0) && !anyM.options.createVI filter!(x -> x == :stLvl,dispVar_arr) end # case of top problem and reduced foresight
+	if anyM.subPro == (0,0) && !anyM.options.createVI.bal filter!(x -> x == :stLvl,dispVar_arr) end # case of top problem and reduced foresight
 	onlyGen_boo = :gen in dispVar_arr && isempty(intersect([:use,:stIntIn],dispVar_arr))
 
 	# filter map of capacity restrictions based on actually created dispatch variables
-	if anyM.options.createVI && isdefined(part,:capaRestr)
+	if anyM.options.createVI.bal && isdefined(part,:capaRestr)
 		if !hasSt_boo filter!(x -> !any(occursin.(["stIn","stOut","stSize"],x.cnstrType)),part.capaRestr) end
 		if onlyGen_boo filter!(x -> false, part.capaRestr) end
 	end
@@ -217,7 +217,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 	for va in dispVar_arr # loop over all relevant kind of variables
 		conv_boo = va in (:gen,:use) && :capaConv in keys(prepTech_dic)
 		# dont create storage variables when only creating valid inequalities
-		if (va in (:stExtOut,:stExtIn,:stLvl) || (va == :stIntIn && :gen in dispVar_arr) || (va == :stIntOut && :use in dispVar_arr)) && anyM.options.createVI && anyM.options.lvlFrs == 0
+		if (va in (:stExtOut,:stExtIn,:stLvl) || (va == :stIntIn && :gen in dispVar_arr) || (va == :stIntOut && :use in dispVar_arr)) && anyM.options.createVI.bal && anyM.options.lvlFrs == 0
 			continue 
 		end
 
@@ -295,7 +295,7 @@ function createDispVar!(part::TechPart,modeDep_dic::Dict{Symbol,DataFrame},ts_di
 		end
 
 		# filter cases where dispatch variable is fixed to zero
-		if Symbol(va,:Fix) in keys(anyM.parts.lim.par) && !(anyM.options.createVI && va == :use && :stIntOut in dispVar_arr)
+		if Symbol(va,:Fix) in keys(anyM.parts.lim.par) && !(anyM.options.createVI.bal && va == :use && :stIntOut in dispVar_arr)
 			checkFix_boo = false
 			# checks, if trying to filter zero fixes is sensible because cases could exist based on technology column
 			if !(:Te in namesSym(anyM.parts.lim.par[Symbol(va,:Fix)].data)) 
@@ -347,13 +347,13 @@ function createConvBal(part::TechPart,anyM::anyModel)
 
 	# defines tuple specificing dimension of aggregation later
 	if part.type == :emerging
-		srcRes_ntup = part.balLvl |> (x -> (Ts_expSup = anyM.supTs.lvl, Ts_dis = x.ref[1], R_dis = anyM.options.createVI ? 0 : x.ref[2]))
+		srcRes_ntup = part.balLvl |> (x -> (Ts_expSup = anyM.supTs.lvl, Ts_dis = x.ref[1], R_dis = anyM.options.createVI.bal ? 0 : x.ref[2]))
 	else
-		srcRes_ntup = part.balLvl |> (x -> (Ts_dis = x.ref[1], R_dis = anyM.options.createVI ? 0 : x.ref[2]))
+		srcRes_ntup = part.balLvl |> (x -> (Ts_dis = x.ref[1], R_dis = anyM.options.createVI.bal ? 0 : x.ref[2]))
 	end
 
 	# aggregate table spatially in case of valid inequalities
-	if anyM.options.createVI
+	if anyM.options.createVI.bal
 		cns_df[!,:R_dis] .= 0
 		cns_df = combine(x -> (eff = maximum(x.eff),), groupby(cns_df,intCol(cns_df)))
 	end
@@ -497,24 +497,37 @@ function createStBal(part::TechPart,anyM::anyModel)
 			cnsC_df[!,:stInflow] .= 0.0
 		end
 
-		# add infeasibility variables
+		# add infeasibility variables for reduced foresight with cutting plane algorithm
 		if anyM.options.lvlFrs != 0 && !isempty(anyM.subPro) && anyM.scr.lvl > part.stCyc && :costStLvlLss in keys(anyM.parts.cost.par)
-			# check if infeasibility costs for storage level defined
-			relTs_df = combine(x -> (Ts_dis = maximum(x.Ts_dis),),groupby(cnsC_df,filter(x -> !(x in (:Ts_dis,:Ts_disPrev)),intCol(cnsC_df))))
-			matchTs_df = select(matchSetParameter(relTs_df,anyM.parts.cost.par[:costStLvlLss],anyM.sets),Not([:val]))
-			if !isempty(matchTs_df)
-				# create infeasibility variables
-				part.var[:stLvlInfeasIn] = createVar(matchTs_df,"stLvlInfeasIn",getUpBound(matchTs_df,anyM.options.bound.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets)
+			# get time-steps at end of foresight period
+			endTs_df = combine(x -> (Ts_dis = maximum(x.Ts_dis),),groupby(cnsC_df,filter(x -> !(x in (:Ts_dis,:Ts_disPrev)),intCol(cnsC_df))))
+			# add times-steps at start of foresight period, if option is set
+			if anyM.options.dbInf
+				startTs_df = combine(x -> (Ts_dis = minimum(x.Ts_dis),),groupby(cnsC_df,filter(x -> !(x in (:Ts_dis,:Ts_disPrev)),intCol(cnsC_df))))
+				endTs_df = vcat(startTs_df,endTs_df)
+			end
 			
-				part.var[:stLvlInfeasOut] = createVar(matchTs_df,"stLvlInfeasOut",getUpBound(matchTs_df,anyM.options.bound.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets)
-				# compute net-expression for infeasibility variables
+			matchTs_df = select(matchSetParameter(endTs_df,anyM.parts.cost.par[:costStLvlLss],anyM.sets),Not([:val]))
+			if !isempty(matchTs_df)
+				# on net-increase
+				part.var[:stLvlInfeasIn] = createVar(matchTs_df,"stLvlInfeasIn",getUpBound(matchTs_df,anyM.options.bound.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets)
 				bothInf_df = copy(part.var[:stLvlInfeasIn])
-				bothInf_df[!,:var] .= bothInf_df[!,:var] .- part.var[:stLvlInfeasOut][!,:var]
-	
-				# add expression to constraint
-				cnsC_df = joinMissing(cnsC_df,rename(bothInf_df,:var => :infeas), intCol(bothInf_df), :left, Dict(:infeas => AffExpr()))
-				cnsC_df[!,:stInflow] .= cnsC_df[!,:stInflow] .+ cnsC_df[!,:infeas]
-				select!(cnsC_df,Not([:infeas]))
+				# on net-decrease, only needed for output if storage balance is an equality constraint
+				if part.balSign.st != :ineq
+					part.var[:stLvlInfeasOut] = createVar(matchTs_df,"stLvlInfeasOut",getUpBound(matchTs_df,anyM.options.bound.disp,anyM.supTs,anyM.sets[:Ts]),anyM.optModel,anyM.lock,anyM.sets)
+					if :stLvlInfeasIn in keys(part.var)
+						bothInf_df[!,:var] .= bothInf_df[!,:var] .- part.var[:stLvlInfeasOut][!,:var]
+					else
+						bothInf_df = copy(part.var[:stLvlInfeasOut])
+						bothInf_df[!,:var] .= -1 .* bothInf_df[!,:var]
+					end
+				end 
+				# add expression to constraint, if any infeasibility variables exist
+				if :stLvlInfeasIn in keys(part.var) || :stLvlInfeasOut in keys(part.var)
+					cnsC_df = joinMissing(cnsC_df,rename(bothInf_df,:var => :infeas), intCol(bothInf_df), :left, Dict(:infeas => AffExpr()))
+					cnsC_df[!,:stInflow] .= cnsC_df[!,:stInflow] .+ cnsC_df[!,:infeas]
+					select!(cnsC_df,Not([:infeas]))
+				end
 			end
 		end
 
@@ -528,7 +541,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 end
 
 # ! enforces storage levels that can actually be achieved with the available capacity
-function restrStLvl(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
+function createStVI(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 
 	stLvl_df = copy(part.var[:stLvl])
 	cnsDim_arr = filter(x -> x != :Ts_disSup, intCol(stLvl_df))
@@ -546,31 +559,28 @@ function restrStLvl(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1
 	rename!(stLvl_df,:var => :stLvlCur)
 	stLvl_df = rename(joinMissing(stLvl_df,part.var[:stLvl], intCol(part.var[:stLvl]) |> (x -> Pair.(replace(x,:Ts_dis => :Ts_disPrev),x)), :left, Dict(:var => AffExpr())),:var => :stLvlPrev)
 
+	# add scenarios 
+	stLvl_df[!,:scr] .= filter(x -> x != 0, collect(keys(anyM.sets[:scr].nodes))) |> (z -> map(x -> z,eachrow(stLvl_df)))
+	stLvl_df = flatten(stLvl_df,:scr)
+
+	# assign end of period to all steps in period
+	inTs_dic = Dict{Int,Int}()
+	for x in collect(orderTs_dic)
+		for y in getAncestors(x[1],anyM.sets[:Ts],:int,anyM.scr.lvl)[end] |> (z -> getDescendants(z,anyM.sets[:Ts],false,anyM.sets[:Ts].nodes[x[1]].lvl))
+			inTs_dic[y] = x[1]
+		end
+	end
+
 	# aggregate storage inflows
 	if :stInflow in keys(part.par)
-
-		# assign end of period to all steps in period
-		inTs_dic = Dict{Int,Int}()
-		for x in collect(orderTs_dic)
-			for y in getAncestors(x[1],anyM.sets[:Ts],:int,anyM.scr.lvl)[end] |> (z -> getDescendants(z,anyM.sets[:Ts],false,anyM.sets[:Ts].nodes[x[1]].lvl))
-				inTs_dic[y] = x[1]
-			end
-		end
-
 		# replace actual timestep with ending timestep of foresight period
 		stInf_df = copy(part.par[:stInflow].data)
 		stInf_df[!,:Ts_dis] .= map(x -> inTs_dic[x],stInf_df[!,:Ts_dis])
 		# aggregate by end of foresight period and add to levels
 		aggInflow_df = combine(x -> (inf = sum(x.val)/length(x.val),), groupby(stInf_df,intCol(stInf_df)))
 		
-		# extend storage level with scenarios
-		allScr_arr = unique(aggInflow_df[!,:scr])
-		stLvlScr_df = copy(stLvl_df)
-		stLvlScr_df[!,:scr] .= map(x -> allScr_arr,eachrow(stLvlScr_df))
-		stLvlScr_df = flatten(stLvlScr_df,:scr)
-		stLvl_df = vcat(stLvlScr_df,stLvl_df)
-		# innerjoin inflows
-		stLvl_df = innerjoin(stLvl_df,aggInflow_df,on = intersect(intCol(stLvl_df),intCol(aggInflow_df)))
+		# join inflows with storage levels
+		stLvl_df = innerjoin(stLvl_df,aggInflow_df,on = intCol(aggInflow_df))
 	else
 		stLvl_df[!,:inf] .= 0.0
 	end
@@ -578,26 +588,111 @@ function restrStLvl(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1
 	# create all relevant restrictions
 	for restr in filter(x -> occursin("stSize",x.cnstrType), eachrow(part.capaRestr))
 		for t in (:In,:Out)
-			if Symbol(:capaSt,t) in keys(part.var) && (t == :In || part.balSign.st != :ineq)
-				# join relevant capacity
-				~, cns_df, ~ = getCapaToRestr(part,copy(part.var[Symbol(:capaSt,t)]),restr,:capaStSize,ts_dic,r_dic,anyM.sets,anyM.supTs)
-				cns_df = rename(innerjoin(stLvl_df, cns_df, on = intCol(cns_df)),:var => :capa)
-
+			if t == :In || part.balSign.st != :ineq # valid inequality on output only relevant, if storage balance is not an inequality constraint
+				
+				# join relevant capacity if existing
+				if Symbol(:capaSt,t) in keys(part.var)
+					~, cns_df, ~ = getCapaToRestr(part,copy(part.var[Symbol(:capaSt,t)]),restr,:capaStSize,ts_dic,r_dic,anyM.sets,anyM.supTs)
+					cns_df = rename(innerjoin(stLvl_df, cns_df, on = intCol(cns_df)),:var => :capa)
+				else
+					cns_df = copy(stLvl_df)
+					cns_df[!,:capa] .= AffExpr()
+				end
+	
 				# create constraint
 				if t == :In
-					expr_arr = map(x -> x.stLvlCur - x.stLvlPrev - (x.capa + x.inf)*anyM.supTs.sca[getAncestors(x.Ts_dis,anyM.sets[:Ts],:int,anyM.scr.lvl)[end]], eachrow(cns_df))
+					# correct input capacity with charging efficiency and availability
+					allAvaEff_df = matchSetParameter(rename(part.par[:effStIn].data,:val => :eff),part.par[:avaStIn],anyM.sets; newCol = :ava)
+					allAvaEff_df[!,:Ts_dis] .= map(x -> inTs_dic[x],allAvaEff_df[!,:Ts_dis]) # replace actual timestep with ending timestep of foresight period
+					allAvaEff_df = combine(x -> (avaEff = sum(x.eff.*x.ava)/length(x.eff),), groupby(allAvaEff_df,intCol(allAvaEff_df)))
+					# join with constraint dataframe
+					cns_df = innerjoin(cns_df,allAvaEff_df,on = intCol(allAvaEff_df))
+					
+					# filter redundant constraints 
+					cns_df = combine(x -> fltRedIn(x), groupby(cns_df,filter(x -> x != :scr,intCol(cns_df))))
+						
+					# create constraint expression
+					expr_arr = map(x -> getScaFac(x.Ts_dis,anyM) |> (y -> x.stLvlCur - x.stLvlPrev - x.capa * x.avaEff * y - x.inf * y), eachrow(cns_df))
 				else
-					expr_arr = map(x -> x.stLvlPrev - x.stLvlCur - (x.capa - x.inf)*anyM.supTs.sca[getAncestors(x.Ts_dis,anyM.sets[:Ts],:int,anyM.scr.lvl)[end]], eachrow(cns_df))
+					# correct output capacity with availability
+					if !isempty(part.par[:avaStOut].data)
+						# get average availability for each foresight period
+						avaOut_df = copy(part.par[:avaStOut].data)
+						avaOut_df[!,:Ts_dis] .= map(x -> inTs_dic[x],avaOut_df[!,:Ts_dis]) # replace actual timestep with ending timestep of foresight period
+						avaOut_df = combine(x -> (ava = sum(x.val)/length(x.val),), groupby(avaOut_df,intCol(avaOut_df)))
+						# join with constraint dataframe
+						cns_df = innerjoin(cns_df,avaOut_df,on = intCol(avaOut_df))
+					else
+						cns_df[!,:ava] .= 1.0
+					end
+					
+					# compute upper bound on storage self-discharge losses
+					if :stDis in keys(part.par)
+						# get variables for storage size
+						~, stSize_df, ~ = getCapaToRestr(part,copy(part.var[:capaStSize]),restr,:capaStSize,ts_dic,r_dic,anyM.sets,anyM.supTs)
+						# get average product of discharge and availability for each foresight period
+						disAva_df = matchSetParameter(rename(part.par[:stDis].data,:val => :dis),part.par[:avaStSize],anyM.sets; newCol = :ava)
+						disAva_df[!,:Ts_dis] .= map(x -> inTs_dic[x],disAva_df[!,:Ts_dis]) # replace actual timestep with ending timestep of foresight period
+						disAva_df = combine(x -> (maxStDis = sum(x.dis.*x.ava)/length(x.dis),), groupby(disAva_df,intCol(disAva_df)))
+						disAva_df[!,:Ts_disSup] .= map(x -> getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end],disAva_df[!,:Ts_dis])
+						# join with storage size to compute self-discharge losses
+						disAva_df = innerjoin(disAva_df,stSize_df,on = intCol(stSize_df))
+						disAva_df[!,:maxStDis] .= disAva_df[!,:maxStDis] .* disAva_df[!,:var]
+						# join with constraint dataframe
+						cns_df = innerjoin(cns_df,disAva_df,on = intCol(disAva_df))
+					else
+						cns_df[!,:maxStDis] .= 0.0
+					end
+					
+					# filter redundant constraints
+					cns_df = combine(x -> fltRedOut(x), groupby(cns_df,filter(x -> x != :scr,intCol(cns_df))))
+
+					# create constraint expression
+					expr_arr = map(x -> getScaFac(x.Ts_dis,anyM) |> (y -> x.stLvlPrev - x.stLvlCur + x.inf * y - (x.capa * x.ava + x.maxStDis) * y), eachrow(cns_df))
 				end
+
 				cns_df[!,:cnsExpr] = @expression(anyM.optModel,expr_arr)
-				cns_dic[Symbol(:lvlMax,t)] = cnsCont(orderDf(cns_df[!,[cnsDim_arr...,:cnsExpr]]),:smaller)
+				cns_dic[Symbol(:stLvlMax,t)] = cnsCont(orderDf(cns_df[!,[cnsDim_arr...,:cnsExpr]]),:smaller)
 			end
 		end
 	end
-
+	
 	return cns_dic
 
 end
+
+# filter redundant constraints for valid inequalities on storage (see function above)
+function fltRedIn(in_dfr::SubDataFrame)
+	# in case input capacity does not exist or maximum input is the same in both scenarios, only keep case with smaller inflows
+	if all(in_dfr.capa .== AffExpr()) || length(unique(in_dfr.avaEff)) == 1
+		relIdx_int = minimum(in_dfr.inf) |> (z -> findall(in_dfr.inf .== z)[1])
+	# if inflows are the same, only keep smaller avaEff
+	elseif length(unique(in_dfr.inf)) == 1
+		relIdx_int = minimum(in_dfr.avaEff) |> (z -> findall(in_dfr.avaEff .== z)[1])						
+	end
+	return in_dfr[relIdx_int,:]
+end
+
+function fltRedOut(in_dfr::SubDataFrame)
+	
+	# checks which parameters have multiple unique values (if only one parameter has multiple unique values, some constraints can be filtered)
+	avaUni_boo = !(all(in_dfr.capa .== AffExpr()) || length(unique(in_dfr.ava)) == 1)
+	maxDisUni_boo = length(unique(in_dfr.maxStDis)) != 1
+	infUni_boo = length(unique(in_dfr.inf)) != 1
+	
+	# ouptut availability and maximum discharge are the same => only inflows are relevant
+	if !avaUni_boo && !maxDisUni_boo
+		relIdx_int = maximum(in_dfr.inf) |> (z -> findall(in_dfr.inf .== z)[1])
+	# output availability and inflows are the same => only maximum discharge is relevant
+	elseif !avaUni_boo && !infUni_boo
+		relIdx_int = minimum(in_dfr.maxStDis) |> (z -> findall(in_dfr.maxStDis .== z)[1])
+	# maximum discharge and inflows are the same => only output availability is relevant
+	elseif !maxDisUni_boo && !infUni_boo
+		relIdx_int = minimum(in_dfr.ava) |> (z -> findall(in_dfr.ava .== z)[1])
+	end
+	return in_dfr[relIdx_int,:]
+end
+
 
 # ! compute design factors, either based on defined must run parameters or for all capacities in input dataframe
 function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel)

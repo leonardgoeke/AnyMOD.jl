@@ -23,12 +23,13 @@ mutable struct stabObj
 	method::Array{Symbol,1} # array of method names used for stabilization
 	methodOpt::Array{NamedTuple,1} # array of options for adjustment of stabilization parameters
 	ruleSw::Union{NamedTuple{(), Tuple{}}, NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}}} # rule for switching between stabilization methods
+	weight::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}} # weight of variables in stabilization
 	actMet::Int # index of currently active stabilization method
 	objVal::Float64 # array of objective value for current center
 	dynPar::Array{Union{Float64,Dict{Symbol,Float64}},1} # array of dynamic parameters for each method
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
-	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple,resData_obj::resData,top_m::anyModel)
+	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple,weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}},resData_obj::resData,lowBd_fl::Float64,top_m::anyModel)
 		stab_obj = new()
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr,:avgImp,:itrAvg),Tuple{Int64,Float64,Int64}})
@@ -39,13 +40,14 @@ mutable struct stabObj
 			error("parameter 'itr' for  minimum iterations before switching stabilization method must be at least 2")
 		end
 
-		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup)
+		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup,lowBd_fl,resData_obj.objVal)
 		
 		# set other fields
 		stab_obj.ruleSw = ruleSw_ntup
+		stab_obj.weight = weight_ntup
 		stab_obj.actMet = 1
 		stab_obj.objVal = resData_obj.objVal
-		stab_obj.var = filterStabVar(resData_obj.capa,resData_obj.stLvl,top_m)
+		stab_obj.var = filterStabVar(resData_obj.capa,resData_obj.stLvl,weight_ntup,top_m)
 		
 		# compute number of variables subject to stabilization
 		stabCapa_arr = vcat(vcat(vcat(map(x -> stab_obj.var[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
@@ -57,7 +59,7 @@ mutable struct stabObj
 end
 
 # write options of stabilization method
-function writeStabOpt(meth_tup::Tuple)
+function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64)
 
 	# set fields for name and options of method
 	meth_arr = Symbol[]
@@ -84,7 +86,7 @@ function writeStabOpt(meth_tup::Tuple)
 		if meth_arr[m] == :prx
 			dynPar = Dict(:prx => methOpt_arr[m].start, :prx_aux => methOpt_arr[m].start) # starting value for penalty
 		elseif meth_arr[m] == :lvl
-			dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * objVal_fl) / top_m.options.scaFac.obj # starting value for level
+			dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * upBd_fl) / top_m.options.scaFac.obj # starting value for level
 			if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
 				error("lambda for level bundle must be strictly between 0 and 1")
 			end
@@ -377,7 +379,7 @@ function prepareMod!(mod_m::anyModel,opt_obj::DataType, t_int::Int)
 end
 
 # ! run top-problem
-function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},stab_obj::Union{Nothing,stabObj},i::Int)
+function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},stab_obj::Union{Nothing,stabObj},numFoc_int::Int,i::Int)
 
 	resData_obj = resData()
 	stabVar_obj = resData()
@@ -385,10 +387,12 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	# add cuts
 	if !isempty(cutData_dic) addCuts!(top_m,cutData_dic,i) end
 	# solve model
-	set_optimizer_attribute(top_m.optModel, "Method", 2)
-	set_optimizer_attribute(top_m.optModel, "Crossover", 0)
-	set_optimizer_attribute(top_m.optModel, "NumericFocus", 3)
-	optimize!(top_m.optModel)
+	#@suppress begin
+		set_optimizer_attribute(top_m.optModel, "Method", 2)
+		set_optimizer_attribute(top_m.optModel, "Crossover", 0)
+		set_optimizer_attribute(top_m.optModel, "NumericFocus", numFoc_int)
+		optimize!(top_m.optModel)
+	#end
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -453,19 +457,20 @@ function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::
 	end
 
 	# set optimizer attributes and solves
-	if sol_sym == :barrier
-		set_optimizer_attribute(sub_m.optModel, "Method", 2)
-		set_optimizer_attribute(sub_m.optModel, "Crossover", 0)
-		set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
-		set_optimizer_attribute(sub_m.optModel, "BarConvTol", optTol_fl)
-	elseif sol_sym == :simplex
-		set_optimizer_attribute(sub_m.optModel, "Method", 1)
-		set_optimizer_attribute(sub_m.optModel, "Threads", 1)
-		set_optimizer_attribute(sub_m.optModel, "OptimalityTol", optTol_fl)
-		set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
+	@suppress begin
+		if sol_sym == :barrier
+			set_optimizer_attribute(sub_m.optModel, "Method", 2)
+			set_optimizer_attribute(sub_m.optModel, "Crossover", 0)
+			set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
+			set_optimizer_attribute(sub_m.optModel, "BarConvTol", optTol_fl)
+		elseif sol_sym == :simplex
+			set_optimizer_attribute(sub_m.optModel, "Method", 1)
+			set_optimizer_attribute(sub_m.optModel, "Threads", 1)
+			set_optimizer_attribute(sub_m.optModel, "OptimalityTol", optTol_fl)
+			set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
+		end
+		optimize!(sub_m.optModel)
 	end
-
-	optimize!(sub_m.optModel)
 	checkIIS(sub_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -622,46 +627,53 @@ end
 #region # * stabilization
 
 # function to update the center of stabilization method
-centerStab!(method::Symbol,stab_obj::stabObj,top_m::anyModel) = centerStab!(Val{method}(),stab_obj::stabObj,top_m::anyModel)
+centerStab!(method::Symbol,stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel) = centerStab!(Val{method}(),stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 
 # function for quadratic trust region
-function centerStab!(method::Val{:qtr},stab_obj::stabObj,top_m::anyModel)
+function centerStab!(method::Val{:qtr},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 
 	# match values with variables in model
-	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
-	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
-	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[]) : z)
-	allVar_df = vcat(allCapa_df,allStLvl_df)
+	allVar_df = getStabDf(stab_obj,top_m)
 
 	# sets values of variables that will violate range to zero
-	minFac_fl = (2*maximum(allVar_df[!,:value]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> 2*x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
+	minFac_fl = (2*maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
+	allVar_df[!,:value] = map(x -> 2*x.value*x.scaFac < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
 
+	# absolute value for rhs of equation (sets default value of 15 to avoid zero radius if values are very small)
+	abs_fl = sum(allVar_df[!,:value] .* sqrt.(allVar_df[!,:scaFac]) ) |> (x -> x < 0.01 * size(allVar_df,1) ? sum(allVar_df[!,:scaFac]) : x)
+	
 	# compute possible range of scaling factors with rhs still in range
-	abs_fl = sum(allVar_df[!,:value]) |> (x -> x < 0.01 * size(allVar_df,1) ? 10 * size(allVar_df,1) : x)
-	scaRng_tup = top_m.options.coefRng.rhs ./ abs((abs_fl * stab_obj.dynPar[stab_obj.actMet])^2 - sum(allVar_df[!,:value].^2))
+	scaRng_tup = top_m.options.coefRng.rhs ./ abs((abs_fl * stab_obj.dynPar[stab_obj.actMet])^2 - sum(allVar_df[!,:scaFac] .* allVar_df[!,:value].^2))
 
 	# get scaled l2-norm expression for capacities
-	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df,stab_obj,scaRng_tup,top_m)
+	capaSum_expr, scaEq_fl = computeL2Norm(allVar_df,stab_obj,scaRng_tup,top_m)
 
+	# skips creation of trust-region, if rhs would substanitally violate rhs range
+	rhs_fl = ((abs_fl * stab_obj.dynPar[stab_obj.actMet])^2 - capaSum_expr.aff.constant)  * scaEq_fl
+ 
 	# create final constraint
-	stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaFac_fl <= (abs_fl * stab_obj.dynPar[stab_obj.actMet])^2  * scaFac_fl)
-	
+	if top_m.options.coefRng.rhs[1] / addVio_fl < abs(rhs_fl) && top_m.options.coefRng.rhs[2] * addVio_fl > abs(rhs_fl)
+		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= (abs_fl * stab_obj.dynPar[stab_obj.actMet])^2  * scaEq_fl)
+	else
+		if top_m.options.coefRng.rhs[2] * addVio_fl < abs(rhs_fl)
+			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[2]* addVio_fl + capaSum_expr.aff.constant * scaEq_fl)
+		else 
+			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[1]* addVio_fl + capaSum_expr.aff.constant * scaEq_fl)
+		end
+		produceMessage(report_m.options,report_m.report, 1," - Adjusted radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
+	end
 end
 
 # function for proximal bundle method
-function centerStab!(method::Val{:prx},stab_obj::stabObj,top_m::anyModel)
+function centerStab!(method::Val{:prx},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 	
 	# match values with variables in model
-	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
-	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
-	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...)
-	allVar_df = vcat(allCapa_df,allStLvl_df)[1]
+	allVar_df = getStabDf(stab_obj,top_m)
 
 	pen_fl = stab_obj.dynPar[stab_obj.actMet][:prx]
 	
 	# sets values of variables that will violate range to zero
-	minFac_fl = (2*pen_fl*maximum(allVar_df[!,:value]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
+	minFac_fl = (2*pen_fl*maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
 	allVar_df[!,:value] = map(x -> 2*pen_fl*x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
@@ -676,16 +688,13 @@ function centerStab!(method::Val{:prx},stab_obj::stabObj,top_m::anyModel)
 end
 
 # function for level bundle method
-function centerStab!(method::Val{:lvl},stab_obj::stabObj,top_m::anyModel)
+function centerStab!(method::Val{:lvl},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 	
 	# match values with variables in model
-	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
-	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
-	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...)
-	allVar_df = vcat(allCapa_df,allStLvl_df)
+	allVar_df = getStabDf(stab_obj,top_m)
 
 	# sets values of variables that will violate range to zero
-	minFac_fl = (maximum(allVar_df[!,:value]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
+	minFac_fl = (maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
 	allVar_df[!,:value] = map(x -> x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
@@ -700,11 +709,13 @@ function centerStab!(method::Val{:lvl},stab_obj::stabObj,top_m::anyModel)
 end
 
 # function for box step method
-function centerStab!(method::Val{:box},stab_obj::stabObj,top_m::anyModel)
+function centerStab!(method::Val{:box},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 
 	# match values with variables in model
-	expExpr_dic = matchValWithVar(stab_obj.var,top_m)
-	allVar_df = vcat(vcat(vcat(map(x -> expExpr_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+	expExpr_dic = matchValWithVar(stab_obj.var,stab_obj.weightSt,top_m)
+	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value,:scaFac]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
+	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df,allStLvl_df))
 
 	# set lower and upper bound
 	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], x.value*(1-stab_obj.methodOpt[stab_obj.actMet].low) |> (y -> y < top_m.options.coefRng.rhs[1]/1e2 ? 0.0 : y))), eachrow(allVar_df))
@@ -717,19 +728,18 @@ function computeL2Norm(allVar_df::DataFrame,stab_obj::stabObj,scaRng_tup::Tuple,
 
 	# set values of variable to zero or biggest value possible without scaling violating rhs range
 	for x in eachrow(allVar_df)	
-		if top_m.options.coefRng.mat[1]/(x.value*2) > scaRng_tup[2] # factor requires more up-scaling than possible
+		if top_m.options.coefRng.mat[1]/(x.value*x.scaFac*2) > scaRng_tup[2] # factor requires more up-scaling than possible
 			x[:value] = 0 # set value to zero
-		elseif top_m.options.coefRng.mat[2]/(x.value*2) < scaRng_tup[1] # factor requires more down-scaling than possible
+		elseif top_m.options.coefRng.mat[2]/(x.value*x.scaFac*2) < scaRng_tup[1] # factor requires more down-scaling than possible
 			x[:value] = top_m.options.coefRng.mat[2]/(scaRng_tup[1]*2) # set to biggest value possible within range
 		end
 	end
 
 	# computes left hand side expression and scaling factor
-	capaSum_expr = sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> z^2 - 2*x.value*z + x.value^2),eachrow(allVar_df)))
-	scaFac_fl =  top_m.options.coefRng.mat[1]/minimum(abs.(collect(values(capaSum_expr.aff.terms)) |> (z -> isempty(z) ? [1.0] : z)))
+	capaSum_expr = sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> x.scaFac * (z^2 - 2*x.value*z + x.value^2)),eachrow(allVar_df)))
+	scaEq_fl = top_m.options.coefRng.mat[1]/minimum(abs.(vcat(collect(values(capaSum_expr.terms)),collect(values(capaSum_expr.aff.terms))) |> (z -> isempty(z) ? [1.0] : z)))
 
-	return capaSum_expr, scaFac_fl
-
+	return capaSum_expr, scaEq_fl
 end
 
 # ! update dynamic parameter of stabilization method
@@ -775,7 +785,7 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 end
 
 # filter variables used for stabilization
-function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},stLvl_dic::Dict{Symbol,DataFrame},top_m::anyModel)
+function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},stLvl_dic::Dict{Symbol,DataFrame},weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}},top_m::anyModel)
 
 	var_dic = Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}()
 
@@ -793,6 +803,10 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 				expVar_sym = Symbol(replace(string(x),"capa" => "exp"))
 				return part_dic[sSym].decomm == :none && expVar_sym in keys(varNum_dic) && varNum_dic[expVar_sym] <= varNum_dic[x] ? expVar_sym : x
 			end
+
+			# filter capacities with weight of zero
+			if weight_ntup.capa == 0.0 filter!(x -> (x in (:expStSize,:capaStSize)),trstVar_arr) end
+			if weight_ntup.capaStSize == 0.0 filter!(x -> !(x in (:expStSize,:capaStSize)),trstVar_arr) end
 
 			for trstSym in intersect(keys(capa_dic[sys][sSym]),trstVar_arr)
 				var_df = capa_dic[sys][sSym][trstSym]
@@ -812,7 +826,7 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 	# write storage values
 	var_dic[:stLvl] = Dict{Symbol,DataFrame}()
 
-	if !isempty(stLvl_dic)
+	if !isempty(stLvl_dic) && weight_ntup.stLvl != 0.0
 		for sSym in keys(stLvl_dic)
 			if sSym in keys(top_m.parts.tech)
 				part_obj = top_m.parts.tech[sSym]
@@ -836,7 +850,7 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
 		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
 		delete_upper_bound(top_m.parts.obj.var[:obj][1,1])
 	elseif stab_obj.method[stab_obj.actMet] == :box
-		stabVar_dic = matchValWithVar(stab_obj.var,top_m)
+		stabVar_dic = matchValWithVar(stab_obj.var,stabObj.weightSt,top_m)
 		for sys in keys(stabVar_dic), sSym in keys(stabVar_dic[sys]), capaSym in keys(stabVar_dic[sys][sSym])
 			relVar_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[sys][sSym][capaSym][!,:var])
 			delete_lower_bound.(relVar_arr)
@@ -911,7 +925,7 @@ end
 function deleteCuts!(top_m::anyModel,delCut_int::Int,i::Int)
 	if delCut_int < Inf
 		# tracking latest binding iteration for cuts
-		top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> dual(x.cns) != 0.0 ? i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
+		top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> abs(value(x.cns) / normalized_rhs(x.cns) - 1) < 1e-3 ? i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
 		# delete cuts that were not binding long enough
 		delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < i,top_m.parts.obj.cns[:bendersCuts])[!,:cns])
 		filter!(x -> (x.actItr + delCut_int > i),top_m.parts.obj.cns[:bendersCuts])
@@ -943,8 +957,25 @@ end
 # merge all entries of dictionary used for capacity data into one dataframe for the specified columns
 mergeVar(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},outCol::Array{Symbol,1}) = vcat(vcat(vcat(map(x -> var_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,outCol],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
 
+# get dataframe with variables, values, and scaling factors for stabilization
+function getStabDf(stab_obj::stabObj,top_m::anyModel)
+
+	# match values with variables in model
+	expExpr_dic = matchValWithVar(stab_obj.var,stab_obj.weight,top_m)
+	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value,:scaFac]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
+	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
+	
+	# filter zero scaling factors
+	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df,allStLvl_df))
+	
+	# normalize scaling factors
+	allVar_df[!,:scaFac] .= allVar_df[!,:scaFac] ./ minimum(allVar_df[!,:scaFac])
+
+	return allVar_df
+end
+
 # ! matches values in dictionary with variables of provided problem
-function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, Dict{Symbol, DataFrame}}}, Dict{Symbol, DataFrame}}},mod_m::anyModel,prsvExp::Bool=false)
+function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, Dict{Symbol, DataFrame}}}, Dict{Symbol, DataFrame}}},weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}},mod_m::anyModel,prsvExp::Bool=false)
 	
 	expExpr_dic = Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}()
 	
@@ -957,10 +988,14 @@ function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, D
 			expExpr_dic[:capa][sys][sSym] = Dict{Symbol,DataFrame}()
 			for varSym in keys(var_dic[:capa][sys][sSym])
 				val_df = deSelectSys(var_dic[:capa][sys][sSym][varSym])
-				# correct scaling and storage values together with corresponding variables
-				val_df[!,:value] = val_df[!,:value] ./ getfield(mod_m.options.scaFac, occursin("exp",string(varSym)) ? :insCapa : (occursin("StSize",string(varSym)) ? :capaStSize : :capa))
+				# get scaling factor for variables (corrects scaling within model going back to standard units and apply weights defined for stabilization)
+				modSca_fl =  getfield(mod_m.options.scaFac, occursin("exp",string(varSym)) ? :insCapa : (occursin("StSize",string(varSym)) ? :capaStSize : :capa))
+				wgtSca_fl =  getfield(weight_ntup, occursin("exp",string(varSym)) ? :capa : (occursin("StSize",string(varSym)) ? :capaStSize : :capa))			
+				val_df[!,:value] = val_df[!,:value] ./ modSca_fl # correct value with scaling factor for variable
+				# join variables and values
 				sel_arr = prsvExp ? (:Ts_exp in intCol(val_df) ? [:Ts_exp,:var,:value] : [:Ts_disSup,:var,:value]) : [:var,:value]
-				join_df = unique(select(innerjoin(deSelectSys(part_dic[sSym].var[varSym]),val_df, on = intCol(val_df,:dir)),sel_arr))
+				join_df = unique(select(innerjoin(deSelectSys(part_dic[sSym].var[varSym]),val_df, on = intCol(val_df,:dir)),sel_arr))			
+				join_df[!,:scaFac] .=  wgtSca_fl^2	
 				expExpr_dic[:capa][sys][sSym][varSym] = prsvExp && :Ts_exp in intCol(val_df) ? rename(join_df,:Ts_exp => :Ts_disSup) : join_df
 			end
 		end
@@ -974,8 +1009,9 @@ function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, D
 			if sSym in keys(mod_m.parts.tech)
 				sel_arr = prsvExp ? (:Ts_exp in intCol(val_df) ? [:Ts_exp,:var,:value] : [:Ts_disSup,:var,:value]) : [:var,:value]
 				val_df = var_dic[:stLvl][sSym] 
-				val_df[!,:value] = val_df[!,:value] ./ getfield(mod_m.options.scaFac,:dispSt)
+				val_df[!,:value] = val_df[!,:value] ./ mod_m.options.scaFac.dispSt
 				join_df = select(innerjoin(val_df,mod_m.parts.tech[sSym].var[:stLvl], on  = intCol(var_dic[:stLvl][sSym])),sel_arr)
+				join_df[!,:scaFac] .= weight_ntup.stLvl^2
 				expExpr_dic[:stLvl][sSym] = prsvExp && :Ts_exp in intCol(val_df) ? rename(join_df,:Ts_exp => :Ts_disSup) : join_df
 			end
 		end
@@ -984,7 +1020,7 @@ function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, D
 	return expExpr_dic
 end
 
-# ! write capacities or expansion in input model to returned capacity dictionary
+# ! write values of entire variables in input model to returned capacity dictionary
 function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = false, fltSt::Bool = true)
 	
 	# write expansion value
@@ -1069,7 +1105,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = fal
 	return capa_dic, stLvl_dic
 end
 
-# ! replaces the variable column with a column storing the value of the variable
+# ! replaces the variable column with a column storing the value of the entire variable
 function getResult(res_df::DataFrame)
 	
 	if :Ts_exp in namesSym(res_df) # for expansion filter unique variables
@@ -1142,7 +1178,8 @@ function limitVar!(value_df::DataFrame,var_df::DataFrame,var_sym::Symbol,part_ob
 
 	# correct value_df to values actually enforced
 	value_df = innerjoin(select(value_df,Not([:value])), select(fix_df,Not([:var,:value,:cns,:setZero])), on = intCol(value_df,:dir))
-	value_df[!,:value] .=  value_df[!,:rhs] ./ value_df[!,:fac] .* getfield(fix_m.options.scaFac,occursin("StSize",string(var_sym)) ? :capaStSize : :capa)
+	corSca_fl = getfield(fix_m.options.scaFac,var_sym == :stLvl ? :dispSt : (occursin("StSize",string(var_sym)) ? :capaStSize : :capa))
+	value_df[!,:value] .=  value_df[!,:rhs] ./ value_df[!,:fac] .* corSca_fl
 	select!(value_df,Not([:fac,:rhs]))
 
 	return value_df
@@ -1154,8 +1191,6 @@ function addDual(dual_df::DataFrame,cns_df::DataFrame,scaFac_fl::Float64)
 	new_df[!,:dual] = map(x -> dual(x), new_df[!,:cns]) .* new_df[!,:fac] .* scaFac_fl
 	return select(filter(x -> x.dual != 0.0,new_df),Not([:cns,:fac]))
 end
-
-#getBendersCut(subCut.stLvl[sSym],part_obj.var[:stLvl],top_m.options.scaFac.dispSt)
 
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
 function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaFac_fl::Float64)

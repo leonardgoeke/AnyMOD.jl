@@ -121,11 +121,14 @@ makeUp(in::Symbol) = Symbol(uppercase(string(in)[1]),string(in)[2:end])
 makeLow(in::String) = isempty(in) ? "" : string(lowercase(in[1]),in[2:end])
 makeLow(in::Symbol) = Symbol(lowercase(string(in)[1]),string(in)[2:end])
 
+getScaFac(x_int::Int,anyM::anyModel) = anyM.supTs.sca[getAncestors(x_int,anyM.sets[:Ts],:int,anyM.scr.lvl)[end]]
+
+
 # ! create dataframe with all potential dimensions for carrier provided
 function createPotDisp(c_arr::Array{Int,1},ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},anyM::anyModel)
 
 	lvl_arr = map(x -> anyM.cInfo[x], c_arr) |> (y -> map(z -> getfield.(y,z),[:tsDis, :rDis]))
-	if anyM.options.createVI lvl_arr[2] .= 0 end
+	if anyM.options.createVI.bal lvl_arr[2] .= 0 end
 	allLvl_df = DataFrame(C = c_arr, lvlTs = lvl_arr[1], lvlR = lvl_arr[2])
 	rDis_dic = Dict(x => getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in unique(lvl_arr[2]))
 

@@ -150,7 +150,7 @@ function createTimestepMapping!(anyM::anyModel)
 	end
 
 	# adjust temporal resolution of dispatch for valid inequalities
-	if anyM.options.createVI 
+	if anyM.options.createVI.bal
 		for c in keys(anyM.cInfo)
 			res_dic = anyM.cInfo[c]
 			anyM.cInfo[c] = (tsDis = anyM.supTs.lvl, tsExp = res_dic[:tsExp], rDis = res_dic[:rDis], rExp = res_dic[:rExp], balSign = res_dic[:balSign], stBalCapa = res_dic[:stBalCapa])
@@ -206,7 +206,7 @@ function createSysInfo!(sys::Symbol,sSym::Symbol, setData_dic::Dict,anyM::anyMod
 		end
 
 		# avoid storage of carriers that are balanced on superordinate dispatch level (e.g. if gas is balanced yearly, there is no need for gas storage)
-		if !anyM.options.createVI
+		if !anyM.options.createVI.bal
 			for type in (:carrier_stored_out, :carrier_stored_in)
 				for c in union(carId_dic[type]...)
 					if anyM.supTs.lvl == anyM.cInfo[c].tsDis
@@ -496,7 +496,7 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
     capaDispRestr_arr = Array{Tuple{String,Array{Int,1},Int,Int},1}()
     # extract tech info
     carGrp_ntup = part.carrier
-    balLvl_ntup = part.balLvl |> (x -> anyM.options.createVI ? (exp = x.exp, ref = (x.ref[1],0)) : x)
+    balLvl_ntup = part.balLvl |> (x -> anyM.options.createVI.bal ? (exp = x.exp, ref = (x.ref[1],0)) : x)
     disAgg_boo  = part.disAgg
 
 	# ! writes dimension of capacity restrictions for conversion part (even if there are no inputs)
@@ -515,7 +515,7 @@ function createCapaRestrMap!(part::AbstractModelPart,anyM::anyModel)
 			# get respective carrier and their reference level
 			carDis_arr = map(collect(getfield(carGrp_ntup,side))) do x
 				carRow_ntup = anyM.cInfo[x]
-				return x, carRow_ntup.tsDis, disAgg_boo ? balLvl_ntup.exp[2] : (anyM.options.createVI ? 0 : carRow_ntup.rDis)
+				return x, carRow_ntup.tsDis, disAgg_boo ? balLvl_ntup.exp[2] : (anyM.options.createVI.bal ? 0 : carRow_ntup.rDis)
 			end
 			
 			restrInfo_arr = mapCapaRestr(carDis_arr,side,anyM,carGrp_ntup,balLvl_ntup,ctrSide)

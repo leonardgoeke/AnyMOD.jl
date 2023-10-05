@@ -97,7 +97,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], id = Int[], variable = Symbol[], value = Float64[])
 
 	# ! get demand values
-	if :dem in keys(anyM.parts.bal.par)
+	if :dem in keys(anyM.parts.bal.par) && (anyM.subPro != tuple(0,0) || anyM.options.createVI.bal)
 		dem_df = copy(anyM.parts.bal.par[:dem].data)
 		if !isempty(dem_df)
 			dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, :C in namesSym(dem_df) ? dem_df[!,:C] : filter(x -> x != 0,getfield.(values(anyM.sets[:C].nodes),:idx)))
@@ -442,7 +442,7 @@ function reportResults(objGrp::Val{:cost},anyM::anyModel; addObjName::Bool=true,
 end
 
 # ! results for exchange
-function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
+function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=true, wrtNet::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc) error("No exchange data found") end
 
@@ -482,7 +482,19 @@ function reportResults(objGrp::Val{:exchange},anyM::anyModel; addObjName::Bool=t
 		disp_df[!,:dir] .= 0
 		filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true),disp_df)
 		append!(allData_df,disp_df)
-		
+
+		# write values for net-exchange
+		if wrtNet
+			# join variables in both directions
+			netDisp_df = joinMissing(disp_df,select(rename(disp_df,:value => :value_2),Not([:variable])), intCol(disp_df) .=> map(x -> x == :R_from ? :R_to : (x == :R_to ? :R_from : x), intCol(disp_df)), :left,Dict(:value_2 => 0.0,))
+			# compute net values
+			netDisp_df[!,:value] = netDisp_df[!,:value] .- netDisp_df[!,:value_2]
+			# add to dataframe
+			netDisp_df[!,:variable] .= :netExc
+			filter!(x -> x.value > 0.0, netDisp_df)
+			append!(allData_df,select(netDisp_df,Not([:value_2])))
+		end
+
 		# ! get full load hours
 
 		# obtain relevant dispatch and capacity values
@@ -867,6 +879,53 @@ function printDuals(cns_df::DataFrame,anyM::anyModel;filterFunc::Function = x ->
 		if :rawDf in rtnOpt return data_df end
 		if :csvDf in rtnOpt return csvData_df end
 	end
+end
+
+function printAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}},anyM::anyModel)
+
+    # assigns variables to scaling factors for correting duals for scaling later
+    scaFac_dic = Dict(:stExtIn => :dispSt, :stExtOut => :dispSt, :stIntIn => :dispSt, :stIntOut => :dispSt, :stLvl => :dispSt, :exc => :dispExc, :gen => :dispConv, :use => :dispConv, :trdBuy => :dispTrd, :trdSell => :dispTrd, :crt => :dispTrd ,:lss => :dispTrd,
+                    :capaExc => :capa, :capaConv => :capa, :capaStIn => :capa, :capaStOut => :capa, :capaStSize => :capaStSize)
+
+    # fill dataframe with relevant duals
+    dual_df = DataFrame(Ts_disSup = Int[], Ts_dis = Int[], scr = Int[], bal = Symbol[], cat = Symbol[], value = Float64[])
+
+    for x in keys(cns_dic)
+        for y in cns_dic[x]
+            # get specific constraint
+            if x == :enBal  
+                cnsDual_df = copy(anyM.parts.bal.cns[Symbol(:enBal,makeUp(y))])
+
+                cnsDual_df[1,:cns]
+                anyM.options.scaFac
+            elseif x == :excRestr
+                cnsDual_df = copy(anyM.parts.exc[y].cns[:excRestr])
+            elseif x == :stBal
+                cnsDual_df = copy(anyM.parts.tech[y].cns[:stBal])
+                cnsDual_df[!,:Ts_disSup] = map(x -> getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end],cnsDual_df[!,:Ts_dis])
+            end
+
+            # determine scaling applied to equations
+            scaFac_arr = map(cnsDual_df[!,:cns]) do z
+                firstVar_str = filter(y -> y != "",vcat(map(x -> split.(x,"-"),split(constraint_string(MIME("text/plain"),z),"+"))...))[1]
+                firstFac_fl = parse(Float64,split(firstVar_str," ")[1])
+                firstVar_sym = Symbol(split(split(firstVar_str," ")[2],"[")[1])
+                return getfield(anyM.options.scaFac,scaFac_dic[firstVar_sym])/firstFac_fl
+            end
+            
+            # get dual and aggregate
+            cnsDual_df[!,:value] .= dual.(cnsDual_df[!,:cns]) .* scaFac_arr
+            cnsDual_df = combine(x -> (value = sum(x.value),),groupby(cnsDual_df,[:Ts_disSup,:Ts_dis,:scr]))
+            
+            # add infos and write to overall object
+            cnsDual_df[!,:bal] .= x
+            cnsDual_df[!,:cat] .= y
+            append!(dual_df,cnsDual_df)
+        end
+    end
+
+    printObject(dual_df,anyM, fileName = "dualValues")
+
 end
 
 #endregion
@@ -1693,4 +1752,4 @@ function printIIS(anyM::anyModel,d::Int)
 end
 
 # ! checks termination status and computes and prints IIS if infeasible
-checkIIS(mod_m::anyModel) = if termination_status in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) && isdefined(AnyMOD,:printIIS) printIIS(mod_m) end
+checkIIS(mod_m::anyModel) = if termination_status(mod_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) && isdefined(AnyMOD,:printIIS) printIIS(mod_m) end
