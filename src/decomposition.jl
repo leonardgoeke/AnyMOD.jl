@@ -87,7 +87,7 @@ function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64)
 			dynPar = Dict(:prx => methOpt_arr[m].start, :prx_aux => methOpt_arr[m].start) # starting value for penalty
 		elseif meth_arr[m] == :lvl
 			#dynPar = Dict(:v => (methOpt_arr[m].la)*(lowBd_fl) + (1-methOpt_arr[m].la)*upBd_fl,:mu => 0.0)
-			dynPar = Dict(:v => (1-methOpt_arr[m].la)*(upBd_fl-lowBd_fl),:mu => 0.0)
+			dynPar = Dict(:v => (1-methOpt_arr[m].la)*(upBd_fl-lowBd_fl)/ top_m.options.scaFac.obj,:mu => 0.0)
 			#dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * upBd_fl) / top_m.options.scaFac.obj # starting value for level
 			if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
 				error("lambda for level bundle must be strictly between 0 and 1")
@@ -400,8 +400,9 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	if !isnothing(stab_obj)
 		opt_tup = stab_obj.methodOpt[stab_obj.actMet]
 		# if infeasible and level bundle stabilization, increase level until feasible
-		while stab_obj.method[stab_obj.actMet] == :lvl && termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) 
-			stab_obj.dynPar[stab_obj.actMet][:v] = (1-opt_tup.la )* (stab_obj.objVal - stab_obj.dynPar[stab_obj.actMet][:v]*top_m.options.scaFac.obj) / top_m.options.scaFac.obj
+		while stab_obj.method[stab_obj.actMet] == :lvl && termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
+			lowBd_fl = stab_obj.objVal/top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:v]
+			stab_obj.dynPar[stab_obj.actMet][:v] = (1-opt_tup.la )* (stab_obj.objVal - lowBd_fl) / top_m.options.scaFac.obj
 			ell = stab_obj.objVal/top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:v]
 			set_upper_bound(top_m.parts.obj.var[:obj][1,1],ell)
 			optimize!(top_m.optModel)
@@ -794,9 +795,9 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 		#end
 	elseif stab_obj.method[iUpd_int] == :lvl # adjust level
 		#stab_obj.dynPar[iUpd_int][:v] = (opt_tup.la * estCostNoStab_fl  + (1 - opt_tup.la) * currentBest_fl) / top_m.options.scaFac.obj
-		stab_obj.dynPar[iUpd_int][:mu] = 1+level_dual
+		stab_obj.dynPar[iUpd_int][:mu] = 1-level_dual
 		if adjCtr_boo
-			stab_obj.dynPar[iUpd_int][:v] = min(stab_obj.dynPar[iUpd_int][:v],(1-opt_tup.la)*(stab_obj.objVal - estCostNoStab_fl)) / top_m.options.scaFac.obj
+			stab_obj.dynPar[iUpd_int][:v] = min(stab_obj.dynPar[iUpd_int][:v],(1-opt_tup.la)*(stab_obj.objVal - estCostNoStab_fl) / top_m.options.scaFac.obj)
 		else
 			if stab_obj.dynPar[iUpd_int][:mu] > opt_tup.mu_max 
 				stab_obj.dynPar[iUpd_int][:v] = opt_tup.la*stab_obj.dynPar[iUpd_int][:v]
