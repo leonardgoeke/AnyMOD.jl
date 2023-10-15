@@ -434,7 +434,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 			levelDual_fl =  0.0
 		end
 	else
-		level_dual_fl = 0.0
+		levelDual_fl = 0.0
 	end
 	
 	# get objective value of top problem
