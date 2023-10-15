@@ -71,12 +71,12 @@ function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64)
 			error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
 		elseif key == :prx && !isempty(setdiff(keys(val),(:start,:min,:a)))
 			error("options provided for proximal bundle do not match the defined options 'start', 'min', and 'a'")
-		elseif key == :lvl && !isempty(setdiff(keys(val),(:la,:mu_max)))
-			error("options provided for level bundle do not match the defined options 'la', 'mu_max'")
+		elseif key == :lvl && !isempty(setdiff(keys(val),(:lam,:myMax)))
+			error("options provided for level bundle do not match the defined options 'lam', 'myMax'")
 		elseif key == :box && !isempty(setdiff(keys(val),(:low,:up,:minUp)))
 			error("options provided for trust-region do not match the defined options 'low', 'up', and 'minUp'")
-		elseif key == :dsb && !isempty(setdiff(keys(val),(:start,:min,:la,:mu_max)))
-			error("options provided for doubly stabilised bundle do not match the defined options 'start','min','la', 'mu_max'")
+		elseif key == :dsb && !isempty(setdiff(keys(val),(:start,:min,:lam,:myMax)))
+			error("options provided for doubly stabilised bundle do not match the defined options 'start','min','lam', 'myMax'")
 		end
 	end
 
@@ -86,12 +86,10 @@ function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64)
 	dynPar_arr = []
 	for m in 1:size(meth_arr,1)
 		if meth_arr[m] == :prx
-			dynPar = Dict(:prx => methOpt_arr[m].start, :prx_aux => methOpt_arr[m].start) # starting value for penalty
+			dynPar = Dict(:prx => methOpt_arr[m].start, :prxAux => methOpt_arr[m].start) # starting value for penalty
 		elseif meth_arr[m] == :lvl
-			#dynPar = Dict(:v => (methOpt_arr[m].la)*(lowBd_fl) + (1-methOpt_arr[m].la)*upBd_fl,:mu => 0.0)
-			dynPar = Dict(:v => (1-methOpt_arr[m].la)*(upBd_fl-lowBd_fl)/ top_m.options.scaFac.obj,:mu => 0.0)
-			#dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * upBd_fl) / top_m.options.scaFac.obj # starting value for level
-			if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
+			dynPar = Dict(:yps => (1-methOpt_arr[m].lam)*(upBd_fl-lowBd_fl)/ top_m.options.scaFac.obj,:my => 0.0)
+			if methOpt_arr[m].lam >= 1 || methOpt_arr[m].lam <= 0 
 				error("lambda for level bundle must be strictly between 0 and 1")
 			end
 		elseif meth_arr[m] == :qtr
@@ -99,8 +97,8 @@ function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64)
 		elseif meth_arr[m] == :box
 			dynPar = 0.0 # dummy value since boxstep implementation does not have a dynamic parameter
 		elseif meth_arr[m] == :dsb
-			dynPar = Dict(:v=>(1-methOpt_arr[m].la)*(upBd_fl-lowBd_fl)/top_m.options.scaFac.obj,
-			:prx => methOpt_arr[m].start,:mu => 1.0)
+			dynPar = Dict(:yps=>(1-methOpt_arr[m].lam)*(upBd_fl-lowBd_fl)/top_m.options.scaFac.obj,
+			:prx => methOpt_arr[m].start,:my => 1.0)
 		else
 			error("unknown stabilization method provided, method must either be 'prx', 'lvl', 'qtr', or 'box'")
 		end
@@ -407,10 +405,10 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 		# if infeasible and level bundle stabilization, increase level until feasible
 		while stab_obj.method[stab_obj.actMet] in (:lvl, :dsb) && termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
 			produceMessage(report_m.options,report_m.report, 1," - Empty level set", testErr = false, printErr = false)
-			lowBd_fl = stab_obj.objVal/top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:v]
-			stab_obj.dynPar[stab_obj.actMet][:v] = (1-opt_tup.la )* (stab_obj.objVal - lowBd_fl) / top_m.options.scaFac.obj
-			ell = stab_obj.objVal/top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:v]
-			set_upper_bound(top_m.optModel[:r],ell)
+			lowBd_fl = stab_obj.objVal/top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
+			stab_obj.dynPar[stab_obj.actMet][:yps] = (1-opt_tup.lam )* (stab_obj.objVal - lowBd_fl) / top_m.options.scaFac.obj
+			ell_fl = stab_obj.objVal/top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
+			set_upper_bound(top_m.optModel[:r],ell_fl)
 			optimize!(top_m.optModel)
 		end
 
@@ -688,9 +686,6 @@ end
 function centerStab!(method::Val{:prx},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 	
 	# match values with variables in model
-	#expExpr_dic = matchValWithVar(stab_obj.var,stab_obj.weight,top_m)
-	#allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
-	#allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...)
 	allVar_df = getStabDf(stab_obj,top_m)
 
 	pen_fl = stab_obj.dynPar[stab_obj.actMet][:prx]
@@ -727,11 +722,11 @@ function centerStab!(method::Val{:lvl},stab_obj::stabObj,addVio_fl::Float64,top_
 	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df,stab_obj,scaRng_tup,top_m)
 
 	# compute level set constraint
-	ell = stab_obj.objVal/ top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:v] 
+	ell_fl = stab_obj.objVal/ top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps] 
 
 	# adjust objective function and level set
 	@objective(top_m.optModel, Min, 0.5 * capaSum_expr  * scaFac_fl)
-	set_upper_bound(top_m.parts.obj.var[:obj][1,1],ell)
+	set_upper_bound(top_m.parts.obj.var[:obj][1,1],ell_fl)
 end
 
 # function for box step method
@@ -766,7 +761,7 @@ function centerStab!(method::Val{:dsb},stab_obj::stabObj,addVio_fl::Float64,top_
 	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df,stab_obj,scaRng_tup,top_m)
 
 	# compute level set constraint
-	ell = stab_obj.objVal/ top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:v]
+	ell_fl = stab_obj.objVal/ top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
 
 	# compute penalty multiplier
 	pen_fl = stab_obj.dynPar[stab_obj.actMet][:prx]
@@ -775,7 +770,7 @@ function centerStab!(method::Val{:dsb},stab_obj::stabObj,addVio_fl::Float64,top_
 	@variable(top_m.optModel,r)
 	@objective(top_m.optModel, Min, r + (1/2*pen_fl) * capaSum_expr  * scaFac_fl)
 	@constraint(top_m.optModel,r_con,top_m.parts.obj.var[:obj][1,1] <= r)
-	set_upper_bound(r,ell)
+	set_upper_bound(r,ell_fl)
 end
 
 # ! compute scaled l2 norm
@@ -798,7 +793,7 @@ function computeL2Norm(allVar_df::DataFrame,stab_obj::stabObj,scaRng_tup::Tuple,
 end
 
 # ! update dynamic parameter of stabilization method
-function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_boo::Bool,adjCtr_count::Int,null_step_count::Int,level_dual::Float64,estCostNoStab_fl::Float64,estCost_fl::Float64,currentBest_fl::Float64,currentCost_fl::Float64,nearOpt_boo::Bool,report_m::anyModel)
+function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_boo::Bool,adjCtr_count::Int,cntNull_int::Int,levelDual_fl::Float64,estCostNoStab_fl::Float64,estCost_fl::Float64,currentBest_fl::Float64,currentCost_fl::Float64,nearOpt_boo::Bool,report_m::anyModel)
 
 	opt_tup = stab_obj.methodOpt[iUpd_int]
 	if stab_obj.method[iUpd_int] == :qtr # adjust radius of quadratic trust-region
@@ -806,62 +801,50 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 			stab_obj.dynPar[iUpd_int] = max(opt_tup.low,stab_obj.dynPar[iUpd_int] / opt_tup.fac)
 			produceMessage(report_m.options,report_m.report, 1," - Reduced quadratic trust-region!", testErr = false, printErr = false)	
 		end
-	elseif stab_obj.method[iUpd_int] == :prx # adjust penalty term "#DOI 10.1007/s10107-015-0873-6 section 5.1.2
-		# Step 1: Compute τ_aux
-			aux_term =  (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl)
-			#aux_term = opt_tup.meth== "PBM-1" ? (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl) : 0
-			stab_obj.dynPar[iUpd_int][:prx_aux] = 2 * stab_obj.dynPar[iUpd_int][:prx] * (1+aux_term)
-		# Step 2: Check if current step is serious or not
+	elseif stab_obj.method[iUpd_int] == :prx # adjust penalty term of proximal term, implementation according to doi.org/10.1007/s10107-015-0873-6, section 5.1.2, only method 1 so far
+		# compute τ_aux
+		aux_fl =  (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl)
+		#aux_fl = opt_tup.meth== "PBM-1" ? (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl) : 0
+		stab_obj.dynPar[iUpd_int][:prxAux] = 2 * stab_obj.dynPar[iUpd_int][:prx] * (1+aux_fl)
+		# check if serious step
 		if adjCtr_boo
-			# Step 2.1: If serious and has been serious for more than 5 times adjust τ_aux
+			# adjust τ_aux, if last 5 steps have been serious
 			if adjCtr_count > 5
-				stab_obj.dynPar[iUpd_int][:prx_aux] = opt_tup.a * stab_obj.dynPar[iUpd_int][:prx_aux]
+				stab_obj.dynPar[iUpd_int][:prxAux] = opt_tup.a * stab_obj.dynPar[iUpd_int][:prxAux]
 			end
-			# Step 2.2: Update proximal parameter
-			stab_obj.dynPar[iUpd_int][:prx] = min(stab_obj.dynPar[iUpd_int][:prx_aux],10 * stab_obj.dynPar[iUpd_int][:prx])
+			# update proximal term
+			stab_obj.dynPar[iUpd_int][:prx] = min(stab_obj.dynPar[iUpd_int][:prxAux],10 * stab_obj.dynPar[iUpd_int][:prx])
 		else # if null-step
-			if null_step_count > 10
+			if cntNull_int > 10
 				stab_obj.dynPar[iUpd_int][:prx] = (opt_tup.a) * stab_obj.dynPar[iUpd_int][:prx]
 			end
-			stab_obj.dynPar[iUpd_int][:prx] = min(stab_obj.dynPar[iUpd_int][:prx],max(stab_obj.dynPar[iUpd_int][:prx_aux],stab_obj.dynPar[iUpd_int][:prx]/opt_tup.a,opt_tup.min))
+			stab_obj.dynPar[iUpd_int][:prx] = min(stab_obj.dynPar[iUpd_int][:prx],max(stab_obj.dynPar[iUpd_int][:prxAux],stab_obj.dynPar[iUpd_int][:prx]/opt_tup.a,opt_tup.min))
 		end
-		#	stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] / opt_tup.fac
-		#	produceMessage(report_m.options,report_m.report, 1," - Reduced penalty term of proximal bundle!", testErr = false, printErr = false)
-		#elseif stab_obj.dynPar[iUpd_int] * opt_tup.fac < opt_tup.max
-		#	stab_obj.dynPar[iUpd_int] = min(opt_tup.max,stab_obj.dynPar[iUpd_int] * opt_tup.fac)
-		#	produceMessage(report_m.options,report_m.report, 1," - Increased penalty term of proximal bundle!", testErr = false, printErr = false)
-		#else
-		#	stab_obj.dynPar[iUpd_int] = stab_obj.dynPar[iUpd_int] * (1 - estCostNoStab_fl/currentBest_fl)
-		#	produceMessage(report_m.options,report_m.report, 1," - Reset penalty term of proximal bundle!", testErr = false, printErr = false)
-		#end
-	elseif stab_obj.method[iUpd_int] == :lvl # adjust level
-		#stab_obj.dynPar[iUpd_int][:v] = (opt_tup.la * estCostNoStab_fl  + (1 - opt_tup.la) * currentBest_fl) / top_m.options.scaFac.obj
-		stab_obj.dynPar[iUpd_int][:mu] = 1-level_dual
+	elseif stab_obj.method[iUpd_int] == :lvl # adjust level, implementation according to doi.org/10.1007/s10107-015-0873-6 
+		stab_obj.dynPar[iUpd_int][:my] = 1-levelDual_fl
 		if adjCtr_boo
-			stab_obj.dynPar[iUpd_int][:v] = min(stab_obj.dynPar[iUpd_int][:v],(1-opt_tup.la)*(currentBest_fl - estCostNoStab_fl) / top_m.options.scaFac.obj)
+			stab_obj.dynPar[iUpd_int][:yps] = min(stab_obj.dynPar[iUpd_int][:yps],(1-opt_tup.lam)*(currentBest_fl - estCostNoStab_fl) / top_m.options.scaFac.obj)
 		else
-			if stab_obj.dynPar[iUpd_int][:mu] > opt_tup.mu_max 
-				stab_obj.dynPar[iUpd_int][:v] = opt_tup.la*stab_obj.dynPar[iUpd_int][:v]
+			if stab_obj.dynPar[iUpd_int][:my] > opt_tup.myMax 
+				stab_obj.dynPar[iUpd_int][:yps] = opt_tup.lam*stab_obj.dynPar[iUpd_int][:yps]
 			end
 		end
-	elseif stab_obj.method[iUpd_int] == :dsb # adjust doubly stabilised method
-		stab_obj.dynPar[iUpd_int][:mu] = 1-level_dual
+	elseif stab_obj.method[iUpd_int] == :dsb # adjust doubly stabilised method, implementation according to doi.org/10.1007/s10107-015-0873-6
+		stab_obj.dynPar[iUpd_int][:my] = 1-levelDual_fl
 		if adjCtr_boo
-			stab_obj.dynPar[iUpd_int][:prx] = (1+(1/1000)*(stab_obj.dynPar[iUpd_int][:mu]-1))*stab_obj.dynPar[iUpd_int][:prx] # added a fixed scaler for the dual variable as it otherwise produces exploding prx creating num errors
-			stab_obj.dynPar[iUpd_int][:v] = min(stab_obj.dynPar[iUpd_int][:v],(1-opt_tup.la)*(currentBest_fl- estCostNoStab_fl) / top_m.options.scaFac.obj)
+			stab_obj.dynPar[iUpd_int][:prx] = (1+(1/1000)*(stab_obj.dynPar[iUpd_int][:my]-1))*stab_obj.dynPar[iUpd_int][:prx] # added a fixed scaler for the dual variable to avoid extremely large values for prx
+			stab_obj.dynPar[iUpd_int][:yps] = min(stab_obj.dynPar[iUpd_int][:yps],(1-opt_tup.lam)*(currentBest_fl- estCostNoStab_fl) / top_m.options.scaFac.obj)
 		else
-			stab_obj.dynPar[iUpd_int][:prx] = max(opt_tup.min,#stab_obj.dynPar[iUpd_int][:prx]/1.2
-			stab_obj.dynPar[iUpd_int][:prx]*(stab_obj.dynPar[iUpd_int][:v]/((currentBest_fl - estCostNoStab_fl)/top_m.options.scaFac.obj))
-			)
-			if stab_obj.dynPar[iUpd_int][:mu] > opt_tup.mu_max 
-				stab_obj.dynPar[iUpd_int][:v] = opt_tup.la*stab_obj.dynPar[iUpd_int][:v]
+			newPrx_fl = stab_obj.dynPar[iUpd_int][:prx]*(stab_obj.dynPar[iUpd_int][:yps]/((currentBest_fl - estCostNoStab_fl)/top_m.options.scaFac.obj))
+			stab_obj.dynPar[iUpd_int][:prx] = max(opt_tup.min,newPrx_fl)
+			if stab_obj.dynPar[iUpd_int][:my] > opt_tup.myMax 
+				stab_obj.dynPar[iUpd_int][:yps] = opt_tup.lam*stab_obj.dynPar[iUpd_int][:yps]
 			end
 		end
 	end
 
 end
  
-
 # filter variables used for stabilization
 function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},stLvl_dic::Dict{Symbol,DataFrame},weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}},top_m::anyModel)
 
