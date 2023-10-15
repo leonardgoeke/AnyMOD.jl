@@ -392,12 +392,12 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	# add cuts
 	if !isempty(cutData_dic) addCuts!(top_m,cutData_dic,i) end
 	# solve model
-	#@suppress begin
+	@suppress begin
 		set_optimizer_attribute(top_m.optModel, "Method", 2)
 		set_optimizer_attribute(top_m.optModel, "Crossover", 0)
 		set_optimizer_attribute(top_m.optModel, "NumericFocus", numFoc_int)
 		optimize!(top_m.optModel)
-	#end
+	end
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -425,19 +425,23 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	stabVar_obj.capa, stabVar_obj.stLvl = writeResult(top_m,[:capa,:exp,:stLvl]; rmvFix = true)
 
 	# record level dual
-	if stab_obj.method[stab_obj.actMet] == :lvl
-		level_dual_fl =  dual(UpperBoundRef(top_m.parts.obj.var[:obj][1,1]))
-	elseif stab_obj.method[stab_obj.actMet] == :dsb
-		level_dual_fl =  dual(UpperBoundRef(top_m.optModel[:r]))
+	if !isnothing(stab_obj)
+		if stab_obj.method[stab_obj.actMet] == :lvl
+			levelDual_fl =  dual(UpperBoundRef(top_m.parts.obj.var[:obj][1,1]))
+		elseif stab_obj.method[stab_obj.actMet] == :dsb
+			levelDual_fl =  dual(UpperBoundRef(top_m.optModel[:r]))
+		else
+			levelDual_fl =  0.0
+		end
 	else
-		level_dual_fl =  0.0
+		level_dual_fl = 0.0
 	end
 	
 	# get objective value of top problem
 	topCost_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
 	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])
 
-	return resData_obj, stabVar_obj, topCost_fl, estCost_fl, level_dual_fl
+	return resData_obj, stabVar_obj, topCost_fl, estCost_fl, levelDual_fl
 end
 
 # ! run sub-problem
