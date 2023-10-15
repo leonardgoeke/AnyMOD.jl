@@ -441,7 +441,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 end
 
 # ! run sub-problem
-function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::Float64=1e-8,wrtRes_boo::Bool=false)
+function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::Float64=1e-8,crs_boo::Bool=false,wrtRes_boo::Bool=false)
 
 	# fixing capacity
 	for sys in (:tech,:exc)
@@ -478,7 +478,7 @@ function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::
 	@suppress begin
 		if sol_sym == :barrier
 			set_optimizer_attribute(sub_m.optModel, "Method", 2)
-			set_optimizer_attribute(sub_m.optModel, "Crossover", 0)
+			set_optimizer_attribute(sub_m.optModel, "Crossover", crs_boo ? 1 : 0)
 			set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
 			set_optimizer_attribute(sub_m.optModel, "BarConvTol", optTol_fl)
 		elseif sol_sym == :simplex
