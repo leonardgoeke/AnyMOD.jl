@@ -921,7 +921,7 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
 		delete(top_m.optModel,top_m.optModel[:r])
 		unregister(top_m.optModel,:r)
 	elseif stab_obj.method[stab_obj.actMet] == :box
-		stabVar_dic = matchValWithVar(stab_obj.var,stabObj.weight,top_m)
+		stabVar_dic = matchValWithVar(stab_obj.var,stab_obj.weight,top_m)
 		for sys in keys(stabVar_dic), sSym in keys(stabVar_dic[sys]), capaSym in keys(stabVar_dic[sys][sSym])
 			relVar_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[sys][sSym][capaSym][!,:var])
 			delete_lower_bound.(relVar_arr)
