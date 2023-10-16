@@ -737,7 +737,7 @@ end
 function centerStab!(method::Val{:box},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 
 	# match values with variables in model
-	expExpr_dic = matchValWithVar(stab_obj.var,stab_obj.weightSt,top_m)
+	expExpr_dic = matchValWithVar(stab_obj.var,stab_obj.weight,top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var,:value,:scaFac]],collect(keys(w)))),collect(keys(u)))),[:tech,:exc])...)...)...)
 	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x],collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df,allStLvl_df))
@@ -921,7 +921,7 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
 		delete(top_m.optModel,top_m.optModel[:r])
 		unregister(top_m.optModel,:r)
 	elseif stab_obj.method[stab_obj.actMet] == :box
-		stabVar_dic = matchValWithVar(stab_obj.var,stabObj.weightSt,top_m)
+		stabVar_dic = matchValWithVar(stab_obj.var,stabObj.weight,top_m)
 		for sys in keys(stabVar_dic), sSym in keys(stabVar_dic[sys]), capaSym in keys(stabVar_dic[sys][sSym])
 			relVar_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[sys][sSym][capaSym][!,:var])
 			delete_lower_bound.(relVar_arr)
@@ -1375,7 +1375,5 @@ function writeCapaRes(top_m::anyModel,sub_dic::Dict{Tuple{Int64, Int64},anyModel
 	
 	return nearOpt_df, lss_fl
 end
-
-
 
 #endregion
