@@ -40,7 +40,7 @@ mutable struct stabObj
 			error("parameter 'itr' for  minimum iterations before switching stabilization method must be at least 2")
 		end
 
-		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup,lowBd_fl,resData_obj.objVal)
+		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup,lowBd_fl,resData_obj.objVal,top_m)
 		
 		# set other fields
 		stab_obj.ruleSw = ruleSw_ntup
@@ -59,7 +59,7 @@ mutable struct stabObj
 end
 
 # write options of stabilization method
-function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64)
+function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64,top_m::anyModel)
 
 	# set fields for name and options of method
 	meth_arr = Symbol[]
