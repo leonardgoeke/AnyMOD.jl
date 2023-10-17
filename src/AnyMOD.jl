@@ -31,7 +31,7 @@ module AnyMOD
     export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
 
     export resData, runSub, runTop, deleteCuts!, getConvTol
-    export prepareMod!, heuristicSolve, writeResult
+    export prepareMod!, heuristicSolve, writeResult, computeFeas
     export stabObj, centerStab!, filterStabVar, adjustDynPar!, runTopWithoutStab 
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
