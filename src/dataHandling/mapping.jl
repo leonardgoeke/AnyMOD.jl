@@ -680,7 +680,7 @@ function distributedMapping!(anyM::anyModel,prepSys_dic::Dict{Symbol,Dict{Symbol
 	if subPro != (0,0) # ! case of sub-problem
 
 		# find relevant time-steps for sub-problem
-		relTsDis_arr = Int[]
+		relTsDis_arr = anyM.options.lvlFrs == 0 ? [subPro[1]] : Int[]
 		
 		supTs_int = getAncestors(subPro[1],anyM.sets[:Ts],:int,anyM.supTs.lvl)[end]
 		for i in (anyM.supTs.lvl+1):anyM.sets[:Ts].height	
