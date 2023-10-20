@@ -65,13 +65,16 @@ function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64,top_m::
 	meth_arr = Symbol[]
 	methOpt_arr = NamedTuple[]
 	for (key,val) in meth_tup
+		println(val)
 		push!(meth_arr,key)
 		push!(methOpt_arr,val)
 		if key == :qtr && !isempty(setdiff(keys(val),(:start,:low,:thr,:fac)))
 			error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
 		elseif key == :prx && !isempty(setdiff(keys(val),(:start,:min,:a)))
 			error("options provided for proximal bundle do not match the defined options 'start', 'min', and 'a'")
-		elseif key == :lvl && !isempty(setdiff(keys(val),(:lam,:myMax)))
+		elseif key == :lvl1 && !isempty(setdiff(keys(val),(:lam,)))
+			error("options provided for level bundle do not match the defined option 'lam'")
+		elseif key == :lvl2 && !isempty(setdiff(keys(val),(:lam,:myMax)))
 			error("options provided for level bundle do not match the defined options 'lam', 'myMax'")
 		elseif key == :box && !isempty(setdiff(keys(val),(:low,:up,:minUp)))
 			error("options provided for trust-region do not match the defined options 'low', 'up', and 'minUp'")
@@ -87,7 +90,12 @@ function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64,top_m::
 	for m in 1:size(meth_arr,1)
 		if meth_arr[m] == :prx
 			dynPar = Dict(:prx => methOpt_arr[m].start, :prxAux => methOpt_arr[m].start) # starting value for penalty
-		elseif meth_arr[m] == :lvl
+		elseif meth_arr[m] == :lvl1
+			dynPar = (methOpt_arr[m].lam * lowBd_fl  + (1 - methOpt_arr[m].lam) * upBd_fl) / top_m.options.scaFac.obj # starting value for level
+			if methOpt_arr[m].lam >= 1 || methOpt_arr[m].lam <= 0 
+				error("lambda for level bundle must be strictly between 0 and 1")
+			end
+		elseif meth_arr[m] == :lvl2
 			dynPar = Dict(:yps => (1-methOpt_arr[m].lam)*(upBd_fl-lowBd_fl)/ top_m.options.scaFac.obj,:my => 0.0)
 			if methOpt_arr[m].lam >= 1 || methOpt_arr[m].lam <= 0 
 				error("lambda for level bundle must be strictly between 0 and 1")
@@ -99,11 +107,7 @@ function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64,top_m::
 		elseif meth_arr[m] == :dsb
 			dynPar = Dict(:yps=>(1-methOpt_arr[m].lam)*(upBd_fl-lowBd_fl)/top_m.options.scaFac.obj,
 			:prx => methOpt_arr[m].start,:my => 1.0)
-		elseif meth_arr[m] == :lvl_old
-			dynPar = (methOpt_arr[m].la * lowBd_fl  + (1 - methOpt_arr[m].la) * upBd_fl) / top_m.options.scaFac.obj # starting value for level
-			if methOpt_arr[m].la >= 1 || methOpt_arr[m].la <= 0 
-				error("lambda for level bundle must be strictly between 0 and 1")
-			end
+
 		else
 			error("unknown stabilization method provided, method must either be 'prx', 'lvl', 'qtr', or 'box'")
 		end
@@ -111,26 +115,6 @@ function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64,top_m::
 	end
 	
 	return meth_arr, methOpt_arr, dynPar_arr
-end
-
-function centerStab!(method::Val{:lvl_old},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
-	
-	# match values with variables in model
-	allVar_df = getStabDf(stab_obj,top_m)
-
-	# sets values of variables that will violate range to zero
-	minFac_fl = (maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
-
-	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
-
-	# get scaled l2-norm expression for capacities
-	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df,stab_obj,scaRng_tup,top_m)
-
-	# adjust objective function and level set
-	@objective(top_m.optModel, Min, 0.5 * capaSum_expr  * scaFac_fl)
-	set_upper_bound(top_m.parts.obj.var[:obj][1,1],stab_obj.dynPar[stab_obj.actMet])
 end
 
 #endregion
@@ -428,7 +412,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 	if !isnothing(stab_obj)
 		opt_tup = stab_obj.methodOpt[stab_obj.actMet]
 		# if infeasible and level bundle stabilization, increase level until feasible
-		while stab_obj.method[stab_obj.actMet] in (:lvl, :dsb) && termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
+		while stab_obj.method[stab_obj.actMet] in (:lvl2, :dsb) && termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
 			produceMessage(report_m.options,report_m.report, 1," - Empty level set", testErr = false, printErr = false)
 			lowBd_fl = stab_obj.objVal/top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
 			stab_obj.dynPar[stab_obj.actMet][:yps] = (1-opt_tup.lam)* (stab_obj.objVal - lowBd_fl) / top_m.options.scaFac.obj
@@ -437,9 +421,9 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 			set_upper_bound(top_m.parts.obj.var[:obj][1,1],ell_fl)
             optimize!(top_m.optModel)
         end
-		
-		while stab_obj.method[stab_obj.actMet] == :lvl && termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) 
-            stab_obj.dynPar[stab_obj.actMet] = (opt_tup.la * stab_obj.dynPar[stab_obj.actMet]*1000  + (1 - opt_tup.la) * stab_obj.objVal) / top_m.options.scaFac.obj
+
+		while stab_obj.method[stab_obj.actMet] == :lvl1 && termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) 
+            stab_obj.dynPar[stab_obj.actMet] = (opt_tup.lam * stab_obj.dynPar[stab_obj.actMet]*1000  + (1 - opt_tup.lam) * stab_obj.objVal) / top_m.options.scaFac.obj
             set_upper_bound(top_m.parts.obj.var[:obj][1,1],stab_obj.dynPar[stab_obj.actMet])
             optimize!(top_m.optModel)
         end
@@ -458,7 +442,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 
 	# record level dual
 	if !isnothing(stab_obj)
-		if stab_obj.method[stab_obj.actMet] == :lvl
+		if stab_obj.method[stab_obj.actMet] == :lvl2
 			levelDual_fl =  dual(UpperBoundRef(top_m.parts.obj.var[:obj][1,1]))
 		elseif stab_obj.method[stab_obj.actMet] == :dsb
 			levelDual_fl =  dual(UpperBoundRef(top_m.optModel[:r]))
@@ -741,8 +725,28 @@ function centerStab!(method::Val{:prx},stab_obj::stabObj,addVio_fl::Float64,top_
 
 end
 
-# function for level bundle method
-function centerStab!(method::Val{:lvl},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
+# functions for level bundle methods
+function centerStab!(method::Val{:lvl1},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
+	
+	# match values with variables in model
+	allVar_df = getStabDf(stab_obj,top_m)
+
+	# sets values of variables that will violate range to zero
+	minFac_fl = (maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
+	allVar_df[!,:value] = map(x -> x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
+
+	# compute possible range of scaling factors with rhs still in range
+	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
+
+	# get scaled l2-norm expression for capacities
+	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df,stab_obj,scaRng_tup,top_m)
+
+	# adjust objective function and level set
+	@objective(top_m.optModel, Min, 0.5 * capaSum_expr  * scaFac_fl)
+	set_upper_bound(top_m.parts.obj.var[:obj][1,1],stab_obj.dynPar[stab_obj.actMet])
+end
+
+function centerStab!(method::Val{:lvl2},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 	
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj,top_m)
@@ -856,7 +860,9 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 			end
 			stab_obj.dynPar[iUpd_int][:prx] = min(stab_obj.dynPar[iUpd_int][:prx],max(stab_obj.dynPar[iUpd_int][:prxAux],stab_obj.dynPar[iUpd_int][:prx]/opt_tup.a,opt_tup.min))
 		end
-	elseif stab_obj.method[iUpd_int] == :lvl # adjust level, implementation according to doi.org/10.1007/s10107-015-0873-6 
+	elseif stab_obj.method[iUpd_int] == :lvl1 # adjust level
+		stab_obj.dynPar[iUpd_int] = (opt_tup.lam * estCostNoStab_fl  + (1 - opt_tup.lam) * currentBest_fl) / top_m.options.scaFac.obj
+	elseif stab_obj.method[iUpd_int] == :lvl2 # adjust level, implementation according to doi.org/10.1007/s10107-015-0873-6 
 		stab_obj.dynPar[iUpd_int][:my] = 1-levelDual_fl
 		if adjCtr_boo
 			stab_obj.dynPar[iUpd_int][:yps] = min(stab_obj.dynPar[iUpd_int][:yps],(1-opt_tup.lam)*(currentBest_fl - estCostNoStab_fl) / top_m.options.scaFac.obj)
@@ -877,8 +883,6 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 				stab_obj.dynPar[iUpd_int][:yps] = opt_tup.lam*stab_obj.dynPar[iUpd_int][:yps]
 			end
 		end
-	elseif stab_obj.method[iUpd_int] == :lvl_old # adjust level
-		stab_obj.dynPar[iUpd_int] = (opt_tup.la * estCostNoStab_fl  + (1 - opt_tup.la) * currentBest_fl) / top_m.options.scaFac.obj
 	end
 
 end
@@ -945,10 +949,7 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
 		delete(top_m.optModel,stab_obj.cns) # remove trust-region
 	elseif stab_obj.method[stab_obj.actMet] == :prx
 		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1]) # remove penalty form objective
-	elseif stab_obj.method[stab_obj.actMet] == :lvl
-		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
-		delete_upper_bound(top_m.parts.obj.var[:obj][1,1])
-	elseif stab_obj.method[stab_obj.actMet] == :lvl_old
+	elseif stab_obj.method[stab_obj.actMet] in (:lvl1,:lvl2)
 		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
 		delete_upper_bound(top_m.parts.obj.var[:obj][1,1])
 	elseif stab_obj.method[stab_obj.actMet] == :dsb
