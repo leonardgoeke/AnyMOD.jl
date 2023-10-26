@@ -406,7 +406,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 		set_optimizer_attribute(top_m.optModel, "Crossover", 0)
 		set_optimizer_attribute(top_m.optModel, "NumericFocus", numFoc_int)
 		optimize!(top_m.optModel)
-	end
+	end	
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -415,7 +415,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 		while stab_obj.method[stab_obj.actMet] in (:lvl2, :dsb) && termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
 			produceMessage(report_m.options,report_m.report, 1," - Empty level set", testErr = false, printErr = false)
 			lowBd_fl = stab_obj.objVal/top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
-			stab_obj.dynPar[stab_obj.actMet][:yps] = (1-opt_tup.lam)* (stab_obj.objVal - lowBd_fl) / top_m.options.scaFac.obj
+			stab_obj.dynPar[stab_obj.actMet][:yps] = (1-opt_tup.lam)* (stab_obj.objVal - lowBd_fl*top_m.options.scaFac.obj) / top_m.options.scaFac.obj
 			ell_fl = stab_obj.objVal/top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
 			#set_upper_bound(top_m.optModel[:r],ell_fl)
 			set_upper_bound(top_m.parts.obj.var[:obj][1,1],ell_fl)
