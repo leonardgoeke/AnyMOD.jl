@@ -29,6 +29,7 @@ mutable struct stabObj
 	dynPar::Array{Union{Dict,Float64},1} # array of dynamic parameters for each method
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
+	helper_var::VariableRef
 	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple,weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}},resData_obj::resData,lowBd_fl::Float64,top_m::anyModel)
 		stab_obj = new()
 
@@ -807,10 +808,10 @@ function centerStab!(method::Val{:dsb},stab_obj::stabObj,addVio_fl::Float64,top_
 	pen_fl = stab_obj.dynPar[stab_obj.actMet][:prx]
 
 	# adjust objective function and level set
-	@variable(top_m.optModel,r)
+	stab_obj.helper_var = @variable(top_m.optModel,r)
 	@objective(top_m.optModel, Min, r + (1/2*pen_fl) * capaSum_expr  * scaFac_fl)
-	@constraint(top_m.optModel,r_con,top_m.parts.obj.var[:obj][1,1] <= r)
-	set_upper_bound(r,ell_fl)
+	stab_obj.cns = @constraint(top_m.optModel,top_m.parts.obj.var[:obj][1,1] <= r)
+	set_upper_bound(stab_obj.helper_var,ell_fl)
 end
 
 # ! compute scaled l2 norm
@@ -954,9 +955,8 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
 		delete_upper_bound(top_m.parts.obj.var[:obj][1,1])
 	elseif stab_obj.method[stab_obj.actMet] == :dsb
 		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
-		delete(top_m.optModel,top_m.optModel[:r_con])
-		unregister(top_m.optModel,:r_con)
-		delete(top_m.optModel,top_m.optModel[:r])
+		delete(top_m.optModel,stab_obj.cns)
+		delete(top_m.optModel,stab_obj.helper_var)
 		unregister(top_m.optModel,:r)
 	elseif stab_obj.method[stab_obj.actMet] == :box
 		stabVar_dic = matchValWithVar(stab_obj.var,stab_obj.weight,top_m)
