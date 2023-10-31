@@ -873,9 +873,9 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 			end
 		end
 	elseif stab_obj.method[iUpd_int] == :dsb # adjust doubly stabilised method, implementation according to doi.org/10.1007/s10107-015-0873-6
-		stab_obj.dynPar[iUpd_int][:my] = 1-levelDual_fl
+		stab_obj.dynPar[iUpd_int][:my] = min(1-levelDual_fl,opt_tup.myMax+1.0)
 		if adjCtr_boo
-			stab_obj.dynPar[iUpd_int][:prx] = (1+(1/1000)*(stab_obj.dynPar[iUpd_int][:my]-1))*stab_obj.dynPar[iUpd_int][:prx] # added a fixed scaler for the dual variable to avoid extremely large values for prx
+			stab_obj.dynPar[iUpd_int][:prx] = (stab_obj.dynPar[iUpd_int][:my])*stab_obj.dynPar[iUpd_int][:prx] # added a fixed scaler for the dual variable to avoid extremely large values for prx
 			stab_obj.dynPar[iUpd_int][:yps] = min(stab_obj.dynPar[iUpd_int][:yps],(1-opt_tup.lam)*(currentBest_fl- estCostNoStab_fl) / top_m.options.scaFac.obj)
 		else
 			newPrx_fl = stab_obj.dynPar[iUpd_int][:prx]*(stab_obj.dynPar[iUpd_int][:yps]/((currentBest_fl - estCostNoStab_fl)/top_m.options.scaFac.obj))
@@ -883,6 +883,10 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 			if stab_obj.dynPar[iUpd_int][:my] > opt_tup.myMax 
 				stab_obj.dynPar[iUpd_int][:yps] = opt_tup.lam*stab_obj.dynPar[iUpd_int][:yps]
 			end
+		end
+		# reset prx parameter if it becomes too large
+		if stab_obj.dynPar[iUpd_int][:prx] > 1e6
+			stab_obj.dynPar[iUpd_int][:prx] = opt_tup.start
 		end
 	end
 
