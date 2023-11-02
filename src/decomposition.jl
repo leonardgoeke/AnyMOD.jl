@@ -1491,7 +1491,7 @@ function computePrx2Aux(cutData_dic::Dict{Tuple{Int64, Int64}, resData},prevCutD
 					# join values for current and previous cut to compute difference
 					join_df = joinMissing(curCut_df,prevCut_df,intCol(curCut_df,:dir),:outer,Dict(:valueCur => 0, :dualCur => 0, :valuePrev => 0, :dualPrev=>0))
 					join_df[!,:valueDiff] = join_df[!,:valueCur] .- join_df[!,:valuePrev]
-					join_df[!,:dualDiff] = - join_df[!,:dualCur] + join_df[!,:dualPrev]
+					join_df[!,:dualDiff] =  join_df[!,:dualCur] .- join_df[!,:dualPrev]
 					# add difference to array
 					append!(diffVal_arr,join_df[!,:valueDiff])
 					append!(diffDual_arr,join_df[!,:dualDiff])
