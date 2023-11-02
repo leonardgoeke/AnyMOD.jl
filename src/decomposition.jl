@@ -72,7 +72,9 @@ function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64,top_m::
 		if key == :qtr && !isempty(setdiff(keys(val),(:start,:low,:thr,:fac)))
 			error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
 		elseif key == :prx && !isempty(setdiff(keys(val),(:start,:min,:a)))
-			error("options provided for proximal bundle do not match the defined options 'start', 'min', and 'a'")
+			error("options provided for proximal bundle do not match the defined options 'start', 'min' and 'a'")
+		elseif key == :prx2 && !isempty(setdiff(keys(val),(:start,:min,:a)))
+			error("options provided for proximal bundle do not match the defined options 'start', 'min' and 'a'")
 		elseif key == :lvl1 && !isempty(setdiff(keys(val),(:lam,)))
 			error("options provided for level bundle do not match the defined option 'lam'")
 		elseif key == :lvl2 && !isempty(setdiff(keys(val),(:lam,:myMax)))
@@ -89,7 +91,7 @@ function writeStabOpt(meth_tup::Tuple,lowBd_fl::Float64,upBd_fl::Float64,top_m::
 	# method specific adjustments (e.g. starting value for dynamic parameter, new variables for objective function)
 	dynPar_arr = []
 	for m in 1:size(meth_arr,1)
-		if meth_arr[m] == :prx
+		if meth_arr[m] in (:prx,:prx2)
 			dynPar = Dict(:prx => methOpt_arr[m].start, :prxAux => methOpt_arr[m].start) # starting value for penalty
 		elseif meth_arr[m] == :lvl1
 			dynPar = (methOpt_arr[m].lam * lowBd_fl  + (1 - methOpt_arr[m].lam) * upBd_fl) / top_m.options.scaFac.obj # starting value for level
@@ -726,6 +728,29 @@ function centerStab!(method::Val{:prx},stab_obj::stabObj,addVio_fl::Float64,top_
 
 end
 
+# function for second proximal bundle method ///  is there a way to supply two methods to one function?
+function centerStab!(method::Val{:prx2},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
+	
+	# match values with variables in model
+	allVar_df = getStabDf(stab_obj,top_m)
+
+	pen_fl = stab_obj.dynPar[stab_obj.actMet][:prx]
+	
+	# sets values of variables that will violate range to zero
+	minFac_fl = (2*pen_fl*maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
+	allVar_df[!,:value] = map(x -> 2*pen_fl*x.value < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
+
+	# compute possible range of scaling factors with rhs still in range
+	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
+
+	# get scaled l2-norm expression for capacities
+	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df,stab_obj,scaRng_tup,top_m)
+
+	# adjust objective function
+	@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] + 1/(2*pen_fl) * capaSum_expr  * scaFac_fl)
+
+end
+
 # functions for level bundle methods
 function centerStab!(method::Val{:lvl1},stab_obj::stabObj,addVio_fl::Float64,top_m::anyModel,report_m::anyModel)
 	
@@ -834,7 +859,7 @@ function computeL2Norm(allVar_df::DataFrame,stab_obj::stabObj,scaRng_tup::Tuple,
 end
 
 # ! update dynamic parameter of stabilization method
-function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_boo::Bool,adjCtr_count::Int,cntNull_int::Int,levelDual_fl::Float64,estCostNoStab_fl::Float64,estCost_fl::Float64,currentBest_fl::Float64,currentCost_fl::Float64,nearOpt_boo::Bool,report_m::anyModel)
+function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_boo::Bool,adjCtr_count::Int,cntNull_int::Int,levelDual_fl::Float64,prx2Aux_fl,estCostNoStab_fl::Float64,estCost_fl::Float64,currentBest_fl::Float64,currentCost_fl::Float64,nearOpt_boo::Bool,report_m::anyModel)
 
 	opt_tup = stab_obj.methodOpt[iUpd_int]
 	if stab_obj.method[iUpd_int] == :qtr # adjust radius of quadratic trust-region
@@ -842,11 +867,12 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 			stab_obj.dynPar[iUpd_int] = max(opt_tup.low,stab_obj.dynPar[iUpd_int] / opt_tup.fac)
 			produceMessage(report_m.options,report_m.report, 1," - Reduced quadratic trust-region!", testErr = false, printErr = false)	
 		end
-	elseif stab_obj.method[iUpd_int] == :prx # adjust penalty term of proximal term, implementation according to doi.org/10.1007/s10107-015-0873-6, section 5.1.2, only method 1 so far
+	elseif stab_obj.method[iUpd_int] in (:prx,:prx2) # adjust penalty term of proximal term, implementation according to doi.org/10.1007/s10107-015-0873-6, section 5.1.2
 		# compute τ_aux
-		aux_fl =  (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl)
+		aux_fl = stab_obj.method[iUpd_int] == :prx ? (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl) : prx2Aux_fl 
 		#aux_fl = opt_tup.meth== "PBM-1" ? (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl) : 0
-		stab_obj.dynPar[iUpd_int][:prxAux] = 2 * stab_obj.dynPar[iUpd_int][:prx] * (1+aux_fl)
+		# We introduce a safeguard ensuring that :prx is only updated if the numerator of the aux term is positive (see https://doi.org/10.1007/978-3-030-34910-3 Chapter 3 for a discussion)
+		stab_obj.dynPar[iUpd_int][:prxAux] = stab_obj.method[iUpd_int] == :prx ? 2 * stab_obj.dynPar[iUpd_int][:prx] * (1+aux_fl) : stab_obj.dynPar[iUpd_int][:prx]*(1+max(aux_fl/1e3,0))
 		# check if serious step
 		if adjCtr_boo
 			# adjust τ_aux, if last 5 steps have been serious
@@ -860,6 +886,12 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 				stab_obj.dynPar[iUpd_int][:prx] = (opt_tup.a) * stab_obj.dynPar[iUpd_int][:prx]
 			end
 			stab_obj.dynPar[iUpd_int][:prx] = min(stab_obj.dynPar[iUpd_int][:prx],max(stab_obj.dynPar[iUpd_int][:prxAux],stab_obj.dynPar[iUpd_int][:prx]/opt_tup.a,opt_tup.min))
+		end
+		# another safeguard preventing the proximal parameter to explode
+		if stab_obj.method[iUpd_int] == :prx2
+			if stab_obj.dynPar[iUpd_int][:prx]>1e6
+				stab_obj.dynPar[iUpd_int][:prx] = opt_tup.start
+			end
 		end
 	elseif stab_obj.method[iUpd_int] == :lvl1 # adjust level
 		stab_obj.dynPar[iUpd_int] = (opt_tup.lam * estCostNoStab_fl  + (1 - opt_tup.lam) * currentBest_fl) / top_m.options.scaFac.obj
@@ -952,7 +984,7 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
 	
 	if stab_obj.method[stab_obj.actMet] == :qtr
 		delete(top_m.optModel,stab_obj.cns) # remove trust-region
-	elseif stab_obj.method[stab_obj.actMet] == :prx
+	elseif stab_obj.method[stab_obj.actMet] in (:prx,:prx2)
 		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1]) # remove penalty form objective
 	elseif stab_obj.method[stab_obj.actMet] in (:lvl1,:lvl2)
 		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
@@ -1417,5 +1449,61 @@ function writeCapaRes(top_m::anyModel,sub_dic::Dict{Tuple{Int64, Int64},anyModel
 	
 	return nearOpt_df, lss_fl
 end
+
+
+# write function to compute poorman's Hessian auxilary scalar for prx_2
+function computePrx2Aux(cutData_dic::Dict{Tuple{Int64, Int64}, resData},prevCutData_dic::Dict{Tuple{Int64, Int64}, resData})
+
+	diffVal_arr = Float64[]
+	diffDual_arr = Float64[]
+	
+	for scr in collect(keys(cutData_dic)) # loop over scenarios
+		for sys in (:exc,:tech)
+			
+			allSys_arr = unique(union(keys(cutData_dic[scr].capa[sys]),keys(prevCutData_dic[scr].capa[sys])))
+			
+			for sSym in allSys_arr #intersect(keys(cutData_dic[scr].capa[sys]),keys(prevCutData_dic[scr].capa[sys]))
+				
+				# get relevant dictionaries for systems (handles problem, if system only exits in current or previous)
+			
+				curCapa_dic = sSym in keys(cutData_dic[scr].capa[sys]) ? cutData_dic[scr].capa[sys][sSym] : Dict{Symbol, DataFrame}()
+				prevCapa_dic = sSym in keys(prevCutData_dic[scr].capa[sys]) ? prevCutData_dic[scr].capa[sys][sSym] : Dict{Symbol, DataFrame}()
+
+				allVar_arr = unique(union(keys(curCapa_dic),keys(prevCapa_dic)))
+				
+				for capaSym in filter(x-> occursin("capa",lowercase(string(x))), allVar_arr)
+					
+					# get current and previous values
+					if capaSym in keys(curCapa_dic) 
+						curCut_df = curCapa_dic[capaSym]
+					else # case if capacity variable only exists in previous 
+						curCut_df = filter(x -> false, copy(prevCapa_dic[capaSym]))
+						end
+					curCut_df = rename(curCut_df,[:value,:dual] .=> [:valueCur,:dualCur])
+
+					if capaSym in keys(prevCapa_dic) 
+						prevCut_df = prevCapa_dic[capaSym]
+					else # case if capacity variable only exists in current 
+						prevCut_df = filter(x -> false, copy(curCapa_dic[capaSym]))
+					end
+					prevCut_df = rename(prevCut_df,[:value,:dual] .=> [:valuePrev,:dualPrev])
+					
+					# join values for current and previous cut to compute difference
+					join_df = joinMissing(curCut_df,prevCut_df,intCol(curCut_df,:dir),:outer,Dict(:valueCur => 0, :dualCur => 0, :valuePrev => 0, :dualPrev=>0))
+					join_df[!,:valueDiff] = join_df[!,:valueCur] .- join_df[!,:valuePrev]
+					join_df[!,:dualDiff] = - join_df[!,:dualCur] + join_df[!,:dualPrev]
+					# add difference to array
+					append!(diffVal_arr,join_df[!,:valueDiff])
+					append!(diffDual_arr,join_df[!,:dualDiff])
+				end
+			end
+		end
+	end
+	return dot(diffVal_arr,diffDual_arr)/norm(diffDual_arr,2)
+end
+
+
+
+
 
 #endregion
