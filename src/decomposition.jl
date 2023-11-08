@@ -237,14 +237,14 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 	if !isempty(lim_dic) addLinearTrust!(topFeas_m,lim_dic) end
 
 	# compute feasible capacites
-	topFeas_m = computeFeas(topFeas_m,fix_dic,zeroThrs_fl,true);
+	topFeas_m = computeFeas(topFeas_m,fix_dic,zeroThrs_fl, cutSmall = true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m,[:exp,:mustExp,:capa,:mustCapa]; fltSt = false) 
+    return writeResult(topFeas_m,[:exp,:mustExp,:capa,:mustCapa], fltSt = false) 
 end
 
 # ! runs top problem again with optimal results
-function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},zeroThrs_fl::Float64;cutSmall_boo::Bool=false,wrtRes_boo::Bool=false)
+function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},zeroThrs_fl::Float64;cutSmall::Bool=false,wrtRes::Bool=false)
 	
 	# create absolute value constraints for capacities or expansion variables
 	for sys in (:tech,:exc)
@@ -278,7 +278,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 				part.cns[Symbol(:absLow,makeUp(varSym))] = createCns(cnsCont(absLow_df,:greater),top_m.optModel,false)
 				part.cns[Symbol(:absUp,makeUp(varSym))] = createCns(cnsCont(absUp_df,:greater),top_m.optModel,false)
 				# create binary constraint to ensure zero values are either zero or above threshold
-				if cutSmall_boo && 0.0 in abs_df[!,:value]
+				if cutSmall && 0.0 in abs_df[!,:value]
 					cutSmall_df = rename(select(filter(x -> x.value == 0.0,abs_df),Not([:varAbs,:absLow,:absUp,:weight])),:var => :var_2)
 					# create binary variable
 					cutSmall_df = createVar(cutSmall_df, string("cutSmall",makeUp(varSym)),NaN,top_m.optModel, top_m.lock,top_m.sets,bi = true)
@@ -314,7 +314,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
-	if wrtRes_boo
+	if wrtRes
 		reportResults(:summary,top_m)
 		reportResults(:cost,top_m)
 		reportResults(:exchange,top_m)
@@ -464,7 +464,7 @@ function runTop(top_m::anyModel,cutData_dic::Dict{Tuple{Int64,Int64},resData},st
 end
 
 # ! run sub-problem
-function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::Float64=1e-8,crs_boo::Bool=false,wrtRes_boo::Bool=false)
+function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::Float64=1e-8,crs::Bool=false,wrtRes::Bool=false)
 
 	# fixing capacity
 	for sys in (:tech,:exc)
@@ -501,7 +501,7 @@ function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::
 	@suppress begin
 		if sol_sym == :barrier
 			set_optimizer_attribute(sub_m.optModel, "Method", 2)
-			set_optimizer_attribute(sub_m.optModel, "Crossover", crs_boo ? 1 : 0)
+			set_optimizer_attribute(sub_m.optModel, "Crossover", crs ? 1 : 0)
 			set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
 			set_optimizer_attribute(sub_m.optModel, "BarConvTol", optTol_fl)
 		elseif sol_sym == :simplex
@@ -515,7 +515,7 @@ function runSub(sub_m::anyModel,resData_obj::resData,sol_sym::Symbol,optTol_fl::
 	checkIIS(sub_m)
 
 	# write results into files (only used once optimum is obtained)
-	if wrtRes_boo
+	if wrtRes
 		reportResults(:summary,sub_m)
 		reportResults(:cost,sub_m)
 		reportResults(:exchange,sub_m)
