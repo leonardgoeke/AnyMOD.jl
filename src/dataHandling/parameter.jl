@@ -1005,23 +1005,24 @@ function matchSetParameter(srcSetIn_df::DataFrame, par_obj::ParElement, sets::Di
         return paraMatch_df
     end
 
+    # identifies sets the parameter is not specified f
+    searchCol_arr = namesSym(srcSetIn_df)
+    paraData_df = copy(par_obj.data)
+    redunSrc_arr = setdiff(searchCol_arr,namesSym(paraData_df))
+
     # directly returns default values if no data was provided for the parameter
-    if isempty(par_obj.data) || length(namesSym(par_obj.data)) == 1
+    if isempty(par_obj.data) || length(namesSym(par_obj.data)) == 1 || redunSrc_arr == searchCol_arr
         paraMatch_df = copy(srcSetIn_df)
         paraMatch_df[!,newCol] = fill(isempty(par_obj.data) ? defVal_fl : par_obj.data[1,:val],size(paraMatch_df,1))
         return paraMatch_df
     end
 
-    searchCol_arr = namesSym(srcSetIn_df)
-    paraData_df = copy(par_obj.data)
-
-    # removes sets the parameter is not specified for from search table and condenses search table accordingly
-    redunSrc_arr = setdiff(searchCol_arr,namesSym(paraData_df))
+    # removes sets the parameter is not specified for from search table  condenses search table accordingly
     searchSet_df = isempty(redunSrc_arr) ? srcSetIn_df : unique(srcSetIn_df[!,Not(redunSrc_arr)])
     srcCol_arr = namesSym(searchSet_df)
 
     # searches for matches in original data
-    paraMatch_df = innerjoin(searchSet_df, paraData_df; on = srcCol_arr)
+    paraMatch_df = innerjoin(searchSet_df, paraData_df, on = srcCol_arr)
 
     # boolean that switches to true if all values were matched via inheritance
     allMatch_boo = false
