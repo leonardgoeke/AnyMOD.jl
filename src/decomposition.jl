@@ -740,6 +740,8 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}},stab_obj::stabObj,addV
 			@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] +  maxPen_fl * capaSum_expr  * scaFac_fl)
 			#stab_obj.dynPar[stab_obj.actMet][:prx] = 1/ (maxPen_fl * 2)
 		else
+			println(minPen_fl)
+			println(scaFac_fl)
 			@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] +  minPen_fl * capaSum_expr  * scaFac_fl)
 			#stab_obj.dynPar[stab_obj.actMet][:prx] = 1/ (minPen_fl * 2)
 		end
