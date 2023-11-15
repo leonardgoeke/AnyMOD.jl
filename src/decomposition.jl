@@ -979,7 +979,7 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 end
 
 # ! solves top problem without trust region and obtains lower limits
-function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
+function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj,numFoc_int::Int)
 	
 	if stab_obj.method[stab_obj.actMet] == :qtr
 		delete(top_m.optModel,stab_obj.cns) # remove trust-region
@@ -1004,7 +1004,7 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj)
 	end
 	
 	set_optimizer_attribute(top_m.optModel, "Method", 0)
-	set_optimizer_attribute(top_m.optModel, "NumericFocus", 0)
+	set_optimizer_attribute(top_m.optModel, "NumericFocus", numFoc_int)
 	optimize!(top_m.optModel)
 
 	# obtain different objective values
