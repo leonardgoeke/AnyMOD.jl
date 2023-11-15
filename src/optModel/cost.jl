@@ -458,7 +458,7 @@ function transferCostEle!(cost_df::DataFrame, partCost::OthPart,costPar_sym::Sym
 	coefRng_tup::NamedTuple{(:mat,:rhs),Tuple{Tuple{Float64,Float64},Tuple{Float64,Float64}}}, scaCost_fl::Float64, checkRng_ntup::NamedTuple{(:print,:all),Tuple{Bool,Bool}}, anyM::anyModel,lowBd::Float64 = 0.0)
 
 	# create variables for cost entry and builds corresponding expression for equations controlling them
-	cost_df = createVar(cost_df,string(costPar_sym),NaN,optModel,lock_,sets_dic, scaFac = scaCost_fl, lowBd = lowBd)
+	cost_df = createVar(cost_df,string(costPar_sym),NaN,optModel,lock_,sets_dic, scaFac = scaCost_fl, lowBd = costPar_sym == :costCrt ? NaN : lowBd)
 	cost_df[!,:cnsExpr] = @expression(anyM.optModel,cost_df[!,:expr] .- cost_df[!,:var])
 	select!(cost_df,Not(:expr))
 
