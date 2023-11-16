@@ -1006,6 +1006,7 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj,numFoc_int::Int)
 	set_optimizer_attribute(top_m.optModel, "Method", 0)
 	set_optimizer_attribute(top_m.optModel, "NumericFocus", numFoc_int)
 	optimize!(top_m.optModel)
+	checkIIS(top_m)
 
 	# obtain different objective values
 	topCost_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
