@@ -719,14 +719,14 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}},stab_obj::stabObj,addV
 	allVar_df[!,:value] = map(x -> 2*x.value*x.scaFac < minFac_fl ? 0.0 : x.value,eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
+	scaRng_tup = top_m.options.coefRng.rhs ./ (sum(allVar_df[!,:value].^2) |> (x -> x == 0.0 ? 1.0 : x))
 
 	# get scaled l2-norm expression for capacities
 	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df,stab_obj,scaRng_tup,top_m)
 
 	# current range of factors and value of constant
 	fac_arr = abs.(vcat(collect(values(capaSum_expr.aff.terms)),collect(values(capaSum_expr.terms)))) |> (x -> scaFac_fl .* (minimum(x),maximum(x)))	
-	const_fl = capaSum_expr.aff.constant * scaFac_fl |> (x -> x == Inf ? 1.0 : x)
+	const_fl = capaSum_expr.aff.constant * scaFac_fl |> (x -> x == 0.0 ? top_m.options.coefRng.rhs[1] : x)
 	
 	# maximum and minimum value for penalty
 	maxPen_fl =  min(top_m.options.coefRng.mat[2]/fac_arr[2],top_m.options.coefRng.rhs[2]/const_fl) * addVio_fl	
