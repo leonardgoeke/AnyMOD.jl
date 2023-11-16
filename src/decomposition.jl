@@ -726,7 +726,7 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}},stab_obj::stabObj,addV
 
 	# current range of factors and value of constant
 	fac_arr = abs.(vcat(collect(values(capaSum_expr.aff.terms)),collect(values(capaSum_expr.terms)))) |> (x -> scaFac_fl .* (minimum(x),maximum(x)))	
-	const_fl = capaSum_expr.aff.constant * scaFac_fl
+	const_fl = capaSum_expr.aff.constant * scaFac_fl |> (x -> x == Inf ? 1.0 : x)
 	
 	# maximum and minimum value for penalty
 	maxPen_fl =  min(top_m.options.coefRng.mat[2]/fac_arr[2],top_m.options.coefRng.rhs[2]/const_fl) * addVio_fl	
@@ -740,8 +740,6 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}},stab_obj::stabObj,addV
 			@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] +  maxPen_fl * capaSum_expr  * scaFac_fl)
 			#stab_obj.dynPar[stab_obj.actMet][:prx] = 1/ (maxPen_fl * 2)
 		else
-			println(minPen_fl)
-			println(scaFac_fl)
 			@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] +  minPen_fl * capaSum_expr  * scaFac_fl)
 			#stab_obj.dynPar[stab_obj.actMet][:prx] = 1/ (minPen_fl * 2)
 		end

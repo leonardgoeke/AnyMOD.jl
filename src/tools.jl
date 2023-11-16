@@ -185,6 +185,7 @@ function reportResults(objGrp::Val{:summary},anyM::anyModel; addObjName::Bool=tr
 
 	# ! get dispatch variables
 	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :crt, :lss, :trdBuy, :trdSell, :emissionInf)
+
 		# get all variables, group them and get respective values
 		allVar_df = getAllVariables(va,anyM)
 		if isempty(allVar_df) continue end
