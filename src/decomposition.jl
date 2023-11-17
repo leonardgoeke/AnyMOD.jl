@@ -981,7 +981,7 @@ function runTopWithoutStab(top_m::anyModel,stab_obj::stabObj,numFoc_int::Int)
 	
 	if stab_obj.method[stab_obj.actMet] == :qtr
 		delete(top_m.optModel,stab_obj.cns) # remove trust-region
-	elseif stab_obj.method[stab_obj.actMet] in (:prx,:prx2)
+	elseif stab_obj.method[stab_obj.actMet] in (:prx1,:prx2)
 		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1]) # remove penalty form objective
 	elseif stab_obj.method[stab_obj.actMet] in (:lvl1,:lvl2)
 		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
