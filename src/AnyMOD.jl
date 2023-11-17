@@ -32,7 +32,7 @@ module AnyMOD
 
     export evaluateHeu, getFeasResult, writeFixToFiles
     export resData, runSub, runTop, deleteCuts!, getConvTol
-    export prepareMod!, heuristicSolve, writeResult, computeFeas
+    export prepareMod!, heuristicSolve, writeResult, computeFeas, computePrx2Aux
     export stabObj, centerStab!, filterStabVar, adjustDynPar!, runTopWithoutStab, adaptNearOpt! 
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
