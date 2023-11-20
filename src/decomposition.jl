@@ -864,7 +864,7 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 			stab_obj.dynPar[iUpd_int] = max(opt_tup.low,stab_obj.dynPar[iUpd_int] / opt_tup.fac)
 			produceMessage(report_m.options,report_m.report, 1," - Reduced quadratic trust-region!", testErr = false, printErr = false)	
 		end
-	elseif stab_obj.method[iUpd_int] in (:prx,:prx2) # adjust penalty term of proximal term, implementation according to doi.org/10.1007/s10107-015-0873-6, section 5.1.2
+	elseif stab_obj.method[iUpd_int] in (:prx1,:prx2) # adjust penalty term of proximal term, implementation according to doi.org/10.1007/s10107-015-0873-6, section 5.1.2
 		# compute τ_aux
 		aux_fl = stab_obj.method[iUpd_int] == :prx ? (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl) : prx2Aux_fl 
 		#aux_fl = opt_tup.meth== "PBM-1" ? (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl) : 0
