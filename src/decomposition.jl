@@ -866,10 +866,10 @@ function adjustDynPar!(stab_obj::stabObj,top_m::anyModel,iUpd_int::Int,adjCtr_bo
 		end
 	elseif stab_obj.method[iUpd_int] in (:prx1,:prx2) # adjust penalty term of proximal term, implementation according to doi.org/10.1007/s10107-015-0873-6, section 5.1.2
 		# compute τ_aux
-		aux_fl = stab_obj.method[iUpd_int] == :prx ? (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl) : prx2Aux_fl 
+		aux_fl = stab_obj.method[iUpd_int] == :prx1 ? (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl) : prx2Aux_fl 
 		#aux_fl = opt_tup.meth== "PBM-1" ? (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl) : 0
 		# We introduce a safeguard ensuring that :prx is only updated if the numerator of the aux term is positive (see https://doi.org/10.1007/978-3-030-34910-3 Chapter 3 for a discussion)
-		stab_obj.dynPar[iUpd_int][:prxAux] = stab_obj.method[iUpd_int] == :prx ? 2 * stab_obj.dynPar[iUpd_int][:prx] * (1+aux_fl) : stab_obj.dynPar[iUpd_int][:prx]*(1+max(aux_fl/1e3,0))
+		stab_obj.dynPar[iUpd_int][:prxAux] = stab_obj.method[iUpd_int] == :prx1 ? 2 * stab_obj.dynPar[iUpd_int][:prx] * (1+aux_fl) : stab_obj.dynPar[iUpd_int][:prx]*(1+max(aux_fl/1e3,0))
 		# check if serious step
 		if adjCtr_boo
 			# adjust τ_aux, if last 5 steps have been serious
