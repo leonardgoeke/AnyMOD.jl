@@ -134,7 +134,7 @@ function createTimestepMapping!(anyM::anyModel)
 	for sup in supTs_tup
 		# compute scaling factors on lowest level
 		tsBase_arr = getDescendants(sup,anyM.sets[:Ts],false,ts_tr.height)
-		foreach(x -> scaSupTs_dic[x] = 8760/(length(tsBase_arr)), tsBase_arr)
+		foreach(x -> scaSupTs_dic[x] = (1/anyM.options.redStep) * 8760/(length(tsBase_arr)), tsBase_arr)
 		# compute other scaling factors as sum of lower levels
 		if ts_tr.height > supTsLvl_int
 			for l in reverse(supTsLvl_int:(ts_tr.height-1))
