@@ -30,7 +30,7 @@ module AnyMOD
     export plotTree, plotSankeyDiagram, plotNetworkGraph, moveNode!, produceMessage, produceMessageShort
     export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
 
-    export evaluateHeu, getFeasResult, writeFixToFiles
+    export evaluateHeu, getFeasResult, writeFixToFiles, exportDesignFactors!
     export resData, runSub, runTop, deleteCuts!, getConvTol
     export prepareMod!, heuristicSolve, writeResult, computeFeas, computePrx2Aux
     export stabObj, centerStab!, filterStabVar, adjustDynPar!, runTopWithoutStab, adaptNearOpt! 

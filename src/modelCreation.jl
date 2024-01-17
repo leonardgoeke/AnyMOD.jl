@@ -72,6 +72,9 @@ function createOptModel!(anyM::anyModel)
 		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,yTs_dic,r_dic,anyM)
 	end
 
+	# already return if purpose was only computation of design factors
+	if anyM.options.onlyDesFac return anyM end
+
 	# connect retrofitting variables from the different technologies
 	foreach(x -> createRetroConst!(x,techCnsDic_arr,tech_itr,anyM),[:Conv, :StIn, :StOut, :StSize])
 

@@ -76,6 +76,24 @@ function writeParameterFile!(in_m::anyModel,para_df::DataFrame,par_sym::Symbol,p
 	writedlm(file * ".csv", wrtPara_arr, ',')	
 end
 
+# export design factors of model to specified folder
+function exportDesignFactors!(in_m::anyModel,wrt_dir::String)
+
+    # create directory for design factors
+    rm(wrt_dir; force = true, recursive = true)
+    mkdir(wrt_dir) 
+
+    # stores parameter info for fixing
+    parInfo_tup = defineParameter(in_m.options,in_m.report)[:desFac]
+
+    for tSym in keys(in_m.parts.tech)
+        if haskey(in_m.parts.tech[tSym].par,:desFac)
+            writeParameterFile!(in_m,rename(in_m.parts.tech[tSym].par[:desFac].data,:val => :value),:desFac,parInfo_tup,wrt_dir * "/" * string(tSym))
+        end
+    end
+
+end
+
 #region # * report results to csv files
 """
 ```julia

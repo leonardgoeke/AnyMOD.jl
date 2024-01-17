@@ -240,7 +240,7 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 	topFeas_m = computeFeas(topFeas_m,fix_dic,zeroThrs_fl, cutSmall = true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m,[:exp,:mustExp,:capa,:mustCapa], fltSt = false) 
+    return writeResult(topFeas_m,[:exp,:mustExp,:capa,:mustCapa], fltSt = false)
 end
 
 # ! runs top problem again with optimal results
@@ -1334,8 +1334,6 @@ function addDual(dual_df::DataFrame,cns_df::DataFrame,scaFac_fl::Float64)
 	new_df[!,:dual] = map(x -> dual(x), new_df[!,:cns]) .* new_df[!,:fac] .* scaFac_fl
 	return select(filter(x -> x.dual != 0.0,new_df),Not([:cns,:fac]))
 end
-
-#getBendersCut(subCut.stLvl[sSym],part_obj.var[:stLvl],top_m.options.scaFac.dispSt)
 
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
 function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaFac_fl::Float64)

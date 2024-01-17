@@ -38,6 +38,9 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 			end
 		end
 
+		# already return if purpose was only computation of design factors
+		if anyM.options.onlyDesFac return cns_dic end
+
 		# map required capacity constraints
 		if part.type != :unrestricted 
 			rmvOutC_arr = createCapaRestrMap!(part, anyM)
