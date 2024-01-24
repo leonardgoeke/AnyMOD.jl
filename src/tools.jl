@@ -88,7 +88,7 @@ function exportDesignFactors!(in_m::anyModel,wrt_dir::String)
 
     for tSym in keys(in_m.parts.tech)
         if haskey(in_m.parts.tech[tSym].par,:desFac)
-            writeParameterFile!(in_m,rename(in_m.parts.tech[tSym].par[:desFac].data,:val => :value),:desFac,parInfo_tup,wrt_dir * "/" * string(tSym))
+            writeParameterFile!(in_m,rename(in_m.parts.tech[tSym].par[:desFac].data,:val => :value),:desFac,parInfo_tup,wrt_dir * "/par_" * string(tSym))
         end
     end
 
