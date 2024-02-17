@@ -696,7 +696,6 @@ function fltRedOut(in_dfr::SubDataFrame)
 	return in_dfr[relIdx_int,:]
 end
 
-
 # ! compute design factors, either based on defined must run parameters or for all capacities in input dataframe
 function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel)
 	

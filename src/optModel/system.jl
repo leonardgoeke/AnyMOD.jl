@@ -194,6 +194,9 @@ end
 # ! remove entries where expansion or capacity is fixed zero and no capacity can be created via retrofitting
 function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple}}},allCapaDf_dic::Dict{Symbol,DataFrame},anyM::anyModel)
 
+	fixPar_dic = Dict(:expStSize => (:sizeToStOutFix => :expStOut, :sizeToStOutFix => :expStIn), :expStIn => (:stInToConvFix => :expConv, :stOutToStInFix => :expStOut), :expStOut => (:stOutToStInFix => :expStIn, :sizeToStOutFix => :expStSize), 
+										:capaStSize => (:sizeToStOutFix => :capaStOut, :sizeToStOutFix => :capaStIn), :capaStIn => (:stInToConvFix => :capaConv,:stOutToStInFix => :capaStOut), :capaStOut => (:stOutToStInFix => :capaStIn, :sizeToStOutFix => :capaStSize))
+
 	for sys in (:Te,:Exc)
 		sysSym_arr = filter(x -> getfield(anyM.parts, sys == :Te ? :tech : :exc)[x].type in (:stock,:mature,:emerging), collect(keys(prepSys_dic[sys])))
 
@@ -201,6 +204,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 
 			sys_int = sysInt(sSym,anyM.sets[sys])
 			part_obj = getfield(anyM.parts,sys == :Te ? :tech : :exc)[sSym]
+			
 			# ! find entries where variables are already fixed to zero and remove them
 			for prepSym in collect(keys(prepSys_dic[sys][sSym]))
 				# get relevant parameter data
@@ -208,9 +212,31 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 				# get all cases where variables are fixed
 				fixLim_df = getFix(prepSys_dic[sys][sSym][prepSym].var,limPar_obj,anyM)
 				# removes cases where variables are fixed to zero 
-				if !isempty(fixLim_df) 
+				if !isempty(fixLim_df) && sys == :Te
 					remainCapa_df = select(filter(r -> r.val == 0, fixLim_df),Not(:val))
-					prepSys_dic[sys][sSym][prepSym] = prepSys_dic[sys][sSym][prepSym] |> (x -> (var = removeEntries([remainCapa_df],x.var),resi = x.resi))
+					prepSys_dic[sys][sSym][prepSym] = prepSys_dic[sys][sSym][prepSym] |> (x -> (var = removeEntries([remainCapa_df],x.var),resi = x.resi))				
+					
+					# if capacity has a fixed ratio to another type of capacites ,remove entries for that variable as well where it is zero
+					if prepSym in keys(fixPar_dic) 	
+						for par1 in filter(x -> x[1] in keys(anyM.parts.tech[sSym].par),fixPar_dic[prepSym])
+							# get cases where ratio is fixed
+							matchPar1_df = matchSetParameter(select(remainCapa_df,intCol(remainCapa_df)),anyM.parts.tech[sSym].par[par1[1]],anyM.sets)
+							# remove entries for corresponding variable
+							if !isempty(matchPar1_df)
+								prepSys_dic[sys][sSym][par1[2]] = prepSys_dic[sys][sSym][par1[2]] |> (x -> (var = removeEntries([select(matchPar1_df,intersect(intCol(matchPar1_df),intCol(x.var)))],x.var),resi = x.resi))
+								# recursively checking other variables
+								for par2 in filter(x -> x[1] in keys(anyM.parts.tech[sSym].par) && x[2] != prepSym,fixPar_dic[par1[2]])
+									# get cases where ratio is fixed
+									matchPar2_df = matchSetParameter(select(matchPar1_df,intCol(matchPar1_df)),anyM.parts.tech[sSym].par[par2[1]],anyM.sets)
+									if !isempty(matchPar2_df)
+										prepSys_dic[sys][sSym][par2[2]] = prepSys_dic[sys][sSym][par2[2]] |> (x -> (var = removeEntries([select(matchPar2_df,intersect(intCol(matchPar2_df),intCol(x.var)))],x.var),resi = x.resi))
+									end
+								end
+							end
+
+						end
+					end
+					
 					# removes respective counterparts for capacity and installed capacity 
 					if occursin("ins",string(prepSym))
 						capa_sym = Symbol(makeLow(replace(string(prepSym),"ins" => "")))
@@ -224,7 +250,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 						end
 					end
 				end
-			end
+			end	
 
 			if part_obj.type != :stock
 				# ! filter entries where capacity variable cannot exist, because there is no corresponding expansion or retrofitting variable
@@ -414,7 +440,6 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 					allSt_arr = filter(z -> !isempty(z), vcat(map(y -> collect(map(x -> filter(w -> w.id == i,getfield(prepTech_dic[y],x)),(:var,:resi))),intersect(stVar_arr[a],stKey_arr))...))
 					if isempty(allSt_arr) continue end
 					
-					
 					relSt_df = unique(vcat(map(w -> select(w,intCol(w,[:Ts_expSup, :Ts_disSup])), allSt_arr)...))
 					
 					# loops over relevant capacities
@@ -446,7 +471,6 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 			end
 		end
 	end
-
 
 end
 
