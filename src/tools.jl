@@ -77,18 +77,20 @@ function writeParameterFile!(in_m::anyModel,para_df::DataFrame,par_sym::Symbol,p
 end
 
 # export design factors of model to specified folder
-function exportDesignFactors!(in_m::anyModel,wrt_dir::String)
+function exportDesignFactors!(in_m::anyModel,wrt_dir::String,wrtTs_boo::Bool)
 
     # create directory for design factors
     rm(wrt_dir; force = true, recursive = true)
-    mkdir(wrt_dir) 
+    mkdir(wrt_dir)
 
     # stores parameter info for fixing
     parInfo_tup = defineParameter(in_m.options,in_m.report)[:desFac]
 
     for tSym in keys(in_m.parts.tech)
         if haskey(in_m.parts.tech[tSym].par,:desFac)
-            writeParameterFile!(in_m,rename(in_m.parts.tech[tSym].par[:desFac].data,:val => :value),:desFac,parInfo_tup,wrt_dir * "/par_" * string(tSym))
+			data_df = copy(in_m.parts.tech[tSym].par[:desFac].data)
+			if !wrtTs_boo select!(data_df,Not(intersect(Symbol.(intCol(data_df)),[:Ts_disSup,:Ts_expSup]))) end
+            writeParameterFile!(in_m,rename(data_df,:val => :value),:desFac,parInfo_tup,wrt_dir * "/par_" * string(tSym))
         end
     end
 
