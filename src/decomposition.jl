@@ -225,7 +225,7 @@ function evaluateHeu(heu_m::anyModel,heuSca_obj::resData,heuCom_obj::resData,lin
 end
 
 # ! returns a feasible solution as close as possible to the input dictionary
-function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int,zeroThrs_fl::Float64,opt_obj::DataType)
+function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}},t_int::Int,zeroThrs_fl::Float64,opt_obj::DataType; roundDown::Int = 0)
 
 	# create top-problem
 	topFeas_m = anyModel(modOpt_tup.inputDir,modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), holdFixed = true)
@@ -240,7 +240,7 @@ function getFeasResult(modOpt_tup::NamedTuple,fix_dic::Dict{Symbol,Dict{Symbol,D
 	topFeas_m = computeFeas(topFeas_m,fix_dic,zeroThrs_fl, cutSmall = true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m,[:exp,:mustExp,:capa,:mustCapa], fltSt = false)
+    return writeResult(topFeas_m,[:exp,:mustExp,:capa,:mustCapa], fltSt = false, roundDown = roundDown)
 end
 
 # ! runs top problem again with optimal results
@@ -253,7 +253,7 @@ function computeFeas(top_m::anyModel,var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbo
 			part = partTop_dic[sSym]
 			relVar_arr = filter(x -> any(occursin.(part.decomm == :none ? ["exp","mustCapa"] : ["capa","exp","mustCapa"],string(x))),collect(keys(var_dic[sys][sSym])))
 			# create variables and writes constraints to minimize absolute value of capacity delta
-			for varSym in relVar_arr
+			for varSym in intersect(keys(part.var),relVar_arr)
 				var_df = part.var[varSym] |> (w -> occursin("exp",string(varSym)) ? collapseExp(w) : w)
 				filter!(x -> !isempty(x.var.terms), var_df)
 				if sys == :tech var_df = removeFixStorage(varSym,var_df,part) end # remove storage variables controlled by ratio
@@ -1164,7 +1164,7 @@ function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, D
 end
 
 # ! write values of entire variables in input model to returned capacity dictionary
-function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = false, fltSt::Bool = true)
+function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = false, fltSt::Bool = true, roundDown::Int = 0)
 	
 	# write expansion value
 	capa_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
@@ -1225,6 +1225,12 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1};rmvFix::Bool = fal
 			# removes redundant varibles for undirected exchange capacity
 			if sys == :exc && !part_dic[sSym].dir && :capaExc in keys(capa_dic[sys][sSym])
 				filter!(x -> x.R_from < x.R_to,capa_dic[sys][sSym][:capaExc])
+			end
+
+			if roundDown != 0
+				for varSym in varSym_arr
+					capa_dic[sys][sSym][varSym][!,:value] = floor.(capa_dic[sys][sSym][varSym][!,:value], digits = roundDown)
+				end
 			end
 
 			# remove empty fields
