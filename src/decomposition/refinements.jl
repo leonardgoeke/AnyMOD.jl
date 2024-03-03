@@ -5,9 +5,12 @@
 function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, genSetup_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp, :threads, :opt), Tuple{String, Int64, Int64, Int64, Int64, DataType}}, scale_dic::Dict{Symbol,NamedTuple}, runSubDist::Function)
 
 	report_m = benders_obj.report.mod
-	cutData_dic = Dict{Tuple{Int64,Int64},resData}()
+
 	
 	if !isempty(stabSetup_obj.method)
+
+		cutData_dic = Dict{Tuple{Int64,Int64},resData}()
+		time_dic = Dict{Tuple{Int64,Int64},Millisecond}()
 	
 		#region # * compute heuristic solution
 	
@@ -30,13 +33,16 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 	
 		#region # * evaluate heuristic solution
 	
-		# initialize iteration variables
-		if isnothing(benders_obj.nearOpt)
-			push!(benders_obj.report.itr, (i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = 0))
-		else
-			push!(benders_obj.report.itr, (i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = 0, objective = ""))
+		# first result for first iteration
+		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = 0)
+		if !isnothing(benders_obj.nearOpt) firstItr_df[!,:objective] .= "costs" end
+		if !isempty(stabSetup_obj.method) 
+			firstItr_df[!,:actMethod] .= Symbol()
+			foreach(x -> firstItr_df[!,Symbol("dynPar_",x)] .= 0.0, stabSetup_obj.method)
 		end
-	
+		append!(benders_obj.report.itr, firstItr_df)
+
+
 		# create dictionaries to store results
 		if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
 		time_dic = Dict{Tuple{Int64,Int64},Millisecond}()
@@ -59,41 +65,98 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		end
 	
 		# store information for cuts
-		benders_obj.cut = cutData_dic
+		benders_obj.cuts = collect(cutData_dic)
 
 		# analyse results
 		startSol_obj.objVal = startSol_obj.objVal + sum(map(x -> x.objVal, values(cutData_dic)))
 		timeSub_fl = Dates.toms(benders_obj.algOpt.dist ? maximum(collect(values(time_dic))) : sum(collect(values(time_dic)))) / Dates.toms(Second(1))
 		
-		# write results for first iteration
-		if isnothing(benders_obj.nearOpt)
-			push!(benders_obj.report.itr, (i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = timeSub_fl))
-		else
-			push!(benders_obj.report.itr, (i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = timeSub_fl, objective = ""))
+		# write results for second iteration
+		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = timeSub_fl)
+		if !isnothing(benders_obj.nearOpt) secItr_df[!,:objective] .= "costs" end
+		if !isempty(stabSetup_obj.method) 
+			secItr_df[!,:actMethod] .= Symbol()
+			foreach(x -> secItr_df[!,Symbol("dynPar_",x)] .= 0.0, stabSetup_obj.method)
 		end
+		append!(benders_obj.report.itr, secItr_df)
+
 		#endregion
 	
 		#region # * initialize stabilization 
 
-		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.switch, stabSetup_obj.weight, startSol_obj, lowBd_fl, benders_obj.top)
-		centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.solOpt.addVio, benders_obj.top, report_m)
+		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.switch, stabSetup_obj.weight, startSol_obj, lowBd_fl, benders_obj.top);
+		centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.solOpt.addVio, benders_obj.top, report_m);
 
 		#endregion
 		
 		produceMessage(report_m.options,report_m.report, 1," - Initialized stabilization with $eleNum_int variables", testErr = false, printErr = false)
 	else
 		stab_obj = nothing
-		
-		
-		if isnothing(benders_obj.nearOpt)
-			push!(benders_obj.report.itr, (i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = 0))
-		else
-			push!(benders_obj.report.itr, (i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = 0, objective = ""))
+		startSol_obj = resData()
+	end
+
+	return stab_obj, startSol_obj
+	
+end
+
+# write options of stabilization method
+function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_m::anyModel)
+
+	# set fields for name and options of method
+	meth_arr = Symbol[]
+	methOpt_arr = NamedTuple[]
+	for (key, val) in meth_tup
+		push!(meth_arr, key)
+		push!(methOpt_arr, val)
+		if key == :qtr && !isempty(setdiff(keys(val), (:start, :low, :thr, :fac)))
+			error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
+		elseif key == :prx && !isempty(setdiff(keys(val), (:start, :min, :a)))
+			error("options provided for proximal bundle do not match the defined options 'start', 'min' and 'a'")
+		elseif key == :prx2 && !isempty(setdiff(keys(val), (:start, :min, :a)))
+			error("options provided for proximal bundle do not match the defined options 'start', 'min' and 'a'")
+		elseif key == :lvl1 && !isempty(setdiff(keys(val), (:lam,)))
+			error("options provided for level bundle do not match the defined option 'lam'")
+		elseif key == :lvl2 && !isempty(setdiff(keys(val), (:lam, :myMax)))
+			error("options provided for level bundle do not match the defined options 'lam', 'myMax'")
+		elseif key == :box && !isempty(setdiff(keys(val), (:low, :up, :minUp)))
+			error("options provided for trust-region do not match the defined options 'low', 'up', and 'minUp'")
+		elseif key == :dsb && !isempty(setdiff(keys(val), (:start, :min, :lam, :myMax)))
+			error("options provided for doubly stabilised bundle do not match the defined options 'start', 'min', 'lam', 'myMax'")
 		end
 	end
 
-	return stab_obj
+	if length(meth_arr) != length(unique(meth_arr)) error("stabilization methods must be unique") end
+
+	# method specific adjustments (e.g. starting value for dynamic parameter, new variables for objective function)
+	dynPar_arr = []
+	for m in 1:size(meth_arr, 1)
+		if meth_arr[m] in (:prx1, :prx2)
+			dynPar = Dict(:prx => methOpt_arr[m].start, :prxAux => methOpt_arr[m].start) # starting value for penalty
+		elseif meth_arr[m] == :lvl1
+			dynPar = (methOpt_arr[m].lam * lowBd_fl  + (1 - methOpt_arr[m].lam) * upBd_fl) / top_m.options.scaFac.obj # starting value for level
+			if methOpt_arr[m].lam >= 1 || methOpt_arr[m].lam <= 0 
+				error("lambda for level bundle must be strictly between 0 and 1")
+			end
+		elseif meth_arr[m] == :lvl2
+			dynPar = Dict(:yps => (1-methOpt_arr[m].lam)*(upBd_fl-lowBd_fl)/ top_m.options.scaFac.obj, :my => 0.0)
+			if methOpt_arr[m].lam >= 1 || methOpt_arr[m].lam <= 0 
+				error("lambda for level bundle must be strictly between 0 and 1")
+			end
+		elseif meth_arr[m] == :qtr
+			dynPar = methOpt_arr[m].start # starting value for radius
+		elseif meth_arr[m] == :box
+			dynPar = 0.0 # dummy value since boxstep implementation does not have a dynamic parameter
+		elseif meth_arr[m] == :dsb
+			dynPar = Dict(:yps=>(1-methOpt_arr[m].lam)*(upBd_fl-lowBd_fl)/top_m.options.scaFac.obj,
+			:prx => methOpt_arr[m].start, :my => 1.0)
+
+		else
+			error("unknown stabilization method provided, method must either be 'prx', 'lvl', 'qtr', or 'box'")
+		end
+		push!(dynPar_arr, dynPar)
+	end
 	
+	return meth_arr, methOpt_arr, dynPar_arr
 end
 
 # function to update the center of stabilization method
@@ -144,11 +207,11 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, ad
 	allVar_df = getStabDf(stab_obj, top_m)
 
 	# sets values of variables that will violate range to zero
-	minFac_fl = (2*maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
+	minFac_fl = (2 * maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
 	allVar_df[!,:value] = map(x -> 2*x.value*x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ (sum(allVar_df[!,:value].^2) |> (x -> x == 0.0 ? 1.0 : x))
+	scaRng_tup = top_m.options.coefRng.rhs ./ (sum(allVar_df[!,:value] .^ 2) |> (x -> x == 0.0 ? 1.0 : x))
 
 	# get scaled l2-norm expression for capacities
 	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df, stab_obj, scaRng_tup, top_m)
@@ -167,10 +230,8 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, ad
 	else
 		if pen_fl > maxPen_fl
 			@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] +  maxPen_fl * capaSum_expr  * scaFac_fl)
-			#stab_obj.dynPar[stab_obj.actMet][:prx] = 1/ (maxPen_fl * 2)
 		else
 			@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] +  minPen_fl * capaSum_expr  * scaFac_fl)
-			#stab_obj.dynPar[stab_obj.actMet][:prx] = 1/ (minPen_fl * 2)
 		end
 		produceMessage(report_m.options, report_m.report, 1, " - Adjusted proximal parameter to prevent numerical problems", testErr = false, printErr = false)
 	
@@ -285,22 +346,26 @@ function computeL2Norm(allVar_df::DataFrame, stab_obj::stabObj, scaRng_tup::Tupl
 end
 
 # write function to compute poorman's Hessian auxilary scalar for prx_2
-function computePrx2Aux(cutData_dic::Dict{Tuple{Int64, Int64}, resData}, prevCutData_dic::Dict{Tuple{Int64, Int64}, resData})
+function computePrx2Aux(cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, prevCuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1})
 
 	diffVal_arr = Float64[]
 	diffDual_arr = Float64[]
 	
-	for scr in collect(keys(cutData_dic)) # loop over scenarios
+	for cut in prevCuts_arr # loop over cut data
+		
+		scr = cut[1]
+		relCut_obj = filter(x -> x[1] == scr, cuts_arr)[1][2]
+
 		for sys in (:exc, :tech)
 			
-			allSys_arr = unique(union(keys(cutData_dic[scr].capa[sys]), keys(prevCutData_dic[scr].capa[sys])))
+			allSys_arr = unique(union(keys(relCut_obj.capa[sys]), keys(cut[2].capa[sys])))
 			
 			for sSym in allSys_arr
 				
 				# get relevant dictionaries for systems (handles problem, if system only exits in current or previous)
 			
-				curCapa_dic = sSym in keys(cutData_dic[scr].capa[sys]) ? cutData_dic[scr].capa[sys][sSym] : Dict{Symbol, DataFrame}()
-				prevCapa_dic = sSym in keys(prevCutData_dic[scr].capa[sys]) ? prevCutData_dic[scr].capa[sys][sSym] : Dict{Symbol, DataFrame}()
+				curCapa_dic = sSym in keys(relCut_obj.capa[sys]) ? relCut_obj.capa[sys][sSym] : Dict{Symbol, DataFrame}()
+				prevCapa_dic = sSym in keys(cut[2].capa[sys]) ? cut[2].capa[sys][sSym] : Dict{Symbol, DataFrame}()
 
 				allVar_arr = unique(union(keys(curCapa_dic), keys(prevCapa_dic)))
 				
@@ -457,22 +522,25 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 end
 
 # solves top problem without trust region and obtains lower limits
-function runTopWithoutStab(top_m::anyModel, stab_obj::stabObj, numFoc_int::Int)
+function runTopWithoutStab(benders_obj::bendersObj)
+
+	stab_obj = benders_obj.stab
 	
+	# remove stabilization
 	if stab_obj.method[stab_obj.actMet] == :qtr
-		delete(top_m.optModel, stab_obj.cns) # remove trust-region
+		delete(benders_obj.top.optModel, stab_obj.cns) # remove trust-region
 	elseif stab_obj.method[stab_obj.actMet] in (:prx1, :prx2)
-		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1]) # remove penalty form objective
+		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1,1]) # remove penalty form objective
 	elseif stab_obj.method[stab_obj.actMet] in (:lvl1, :lvl2)
-		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
-		delete_upper_bound(top_m.parts.obj.var[:obj][1,1])
+		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1,1])
+		delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1])
 	elseif stab_obj.method[stab_obj.actMet] == :dsb
-		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
-		delete(top_m.optModel, stab_obj.cns)
-		delete(top_m.optModel, stab_obj.helper_var)
-		unregister(top_m.optModel, :r)
+		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1,1])
+		delete(benders_obj.top.optModel, stab_obj.cns)
+		delete(benders_obj.top.optModel, stab_obj.helper_var)
+		unregister(benders_obj.top.optModel, :r)
 	elseif stab_obj.method[stab_obj.actMet] == :box
-		stabVar_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
+		stabVar_dic = matchValWithVar(stab_obj.var, stab_obj.weight, benders_obj.top)
 		for grp in (:capa, :stLvl), sys in keys(stabVar_dic[grp]), sSym in keys(stabVar_dic[grp][sys]), capaSym in keys(stabVar_dic[grp][sys][sSym])
 			relVar_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[grp][sys][sSym][capaSym][!,:var])
 			delete_lower_bound.(relVar_arr)
@@ -481,14 +549,15 @@ function runTopWithoutStab(top_m::anyModel, stab_obj::stabObj, numFoc_int::Int)
 		end
 	end
 	
-	set_optimizer_attribute(top_m.optModel, "Method", 0)
-	set_optimizer_attribute(top_m.optModel, "NumericFocus", numFoc_int)
-	optimize!(top_m.optModel)
-	checkIIS(top_m)
+	# solve problem
+	set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
+	set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
+	optimize!(benders_obj.top.optModel)
+	checkIIS(benders_obj.top)
 
 	# obtain different objective values
-	topCost_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
-	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders, top_m.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
+	topCost_fl = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
+	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
 
 	return topCost_fl, estCost_fl
 end

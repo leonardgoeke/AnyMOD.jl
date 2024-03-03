@@ -284,59 +284,67 @@ function prepareMod!(mod_m::anyModel, opt_obj::DataType, t_int::Int)
 end
 
 # ! run top-problem
-function runTop(top_m::anyModel, cutData_dic::Dict{Tuple{Int64,Int64},resData}, stab_obj::Union{Nothing,stabObj}, numFoc_int::Int, i::Int)
+function runTop(benders_obj::bendersObj)
 
+	stab_obj = benders_obj.stab
+
+	# create objects to store results
 	resData_obj = resData()
 	stabVar_obj = resData()
 
-	# add cuts
-	if !isempty(cutData_dic) addCuts!(top_m, cutData_dic, i) end
+	
+	if !isempty(benders_obj.cuts) 
+		# save values of previous cut for proximal method variation 2
+		benders_obj.prevCuts = !isnothing(stab_obj) && stab_obj.method[stab_obj.actMet] == :prx2 ? copy(benders_obj.cuts) : Array{Pair{Tuple{Int,Int},Union{resData}},1}() 
+		# add cuts and reset collecting array
+		addCuts!(benders_obj.top, benders_obj.cuts, benders_obj.itr.cnt.itr) 
+		benders_obj.cuts = Array{Pair{Tuple{Int,Int},Union{resData}},1}()
+	end
 	# solve model
 	@suppress begin
-		set_optimizer_attribute(top_m.optModel, "Method", 2)
-		set_optimizer_attribute(top_m.optModel, "Crossover", 0)
-		set_optimizer_attribute(top_m.optModel, "NumericFocus", numFoc_int)
-		optimize!(top_m.optModel)
+		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
+		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
+		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
+		optimize!(benders_obj.top.optModel)
 	end	
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
 		opt_tup = stab_obj.methodOpt[stab_obj.actMet]
 		# if infeasible and level bundle stabilization, increase level until feasible
-		while stab_obj.method[stab_obj.actMet] in (:lvl2, :dsb) && termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
+		while stab_obj.method[stab_obj.actMet] in (:lvl2, :dsb) && termination_status(benders_obj.top.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
 			produceMessage(report_m.options, report_m.report, 1, " - Empty level set", testErr = false, printErr = false)
-			lowBd_fl = stab_obj.objVal/top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
-			stab_obj.dynPar[stab_obj.actMet][:yps] = (1-opt_tup.lam)* (stab_obj.objVal - lowBd_fl*top_m.options.scaFac.obj) / top_m.options.scaFac.obj
-			ell_fl = stab_obj.objVal/top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
-			#set_upper_bound(top_m.optModel[:r], ell_fl)
-			set_upper_bound(top_m.parts.obj.var[:obj][1,1], ell_fl)
-            optimize!(top_m.optModel)
+			lowBd_fl = stab_obj.objVal / benders_obj.top.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
+			stab_obj.dynPar[stab_obj.actMet][:yps] = (1 - opt_tup.lam) * (stab_obj.objVal - lowBd_fl*benders_obj.top.options.scaFac.obj) / benders_obj.top.options.scaFac.obj
+			ell_fl = stab_obj.objVal/benders_obj.top.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
+			set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], ell_fl)
+            optimize!(benders_obj.top.optModel)
         end
 
-		while stab_obj.method[stab_obj.actMet] == :lvl1 && termination_status(top_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) 
-            stab_obj.dynPar[stab_obj.actMet] = (opt_tup.lam * stab_obj.dynPar[stab_obj.actMet]*1000  + (1 - opt_tup.lam) * stab_obj.objVal) / top_m.options.scaFac.obj
-            set_upper_bound(top_m.parts.obj.var[:obj][1,1], stab_obj.dynPar[stab_obj.actMet])
-            optimize!(top_m.optModel)
+		while stab_obj.method[stab_obj.actMet] == :lvl1 && termination_status(benders_obj.top.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) 
+            stab_obj.dynPar[stab_obj.actMet] = (opt_tup.lam * stab_obj.dynPar[stab_obj.actMet] * 1000  + (1 - opt_tup.lam) * stab_obj.objVal) / benders_obj.top.options.scaFac.obj
+            set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], stab_obj.dynPar[stab_obj.actMet])
+            optimize!(benders_obj.top.optModel)
         end
 
 		# if no solution and proximal bundle stabilization, remove penalty term temporarily
-		if stab_obj.method[stab_obj.actMet] == :prx && !(termination_status(top_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
-			@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1])
-			optimize!(top_m.optModel)
+		if stab_obj.method[stab_obj.actMet] == :prx && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+			@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1,1])
+			optimize!(benders_obj.top.optModel)
 		end
 	end
-	checkIIS(top_m)
+	checkIIS(benders_obj.top)
 
 	# write technology capacites and level of capacity balance to benders object
-	resData_obj.capa, resData_obj.stLvl = writeResult(top_m, [:capa, :mustCapa, :stLvl]; rmvFix = true)
-	stabVar_obj.capa, stabVar_obj.stLvl = writeResult(top_m, [:capa, :exp, :stLvl]; rmvFix = true)
+	resData_obj.capa, resData_obj.stLvl = writeResult(benders_obj.top, [:capa, :mustCapa, :stLvl]; rmvFix = true)
+	stabVar_obj.capa, stabVar_obj.stLvl = writeResult(benders_obj.top, [:capa, :exp, :stLvl]; rmvFix = true)
 
 	# record level dual
 	if !isnothing(stab_obj)
 		if stab_obj.method[stab_obj.actMet] == :lvl2
-			levelDual_fl =  dual(UpperBoundRef(top_m.parts.obj.var[:obj][1,1]))
+			levelDual_fl =  dual(UpperBoundRef(benders_obj.top.parts.obj.var[:obj][1,1]))
 		elseif stab_obj.method[stab_obj.actMet] == :dsb
-			levelDual_fl =  dual(UpperBoundRef(top_m.optModel[:r]))
+			levelDual_fl =  dual(UpperBoundRef(benders_obj.top.optModel[:r]))
 		else
 			levelDual_fl =  0.0
 		end
@@ -344,11 +352,14 @@ function runTop(top_m::anyModel, cutData_dic::Dict{Tuple{Int64,Int64},resData}, 
 		levelDual_fl = 0.0
 	end
 	
-	# get objective value of top problem
-	topCost_fl = value(sum(filter(x -> x.name == :cost, top_m.parts.obj.var[:objVar])[!,:var]))
-	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders, top_m.parts.obj.var[:objVar])[1,:var])
+	# get costs(!) of top-problem
+	topCost_fl = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var]))
+	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var])
 
-	return resData_obj, stabVar_obj, topCost_fl, estCost_fl, levelDual_fl
+	# get object for near-optimal case
+	nearOptObj_fl =  benders_obj.itr.cnt.nearOpt != 0 ? objective_value(top_m.optModel) : Inf
+
+	return resData_obj, stabVar_obj, topCost_fl, estCost_fl, nearOptObj_fl, levelDual_fl
 end
 
 # ! run sub-problem
@@ -460,14 +471,13 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 	return elapsed_time, resData_obj
 end
 
-
 # ! add all cuts from input dictionary to top problem
-function addCuts!(top_m::anyModel, cutData_dic::Dict{Tuple{Int64,Int64},resData}, i::Int)
+function addCuts!(top_m::anyModel, cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, i::Int)
 	
 	# create array of expressions with duals for sub-problems
 	cut_df = DataFrame(i = Int[], Ts_dis = Int[], scr = Int[], limCoef = Bool[], actItr = Int[], cnsExpr = AffExpr[])
-	for sub in keys(cutData_dic)
-		subCut = cutData_dic[sub]
+	for cut in cuts_arr
+		subCut = cut[2]
 		cutExpr_arr = Array{GenericAffExpr,1}()
 		
 		# compute cut element for each capacity
@@ -490,7 +500,7 @@ function addCuts!(top_m::anyModel, cutData_dic::Dict{Tuple{Int64,Int64},resData}
 		end
 		
 		# get cut variable and compute cut expression 
-		cut_var = filter(x -> x.Ts_dis == sub[1] && x.scr == sub[2], top_m.parts.obj.var[:cut])[1,:var]
+		cut_var = filter(x -> x.Ts_dis == cut[1][1] && x.scr == cut[1][2], top_m.parts.obj.var[:cut])[1,:var]
 		cut_expr = @expression(top_m.optModel, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)))
 		
 		#region # * remove extremely small terms and limit the coefficient of extremely large terms
@@ -559,7 +569,7 @@ function addCuts!(top_m::anyModel, cutData_dic::Dict{Tuple{Int64,Int64},resData}
 		#endregion
 
 		# add benders variable to cut and push to dataframe of all cuts
-		push!(cut_df, (i = i, Ts_dis = sub[1], scr = sub[2], limCoef = limCoef_boo, actItr = i, cnsExpr = cut_expr - cut_var))
+		push!(cut_df, (i = i, Ts_dis = cut[1][1], scr = cut[1][2], limCoef = limCoef_boo, actItr = i, cnsExpr = cut_expr - cut_var))
 	end
 
 	# scale cuts and add to dataframe of benders cuts in model
@@ -919,65 +929,3 @@ function reportBenders(benders_obj::bendersObj)
 end
 
 #endregion
-
-
-# write options of stabilization method
-function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_m::anyModel)
-
-	# set fields for name and options of method
-	meth_arr = Symbol[]
-	methOpt_arr = NamedTuple[]
-	for (key, val) in meth_tup
-		println(val)
-		push!(meth_arr, key)
-		push!(methOpt_arr, val)
-		if key == :qtr && !isempty(setdiff(keys(val), (:start, :low, :thr, :fac)))
-			error("options provided for trust-region do not match the defined options 'start', 'low', 'thr', and 'fac'")
-		elseif key == :prx && !isempty(setdiff(keys(val), (:start, :min, :a)))
-			error("options provided for proximal bundle do not match the defined options 'start', 'min' and 'a'")
-		elseif key == :prx2 && !isempty(setdiff(keys(val), (:start, :min, :a)))
-			error("options provided for proximal bundle do not match the defined options 'start', 'min' and 'a'")
-		elseif key == :lvl1 && !isempty(setdiff(keys(val), (:lam,)))
-			error("options provided for level bundle do not match the defined option 'lam'")
-		elseif key == :lvl2 && !isempty(setdiff(keys(val), (:lam, :myMax)))
-			error("options provided for level bundle do not match the defined options 'lam', 'myMax'")
-		elseif key == :box && !isempty(setdiff(keys(val), (:low, :up, :minUp)))
-			error("options provided for trust-region do not match the defined options 'low', 'up', and 'minUp'")
-		elseif key == :dsb && !isempty(setdiff(keys(val), (:start, :min, :lam, :myMax)))
-			error("options provided for doubly stabilised bundle do not match the defined options 'start', 'min', 'lam', 'myMax'")
-		end
-	end
-
-	if length(meth_arr) != length(unique(meth_arr)) error("stabilization methods must be unique") end
-
-	# method specific adjustments (e.g. starting value for dynamic parameter, new variables for objective function)
-	dynPar_arr = []
-	for m in 1:size(meth_arr, 1)
-		if meth_arr[m] in (:prx1, :prx2)
-			dynPar = Dict(:prx => methOpt_arr[m].start, :prxAux => methOpt_arr[m].start) # starting value for penalty
-		elseif meth_arr[m] == :lvl1
-			dynPar = (methOpt_arr[m].lam * lowBd_fl  + (1 - methOpt_arr[m].lam) * upBd_fl) / top_m.options.scaFac.obj # starting value for level
-			if methOpt_arr[m].lam >= 1 || methOpt_arr[m].lam <= 0 
-				error("lambda for level bundle must be strictly between 0 and 1")
-			end
-		elseif meth_arr[m] == :lvl2
-			dynPar = Dict(:yps => (1-methOpt_arr[m].lam)*(upBd_fl-lowBd_fl)/ top_m.options.scaFac.obj, :my => 0.0)
-			if methOpt_arr[m].lam >= 1 || methOpt_arr[m].lam <= 0 
-				error("lambda for level bundle must be strictly between 0 and 1")
-			end
-		elseif meth_arr[m] == :qtr
-			dynPar = methOpt_arr[m].start # starting value for radius
-		elseif meth_arr[m] == :box
-			dynPar = 0.0 # dummy value since boxstep implementation does not have a dynamic parameter
-		elseif meth_arr[m] == :dsb
-			dynPar = Dict(:yps=>(1-methOpt_arr[m].lam)*(upBd_fl-lowBd_fl)/top_m.options.scaFac.obj,
-			:prx => methOpt_arr[m].start, :my => 1.0)
-
-		else
-			error("unknown stabilization method provided, method must either be 'prx', 'lvl', 'qtr', or 'box'")
-		end
-		push!(dynPar_arr, dynPar)
-	end
-	
-	return meth_arr, methOpt_arr, dynPar_arr
-end

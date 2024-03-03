@@ -55,7 +55,7 @@ end
 
 #endregion
 
-#region # * high-level objects for stabilization and model itself
+#region # * iteration
 
 # managing stabilization method
 mutable struct stabObj
@@ -99,17 +99,27 @@ mutable struct stabObj
 	end
 end
 
+# monitoring iteration 
+mutable struct itrStatus
+	best::resData
+	cnt::NamedTuple{(:itr,:nOpt,:srs,:null), Tuple{Int,Int,Int,Int}}
+	gap::Float64
+	obj::NamedTuple{(:curBest,:curObj,:costOpt,:costEst,:curAct),Tuple{Float64,Float64,Float64,Float64,Float64}} # results current best solution, current solution, global cost optimum, estimated cost current iteration, acutal cost current iteration 
+end
+
+
+# overall benders structure
 mutable struct bendersObj
 	top::anyModel
 	sub::Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}
-	cut::Dict{Tuple{Int,Int},Union{resData}}
+	cuts::Array{Pair{Tuple{Int,Int},Union{resData}},1}
+	prevCuts::Array{Pair{Tuple{Int,Int},Union{resData}},1}
+	itr::itrStatus
 	stab::Union{Nothing,stabObj}
     algOpt::bendersSetup
 	nearOpt::NamedTuple{(:cnt,:objVal,:setup), Tuple{Int,Float64,Union{Nothing,nearOptSetup}}}
 	report::NamedTuple{(:itr, :nearOpt,:mod), Tuple{DataFrame, DataFrame, anyModel}}
-	cost::NamedTuple{(:resData,:costOpt,:costEst,:curObj),Tuple{stabObj,Float64,Float64,Float64}} # results current best solution, global optimum, estimated cost current iteration, actual costs current iteration, objective of near optimum
-
-	bendersObj() = new()
+	
 	function bendersObj(genSetup_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp, :threads, :opt), Tuple{String, Int64, Int64, Int64, Int64, DataType}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, bendersSetup_obj::bendersSetup, stabSetup_obj::stabSetup, runSubDist::Function, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
 
         #region # * checks and initialization
@@ -122,14 +132,39 @@ mutable struct bendersObj
 	
 		#endregion
 
+		#region # * initialize reporting
+
+        # dataframe for reporting during iteration
+        itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_sub = Float64[])
+        nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], capacity_variable = Symbol[], capacity_value = Float64[], cost = Float64[], lss = Float64[])
+
+        # empty model just for reporting
+		report_m = @suppress anyModel(String[], inputFolder_ntup.results, objName = "decomposition" * genSetup_ntup.name) 
+
+		# add column for active stabilization method
+		if !isempty(stabSetup_obj.method)
+			itrReport_df[!,:actMethod] = fill(Symbol(),size(itrReport_df,1))
+			foreach(x -> itrReport_df[!,Symbol("dynPar_",x)] = Union{Float64,Vector{Float64}}[fill(Float64[],size(itrReport_df,1))...], stabSetup_obj.method)
+		end
+
+		# extend reporting dataframe in case of near-optimal
+		if !isnothing(nearOptSetup_obj) itrReport_df[!,:objective] = fill("", size(itrReport_df, 1)) end
+
+		benders_obj.report = (itr = itrReport_df, nearOpt = nearOpt_df, mod = report_m)
+
+		#endregion
+
         #region # * create top- and sub-problems
 
 		# start creating top-problem and extract info on sub-problem structure
+		produceMessage(report_m.options,report_m.report, 1," - Started creation of top-problem", testErr = false, printErr = false)
+
 		top_m = @suppress anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel" * genSetup_ntup.name, lvlFrs = genSetup_ntup.frs, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, createVI = bendersSetup_obj.useVI)
 		sub_tup = tuple([(x.Ts_dis, x.scr) for x in eachrow(top_m.parts.obj.par[:scrProb].data)]...) # get all time-step/scenario combinations
 
 		# creation of sub-problems
 
+		produceMessage(report_m.options,report_m.report, 1," - Started creation of sub-problems", testErr = false, printErr = false)
 		benders_obj.sub = Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}()
 		for (id, s) in enumerate(sub_tup)
 			if benders_obj.algOpt.dist # distributed case
@@ -153,26 +188,20 @@ mutable struct bendersObj
 
 		# wait for construction of sub-problems
 		if benders_obj.algOpt.dist wait.(collect(values(benders_obj.sub))) end
+
+		produceMessage(report_m.options,report_m.report, 1," - Finished creation of top-problem and sub-problems", testErr = false, printErr = false)
 	
         #endregion
 
-        #region # * initialize reporting
+		#region # * initialize stabilization
 
-        # dataframe for reporting during iteration
-        itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_sub = Float64[])
-        nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], capacity_variable = Symbol[], capacity_value = Float64[], cost = Float64[], lss = Float64[])
+		benders_obj.stab, curBest_obj = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, genSetup_ntup, scale_dic, runSubDist)
 
-        # empty model just for reporting
-		report_m = @suppress anyModel(String[], inputFolder_ntup.results, objName = "decomposition" * genSetup_ntup.name) 
-		benders_obj.report = (itr = itrReport_df, nearOpt = nearOpt_df, mod = report_m)
+		benders_obj.itr = itrStatus(curBest_obj, (itr = maximum(benders_obj.report.itr[!,:i]) + 1, nOpt = 0, srs = 0, null = 0), 1.0, (curBest = Inf, curObj = Inf, costOpt = Inf, costEst = Inf, curAct = Inf))
 
-        #endregion
+		#endregion
 
-		# extend reporting dataframe in case of near-optimal
-		if !isnothing(nearOptSetup_obj) benders_obj.report.itr[!,:objective] = fill("", size(benders_obj.report.itr, 1)) end
-
-		benders_obj.stab = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, genSetup_ntup, scale_dic, runSubDist)
-
+		
 		return benders_obj
 	end
 end

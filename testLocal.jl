@@ -83,9 +83,9 @@ scale_dic[:facSub] = (capa = 1e0, capaStSize = 1e2, insCapa = 1e0, dispConv = 1e
 # initialize distributed computing
 if distr_boo 
 	addprocs(scr_int*2) 
-	@everywhere begin 
+	@suppress @everywhere begin 
 		using AnyMOD, Gurobi
-		runSubDist(w_int::Int64, resData_obj::resData, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, wrtRes_boo::Bool=false) = @spawnat w_int runSub(sub_m, resData_obj, sol_sym, optTol_fl, crsOver_boo, wrtRes_boo)
+		runSubDist(w_int::Int64, resData_obj::resData, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, wrtRes_boo::Bool=false) = Distributed.@spawnat w_int runSub(sub_m, resData_obj, sol_sym, optTol_fl, crsOver_boo, wrtRes_boo)
 	end
 	passobj(1, workers(), [:genSetup_ntup, :inputFolder_ntup, :scale_dic, :bendersSetup_obj])
 
@@ -96,87 +96,72 @@ end
 # create benders object
 benders_obj = bendersObj(genSetup_ntup, inputFolder_ntup, scale_dic, bendersSetup_obj, stabSetup_obj, runSubDist, nearOptSetup_obj)
 
-
 #endregion
 
+#region # * iteration algorithm
 
-
-#region # * iteration
-
-nameStab_dic = Dict(:lvl1 => "level bundle",:lvl2 => "level bundle",:qtr => "quadratic trust-region", :prx => "proximal bundle", :box => "box-step method")
-
-
-if !isempty(meth_tup)
-	itrReport_df[!,:actMethod] = fill(Symbol(),size(itrReport_df,1))
-	foreach(x -> itrReport_df[!,Symbol("dynPar_",x)] = Union{Float64,Vector{Float64}}[fill(Float64[],size(itrReport_df,1))...], stab_obj.method)
-end
-
-if !isempty(nearOpt_ntup)
-	nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], capacity_variable = Symbol[], capacity_value = Float64[], cost = Float64[], lss = Float64[])
-	itrReport_df[!,:objective] = fill("",size(itrReport_df,1))
-	nOpt_int = 0
-end
-
-# initialize best solution
-best_obj = !isempty(meth_tup) ? startSol_obj : resData()
-
-# initialize loop variables
-i = iIni_fl
-gap_fl = 1.0
-minStep_fl = 0.0
-nOpt_int = 0
-costOpt_fl = Inf
-nearOptObj_fl = Inf
-cntNull_int = 0
-cntSrs_int = 0
-lssOpt_fl = Inf
-
-
-# iteration algorithm
 while true
 
-	produceMessage(report_m.options,report_m.report, 1," - Started iteration $i", testErr = false, printErr = false)
+	produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Started iteration $(benders_obj.itr.cnt.itr)", testErr = false, printErr = false)
 
-	#region # * solve top-problem 
+	#region # * solve top-problem and (start) sub-problems
 
 	startTop = now()
-	resData_obj, stabVar_obj, topCost_fl, estCost_fl, levelDual_fl = @suppress runTop(top_m,cutData_dic,stab_obj,solOpt.numFoc,i); 
+	resData_obj, stabVar_obj, topCost_fl, estCost_fl, nearOptObj_fl, levelDual_fl = @suppress runTop(benders_obj); 
 	timeTop = now() - startTop
 
-	# get objective value for near-optimal
-	if nOpt_int != 0 nearOptObj_fl = objective_value(top_m.optModel) end
+	# start solving sub-problems
+	cutData_dic = Dict{Tuple{Int64,Int64},resData}()
+	time_dic = Dict{Tuple{Int64,Int64},Millisecond}()
 
+	if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
+	for (id,s) in enumerate(collect(keys(benders_obj.sub)))
+		if benders_obj.algOpt.dist # distributed case
+			futData_dic[s] = runSubDist(id + 1, copy(resData_obj), :barrier, 1e-8)
+		else # non-distributed case
+			time_dic[s], cutData_dic[s] = runSub(benders_obj.sub[s], copy(resData_obj), :barrier, 1e-8)
+		end
+	end
+
+	# top-problem without stabilization
+	if !isnothing(stab_obj) 
+		topCostNoStab_fl, estCostNoStab_fl =  @suppress runTopWithoutStab(top_m,stab_obj,solOpt.numFoc.noStab) 
+	else
+		topCostNoStab_fl, estCostNoStab_fl = [Inf, Inf]
+	end
+
+	# get results of sub-problems
+	if benders_obj.algOpt.dist
+		wait.(collect(values(futData_dic)))
+		for s in collect(keys(benders_obj.sub))
+			time_dic[s], cutData_dic[s] = fetch(futData_dic[s])
+		end
+	end
+	
 	#endregion
 	
-	#region # * solve of sub-problems  
-	startSub = now()
-	prevCutData_dic = !isempty(meth_tup) && stab_obj.method[stab_obj.actMet] == :prx2 ? copy(cutData_dic) : nothing # save values of previous cut for proximal method variation 2
-	for x in collect(sub_tup)
-		dual_etr = runSub(sub_dic[x],copy(resData_obj),:barrier,nOpt_int == 0 ? getConvTol(gap_fl,gap,conSub) : conSub.rng[2],conSub.crs)
-		cutData_dic[x] = dual_etr
-	end
-	timeSub = now() - startSub
-
-	#endregion
-
 	#region # * check results
 
-	# ! updates current best
-	expStep_fl = nOpt_int == 0 ? (best_obj.objVal - estCost_fl) : 0.0 # expected step size
-	subCost_fl = sum(map(x -> x.objVal, values(cutData_dic))) # objective of sub-problems
-	currentCost = topCost_fl + subCost_fl
+	updateResult(benders_obj, topCost_fl, estCost_fl, nearOptObj_fl, sum(map(x -> x.objVal, values(cutData_dic))))
 
-	if (nOpt_int == 0 ? (topCost_fl + subCost_fl) : (subCost_fl - (estCost_fl - topCost_fl))) < best_obj.objVal
-		best_obj.objVal = nOpt_int == 0 ? (topCost_fl + subCost_fl) : (subCost_fl - (estCost_fl - topCost_fl)) # store current best value
-		best_obj.capa, best_obj.stLvl = writeResult(top_m,[:capa,:exp,:mustCapa,:stLvl]; rmvFix = true)		
-	end
+	function updateResults(benders_obj, topCost_fl::Float64, estCost_fl::Float64, nearOptObj_fl::Float64, subCost_fl::Float64)
 
-	# reporting on current results
-	if top_m.options.lvlFrs != 0 && i%reportFreq == 0 
-		stReport_df = writeStLvlRes(top_m,sub_dic,sub_tup,i,stReport_df) 
+		itr_obj = benders_obj.itr
+
+		# ! update current best
+		expStep_fl = itr_obj.cnt.nOpt == 0 ? (itr_obj.objCurBest - estCost_fl) : 0.0 # expected step size
+		
+		# check if solution improved (comparision of total costs for costs optimization, costs of sub-problem for near optimal -> target is same costs as in optimal case)
+		if (itr_obj.cnt.nearOpt == 0 ? (topCost_fl + subCost_fl) : (subCost_fl - (estCost_fl - topCost_fl))) < best_obj.objVal - expStep_fl * benders_obj.algOpt.srsThr
+			itr_obj.best.objVal = itr_obj.cnt.nearOpt == 0 ? (topCost_fl + subCost_fl) : (subCost_fl - (estCost_fl - topCost_fl)) # store current best value
+			itr_obj.best.objVal.capa, itr_obj.best.objVal.stLvl = writeResult(benders_obj.top, [:capa,:exp,:mustCapa,:stLvl]; rmvFix = true)		
+		end
+
+		# ! update iteration object
+		# TODO update
+		#if !isempty(nearOpt_ntup) nearOpt_df, lss_fl = writeCapaRes(top_m,sub_dic,sub_tup,nearOpt_df,i,nOpt_int,nearOpt_ntup,topCost_fl,subCost_fl,costOpt_fl,lssOpt_fl) end
+
 	end
-	
-	if !isempty(nearOpt_ntup) nearOpt_df, lss_fl = writeCapaRes(top_m,sub_dic,sub_tup,nearOpt_df,i,nOpt_int,nearOpt_ntup,topCost_fl,subCost_fl,costOpt_fl,lssOpt_fl) end
 
 	#endregion
 
@@ -314,41 +299,5 @@ end
 
 
 
-# ! setup working
-
-using Distributed
-addprocs(1) 
-
-@everywhere module myPackage
-	using Distributed
-
-	# function to create variable on worker
-	function createData()
-		@everywhere 2 begin
-			x = rand(10)
-		end
-	end
-
-	# function to execute on worker
-	function processData(x,y)
-		return x .* y
-	end
-
-	# function to be wrapped
-	function runProcessData(y::Float64,spawn::Function)
-		fut_obj::Future = spawn(2,y)
-		out_arr::Vector{Float64} = fetch(fut_obj)
-		return out_arr
-	end
-
-	export createData, processData, runProcessData
-end
-
-@everywhere begin
-	using .myPackage	
-	spawnProcessData(i::Int64, y::Float64) = @spawnat i processData(x,y)
-end
-createData()
-runProcessData(10.0,spawnProcessData)
 
 
