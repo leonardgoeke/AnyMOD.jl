@@ -2,12 +2,11 @@
 #region # * prepare to create expansion, retrofitting and capacity variables
 
 # ! dimensions for capacity variables
-function prepareCapacity!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTuple},exp_df::DataFrame,capaVar::Symbol,anyM::anyModel; sys::Int = 0)
+function prepareCapacity!(part::AbstractModelPart, prep_dic::Dict{Symbol,NamedTuple}, exp_df::DataFrame, capaVar::Symbol, anyM::anyModel; sys::Int = 0)
 
 	sym = capaVar == :capaExc ? :Exc : :Te
 
 	# ! initialize assignments and data
-	defPar_tup = tuple(keys(part.par)...)
 
 	# for exchange capacities remove id column from expansion variables
 	if sym == :Exc
@@ -33,7 +32,7 @@ function prepareCapacity!(part::AbstractModelPart,prep_dic::Dict{Symbol,NamedTup
 end
 
 # ! add entries for retrofitting variables
-function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple}}},anyM::anyModel)
+function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple}}}, anyM::anyModel)
 
 	# ! gather all existing capacity entries that could be relevant for retrofitting
 	allCapaDf_dic = Dict{Symbol,DataFrame}()

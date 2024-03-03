@@ -10,82 +10,82 @@ Create all elements of the model's underlying optimization problem except for th
 function createOptModel!(anyM::anyModel)
 
 	if (anyM.options.createVI.bal || anyM.options.createVI.st)  && anyM.subPro != tuple(0,0)
-		push!(anyM.report,(3,"scenario","","valid inequalities are only supported for the investment part of a decomposed problem"))
-		errorTest(anyM.report,anyM.options) 
+		push!(anyM.report,(3, "scenario", "", "valid inequalities are only supported for the investment part of a decomposed problem"))
+		errorTest(anyM.report, anyM.options) 
 	end
 
 	#region # * prepare dimensions of investment related variables
-	parDef_dic = defineParameter(anyM.options,anyM.report)
+	parDef_dic = defineParameter(anyM.options, anyM.report)
 
     # ! gets dictionary with dimensions of expansion, retrofitting, and capacity variables
-    tsYear_dic = Dict(zip(anyM.supTs.step,collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
+    tsYear_dic = Dict(zip(anyM.supTs.step, collect(0:anyM.options.shortExp:(length(anyM.supTs.step)-1)*anyM.options.shortExp)))
     prepSys_dic = Dict(sys => Dict{Symbol,Dict{Symbol,NamedTuple}}() for sys in (:Te,:Exc))
-	prepareTechs!(collect(keys(anyM.parts.tech)),prepSys_dic[:Te],tsYear_dic,anyM)
-	prepareExc!(collect(keys(anyM.parts.exc)),prepSys_dic[:Exc],tsYear_dic,anyM)
+	prepareTechs!(collect(keys(anyM.parts.tech)), prepSys_dic[:Te], tsYear_dic, anyM)
+	prepareExc!(collect(keys(anyM.parts.exc)), prepSys_dic[:Exc], tsYear_dic, anyM)
 
-	allCapaDf_dic = addRetrofitting!(prepSys_dic,anyM)
-	addInsCapa!(prepSys_dic,anyM) # add entries for installed capacities
-	removeFixed!(prepSys_dic,allCapaDf_dic,anyM) # remove entries were capacities are fixed to zero
+	allCapaDf_dic = addRetrofitting!(prepSys_dic, anyM)
+	addInsCapa!(prepSys_dic, anyM) # add entries for installed capacities
+	removeFixed!(prepSys_dic, allCapaDf_dic, anyM) # remove entries were capacities are fixed to zero
 
 	# ! remove unrequired elements in case of distributed model creation
-	if !isempty(anyM.subPro) && !anyM.options.createVI.bal distributedMapping!(anyM,prepSys_dic) end
+	if !isempty(anyM.subPro) && !anyM.options.createVI.bal distributedMapping!(anyM, prepSys_dic) end
 
 	# abort if there is already an error
-    if any(getindex.(anyM.report,1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report,anyM.options) end
+    if any(getindex.(anyM.report, 1) .== 3) print(getElapsed(anyM.options.startTime)); errorTest(anyM.report, anyM.options) end
 
 	# remove systems without any potential capacity variables and reports this for exchange
-	for excSym in setdiff(collect(keys(anyM.parts.exc)),collect(keys(prepSys_dic[:Exc])))
-		push!(anyM.report,(2,"exchange mapping",string(excSym),"to allow for exchange between regions, residual capacities of any value (even zero) must be defined between them, but none were found"))
+	for excSym in setdiff(collect(keys(anyM.parts.exc)), collect(keys(prepSys_dic[:Exc])))
+		push!(anyM.report, (2, "exchange mapping", string(excSym), "to allow for exchange between regions, residual capacities of any value (even zero) must be defined between them, but none were found"))
 	end
 
-	foreach(x -> delete!(anyM.parts.tech, x),setdiff(collect(keys(anyM.parts.tech)),collect(keys(prepSys_dic[:Te]))))
-	foreach(x -> delete!(anyM.parts.exc, x),setdiff(collect(keys(anyM.parts.exc)),collect(keys(prepSys_dic[:Exc]))))
+	foreach(x -> delete!(anyM.parts.tech, x), setdiff(collect(keys(anyM.parts.tech)), collect(keys(prepSys_dic[:Te]))))
+	foreach(x -> delete!(anyM.parts.exc, x), setdiff(collect(keys(anyM.parts.exc)), collect(keys(prepSys_dic[:Exc]))))
 	anyM.graInfo = graInfo(anyM) # re-create graph object, because objects might have been removed
 	#endregion
 
 	#region # * create technology related variables and constraints
 
     # creates dictionary that assigns combination of superordinate dispatch timestep and dispatch level to dispatch timesteps
-	allTrackStDis_arr = anyM.parts.tech |> (z -> filter(y -> !isnothing(y),map(x -> z[x].stTrack,collect(keys(anyM.parts.tech)))))
-    allLvlTsDis_arr = convert(Vector{Int64},unique(vcat(getfield.(values(anyM.cInfo),:tsDis),allTrackStDis_arr)))
-	ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1],anyM.sets[:Ts],false,x[2]) for x in Iterators.product(anyM.supTs.step,allLvlTsDis_arr))
+	allTrackStDis_arr = anyM.parts.tech |> (z -> filter(y -> !isnothing(y), map(x -> z[x].stTrack, collect(keys(anyM.parts.tech)))))
+    allLvlTsDis_arr = convert(Vector{Int64}, unique(vcat(getfield.(values(anyM.cInfo), :tsDis), allTrackStDis_arr)))
+	ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1], anyM.sets[:Ts], false, x[2]) for x in Iterators.product(anyM.supTs.step, allLvlTsDis_arr))
 	
 	# creates dictionary that assigns superordinate dispatch time-step to each dispatch time-step
 	yTs_dic = Dict{Int,Int}()
 	for x in collect(ts_dic), y in x[2] yTs_dic[y] = x[1][1] end
 
     # creates dictionary that assigns combination of expansion region and dispatch level to dispatch region
-    allLvlR_arr = union(getindex.(getfield.(getfield.(values(anyM.parts.tech),:balLvl),:exp),2),map(x -> x.rDis,values(anyM.cInfo)))
-	if anyM.options.createVI.bal push!(allLvlR_arr,0) end
+    allLvlR_arr = union(getindex.(getfield.(getfield.(values(anyM.parts.tech), :balLvl), :exp), 2), map(x -> x.rDis, values(anyM.cInfo)))
+	if anyM.options.createVI.bal push!(allLvlR_arr, 0) end
 
-    allRExp_arr = union([getfield.(getNodesLvl(anyM.sets[:R],x),:idx) for x in allLvlR_arr]...)
-    r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl <= x[2] ? getDescendants(x[1], anyM.sets[:R],false,x[2]) : getAncestors(x[1],anyM.sets[:R],:int,x[2])[end]) |> (z -> typeof(z) <: Array ? z : [z]) for x in Iterators.product(allRExp_arr,allLvlR_arr))
+    allRExp_arr = union([getfield.(getNodesLvl(anyM.sets[:R], x), :idx) for x in allLvlR_arr]...)
+    r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl <= x[2] ? getDescendants(x[1], anyM.sets[:R], false, x[2]) : getAncestors(x[1], anyM.sets[:R], :int, x[2])[end]) |> (z -> typeof(z) <: Array ? z : [z]) for x in Iterators.product(allRExp_arr, allLvlR_arr))
 
-    produceMessage(anyM.options,anyM.report, 3," - Determined dimension of expansion and capacity variables for technologies")
+    produceMessage(anyM.options, anyM.report, 3," - Determined dimension of expansion and capacity variables for technologies")
 
     # constraints for technologies are prepared in threaded loop and stored in an array of dictionaries
 	techSym_arr = collect(keys(anyM.parts.tech))	
-	techCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(techSym_arr))
+	techCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef, length(techSym_arr))
 	tech_itr = collect(enumerate(techSym_arr))
 
 	@threads for (idx,tSym) in tech_itr
-		techCnsDic_arr[idx] = createTech!(sysInt(tSym,anyM.sets[:Te]),anyM.parts.tech[tSym],prepSys_dic[:Te][tSym],copy(parDef_dic),ts_dic,yTs_dic,r_dic,anyM)
+		techCnsDic_arr[idx] = createTech!(sysInt(tSym, anyM.sets[:Te]), anyM.parts.tech[tSym], prepSys_dic[:Te][tSym], copy(parDef_dic), ts_dic, yTs_dic, r_dic, anyM)
 	end
 
 	# already return if purpose was only computation of design factors
 	if anyM.options.onlyDesFac return anyM end
 
 	# connect retrofitting variables from the different technologies
-	foreach(x -> createRetroConst!(x,techCnsDic_arr,tech_itr,anyM),[:Conv, :StIn, :StOut, :StSize])
+	foreach(x -> createRetroConst!(x, techCnsDic_arr, tech_itr, anyM), [:Conv, :StIn, :StOut, :StSize])
 
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
     for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
         if !isempty(cnsDic[cnsSym].data)
-			anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel,anyM.options.holdFixed)
+			anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym], anyM.optModel, anyM.options.holdFixed)
 		end
 	end
 
-    produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all technologies")
+    produceMessage(anyM.options, anyM.report, 1," - Created variables and constraints for all technologies")
 
 	#endregion
 
@@ -93,42 +93,42 @@ function createOptModel!(anyM::anyModel)
 
 	# constraints for exchange are prepared in threaded loop and stored in an array of dictionaries as well
 	excSym_arr = collect(keys(anyM.parts.exc))
-	excCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef,length(excSym_arr))
-	excDir_arr = map(x -> sysInt(x,anyM.sets[:Exc]), filter(z -> anyM.parts.exc[z].dir, excSym_arr))
+	excCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef, length(excSym_arr))
+	excDir_arr = map(x -> sysInt(x, anyM.sets[:Exc]), filter(z -> anyM.parts.exc[z].dir, excSym_arr))
 	exc_itr = collect(enumerate(excSym_arr))
 
 	@threads for (idx,eSym) in exc_itr
-		excCnsDic_arr[idx] = createExc!(sysInt(eSym,anyM.sets[:Exc]),anyM.parts.exc[eSym],prepSys_dic[:Exc][eSym],parDef_dic,ts_dic,r_dic,excDir_arr,anyM)
+		excCnsDic_arr[idx] = createExc!(sysInt(eSym, anyM.sets[:Exc]), anyM.parts.exc[eSym], prepSys_dic[:Exc][eSym], parDef_dic, ts_dic, r_dic, excDir_arr, anyM)
 	end
 
 	# connect retrofitting variables from the different exchange
-	createRetroConst!(:Exc,excCnsDic_arr,exc_itr,anyM,excDir_arr)
+	createRetroConst!(:Exc, excCnsDic_arr, exc_itr, anyM, excDir_arr)
 
 	# loops over array of dictionary with constraint container for each exchange to create actual jump constraints
 	for (idx,cnsDic) in enumerate(excCnsDic_arr), cnsSym in keys(cnsDic)
-		anyM.parts.exc[excSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym],anyM.optModel,anyM.options.holdFixed)
+		anyM.parts.exc[excSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym], anyM.optModel, anyM.options.holdFixed)
 	end
 
-	produceMessage(anyM.options,anyM.report, 1," - Created variables and constraints for all exchange")
+	produceMessage(anyM.options, anyM.report, 1," - Created variables and constraints for all exchange")
 
 	#endregion
 
 	#region # * create variables and constraints for trade, the energy balance and costs
 	
 	if isempty(anyM.subPro) || anyM.subPro != (0,0) || (anyM.subPro == (0,0) && anyM.options.createVI.bal)
-		createTradeVarCns!(anyM.parts.bal,ts_dic,anyM)
-		createEnergyBal!(techSym_arr,ts_dic,anyM)
+		createTradeVarCns!(anyM.parts.bal, ts_dic, anyM)
+		createEnergyBal!(techSym_arr, ts_dic, anyM)
 	end
 
 	if :capaDem in keys(anyM.parts.bal.par) && (isempty(anyM.subPro) || anyM.subPro == (0,0))
-		createCapaBal!(r_dic,anyM)
+		createCapaBal!(r_dic, anyM)
 		if :capaBal in keys(anyM.parts.bal.cns) createExpShareCns!(anyM) end
 	end
 	
-	createLimitCns!(anyM.parts.lim,anyM)
-	createCost!(anyM.parts.cost,anyM)
+	createLimitCns!(anyM.parts.lim, anyM)
+	createCost!(anyM.parts.cost, anyM)
 
 	#endregion
 
-	produceMessage(anyM.options,anyM.report, 1," - Completed model creation")
+	produceMessage(anyM.options, anyM.report, 1," - Completed model creation")
 end

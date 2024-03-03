@@ -5,12 +5,11 @@ module AnyMOD
 
     using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles, YAML, CategoricalArrays, Plotly
     using MathOptInterface, Reexport, Statistics, SparseArrays, Suppressor
-    @reexport using DataFrames, JuMP, Dates, Suppressor
+    @reexport using DataFrames, JuMP, Dates, Suppressor, Distributed, ParallelDataTransfer
 
     include("objects.jl")
     include("tools.jl")
     include("modelCreation.jl")
-    include("decomposition.jl")
     
     include("optModel/technology.jl")
     include("optModel/exchange.jl")
@@ -25,15 +24,21 @@ module AnyMOD
     include("dataHandling/tree.jl")
     include("dataHandling/util.jl")
 
-    export anyModel, initializeModel, createOptModel!, setObjective!
-    export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML, convertYAML2GEXF
-    export plotTree, plotSankeyDiagram, plotNetworkGraph, moveNode!, produceMessage, produceMessageShort
-    export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic!
+    include("decomposition/objects.jl")
+    include("decomposition/algorithm.jl")
+    include("decomposition/refinements.jl")
 
-    export evaluateHeu, getFeasResult, writeFixToFiles, exportDesignFactors!
-    export resData, runSub, runTop, deleteCuts!, getConvTol
-    export prepareMod!, heuristicSolve, writeResult, computeFeas, computePrx2Aux
-    export stabObj, centerStab!, filterStabVar, adjustDynPar!, runTopWithoutStab, adaptNearOpt! 
+
+    # general functions and objects
+    export anyModel, initializeModel, createOptModel!, setObjective! # basic model functions
+    export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML, convertYAML2GEXF # write results
+    export plotTree, plotSankeyDiagram, plotNetworkGraph, moveNode!, produceMessage, produceMessageShort # reporting
+    export intCol, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic! # low-level data management
+    export evaluateHeu, getFeasResult, writeFixToFiles, exportDesignFactors! # functions for heuristic pre-solves
+    
+    # stochastic optimization
+    export bendersSetup, stabSetup, nearOptSetup, bendersObj, resData # objects
+    export buildSub, runSub, initializeStab!, prepareMod! # low-level processing
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
     function __init__()
