@@ -291,13 +291,12 @@ function runTop(benders_obj::bendersObj)
 	# create objects to store results
 	resData_obj = resData()
 	stabVar_obj = resData()
-
 	
 	if !isempty(benders_obj.cuts) 
 		# save values of previous cut for proximal method variation 2
 		benders_obj.prevCuts = !isnothing(stab_obj) && stab_obj.method[stab_obj.actMet] == :prx2 ? copy(benders_obj.cuts) : Array{Pair{Tuple{Int,Int},Union{resData}},1}() 
 		# add cuts and reset collecting array
-		addCuts!(benders_obj.top, benders_obj.cuts, benders_obj.itr.cnt.itr) 
+		addCuts!(benders_obj.top, benders_obj.cuts, benders_obj.itr.cnt.i) 
 		benders_obj.cuts = Array{Pair{Tuple{Int,Int},Union{resData}},1}()
 	end
 	# solve model
@@ -423,9 +422,23 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 
 	# write results into files (only used once optimum is obtained)
 	if wrtRes_boo
+		# write common results
 		reportResults(:summary, sub_m)
 		reportResults(:cost, sub_m)
 		reportResults(:exchange, sub_m)
+		reportResults(:stLvl, sub_m)
+
+		# write storage levels in case of reduced foresight
+		for tSym in (:h2Cavern,:reservoir,:pumpedStorage,:redoxBattery,:lithiumBattery)
+			stLvl_df = DataFrame(Ts_dis = Int[], scr = Int[], lvl = Float64[])
+			for x in collect(sub_tup)
+				append!(stLvl_df,combine(x -> (lvl = sum(value.(x.var)),), groupby(sub_dic[x].parts.tech[tSym].var[:stLvl],[:Ts_dis,:scr])))
+			end
+			stLvl_df = unstack(sort(unique(stLvl_df),:Ts_dis),:scr,:lvl)
+			CSV.write(b * "results/stLvl_" * string(tSym) * "_" * suffix_str * ".csv",stLvl_df)
+		end
+
+
 	end
 
 	#endregion
@@ -888,10 +901,10 @@ function writeCapaRes(top_m::anyModel, sub_dic::Dict{Tuple{Int64, Int64}, anyMod
 end
 
 # report on benders iteration
-function reportBenders(benders_obj::bendersObj)
+function reportBenders!(benders_obj::bendersObj)
 
 	itr_obj = benders_obj.cost
-	nearOpt_obj = benders_obj.nearOpt_boo
+	nearOpt_obj = benders_obj.nearOpt
 
 	# computes optimality gap for cost minimization and feasibility gap for near-optimal
 	gap_fl = nearOpt_obj.cnt > 0 ? abs(benders_obj.best.objVal / bendersObj.itr.costOpt) : (1 - itr_obj.costEst / benders_obj.best.objVal)
@@ -916,14 +929,14 @@ function reportBenders(benders_obj::bendersObj)
 	end
 
 	# add info about near-optimal
-	if !isempty(benders_obj.nearOpt)
+	if !isnothing(nearOpt_obj.setup)
 		push!(etr_arr, :objective => nearOpt_obj.cnt > 0 ? nearOpt_obj.setup.obj[nearOpt_obj.cnt][1] : "cost") 
 	end
 
 	push!(itrReport_df, (;zip(getindex.(etr_arr, 1), getindex.(etr_arr, 2))...))
 	if i%reportFreq == 0 
-		CSV.write(benders_obj.result.dir * "/itrBenders_$(replace(top_m.options.objName, "topModel" => "")).csv", benders_obj.result.itr)
-		if !isempty(benders_obj.nearOpt) CSV.write(benders_obj.result.dir * "/nearOptBenders_$(replace(top_m.options.objName, "topModel" => "")).csv", benders_obj.result.near) end
+		CSV.write(benders_obj.report.mod.options.outDir * "/iterationCuttingPlane_$(benders_obj.info.name).csv", benders_obj.report.itr)
+		if !isnothing(nearOpt_obj.setup) CSV.write(benders_obj.report.mod.options.outDir * "/nearOptSol_$(benders_obj.info.name).csv", benders_obj.report.nearOpt) end
 	end
 
 end

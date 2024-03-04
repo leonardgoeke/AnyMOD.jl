@@ -6,12 +6,12 @@ b = "C:/Users/pacop/Desktop/git/EuSysMod/"
 
 # ! options for general algorithm
 
-conSub_tup = (rng = [1e-2,1e-8], int = :log, crs = false) # range and interpolation method for convergence criteria of subproblems
+conSub_tup = (rng = [1e-8,1e-8], int = :log, crs = false) # range and interpolation method for convergence criteria of subproblems
 numOpt_tup = (dbInf = true, numFoc = 3, addVio = 1e4) # options for handling numeric problems
 distr_boo = true;
 
-# target gap, threshold for serious step, number of iteration after unused cut is deleted, 2x see above, number of iterations report is written, time-limit for algorithm, distributed computing?
-bendersSetup_obj = bendersSetup(0.001, 0.0, 20, conSub_tup, numOpt_tup, (bal = false, st = false), 100, 120.0, distr_boo)
+# target gap, threshold for serious step, number of iteration after unused cut is deleted, 2x see above, number of iterations report is written, time-limit for algorithm, distributed computing?, # number of threads, optimizer
+algSetup_obj = algSetup(0.001, 0.0, 20, conSub_tup, numOpt_tup, (bal = false, st = false), 100, 120.0, distr_boo, 4, Gurobi.Optimizer)
 
 # ! options for stabilization
 
@@ -49,8 +49,8 @@ nearOptSetup_obj = nearOptSetup(0.1, 0.05, 0.05, 0.0001, 20, nearOptOpj_tup) # c
 
 # ! general problem settings
 name_str ="_test"
-# name, temporal resolution, level of foresight, superordinate dispatch level, length of steps between investment years, optimizer, number of threads
-genSetup_ntup = (name = name_str, frs = 0, supTsLvl = 1, shortExp = 10, threads = 4, opt = Gurobi.Optimizer) 
+# name, temporal resolution, level of foresight, superordinate dispatch level, length of steps between investment years
+info_ntup = (name = name_str, frs = 0, supTsLvl = 1, shortExp = 10) 
 
 # ! input folders
 dir_str = b
@@ -87,14 +87,14 @@ if distr_boo
 		using AnyMOD, Gurobi
 		runSubDist(w_int::Int64, resData_obj::resData, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, wrtRes_boo::Bool=false) = Distributed.@spawnat w_int runSub(sub_m, resData_obj, sol_sym, optTol_fl, crsOver_boo, wrtRes_boo)
 	end
-	passobj(1, workers(), [:genSetup_ntup, :inputFolder_ntup, :scale_dic, :bendersSetup_obj])
+	passobj(1, workers(), [:info_ntup, :inputFolder_ntup, :scale_dic, :algSetup_obj])
 
 else
 	runSubDist = x -> nothing
 end
 
 # create benders object
-benders_obj = bendersObj(genSetup_ntup, inputFolder_ntup, scale_dic, bendersSetup_obj, stabSetup_obj, runSubDist, nearOptSetup_obj)
+benders_obj = bendersObj(info_ntup, inputFolder_ntup, scale_dic, algSetup_obj, stabSetup_obj, runSubDist, nearOptSetup_obj)
 
 #endregion
 
@@ -102,7 +102,7 @@ benders_obj = bendersObj(genSetup_ntup, inputFolder_ntup, scale_dic, bendersSetu
 
 while true
 
-	produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Started iteration $(benders_obj.itr.cnt.itr)", testErr = false, printErr = false)
+	produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Started iteration $(benders_obj.itr.cnt.i)", testErr = false, printErr = false)
 
 	#region # * solve top-problem and (start) sub-problems
 
@@ -149,7 +149,7 @@ while true
 		itr_obj = benders_obj.itr
 
 		# ! update current best
-		expStep_fl = itr_obj.cnt.nOpt == 0 ? (itr_obj.objCurBest - estCost_fl) : 0.0 # expected step size
+		
 		
 		# check if solution improved (comparision of total costs for costs optimization, costs of sub-problem for near optimal -> target is same costs as in optimal case)
 		if (itr_obj.cnt.nearOpt == 0 ? (topCost_fl + subCost_fl) : (subCost_fl - (estCost_fl - topCost_fl))) < best_obj.objVal - expStep_fl * benders_obj.algOpt.srsThr
@@ -165,13 +165,19 @@ while true
 
 	#endregion
 
+	# TODO write out what part of results are actually needed
+
 	#region # * adjust refinements
 	
 	# ! delete cuts that not were binding for the defined number of iterations
-	deleteCuts!(top_m, nOpt_int == 0 ? delCut : nearOpt_ntup.cutDel,i)
+	deleteCuts!(benders_obj)
 	
 	# ! adapt center and parameter for stabilization
 	if !isempty(meth_tup)
+
+		itr_obj = benders_obj.itr
+
+		expStep_fl = itr_obj.cnt.nOpt == 0 ? (itr_obj.objCurBest - estCost_fl) : 0.0 # expected step size
 		
 		# determine serious step 
 		adjCtr_boo = false
@@ -203,7 +209,7 @@ while true
 	#endregion
 
 	# report on iteration
-	reportBenders(benders_obj, nOpt_int)
+	reportBenders!(benders_obj, nOpt_int)
 	
 	#region # * check convergence and adapt stabilization	
 	
@@ -269,21 +275,36 @@ end
 
 #region # * write results
 
-# write dataframe for reporting on iteration
-itrReport_df[!,:case] .= suffix_str
-CSV.write(modOpt_tup.resultDir * "/iterationCuttingPlane_$(replace(top_m.options.objName,"topModel" => "")).csv",  itrReport_df)
+function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function)
 
-if !isempty(nearOpt_ntup)
-	CSV.write(modOpt_tup.resultDir * "/nearOptSol_$(replace(top_m.options.objName,"topModel" => "")).csv",  nearOpt_df)
+	# reporting on iteration
+	benders_obj.report.itr[!,:case] .= benders_obj.info.name
+	CSV.write(benders_obj.report.mod.options.outDir * "/iterationCuttingPlane_$(benders_obj.info.name).csv", benders_obj.report.itr)
+
+	# reporting on near-optimal
+	if !isnothing(benders_obj.nearOpt.setup)
+		CSV.write(benders_obj.report.mod.options.outDir * "/nearOptSol_$(benders_obj.info.name).csv", benders_obj.report.nearOpt)
+	end
+
+	# run top-problem and sub-problems with optimal values fixed and write results
+	@suppress computeFeas(benders_obj.top, benders_obj.best.capa, 1e-5, wrtRes = true)
+
+	if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
+
+	for (id,s) in enumerate(collect(keys(benders_obj.sub)))
+		if benders_obj.algOpt.dist # distributed case
+			futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), :barrier, 1e-8, false, true)
+		else # non-distributed case
+			runSub(benders_obj.sub[s], copy(startSol_obj), :barrier, 1e-8, false, true)
+		end
+	end
+
+	# TODO add writing of storage levels and time-series (but optional)
+	
 end
 
-# run top-problem with optimal values fixed
-@suppress computeFeas(top_m,best_obj.capa,1e-5,wrtRes = true)
+#endregion
 
-# run top-problem and sub-problems with optimal values fixed
-for x in collect(sub_tup)
-	runSub(sub_dic[x],copy(best_obj),:barrier,1e-8,false,true)
-end
 
 # write storage levels
 for tSym in (:h2Cavern,:reservoir,:pumpedStorage,:redoxBattery,:lithiumBattery)
@@ -294,10 +315,5 @@ for tSym in (:h2Cavern,:reservoir,:pumpedStorage,:redoxBattery,:lithiumBattery)
 	stLvl_df = unstack(sort(unique(stLvl_df),:Ts_dis),:scr,:lvl)
 	CSV.write(b * "results/stLvl_" * string(tSym) * "_" * suffix_str * ".csv",stLvl_df)
 end
-
-#endregion
-
-
-
 
 

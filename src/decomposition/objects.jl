@@ -2,7 +2,7 @@
 #region # * algorithm setup
 
 # setup for benders computation
-struct bendersSetup
+struct algSetup
 	gap::Float64 # target gap
 	srsThr::Float64 # threshold for serious step
 	delCut::Int # number of iterations since cut creation or last binding before cut is deleted
@@ -12,6 +12,8 @@ struct bendersSetup
 	reportFreq::Int # number of iterations report files are written
 	timeLim::Float64 # tuple with objectives
 	dist::Bool # true if distributed computing used
+	thread::Int
+	opt::DataType
 end
 
 # setup for stabilization
@@ -28,7 +30,7 @@ struct nearOptSetup
 	lssThres::Float64 # lss threshold to keep solution
 	optThres::Float64 # cost threshold for optimization
 	feasGap::Float64 # target feasibility gap
-	cutDel::Int64 # number of iterations that unused cuts are deleted during near-opt
+	delCut::Int64 # number of iterations that unused cuts are deleted during near-opt
 	obj::NTuple #  tuple with objectives
 end
 
@@ -102,9 +104,9 @@ end
 # monitoring iteration 
 mutable struct itrStatus
 	best::resData
-	cnt::NamedTuple{(:itr,:nOpt,:srs,:null), Tuple{Int,Int,Int,Int}}
+	cnt::NamedTuple{(:i,:nOpt,:srs,:null), Tuple{Int,Int,Int,Int}}
 	gap::Float64
-	obj::NamedTuple{(:curBest,:curObj,:costOpt,:costEst,:curAct),Tuple{Float64,Float64,Float64,Float64,Float64}} # results current best solution, current solution, global cost optimum, estimated cost current iteration, acutal cost current iteration 
+	obj::NamedTuple{(:curBest,:curObj,:costOpt,:costEst,:costAct),Tuple{Float64,Float64,Float64,Float64,Float64}} # results current best solution, current solution, global cost optimum, estimated cost current iteration, acutal cost current iteration 
 end
 
 
@@ -116,16 +118,18 @@ mutable struct bendersObj
 	prevCuts::Array{Pair{Tuple{Int,Int},Union{resData}},1}
 	itr::itrStatus
 	stab::Union{Nothing,stabObj}
-    algOpt::bendersSetup
-	nearOpt::NamedTuple{(:cnt,:objVal,:setup), Tuple{Int,Float64,Union{Nothing,nearOptSetup}}}
-	report::NamedTuple{(:itr, :nearOpt,:mod), Tuple{DataFrame, DataFrame, anyModel}}
+    algOpt::algSetup
+	nearOpt::NamedTuple{(:cnt,:setup), Tuple{Int,Union{Nothing,nearOptSetup}}}
+	info::NamedTuple{(:name,:frs,:supTsLvl, :shortExp),Tuple{String,Int64,Int64,Int64}}
+	report::NamedTuple{(:itr,:nearOpt,:mod),Tuple{DataFrame,DataFrame,anyModel}}
 	
-	function bendersObj(genSetup_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp, :threads, :opt), Tuple{String, Int64, Int64, Int64, Int64, DataType}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, bendersSetup_obj::bendersSetup, stabSetup_obj::stabSetup, runSubDist::Function, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
+	function bendersObj(info_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp, :threads, :opt), Tuple{String, Int64, Int64, Int64, Int64, DataType}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
 
         #region # * checks and initialization
 
         benders_obj = new()
-        benders_obj.algOpt = bendersSetup_obj
+		benders_obj.info = info_ntup
+        benders_obj.algOpt = algSetup_obj
 		benders_obj.nearOpt = (cnt = 0, objVal = 0.0, setup = nearOptSetup_obj)
 
 		if !isnothing(nearOptSetup_obj) && any(getindex.(stabSetup_obj.method, 1) .!= :qtr) error("Near-optimal can only be paired with quadratic stabilization!") end
@@ -139,7 +143,7 @@ mutable struct bendersObj
         nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], capacity_variable = Symbol[], capacity_value = Float64[], cost = Float64[], lss = Float64[])
 
         # empty model just for reporting
-		report_m = @suppress anyModel(String[], inputFolder_ntup.results, objName = "decomposition" * genSetup_ntup.name) 
+		report_m = @suppress anyModel(String[], inputFolder_ntup.results, objName = "decomposition" * info_ntup.name) 
 
 		# add column for active stabilization method
 		if !isempty(stabSetup_obj.method)
@@ -159,7 +163,7 @@ mutable struct bendersObj
 		# start creating top-problem and extract info on sub-problem structure
 		produceMessage(report_m.options,report_m.report, 1," - Started creation of top-problem", testErr = false, printErr = false)
 
-		top_m = @suppress anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel" * genSetup_ntup.name, lvlFrs = genSetup_ntup.frs, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, createVI = bendersSetup_obj.useVI)
+		top_m = @suppress anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel" * info_ntup.name, lvlFrs = info_ntup.frs, supTsLvl = info_ntup.supTsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, createVI = algSetup_obj.useVI)
 		sub_tup = tuple([(x.Ts_dis, x.scr) for x in eachrow(top_m.parts.obj.par[:scrProb].data)]...) # get all time-step/scenario combinations
 
 		# creation of sub-problems
@@ -170,16 +174,16 @@ mutable struct bendersObj
 			if benders_obj.algOpt.dist # distributed case
 				benders_obj.sub[s] = @async @everywhere id + 1 begin
 					id_int = myid() - 1
-					sub_m = buildSub(id_int, genSetup_ntup, inputFolder_ntup, scale_dic, bendersSetup_obj)
+					sub_m = buildSub(id_int, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
 				end
 			else # non-distributed case
-				benders_obj.sub[s] = buildSub(id, genSetup_ntup, inputFolder_ntup, scale_dic, bendersSetup_obj)
+				benders_obj.sub[s] = buildSub(id, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
 			end
 		end
 		
 		# finish creation of top-problems
 		top_m.subPro = tuple(0, 0)
-		@suppress prepareMod!(top_m, genSetup_ntup.opt, genSetup_ntup.threads)
+		@suppress prepareMod!(top_m, benders_obj.algOpt.opt, benders_obj.algOpt.threads)
 
 		# create separate variables for costs of subproblems
 		top_m.parts.obj.var[:cut] = map(y -> map(x -> y == 1 ? sub_tup[x][1] : sub_tup[x][2], 1:length(sub_tup)), 1:2) |> (z -> createVar(DataFrame(Ts_dis = z[1], scr = z[2]), "subCut", NaN, top_m.optModel, top_m.lock, top_m.sets, scaFac = 1e2))
@@ -195,9 +199,9 @@ mutable struct bendersObj
 
 		#region # * initialize stabilization
 
-		benders_obj.stab, curBest_obj = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, genSetup_ntup, scale_dic, runSubDist)
+		benders_obj.stab, curBest_obj = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
 
-		benders_obj.itr = itrStatus(curBest_obj, (itr = maximum(benders_obj.report.itr[!,:i]) + 1, nOpt = 0, srs = 0, null = 0), 1.0, (curBest = Inf, curObj = Inf, costOpt = Inf, costEst = Inf, curAct = Inf))
+		benders_obj.itr = itrStatus(curBest_obj, (itr = maximum(benders_obj.report.itr[!,:i]) + 1, nOpt = 0, srs = 0, null = 0), 1.0, (curBest = Inf, curObj = Inf, costOpt = Inf, costEst = Inf, costAct = Inf))
 
 		#endregion
 

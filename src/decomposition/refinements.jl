@@ -2,7 +2,7 @@
 #region # * stabilization
 
 # initialize stabilization when creating benders object, returns the stabilization object
-function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, genSetup_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp, :threads, :opt), Tuple{String, Int64, Int64, Int64, Int64, DataType}}, scale_dic::Dict{Symbol,NamedTuple}, runSubDist::Function)
+function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp, :threads, :opt), Tuple{String, Int64, Int64, Int64, Int64, DataType}}, scale_dic::Dict{Symbol,NamedTuple}, runSubDist::Function)
 
 	report_m = benders_obj.report.mod
 
@@ -14,12 +14,12 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 	
 		#region # * compute heuristic solution
 	
-		heuOpt_ntup = (inputDir = inputFolder_ntup.heu, resultDir = inputFolder_ntup.results, suffix = genSetup_ntup.name, supTsLvl = genSetup_ntup.supTsLvl, lvlFrs = genSetup_ntup.frs, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facHeu])
+		heuOpt_ntup = (inputDir = inputFolder_ntup.heu, resultDir = inputFolder_ntup.results, suffix = info_ntup.name, supTsLvl = info_ntup.supTsLvl, lvlFrs = info_ntup.frs, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facHeu])
 		
 		# ! get starting solution with heuristic solve or generic
 		if stabSetup_obj.ini.setup != :none
 			produceMessage(report_m.options,report_m.report, 1," - Started heuristic pre-solve for starting solution", testErr = false, printErr = false)
-			heu_m, startSol_obj =  @suppress heuristicSolve(heuOpt_ntup, 1.0, genSetup_ntup.threads, genSetup_ntup.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = true);
+			heu_m, startSol_obj =  @suppress heuristicSolve(heuOpt_ntup, 1.0, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = true);
 			lowBd_fl = 0.0
 		else
 			@suppress optimize!(benders_obj.top.optModel)
@@ -614,13 +614,18 @@ end
 #region # * other refinements
 
 # ! delete cuts that have not been binding for a while
-function deleteCuts!(top_m::anyModel, delCut_int::Int, i::Int)
+function deleteCuts!(benders_obj::bendersObj)
+	
+	top_m = benders_obj.top
+	# numer of iterations after which unused cuts are delted
+	delCut_int = benders_obj.itr.cnt.nOpt == 0 ? benders_obj.algOpt.delCut : benders_obj.nearOpt.setup.delCut
+	
 	if delCut_int < Inf
 		# tracking latest binding iteration for cuts
 		top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> abs(value(x.cns) / normalized_rhs(x.cns) - 1) < 1e-3 ? i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
 		# delete cuts that were not binding long enough
 		delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < i, top_m.parts.obj.cns[:bendersCuts])[!,:cns])
-		filter!(x -> (x.actItr + delCut_int > i), top_m.parts.obj.cns[:bendersCuts])
+		filter!(x -> (x.actItr + delCut_int > benders_obj.itr.cnt.i), top_m.parts.obj.cns[:bendersCuts])
 	end
 end
 
