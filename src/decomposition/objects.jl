@@ -12,7 +12,7 @@ struct algSetup
 	reportFreq::Int # number of iterations report files are written
 	timeLim::Float64 # tuple with objectives
 	dist::Bool # true if distributed computing used
-	thread::Int
+	threads::Int
 	opt::DataType
 end
 
@@ -105,7 +105,7 @@ mutable struct itrStatus
 	best::resData
 	cnt::NamedTuple{(:i,:nOpt,:srs,:null), Tuple{Int,Int,Int,Int}}
 	gap::Float64
-	obj::NamedTuple{(:curBest,:curObj,:costOpt,:costEst,:costAct),Tuple{Float64,Float64,Float64,Float64,Float64}} # results current best solution, current solution, global cost optimum, estimated cost current iteration, acutal cost current iteration 
+	res::Dict{Symbol,Float64} # store different results here, potential keys are: 
 end
 
 
@@ -122,14 +122,14 @@ mutable struct bendersObj
 	info::NamedTuple{(:name,:frs,:supTsLvl, :shortExp),Tuple{String,Int64,Int64,Int64}}
 	report::NamedTuple{(:itr,:nearOpt,:mod),Tuple{DataFrame,DataFrame,anyModel}}
 	
-	function bendersObj(info_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp, :threads, :opt), Tuple{String, Int64, Int64, Int64, Int64, DataType}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
+	function bendersObj(info_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
 
         #region # * checks and initialization
 
         benders_obj = new()
 		benders_obj.info = info_ntup
         benders_obj.algOpt = algSetup_obj
-		benders_obj.nearOpt = (cnt = 0, objVal = 0.0, setup = nearOptSetup_obj)
+		benders_obj.nearOpt = (cnt = 0, setup = nearOptSetup_obj)
 
 		if !isnothing(nearOptSetup_obj) && any(getindex.(stabSetup_obj.method, 1) .!= :qtr) error("Near-optimal can only be paired with quadratic stabilization!") end
 	
@@ -200,11 +200,10 @@ mutable struct bendersObj
 
 		benders_obj.stab, curBest_obj = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
 
-		benders_obj.itr = itrStatus(curBest_obj, (itr = maximum(benders_obj.report.itr[!,:i]) + 1, nOpt = 0, srs = 0, null = 0), 1.0, (curBest = Inf, curObj = Inf, costOpt = Inf, costEst = Inf, costAct = Inf))
+		benders_obj.itr = itrStatus(curBest_obj, (i = maximum(benders_obj.report.itr[!,:i]) + 1, nOpt = 0, srs = 0, null = 0), 1.0, (curBest = Inf, curObj = Inf, costOpt = Inf, costEst = Inf, costAct = Inf))
 
 		#endregion
 
-		
 		return benders_obj
 	end
 end

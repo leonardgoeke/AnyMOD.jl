@@ -263,12 +263,12 @@ end
 #region # * basic benders algorithm
 
 # build sub-problems
-function buildSub(id::Int, genSetup_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp, :threads, :opt), Tuple{String, Int64, Int64, Int64, Int64, DataType}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
+function buildSub(id::Int, genSetup_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
 	# create sub-problems
 	sub_m = @suppress anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "subModel_" * string(id) * genSetup_ntup.name, lvlFrs = genSetup_ntup.frs, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.solOpt.dbInf, reportLvl = 1)
 	sub_m.subPro = tuple([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)]...)[id]
-	@suppress prepareMod!(sub_m, genSetup_ntup.opt, genSetup_ntup.threads)
-	set_optimizer_attribute(sub_m.optModel, "Threads", genSetup_ntup.threads)
+	@suppress prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.threads)
+	set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
 	return sub_m
 end
 
@@ -286,12 +286,10 @@ end
 # ! run top-problem
 function runTop(benders_obj::bendersObj)
 
+	#region # * create cuts
+
 	stab_obj = benders_obj.stab
 
-	# create objects to store results
-	resData_obj = resData()
-	stabVar_obj = resData()
-	
 	if !isempty(benders_obj.cuts) 
 		# save values of previous cut for proximal method variation 2
 		benders_obj.prevCuts = !isnothing(stab_obj) && stab_obj.method[stab_obj.actMet] == :prx2 ? copy(benders_obj.cuts) : Array{Pair{Tuple{Int,Int},Union{resData}},1}() 
@@ -299,6 +297,15 @@ function runTop(benders_obj::bendersObj)
 		addCuts!(benders_obj.top, benders_obj.cuts, benders_obj.itr.cnt.i) 
 		benders_obj.cuts = Array{Pair{Tuple{Int,Int},Union{resData}},1}()
 	end
+
+	#endregion
+
+	#region # * solve problem
+
+	# create objects to store results
+	resData_obj = resData()
+	stabVar_obj = resData()
+
 	# solve model
 	@suppress begin
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
@@ -334,6 +341,10 @@ function runTop(benders_obj::bendersObj)
 	end
 	checkIIS(benders_obj.top)
 
+	#endregion
+
+	#region # * write results
+
 	# write technology capacites and level of capacity balance to benders object
 	resData_obj.capa, resData_obj.stLvl = writeResult(benders_obj.top, [:capa, :mustCapa, :stLvl]; rmvFix = true)
 	stabVar_obj.capa, stabVar_obj.stLvl = writeResult(benders_obj.top, [:capa, :exp, :stLvl]; rmvFix = true)
@@ -352,13 +363,17 @@ function runTop(benders_obj::bendersObj)
 	end
 	
 	# get costs(!) of top-problem
+	benders_obj.itr.res[]
 	topCost_fl = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var]))
 	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var])
 
 	# get object for near-optimal case
 	nearOptObj_fl =  benders_obj.itr.cnt.nearOpt != 0 ? objective_value(top_m.optModel) : Inf
 
-	return resData_obj, stabVar_obj, topCost_fl, estCost_fl, nearOptObj_fl, levelDual_fl
+	
+	#endregion
+
+	return resData_obj, stabVar_obj
 end
 
 # ! run sub-problem
@@ -426,8 +441,9 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 		reportResults(:summary, sub_m)
 		reportResults(:cost, sub_m)
 		reportResults(:exchange, sub_m)
-		reportResults(:stLvl, sub_m)
+		#reportResults(:stLvl, sub_m)
 
+		#=
 		# write storage levels in case of reduced foresight
 		for tSym in (:h2Cavern,:reservoir,:pumpedStorage,:redoxBattery,:lithiumBattery)
 			stLvl_df = DataFrame(Ts_dis = Int[], scr = Int[], lvl = Float64[])
@@ -437,6 +453,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 			stLvl_df = unstack(sort(unique(stLvl_df),:Ts_dis),:scr,:lvl)
 			CSV.write(b * "results/stLvl_" * string(tSym) * "_" * suffix_str * ".csv",stLvl_df)
 		end
+		=#
 
 
 	end

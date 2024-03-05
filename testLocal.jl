@@ -165,8 +165,6 @@ while true
 
 	#endregion
 
-	# TODO write out what part of results are actually needed
-
 	#region # * adjust refinements
 	
 	# ! delete cuts that not were binding for the defined number of iterations

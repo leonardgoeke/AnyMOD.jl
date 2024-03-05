@@ -37,7 +37,7 @@ module AnyMOD
     export evaluateHeu, getFeasResult, writeFixToFiles, exportDesignFactors! # functions for heuristic pre-solves
     
     # stochastic optimization
-    export bendersSetup, stabSetup, nearOptSetup, bendersObj, resData # objects
+    export algSetup, stabSetup, nearOptSetup, bendersObj, resData # objects
     export buildSub, initializeStab!, prepareMod!, runSub, runTop # low-level processing
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
