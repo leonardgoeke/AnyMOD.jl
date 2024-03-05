@@ -70,7 +70,6 @@ mutable struct stabObj
 	dynPar::Array{Union{Dict,Float64},1} # array of dynamic parameters for each method
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
-	helper_var::VariableRef
 	
 	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}}, resData_obj::resData, lowBd_fl::Float64, top_m::anyModel)
 		stab_obj = new()
