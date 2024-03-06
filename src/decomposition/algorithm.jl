@@ -1041,6 +1041,8 @@ end
 # report on benders iteration
 function reportBenders!(benders_obj::bendersObj)
 
+	report_m = benders_obj.report.mod
+
 	itr_obj = benders_obj.cost
 	nearOpt_obj = benders_obj.nearOpt
 

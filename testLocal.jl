@@ -6,12 +6,8 @@ b = "C:/Users/pacop/Desktop/git/EuSysMod/"
 
 # ! options for general algorithm
 
-conSub_tup = (rng = [1e-8,1e-8], int = :log, crs = false) # range and interpolation method for convergence criteria of subproblems
-numOpt_tup = (dbInf = true, numFoc = 3, addVio = 1e4) # options for handling numeric problems
-distr_boo = true;
-
-# target gap, number of iteration after unused cut is deleted, 2x see above, number of iterations report is written, time-limit for algorithm, distributed computing?, # number of threads, optimizer
-algSetup_obj = algSetup(0.001, 20, conSub_tup, numOpt_tup, (bal = false, st = false), 100, 120.0, distr_boo, 4, Gurobi.Optimizer)
+# target gap, number of iteration after unused cut is deleted, valid inequalities, number of iterations report is written, time-limit for algorithm, distributed computing?, # number of threads, optimizer
+algSetup_obj = algSetup(0.001, 20, (bal = false, st = false), 100, 120.0, true, 4, Gurobi.Optimizer)
 
 # ! options for stabilization
 
@@ -25,11 +21,9 @@ else
 	meth_tup = tuple()
 end
 
-swt_ntup = (itr = 6, avgImp = 0.2, itrAvg = 4) # rule to switch between different methods
-weight_ntup = (capa = 1.0, capaStSize = 1e-1, stLvl = 1e-2) # weight of variables in stabilization (-> small value for variables with large numbers to equalize)
 iniStab_ntup = (setup = :none, det = true) # options to initialize stabilization, :none for first input will skip stabilization, other values control input folders, second input determines, if heuristic model is solved stochastically or not
 
-stabSetup_obj = stabSetup(meth_tup, 0.0, swt_ntup, weight_ntup, iniStab_ntup)
+stabSetup_obj = stabSetup(meth_tup, 0.0, iniStab_ntup)
 
 
 # ! options for near optimal
@@ -81,7 +75,7 @@ scale_dic[:facSub] = (capa = 1e0, capaStSize = 1e2, insCapa = 1e0, dispConv = 1e
 #region # * prepare iteration
 
 # initialize distributed computing
-if distr_boo 
+if algSetup_obj.dist 
 	addprocs(scr_int*2) 
 	@suppress @everywhere begin 
 		using AnyMOD, Gurobi

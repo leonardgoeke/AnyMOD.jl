@@ -5,23 +5,36 @@
 struct algSetup
 	gap::Float64 # target gap
 	delCut::Int # number of iterations since cut creation or last binding before cut is deleted
-	conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} # range and interpolation method for convergence criteria of subproblems
-	solOpt::NamedTuple{(:dbInf, :numFoc, :addVio), Tuple{Bool, Int64, Float64}} # options for solving top problem
 	useVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}} # use vaild inequalities
 	reportFreq::Int # number of iterations report files are written
 	timeLim::Float64 # tuple with objectives
 	dist::Bool # true if distributed computing used
 	threads::Int
 	opt::DataType
+	conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} # range and interpolation method for convergence criteria of subproblems
+	solOpt::NamedTuple{(:dbInf, :numFoc, :addVio), Tuple{Bool, Int64, Float64}} # options for solving top problem
+
+	function algSetup(gap_fl::Float64, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, threads_int::Int, opt_type::DataType, conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} = (rng = [1e-8,1e-8], int = :log, crs = false), solOpt::NamedTuple{(:dbInf, :numFoc, :addVio), Tuple{Bool, Int64, Float64}} = (dbInf = true, numFoc = 3, addVio = 1e4))
+		return new(gap_fl, delCut_int, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, threads_int, opt_type, conSub, solOpt)
+	end
 end
+
+# target gap, number of iteration after unused cut is deleted, valid inequalities, number of iterations report is written, time-limit for algorithm, distributed computing?, # number of threads, optimizer
+algSetup_obj = algSetup(0.001, 20, (bal = false, st = false), 100, 120.0, distr_boo, 4, Gurobi.Optimizer)
+
+
 
 # setup for stabilization
 struct stabSetup
 	method::Tuple # method(s) for stabilization
 	srsThr::Float64 # threshold for serious step
+	ini::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}} # rule for stabilization (:none will skip stabilization)
 	switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} # rule to switch between different methods
 	weight::NamedTuple{(:capa, :capaStSize, :stLvl), Tuple{Float64, Float64, Float64}} # weight of variables in stabilization
-	ini::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}} # rule for stabilization (:none will skip stabilization)
+	
+	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_ntup::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 6, avgImp = 0.2, itrAvg = 4), weight::NamedTuple{(:capa, :capaStSize, :stLvl), Tuple{Float64, Float64, Float64}} = (capa = 1.0, capaStSize = 1e-1, stLvl = 1e-2))
+		return new(method_tup, srsThr_fl, ini_ntup, switch, weight)
+	end
 end
 
 # setup of near-optimal computation
