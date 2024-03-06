@@ -6,9 +6,6 @@ b = "C:/Users/pacop/Desktop/git/EuSysMod/"
 
 # ! options for general algorithm
 
-conSub_tup = (rng = [1e-2,1e-8], int = :log, crs = false) # range and interpolation method for convergence criteria of subproblems
-numOpt_tup = (dbInf = true, numFoc = 3, addVio = 1e4) # options for handling numeric problems
-
 # target gap, threshold for serious step, number of iteration after unused cut is deleted, 2x see above, number of iterations report is written, time-limit for algorithm 
 bendersSetup_obj = bendersSetup(0.001, 0.0, 20, conSub, numOpt_tup, (bal = false, st = false), 100, 120.0)
 
