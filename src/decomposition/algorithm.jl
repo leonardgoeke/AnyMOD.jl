@@ -1080,7 +1080,6 @@ function reportBenders!(benders_obj::bendersObj)
 
 	if Dates.value(floor(now() - report_m.options.startTime,Dates.Minute(1))) > timeLim
 		produceMessage(report_m.options,report_m.report, 1," - Aborted due to time-limit!", testErr = false, printErr = false)
-		break
 	end
 
 end
