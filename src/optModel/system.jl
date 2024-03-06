@@ -39,7 +39,7 @@ function addRetrofitting!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,Named
 	retroPotSym_arr = Symbol.(replace.(string.(filter(x -> occursin("costRetro",string(x)), collect(keys(anyM.parts.cost.par)))),"costRetro" => ""))
 
 	# get systems which are irrelevant because they are have no capacity variables
-	unResTe_arr, unResExc_arr = [filter(x -> getfield(anyM.parts,z)[x].type == :unrestricted ,collect(keys(getfield(anyM.parts,z)))) for z in (:tech,:exc)]
+	unResTe_arr, unResExc_arr = [filter(x -> getfield(anyM.parts,z)[x].type == :unrestricted, collect(keys(getfield(anyM.parts,z)))) for z in (:tech,:exc)]
 
 	# prefilter systems that can be relevant for retrofitting technologies
 	filtSys_dic = Dict{Symbol,Array{Symbol,1}}()

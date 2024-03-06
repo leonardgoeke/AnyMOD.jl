@@ -1,52 +1,52 @@
 # ! finds provided string tuple in tree structure and returns node id (or false), tuple does not need to start at the top level of tree, in that case function can return an array instead of a number
-function lookupTupleTree(input_uni::Tuple{Vararg{Union{InlineString,String},N} where N},tree_obj::Tree, startLvl_int::Int= 1)
+function lookupTupleTree(input_uni::Tuple{Vararg{Union{InlineString,String},N} where N}, tree_obj::Tree, startLvl_int::Int= 1)
 
 	if isempty(tree_obj.nodes) return false end
 
 	# find leading and trailing empty entries
-	firstVal_int = findfirst(x -> x != "",input_uni)
-	lastVal_int = findlast(x -> x != "",input_uni)
+	firstVal_int = findfirst(x -> x != "", input_uni)
+	lastVal_int = findlast(x -> x != "", input_uni)
 
 	# adjust input uni and start level according to removed values
-	startLvl_int = plus(firstVal_int,startLvl_int) - 1
+	startLvl_int = plus(firstVal_int, startLvl_int) - 1
 	input_uni = input_uni[firstVal_int:lastVal_int]
 
 	gap_arr = findall(input_uni .== "")
 
 	if startLvl_int == 1 && isempty(gap_arr)
-		return getDicEmpty(tree_obj.srcTup,input_uni)
+		return getDicEmpty(tree_obj.srcTup, input_uni)
 	else
-		noGap_arr = reverse(setdiff(1:length(input_uni),gap_arr))
+		noGap_arr = reverse(setdiff(1:length(input_uni), gap_arr))
 
 		# initialize by searching for last entry in input tuple
 		crtLvl_int = noGap_arr[1] + startLvl_int - 1
-		found_arr = getDicEmpty(tree_obj.srcStr,(input_uni[noGap_arr[1]],crtLvl_int))
+		found_arr = getDicEmpty(tree_obj.srcStr, (input_uni[noGap_arr[1]], crtLvl_int))
 
 		# checks which nodes found initially actually comply with rest of input_uni
 		for i in noGap_arr[2:end]
 			crtLvlItr_int = i + startLvl_int - 1
-			found_arr = getDicEmpty(tree_obj.srcStr,(input_uni[i],crtLvlItr_int)) |> (y -> filter(x -> goUp(x,tree_obj.up,crtLvl_int-crtLvlItr_int,tree_obj.nodes) in y,found_arr))
+			found_arr = getDicEmpty(tree_obj.srcStr, (input_uni[i], crtLvlItr_int)) |> (y -> filter(x -> goUp(x, tree_obj.up, crtLvl_int-crtLvlItr_int, tree_obj.nodes) in y, found_arr))
 		end
 	end
 	return found_arr
 end
 
 # ! lookup a set defined by a text string (like they are written to result files)
-function lookupString(inTxt::Union{InlineString,String},tree::Tree)
+function lookupString(inTxt::Union{InlineString,String}, tree::Tree)
 
     if inTxt == 0
         return 0
     else
-        txt_arr = replace.(split(inTxt,"<")," " => "")
-        lookFull_arr = lookupTupleTree(tuple(txt_arr...),tree)
+        txt_arr = replace.(split(inTxt, "<"), " " => "")
+        lookFull_arr = lookupTupleTree(tuple(txt_arr...), tree)
         if !isempty(lookFull_arr) # if string as no "gaps" simple lookup will work
             return lookFull_arr[end]
         else
-            last_arr = getfield.(filter(x -> x.val == txt_arr[end], collect(values(tree.nodes))),:idx) # get idx for last string
+            last_arr = getfield.(filter(x -> x.val == txt_arr[end], collect(values(tree.nodes))), :idx) # get idx for last string
             # loop over next string and keep corresponding entries
             for i in 1:(length(txt_arr)-1)
-                next_arr = getfield.(filter(x -> x.val == txt_arr[end-i], collect(values(tree.nodes))),:idx)
-                filter!(x -> !isempty(intersect(getAncestors(x,tree,:int,1),next_arr)),last_arr)
+                next_arr = getfield.(filter(x -> x.val == txt_arr[end-i], collect(values(tree.nodes))), :idx)
+                filter!(x -> !isempty(intersect(getAncestors(x, tree, :int, 1), next_arr)), last_arr)
             end
 
         end
@@ -56,8 +56,8 @@ function lookupString(inTxt::Union{InlineString,String},tree::Tree)
 end
 
 # ! sorts inputs nodes according to their tree position
-function sortSiblings(nodesIndex_arr::Array{Int,1},tree_obj::Tree)
-	hertiLine_mat = map(x -> getAncestors(x, tree_obj,:tup),nodesIndex_arr)
+function sortSiblings(nodesIndex_arr::Array{Int,1}, tree_obj::Tree)
+	hertiLine_mat = map(x -> getAncestors(x, tree_obj, :tup), nodesIndex_arr)
 
     rowNum_int = length(nodesIndex_arr)
     colNum_int = maximum([hertiLine_mat[i][1][2] .+ 1 for i = 1:rowNum_int])
@@ -66,17 +66,17 @@ function sortSiblings(nodesIndex_arr::Array{Int,1},tree_obj::Tree)
 
     for (row, row_arr) in enumerate(hertiLine_mat)
 		for ele in row_arr
-            herti_mat[row,tree_obj.nodes[ele[1]].lvl+1] = ele[1]
+            herti_mat[row, tree_obj.nodes[ele[1]].lvl+1] = ele[1]
         end
     end
 
-    order_mat = sortslices(hcat(nodesIndex_arr,herti_mat), dims=1, by = x-> x[2:end,1])
+    order_mat = sortslices(hcat(nodesIndex_arr, herti_mat), dims=1, by = x-> x[2:end,1])
 
     return order_mat[:,1]
 end
 
 # ! goes up the tree from x for the number of steps defined by steps_int
-function goUp(x::Int,up::Dict{Int,Int},steps_int::Int,nodes_dic::Dict{Int,Node})
+function goUp(x::Int, up::Dict{Int,Int}, steps_int::Int, nodes_dic::Dict{Int,Node})
 	startLvl_int = nodes_dic[x].lvl
 	steps_ctr = 0
 	while steps_ctr < steps_int
@@ -87,10 +87,10 @@ function goUp(x::Int,up::Dict{Int,Int},steps_int::Int,nodes_dic::Dict{Int,Node})
 end
 
 # ! gets all parents (id, level) combination, if node is already on top level returns itself, if limitLvl_int is set only provide parents until that level
-getAncestors(startNode_int::Int,tree_obj::Tree,retType::Symbol,limitLvl_int::Int=0) = getAncestors(startNode_int::Int,tree_obj::Tree,Val{retType}(),limitLvl_int::Int)
+getAncestors(startNode_int::Int, tree_obj::Tree, retType::Symbol, limitLvl_int::Int=0) = getAncestors(startNode_int::Int, tree_obj::Tree, Val{retType}(), limitLvl_int::Int)
 
-# ! returns an array of tuples with ancestors (idx,level)
-function getAncestors(startNode_int::Int,tree_obj::Tree,retType::Val{:tup},limitLvl_int::Int=0)
+# ! returns an array of tuples with ancestors (idx, level)
+function getAncestors(startNode_int::Int, tree_obj::Tree, retType::Val{:tup}, limitLvl_int::Int=0)
 
 	# gets level of start node
 	currLvl_int = tree_obj.nodes[startNode_int].lvl
@@ -112,7 +112,7 @@ function getAncestors(startNode_int::Int,tree_obj::Tree,retType::Val{:tup},limit
 end
 
 # ! returns an array of integers with ancestors
-function getAncestors(startNode_int::Int,tree_obj::Tree,retType::Val{:int},limitLvl_int::Int=0)
+function getAncestors(startNode_int::Int, tree_obj::Tree, retType::Val{:int}, limitLvl_int::Int=0)
 
 	# gets level of start node
 	currLvl_int = tree_obj.nodes[startNode_int].lvl
@@ -134,7 +134,7 @@ function getAncestors(startNode_int::Int,tree_obj::Tree,retType::Val{:int},limit
 end
 
 # ! gets all children of node
-function getDescendants(startNode_int::Int,tree_obj::Tree,getAll::Bool = false, limitLvl_int::Int=0)
+function getDescendants(startNode_int::Int, tree_obj::Tree, getAll::Bool = false, limitLvl_int::Int=0)
 
 	# determines starting point
 	startLvl_int = tree_obj.nodes[startNode_int].lvl
@@ -152,12 +152,12 @@ function getDescendants(startNode_int::Int,tree_obj::Tree,getAll::Bool = false, 
 	if getAll allIdx_arr = startIdx_arr end
 
 	while curLvl_int < (limitLvl_int-1)
-		lookUp_arr = vcat(map(x -> tree_obj.nodes[x].down,startIdx_arr)...)
+		lookUp_arr = vcat(map(x -> tree_obj.nodes[x].down, startIdx_arr)...)
 		if isempty(lookUp_arr)
 			#break;
 		else
 			startIdx_arr = lookUp_arr
-			if getAll allIdx_arr = vcat(allIdx_arr,startIdx_arr) end
+			if getAll allIdx_arr = vcat(allIdx_arr, startIdx_arr) end
 		end
 		curLvl_int = curLvl_int + 1
 	end
@@ -171,19 +171,19 @@ getNodesLvl(tree_obj::Tree, level_int::Int) = filter(r -> r.lvl == level_int, so
 # ! returns (unique) tuple with strings of node itself and its parents
 function getUniName(nodeIdx_int::Int, tree_obj::Tree, wrtGap::Bool = false)
 	if nodeIdx_int == 0 return ("none",) end
-	start_tup = (nodeIdx_int,tree_obj.nodes[nodeIdx_int].lvl)
-	relNodes_arr = tree_obj.nodes[nodeIdx_int].lvl == 1 ? [start_tup] : vcat(reverse(getAncestors(nodeIdx_int,tree_obj,:tup,1))..., start_tup)
+	start_tup = (nodeIdx_int, tree_obj.nodes[nodeIdx_int].lvl)
+	relNodes_arr = tree_obj.nodes[nodeIdx_int].lvl == 1 ? [start_tup] : vcat(reverse(getAncestors(nodeIdx_int, tree_obj, :tup, 1))..., start_tup)
 
-	nodeStr_arr = map(1:size(relNodes_arr,1)) do y
+	nodeStr_arr = map(1:size(relNodes_arr, 1)) do y
 		etr = relNodes_arr[y]
 		if y == 1 || (etr[2] - 1 == relNodes_arr[y-1][2]) || !wrtGap
 			return [tree_obj.nodes[etr[1]].val]
 		else
-			return vcat(fill("",(etr[2] - 1) - relNodes_arr[y-1][2]),tree_obj.nodes[etr[1]].val)
+			return vcat(fill("", (etr[2] - 1) - relNodes_arr[y-1][2]), tree_obj.nodes[etr[1]].val)
 		end	
 	end
 
 	return tuple(vcat(nodeStr_arr...)...)
 end
 
-createFullString(nodeIdx_int::Int,tree_obj::Tree,wrtGap::Bool = false) = join(getUniName(nodeIdx_int,tree_obj,wrtGap)," < ")
+createFullString(nodeIdx_int::Int, tree_obj::Tree, wrtGap::Bool = false) = join(getUniName(nodeIdx_int, tree_obj, wrtGap), " < ")
