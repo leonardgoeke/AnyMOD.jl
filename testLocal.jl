@@ -10,8 +10,8 @@ conSub_tup = (rng = [1e-8,1e-8], int = :log, crs = false) # range and interpolat
 numOpt_tup = (dbInf = true, numFoc = 3, addVio = 1e4) # options for handling numeric problems
 distr_boo = true;
 
-# target gap, threshold for serious step, number of iteration after unused cut is deleted, 2x see above, number of iterations report is written, time-limit for algorithm, distributed computing?, # number of threads, optimizer
-algSetup_obj = algSetup(0.001, 0.0, 20, conSub_tup, numOpt_tup, (bal = false, st = false), 100, 120.0, distr_boo, 4, Gurobi.Optimizer)
+# target gap, number of iteration after unused cut is deleted, 2x see above, number of iterations report is written, time-limit for algorithm, distributed computing?, # number of threads, optimizer
+algSetup_obj = algSetup(0.001, 20, conSub_tup, numOpt_tup, (bal = false, st = false), 100, 120.0, distr_boo, 4, Gurobi.Optimizer)
 
 # ! options for stabilization
 
@@ -29,7 +29,7 @@ swt_ntup = (itr = 6, avgImp = 0.2, itrAvg = 4) # rule to switch between differen
 weight_ntup = (capa = 1.0, capaStSize = 1e-1, stLvl = 1e-2) # weight of variables in stabilization (-> small value for variables with large numbers to equalize)
 iniStab_ntup = (setup = :none, det = true) # options to initialize stabilization, :none for first input will skip stabilization, other values control input folders, second input determines, if heuristic model is solved stochastically or not
 
-stabSetup_obj = stabSetup(meth_tup, swt_ntup, weight_ntup, iniStab_ntup)
+stabSetup_obj = stabSetup(meth_tup, 0.0, swt_ntup, weight_ntup, iniStab_ntup)
 
 
 # ! options for near optimal
@@ -107,7 +107,7 @@ while true
 	#region # * solve top-problem and (start) sub-problems
 
 	startTop = now()
-	resData_obj, stabVar_obj, topCost_fl, estCost_fl, nearOptObj_fl, levelDual_fl = @suppress runTop(benders_obj); 
+	resData_obj, stabVar_obj = @suppress runTop(benders_obj); 
 	timeTop = now() - startTop
 
 	# start solving sub-problems
@@ -124,11 +124,7 @@ while true
 	end
 
 	# top-problem without stabilization
-	if !isnothing(stab_obj) 
-		topCostNoStab_fl, estCostNoStab_fl =  @suppress runTopWithoutStab(top_m,stab_obj,solOpt.numFoc.noStab) 
-	else
-		topCostNoStab_fl, estCostNoStab_fl = [Inf, Inf]
-	end
+	if !isnothing(benders_obj.stab) @suppress runTopWithoutStab!(benders_obj) end
 
 	# get results of sub-problems
 	if benders_obj.algOpt.dist
@@ -139,134 +135,22 @@ while true
 	end
 	
 	#endregion
-	
-	#region # * check results
 
-	updateResult(benders_obj, topCost_fl, estCost_fl, nearOptObj_fl, sum(map(x -> x.objVal, values(cutData_dic))))
+	#region # * analyse results and update refinements
 
-	function updateResults(benders_obj, topCost_fl::Float64, estCost_fl::Float64, nearOptObj_fl::Float64, subCost_fl::Float64)
-
-		itr_obj = benders_obj.itr
-
-		# ! update current best
-		
-		
-		# check if solution improved (comparision of total costs for costs optimization, costs of sub-problem for near optimal -> target is same costs as in optimal case)
-		if (itr_obj.cnt.nearOpt == 0 ? (topCost_fl + subCost_fl) : (subCost_fl - (estCost_fl - topCost_fl))) < best_obj.objVal - expStep_fl * benders_obj.algOpt.srsThr
-			itr_obj.best.objVal = itr_obj.cnt.nearOpt == 0 ? (topCost_fl + subCost_fl) : (subCost_fl - (estCost_fl - topCost_fl)) # store current best value
-			itr_obj.best.objVal.capa, itr_obj.best.objVal.stLvl = writeResult(benders_obj.top, [:capa,:exp,:mustCapa,:stLvl]; rmvFix = true)		
-		end
-
-		# ! update iteration object
-		# TODO update
-		#if !isempty(nearOpt_ntup) nearOpt_df, lss_fl = writeCapaRes(top_m,sub_dic,sub_tup,nearOpt_df,i,nOpt_int,nearOpt_ntup,topCost_fl,subCost_fl,costOpt_fl,lssOpt_fl) end
-
-	end
-
-	#endregion
-
-	#region # * adjust refinements
-	
-	# ! delete cuts that not were binding for the defined number of iterations
-	deleteCuts!(benders_obj)
-	
-	# ! adapt center and parameter for stabilization
-	if !isempty(meth_tup)
-
-		itr_obj = benders_obj.itr
-
-		expStep_fl = itr_obj.cnt.nOpt == 0 ? (itr_obj.objCurBest - estCost_fl) : 0.0 # expected step size
-		
-		# determine serious step 
-		adjCtr_boo = false
-		if best_obj.objVal < stab_obj.objVal - srsThr * expStep_fl
-			adjCtr_boo = true
-		end
-
-		# initialize counters
-		cntNull_int = adjCtr_boo ? 0 : cntNull_int + 1
-		cntSrs_int = adjCtr_boo ? cntSrs_int + 1 : 0
-
-		# solve problem without stabilization method
-		topCostNoStab_fl, estCostNoStab_fl = @suppress runTopWithoutStab(top_m,stab_obj,solOpt.numFoc)
-
-		# adjust dynamic parameters of stabilization
-		prx2Aux_fl = stab_obj.method[stab_obj.actMet] == :prx2 ? computePrx2Aux(cutData_dic,prevCutData_dic) : nothing
-		foreach(i -> adjustDynPar!(stab_obj,top_m,i,adjCtr_boo,cntSrs_int,cntNull_int,levelDual_fl,prx2Aux_fl,estCostNoStab_fl,estCost_fl,best_obj.objVal,currentCost,nOpt_int != 0,report_m), 1:length(stab_obj.method))
-
-		# update center of stabilisation
-		if adjCtr_boo
-			stab_obj.var = filterStabVar(stabVar_obj.capa,stabVar_obj.stLvl,stab_obj.weight,top_m)
-			stab_obj.objVal = best_obj.objVal
-			produceMessage(report_m.options,report_m.report, 1," - Updated reference point for stabilization!", testErr = false, printErr = false)
-		end
-
-		estCost_fl = estCostNoStab_fl # set lower limit for convergence check to lower limit without trust region
-	end
-
-	#endregion
+	# update results and stabilization
+	updateIteration!(benders_obj, cutData_dic, stabVar_obj)
 
 	# report on iteration
 	reportBenders!(benders_obj, nOpt_int)
-	
-	#region # * check convergence and adapt stabilization	
-	
-	# check for termination
-	if gap_fl < gap
-		if !isempty(nearOpt_ntup) && nOpt_int < length(nearOpt_ntup.obj)
-			# switch from cost minimization to near-optimal
-			if nOpt_int == 0
-				# get characteristics of optimal solution
-				costOpt_fl = best_obj.objVal
-				lssOpt_fl = lss_fl
-				# filter near-optimal solution already obtained
-				nearOpt_df[!,:thrs] .= 1 .- best_obj.objVal ./ nearOpt_df[!,:cost]
-				filter!(x -> x.thrs <= nearOpt_ntup.cutThres && x.lss <= lssOpt_fl * (1 + nearOpt_ntup.lssThres), nearOpt_df)
-				# adjust gap
-				gap = nearOpt_ntup.feasGap
-			end
-			# reset iteration variables
-			gap_fl = gap 
-			nearOptObj_fl = Inf
-			best_obj.objVal = Inf
-			if !isempty(meth_tup) # reset current best tracking for stabilization
-				stab_obj.objVal = Inf
-				stab_obj.dynPar = writeStabOpt(meth_tup,estCost_fl,best_obj.objVal,top_m)[3]
-			end 
-			nOpt_int = nOpt_int + 1 # update near-opt counter
-			# adapt the objective and constraint to near-optimal
-			adaptNearOpt!(top_m,nearOpt_ntup,costOpt_fl,nOpt_int)
-			produceMessage(report_m.options,report_m.report, 1," - Switched to near-optimal for $(nearOpt_ntup.obj[nOpt_int][1])", testErr = false, printErr = false)
-		else
-			produceMessage(report_m.options,report_m.report, 1," - Finished iteration!", testErr = false, printErr = false)
-			break
-		end
-	end
 
-	# switch and update quadratic stabilization method
-	if !isempty(meth_tup)
-		# switch stabilization method
-		if !isempty(stab_obj.ruleSw) && i > stab_obj.ruleSw.itr && length(stab_obj.method) > 1
-			min_boo = itrReport_df[i - stab_obj.ruleSw.itr,:actMethod] == stab_obj.method[stab_obj.actMet] # check if method as been used for the minimum number of iterations 
-			pro_boo = itrReport_df[(i - min(i,stab_obj.ruleSw.itrAvg) + 1):end,:gap] |> (x -> (x[1]/x[end])^(1/(length(x) -1)) - 1 < stab_obj.ruleSw.avgImp) # check if progress in last iterations is below threshold
-			if min_boo && pro_boo
-				stab_obj.actMet = stab_obj.actMet + 1 |> (x -> length(stab_obj.method) < x ? 1 : x)
-				produceMessage(report_m.options,report_m.report, 1," - Switched stabilization to $(nameStab_dic[stab_obj.method[stab_obj.actMet]]) method!", testErr = false, printErr = false)
-			end
-		end
-
-		# update stabilization method
-		centerStab!(stab_obj.method[stab_obj.actMet],stab_obj,solOpt.addVio,top_m,report_m)
-	end
-
-	if Dates.value(floor(now() - report_m.options.startTime,Dates.Minute(1))) > timeLim
-		produceMessage(report_m.options,report_m.report, 1," - Aborted due to time-limit!", testErr = false, printErr = false)
-		break
-	end
+	# check convergence and finish
+	rtn_boo = checkConvergence(benders_obj)
+	if rtn_boo break end
+	i = i + 1
 
 	#endregion
 
-	i = i + 1
 end
 
 #endregion

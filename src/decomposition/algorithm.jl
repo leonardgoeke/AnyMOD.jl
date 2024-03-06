@@ -341,6 +341,9 @@ function runTop(benders_obj::bendersObj)
 	end
 	checkIIS(benders_obj.top)
 
+	# delete cuts that not were binding for the defined number of iterations
+	deleteCuts!(benders_obj)
+
 	#endregion
 
 	#region # * write results
@@ -361,15 +364,17 @@ function runTop(benders_obj::bendersObj)
 	else
 		levelDual_fl = 0.0
 	end
-	
+	benders_obj.itr.res[:lvlDual] = levelDual_fl
+
+
 	# get costs(!) of top-problem
-	benders_obj.itr.res[]
-	topCost_fl = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var]))
-	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var])
+	benders_obj.itr.res[:topCost] = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var]))
+	benders_obj.itr.res[:estSubCost] = value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var])
+	benders_obj.itr.res[:estTotCost] = benders_obj.itr.res[:topCost] + benders_obj.itr.res[:estSubCost]
+	benders_obj.itr.res[:lowLimCost] = benders_obj.itr.res[:estTotCost]
 
 	# get object for near-optimal case
-	nearOptObj_fl =  benders_obj.itr.cnt.nearOpt != 0 ? objective_value(top_m.optModel) : Inf
-
+	if benders_obj.itr.cnt.nOpt != 0 benders_obj.itr.res[:nearObj] = objective_value(top_m.optModel) end
 	
 	#endregion
 
@@ -606,6 +611,122 @@ function addCuts!(top_m::anyModel, cuts_arr::Array{Pair{Tuple{Int,Int},Union{res
 	scaleCnsExpr!(cut_df, top_m.options.coefRng, top_m.options.checkRng)
 	append!(top_m.parts.obj.cns[:bendersCuts], createCns(cnsCont(cut_df, :smaller), top_m.optModel, false))
 
+end
+
+# ! update results and stabilization
+function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64,Int64},resData}, stabVar_obj::resData)
+
+	itr_obj = benders_obj.itr
+	best_obj = itr_obj.best
+
+	# store information for cuts
+	benders_obj.cuts = collect(cutData_dic)
+
+	# get sub-results
+	itr_obj.res[:actSubCost] = sum(map(x -> x.objVal, values(cutData_dic))) # objective of sub-problems
+	itr_obj.res[:actTotCost] = itr_obj.res[:topCost] + itr_obj.res[:actSubCost]
+
+	# update current best
+	if (itr_obj.cnt.nOpt == 0 ? (itr_obj.res[:actSubCost] - itr_obj.res[:estSubCost]) : itr_obj.res[:actTotCost]) < best_obj.objVal
+		best_obj.objVal = itr_obj.cnt.nOpt == 0 ? itr_obj.res[:actTotCost] : (itr_obj.res[:actSubCost] - itr_obj.res[:estSubCost])
+		best_obj.capa, best_obj.stLvl = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :stLvl]; rmvFix = true)	
+		benders_obj.itr.res[:curBest] = best_obj.objVal	
+	end
+
+	# adapt center and parameter for stabilization
+	if !isnothing(benders_obj.stab)
+		stab_obj = benders_obj.stab
+		report_m = benders_obj.report.mod
+		
+		# determine if serious step 
+		expStep_fl = best_obj.objVal - (itr_obj.cnt.nOpt == 0 ? itr_obj.res[:estTotCost] : 0.0) # expected step size
+		srsStep_boo = false
+		if best_obj.objVal < stabVar_obj.objVal - stab_obj.srsThr * expStep_fl
+			srsStep_boo = true
+		end
+
+		# initialize counters
+		itr_obj.cnt.srs = srsStep_boo ? itr_obj.cnt.srs + 1 : 0
+		itr_obj.cnt.null = srsStep_boo ? 0 : itr_obj.cnt.null + 1
+
+		# adjust dynamic parameters of stabilization
+		prx2Aux_fl = stab_obj.method[stab_obj.actMet] == :prx2 ? computePrx2Aux(benders_obj.cuts, benders_obj.prevCuts) : nothing
+		foreach(x -> adjustDynPar!(x, benders_obj.stab, benders_obj.top, benders_obj.itr.res, itr_objc.cnt, srsStep_boo, prx2Aux_fl, benders_obj.itr.cnt.nOpt != 0, report_m), 1:length(stab_obj.method))
+
+		# update center of stabilisation
+		if srsStep_boo
+			stab_obj.var = filterStabVar(stabVar_obj.capa, stabVar_obj.stLvl, stab_obj.weight, benders_obj.top)
+			stab_obj.objVal = best_obj.objVal
+			produceMessage(report_m.options,report_m.report, 1," - Updated reference point for stabilization!", testErr = false, printErr = false)
+		end
+
+		# switch quadratic stabilization method
+		if !isnothing(benders_obj.stab)
+			stab_obj = benders_obj.stab
+			# switch stabilization method
+			if !isempty(stab_obj.ruleSw) && i > stab_obj.ruleSw.itr && length(stab_obj.method) > 1
+				min_boo = itrReport_df[i - stab_obj.ruleSw.itr,:actMethod] == stab_obj.method[stab_obj.actMet] # check if method as been used for the minimum number of iterations 
+				pro_boo = itrReport_df[(i - min(i,stab_obj.ruleSw.itrAvg) + 1):end,:gap] |> (x -> (x[1]/x[end])^(1/(length(x) -1)) - 1 < stab_obj.ruleSw.avgImp) # check if progress in last iterations is below threshold
+				if min_boo && pro_boo
+					stab_obj.actMet = stab_obj.actMet + 1 |> (x -> length(stab_obj.method) < x ? 1 : x)
+					produceMessage(report_m.options,report_m.report, 1," - Switched stabilization to $(nameStab_dic[stab_obj.method[stab_obj.actMet]]) method!", testErr = false, printErr = false)
+				end
+			end
+			
+			# update stabilization method
+			centerStab!(stab_obj.method[stab_obj.actMet], benders_obj.algOpt.solOpt.addVio, benders_obj.top, report_m)
+		end
+	end
+	
+	# computes optimality gap for cost minimization and feasibility gap for near-optimal
+	itr_obj.gap = itr_obj.cnt.nOpt == 0 ? (1 - benders_obj.itr.res[:lowLimCost] / benders_obj.itr.res[:curBest]) : abs(benders_obj.itr.res[:curBest] / benders_obj.itr.res[:optCost])
+
+end
+
+# ! check if algorithm converged and switch objective or terminate
+function checkConvergence(benders_obj::bendersObj)
+
+	itr_obj = benders_obj.itr
+	report_m = benders_obj.report.mod
+	rtn_boo = false
+
+	# check for termination
+	if benders_obj.itr.gap < benders_obj.algOpt.gap
+		# switch from cost minimization to near-optimal
+		if !isnothing(benders_obj.nearOpt.setup) && benders_obj.nearOpt.cnt < length(benders_obj.nearOpt.setup.obj) 
+			if benders_obj.nearOpt.cnt == 0
+				# get characteristics of optimal solution
+				itr_obj.res[:optCost] = best_obj.objVal
+				itr_obj.res[:optLss] = itr_obj.res[:nOptLss]
+				# filter near-optimal solution already obtained
+				benders_obj.report.nearOpt[!,:thrs] .= 1 .- itr_obj.res[:optCost] ./ benders_obj.report.nearOpt[!,:cost]
+				filter!(x -> x.thrs <= benders_obj.nearOpt.setup.cutThres && x.lss <= itr_obj.res[:optLss] * (1 + benders_obj.nearOpt.setup.lssThres), benders_obj.report.nearOpt)
+				# re-set gap
+				benders_obj.algOpt.gap = benders_obj.nearOpt.setup.feasGap
+			end
+			# reset iteration variables
+			itr_obj.gap = 1.0 
+			itr_obj.res[:nearObj] = Inf
+			itr_obj.best.objVal = Inf
+			
+			if !isempty(meth_tup) # reset current best tracking for stabilization
+				benders_obj.stab.objVal = Inf
+				benders_obj.stab.dynPar = computeDynPar(benders_obj.stab.method, benders_obj.stab.methodOpt, itr_obj.res[:estTotCost], itr_obj.res[:curBest], benders_obj.top)
+			end 
+
+			benders_obj.nearOpt.cnt = benders_obj.nearOpt.cnt + 1 # update near-opt counter
+			# adapt the objective and constraint to near-optimal
+			adaptNearOpt!(bender_obj.top, benders_obj.nearOpt.setup, itr_obj.res[:optCost], benders_obj.nearOpt.cnt)
+			produceMessage(report_m.options,report_m.report, 1," - Switched to near-optimal for $(benders_obj.nearOpt.setup.obj[nOpt_int][1])", testErr = false, printErr = false)
+			
+		else
+			produceMessage(report_m.options,report_m.report, 1," - Finished iteration!", testErr = false, printErr = false)
+			rtn_boo = true
+		end
+	end
+
+	return rtn_boo
+	
 end
 
 #endregion
@@ -923,9 +1044,6 @@ function reportBenders!(benders_obj::bendersObj)
 	itr_obj = benders_obj.cost
 	nearOpt_obj = benders_obj.nearOpt
 
-	# computes optimality gap for cost minimization and feasibility gap for near-optimal
-	gap_fl = nearOpt_obj.cnt > 0 ? abs(benders_obj.best.objVal / bendersObj.itr.costOpt) : (1 - itr_obj.costEst / benders_obj.best.objVal)
-
 	timeTop_fl = Dates.toms(timeTop) / Dates.toms(Second(1))
 	timeSub_fl = Dates.toms(timeSub) / Dates.toms(Second(1))
 	if nearOpt_obj.cnt > 0
@@ -954,6 +1072,13 @@ function reportBenders!(benders_obj::bendersObj)
 	if i%reportFreq == 0 
 		CSV.write(benders_obj.report.mod.options.outDir * "/iterationCuttingPlane_$(benders_obj.info.name).csv", benders_obj.report.itr)
 		if !isnothing(nearOpt_obj.setup) CSV.write(benders_obj.report.mod.options.outDir * "/nearOptSol_$(benders_obj.info.name).csv", benders_obj.report.nearOpt) end
+	end
+
+	if !isempty(nearOpt_ntup) nearOpt_df, itr_obj.res[:nOptLss] = writeCapaRes(top_m,sub_dic,sub_tup,nearOpt_df,i,nOpt_int,nearOpt_ntup,topCost_fl,subCost_fl,costOpt_fl,lssOpt_fl) end
+
+	if Dates.value(floor(now() - report_m.options.startTime,Dates.Minute(1))) > timeLim
+		produceMessage(report_m.options,report_m.report, 1," - Aborted due to time-limit!", testErr = false, printErr = false)
+		break
 	end
 
 end

@@ -84,7 +84,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 	
 		#region # * initialize stabilization 
 
-		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.switch, stabSetup_obj.weight, startSol_obj, lowBd_fl, benders_obj.top);
+		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.srsThr, stabSetup_obj.switch, stabSetup_obj.weight, startSol_obj, lowBd_fl, benders_obj.top);
 		centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.solOpt.addVio, benders_obj.top, report_m);
 
 		#endregion
@@ -128,6 +128,15 @@ function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_
 	if length(meth_arr) != length(unique(meth_arr)) error("stabilization methods must be unique") end
 
 	# method specific adjustments (e.g. starting value for dynamic parameter, new variables for objective function)
+	dynPar_arr = computeDynPar(meth_arr,methOpt_arr,lowBd_fl,upBd_fl,top_m)
+
+	
+	return meth_arr, methOpt_arr, dynPar_arr
+end
+
+# compute dynamic parameter
+function computeDynPar(meth_arr::Array{Symbol, 1},methOpt_arr::Array{NamedTuple, 1}, lowBd_fl::Float64, upBd_fl::Float64, top_m::anyModel)
+	
 	dynPar_arr = []
 	for m in 1:size(meth_arr, 1)
 		if meth_arr[m] in (:prx1, :prx2)
@@ -155,8 +164,7 @@ function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_
 		end
 		push!(dynPar_arr, dynPar)
 	end
-	
-	return meth_arr, methOpt_arr, dynPar_arr
+
 end
 
 # function to update the center of stabilization method
@@ -401,66 +409,65 @@ function computePrx2Aux(cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, 
 end
 
 # update dynamic parameter of stabilization method
-function adjustDynPar!(stab_obj::stabObj, top_m::anyModel, iUpd_int::Int, adjCtr_boo::Bool, adjCtr_count::Int, cntNull_int::Int, levelDual_fl::Float64, prx2Aux_fl, estCostNoStab_fl::Float64, estCost_fl::Float64, currentBest_fl::Float64, currentCost_fl::Float64, nearOpt_boo::Bool, report_m::anyModel)
+function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::Dict{Symbol,Float64}, cnt_ntup::NamedTuple{(:i,:nOpt,:srs,:null), Tuple{Int,Int,Int,Int}}, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, report_m::anyModel)
 
-	opt_tup = stab_obj.methodOpt[iUpd_int]
-	if stab_obj.method[iUpd_int] == :qtr # adjust radius of quadratic trust-region
-		if nearOpt_boo ? !adjCtr_boo : abs(1 - estCostNoStab_fl / estCost_fl) < opt_tup.thr && stab_obj.dynPar[iUpd_int] > opt_tup.low
-			stab_obj.dynPar[iUpd_int] = max(opt_tup.low, stab_obj.dynPar[iUpd_int] / opt_tup.fac)
+	opt_tup = stab_obj.methodOpt[x_int]
+	if stab_obj.method[x_int] == :qtr # adjust radius of quadratic trust-region
+		if nearOpt_boo ? !srsStep_boo : abs(1 - res_dic[:estTotCostNoStab] / res_dic[:estTotCost]) < opt_tup.thr && stab_obj.dynPar[x_int] > opt_tup.low
+			stab_obj.dynPar[x_int] = max(opt_tup.low, stab_obj.dynPar[x_int] / opt_tup.fac)
 			produceMessage(report_m.options, report_m.report, 1, " - Reduced quadratic trust-region!", testErr = false, printErr = false)	
 		end
-	elseif stab_obj.method[iUpd_int] in (:prx1, :prx2) # adjust penalty term of proximal term, implementation according to doi.org/10.1007/s10107-015-0873-6, section 5.1.2
+	elseif stab_obj.method[x_int] in (:prx1, :prx2) # adjust penalty term of proximal term, implementation according to doi.org/10.1007/s10107-015-0873-6, section 5.1.2
 		# compute τ_aux
-		aux_fl = stab_obj.method[iUpd_int] == :prx1 ? (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl) : prx2Aux_fl 
-		#aux_fl = opt_tup.meth== "PBM-1" ? (stab_obj.objVal - currentCost_fl)/(stab_obj.objVal - estCost_fl) : 0
+		aux_fl = stab_obj.method[x_int] == :prx1 ? (stab_obj.objVal - res_dic[:actTotCost])/(stab_obj.objVal - res_dic[:estTotCost]) : prx2Aux_fl 
 		# We introduce a safeguard ensuring that :prx is only updated if the numerator of the aux term is positive (see https://doi.org/10.1007/978-3-030-34910-3 Chapter 3 for a discussion)
-		stab_obj.dynPar[iUpd_int][:prxAux] = stab_obj.method[iUpd_int] == :prx1 ? 2 * stab_obj.dynPar[iUpd_int][:prx] * (1+aux_fl) : stab_obj.dynPar[iUpd_int][:prx]*(1+max(aux_fl/1e3, 0))
+		stab_obj.dynPar[x_int][:prxAux] = stab_obj.method[x_int] == :prx1 ? 2 * stab_obj.dynPar[x_int][:prx] * (1+aux_fl) : stab_obj.dynPar[x_int][:prx]*(1+max(aux_fl/1e3, 0))
 		# check if serious step
-		if adjCtr_boo
+		if srsStep_boo
 			# adjust τ_aux, if last 5 steps have been serious
-			if adjCtr_count > 5
-				stab_obj.dynPar[iUpd_int][:prxAux] = opt_tup.a * stab_obj.dynPar[iUpd_int][:prxAux]
+			if cnt_ntup.srs > 5
+				stab_obj.dynPar[x_int][:prxAux] = opt_tup.a * stab_obj.dynPar[x_int][:prxAux]
 			end
 			# update proximal term
-			stab_obj.dynPar[iUpd_int][:prx] = min(stab_obj.dynPar[iUpd_int][:prxAux], 10 * stab_obj.dynPar[iUpd_int][:prx])
+			stab_obj.dynPar[x_int][:prx] = min(stab_obj.dynPar[x_int][:prxAux], 10 * stab_obj.dynPar[x_int][:prx])
 		else # if null-step
-			if cntNull_int > 10
-				stab_obj.dynPar[iUpd_int][:prx] = (opt_tup.a) * stab_obj.dynPar[iUpd_int][:prx]
+			if cnt_ntup.null > 10
+				stab_obj.dynPar[x_int][:prx] = (opt_tup.a) * stab_obj.dynPar[x_int][:prx]
 			end
-			stab_obj.dynPar[iUpd_int][:prx] = min(stab_obj.dynPar[iUpd_int][:prx], max(stab_obj.dynPar[iUpd_int][:prxAux], stab_obj.dynPar[iUpd_int][:prx]/opt_tup.a, opt_tup.min))
+			stab_obj.dynPar[x_int][:prx] = min(stab_obj.dynPar[x_int][:prx], max(stab_obj.dynPar[x_int][:prxAux], stab_obj.dynPar[x_int][:prx]/opt_tup.a, opt_tup.min))
 		end
 		# another safeguard preventing the proximal parameter to explode
-		if stab_obj.method[iUpd_int] == :prx2
-			if stab_obj.dynPar[iUpd_int][:prx]>1e6
-				stab_obj.dynPar[iUpd_int][:prx] = opt_tup.start
+		if stab_obj.method[x_int] == :prx2
+			if stab_obj.dynPar[x_int][:prx]>1e6
+				stab_obj.dynPar[x_int][:prx] = opt_tup.start
 			end
 		end
-	elseif stab_obj.method[iUpd_int] == :lvl1 # adjust level
-		stab_obj.dynPar[iUpd_int] = (opt_tup.lam * estCostNoStab_fl  + (1 - opt_tup.lam) * currentBest_fl) / top_m.options.scaFac.obj
-	elseif stab_obj.method[iUpd_int] == :lvl2 # adjust level, implementation according to doi.org/10.1007/s10107-015-0873-6 
-		stab_obj.dynPar[iUpd_int][:my] = 1-levelDual_fl
-		if adjCtr_boo
-			stab_obj.dynPar[iUpd_int][:yps] = min(stab_obj.dynPar[iUpd_int][:yps], (1-opt_tup.lam)*(currentBest_fl - estCostNoStab_fl) / top_m.options.scaFac.obj)
+	elseif stab_obj.method[x_int] == :lvl1 # adjust level
+		stab_obj.dynPar[x_int] = (opt_tup.lam * res_dic[:estTotCostNoStab]  + (1 - opt_tup.lam) * res_dic[:curBest]) / top_m.options.scaFac.obj
+	elseif stab_obj.method[x_int] == :lvl2 # adjust level, implementation according to doi.org/10.1007/s10107-015-0873-6 
+		stab_obj.dynPar[x_int][:my] = 1 - res_dic[:lvlDual]
+		if srsStep_boo
+			stab_obj.dynPar[x_int][:yps] = min(stab_obj.dynPar[x_int][:yps], (1-opt_tup.lam)*(res_dic[:curBest] - res_dic[:estTotCostNoStab]) / top_m.options.scaFac.obj)
 		else
-			if stab_obj.dynPar[iUpd_int][:my] > opt_tup.myMax 
-				stab_obj.dynPar[iUpd_int][:yps] = opt_tup.lam*stab_obj.dynPar[iUpd_int][:yps]
+			if stab_obj.dynPar[x_int][:my] > opt_tup.myMax 
+				stab_obj.dynPar[x_int][:yps] = opt_tup.lam*stab_obj.dynPar[x_int][:yps]
 			end
 		end
-	elseif stab_obj.method[iUpd_int] == :dsb # adjust doubly stabilised method, implementation according to doi.org/10.1007/s10107-015-0873-6
-		stab_obj.dynPar[iUpd_int][:my] = min(1-levelDual_fl, opt_tup.myMax+1.0)
-		if adjCtr_boo
-			stab_obj.dynPar[iUpd_int][:prx] = (stab_obj.dynPar[iUpd_int][:my])*stab_obj.dynPar[iUpd_int][:prx] # added a fixed scaler for the dual variable to avoid extremely large values for prx
-			stab_obj.dynPar[iUpd_int][:yps] = min(stab_obj.dynPar[iUpd_int][:yps], (1-opt_tup.lam)*(currentBest_fl- estCostNoStab_fl) / top_m.options.scaFac.obj)
+	elseif stab_obj.method[x_int] == :dsb # adjust doubly stabilised method, implementation according to doi.org/10.1007/s10107-015-0873-6
+		stab_obj.dynPar[x_int][:my] = min(1 - res_dic[:lvlDual], opt_tup.myMax + 1.0)
+		if srsStep_boo
+			stab_obj.dynPar[x_int][:prx] = (stab_obj.dynPar[x_int][:my])*stab_obj.dynPar[x_int][:prx] # added a fixed scaler for the dual variable to avoid extremely large values for prx
+			stab_obj.dynPar[x_int][:yps] = min(stab_obj.dynPar[x_int][:yps], (1 - opt_tup.lam)*(res_dic[:curBest]- res_dic[:estTotCostNoStab]) / top_m.options.scaFac.obj)
 		else
-			newPrx_fl = stab_obj.dynPar[iUpd_int][:prx]*(stab_obj.dynPar[iUpd_int][:yps]/((currentBest_fl - estCostNoStab_fl)/top_m.options.scaFac.obj))
-			stab_obj.dynPar[iUpd_int][:prx] = max(opt_tup.min, newPrx_fl)
-			if stab_obj.dynPar[iUpd_int][:my] > opt_tup.myMax 
-				stab_obj.dynPar[iUpd_int][:yps] = opt_tup.lam*stab_obj.dynPar[iUpd_int][:yps]
+			newPrx_fl = stab_obj.dynPar[x_int][:prx] * (stab_obj.dynPar[x_int][:yps] / ((res_dic[:curBest] - res_dic[:estTotCostNoStab]) / top_m.options.scaFac.obj))
+			stab_obj.dynPar[x_int][:prx] = max(opt_tup.min, newPrx_fl)
+			if stab_obj.dynPar[x_int][:my] > opt_tup.myMax 
+				stab_obj.dynPar[x_int][:yps] = opt_tup.lam*stab_obj.dynPar[x_int][:yps]
 			end
 		end
 		# reset prx parameter if it becomes too large
-		if stab_obj.dynPar[iUpd_int][:prx] > 1e6
-			stab_obj.dynPar[iUpd_int][:prx] = opt_tup.start
+		if stab_obj.dynPar[x_int][:prx] > 1e6
+			stab_obj.dynPar[x_int][:prx] = opt_tup.start
 		end
 	end
 
@@ -522,7 +529,7 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 end
 
 # solves top problem without trust region and obtains lower limits
-function runTopWithoutStab(benders_obj::bendersObj)
+function runTopWithoutStab!(benders_obj::bendersObj)
 
 	stab_obj = benders_obj.stab
 	
@@ -556,10 +563,10 @@ function runTopWithoutStab(benders_obj::bendersObj)
 	checkIIS(benders_obj.top)
 
 	# obtain different objective values
-	topCost_fl = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
-	estCost_fl = topCost_fl + value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
+	benders_obj.itr.res[:topCostNoStab] = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
+	benders_obj.itr.res[:estTotCostNoStab] = benders_obj.itr.res[:topCostNoStab] + value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
+	benders_obj.itr.res[:lowLimCost] = benders_obj.itr.res[:estTotCostNoStab]
 
-	return topCost_fl, estCost_fl
 end
 
 #endregion
@@ -649,9 +656,7 @@ end
 
 #endregion
 
-
-# ! WHAT OF THIS STILL RELEVANT???
-#region # * manage linear trust region 
+#region # * manage linear trust region (same concept as box-step method, but here not implemented as a stabilization method for benders)
 
 # ! adds limits specified by dictionary to problem
 function addLinearTrust!(top_m::anyModel, lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}})

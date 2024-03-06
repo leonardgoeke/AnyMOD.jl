@@ -4,7 +4,6 @@
 # setup for benders computation
 struct algSetup
 	gap::Float64 # target gap
-	srsThr::Float64 # threshold for serious step
 	delCut::Int # number of iterations since cut creation or last binding before cut is deleted
 	conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} # range and interpolation method for convergence criteria of subproblems
 	solOpt::NamedTuple{(:dbInf, :numFoc, :addVio), Tuple{Bool, Int64, Float64}} # options for solving top problem
@@ -19,6 +18,7 @@ end
 # setup for stabilization
 struct stabSetup
 	method::Tuple # method(s) for stabilization
+	srsThr::Float64 # threshold for serious step
 	switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} # rule to switch between different methods
 	weight::NamedTuple{(:capa, :capaStSize, :stLvl), Tuple{Float64, Float64, Float64}} # weight of variables in stabilization
 	ini::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}} # rule for stabilization (:none will skip stabilization)
@@ -63,6 +63,7 @@ end
 mutable struct stabObj
 	method::Array{Symbol,1} # array of method names used for stabilization
 	methodOpt::Array{NamedTuple,1} # array of options for adjustment of stabilization parameters
+	srsThr::Float64 # threshold for serious step
 	ruleSw::Union{NamedTuple{(), Tuple{}}, NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}}} # rule for switching between stabilization methods
 	weight::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}} # weight of variables in stabilization
 	actMet::Int # index of currently active stabilization method
@@ -71,7 +72,7 @@ mutable struct stabObj
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
 	
-	function stabObj(meth_tup::Tuple, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}}, resData_obj::resData, lowBd_fl::Float64, top_m::anyModel)
+	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}}, resData_obj::resData, lowBd_fl::Float64, top_m::anyModel)
 		stab_obj = new()
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64,Float64,Int64}})
@@ -85,6 +86,7 @@ mutable struct stabObj
 		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup, lowBd_fl, resData_obj.objVal, top_m)
 		
 		# set other fields
+		stab_obj.srsThr = srsThr_fl
 		stab_obj.ruleSw = ruleSw_ntup
 		stab_obj.weight = weight_ntup
 		stab_obj.actMet = 1
@@ -107,7 +109,6 @@ mutable struct itrStatus
 	gap::Float64
 	res::Dict{Symbol,Float64} # store different results here, potential keys are: 
 end
-
 
 # overall benders structure
 mutable struct bendersObj
@@ -200,7 +201,7 @@ mutable struct bendersObj
 
 		benders_obj.stab, curBest_obj = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
 
-		benders_obj.itr = itrStatus(curBest_obj, (i = maximum(benders_obj.report.itr[!,:i]) + 1, nOpt = 0, srs = 0, null = 0), 1.0, (curBest = Inf, curObj = Inf, costOpt = Inf, costEst = Inf, costAct = Inf))
+		benders_obj.itr = itrStatus(curBest_obj, (i = maximum(benders_obj.report.itr[!,:i]) + 1, nOpt = 0, srs = 0, null = 0), 1.0, Dict{Symbol,Float64}())
 
 		#endregion
 
