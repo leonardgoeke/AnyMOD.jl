@@ -34,7 +34,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 	
 		# first result for first iteration
 		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = 0)
-		if !isnothing(benders_obj.nearOpt) firstItr_df[!,:objective] .= "cost" end
+		if !isnothing(benders_obj.nearOpt.setup) firstItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			firstItr_df[!,:actMethod] .= Symbol()
 			foreach(x -> firstItr_df[!,Symbol("dynPar_",x[1])] .= 0.0, stabSetup_obj.method)
@@ -72,7 +72,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		
 		# write results for second iteration
 		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = timeSub_fl)
-		if !isnothing(benders_obj.nearOpt) secItr_df[!,:objective] .= "cost" end
+		if !isnothing(benders_obj.nearOpt.setup) secItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			secItr_df[!,:actMethod] .= Symbol()
 			foreach(x -> secItr_df[!,Symbol("dynPar_",x[1])] .= 0.0, stabSetup_obj.method)
