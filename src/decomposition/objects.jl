@@ -2,7 +2,7 @@
 #region # * algorithm setup
 
 # setup for benders computation
-struct algSetup
+mutable struct algSetup
 	gap::Float64 # target gap
 	delCut::Int # number of iterations since cut creation or last binding before cut is deleted
 	useVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}} # use vaild inequalities
@@ -40,6 +40,11 @@ struct nearOptSetup
 	feasGap::Float64 # target feasibility gap
 	delCut::Int64 # number of iterations that unused cuts are deleted during near-opt
 	obj::NTuple #  tuple with objectives
+end
+
+mutable struct nearOptObj
+	cnt::Int
+	setup::Union{Nothing,nearOptSetup}
 end
 
 #endregion
@@ -111,9 +116,15 @@ mutable struct stabObj
 end
 
 # monitoring iteration 
+mutable struct countItr
+	i::Int
+	srs::Int
+	null::Int
+end
+
 mutable struct itrStatus
 	best::resData
-	cnt::NamedTuple{(:i,:nOpt,:srs,:null), Tuple{Int,Int,Int,Int}}
+	cnt::countItr
 	gap::Float64
 	res::Dict{Symbol,Float64} # store different results here, potential keys are: 
 end
@@ -127,7 +138,7 @@ mutable struct bendersObj
 	itr::itrStatus
 	stab::Union{Nothing,stabObj}
     algOpt::algSetup
-	nearOpt::NamedTuple{(:cnt,:setup), Tuple{Int,Union{Nothing,nearOptSetup}}}
+	nearOpt::nearOptObj
 	info::NamedTuple{(:name,:frs,:supTsLvl, :shortExp),Tuple{String,Int64,Int64,Int64}}
 	report::NamedTuple{(:itr,:nearOpt,:mod),Tuple{DataFrame,DataFrame,anyModel}}
 	
@@ -138,7 +149,7 @@ mutable struct bendersObj
         benders_obj = new()
 		benders_obj.info = info_ntup
         benders_obj.algOpt = algSetup_obj
-		benders_obj.nearOpt = (cnt = 0, setup = nearOptSetup_obj)
+		benders_obj.nearOpt = nearOptObj(0, nearOptSetup_obj)
 
 		if !isnothing(nearOptSetup_obj) && any(getindex.(stabSetup_obj.method, 1) .!= :qtr) error("Near-optimal can only be paired with quadratic stabilization!") end
 	
@@ -148,7 +159,7 @@ mutable struct bendersObj
 
         # dataframe for reporting during iteration
         itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_sub = Float64[])
-        nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], capacity_variable = Symbol[], capacity_value = Float64[], cost = Float64[], lss = Float64[])
+        nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], variable = Symbol[], value = Float64[])
 
         # empty model just for reporting
 		report_m = @suppress anyModel(String[], inputFolder_ntup.results, objName = "decomposition" * info_ntup.name) 
@@ -156,7 +167,7 @@ mutable struct bendersObj
 		# add column for active stabilization method
 		if !isempty(stabSetup_obj.method)
 			itrReport_df[!,:actMethod] = fill(Symbol(),size(itrReport_df,1))
-			foreach(x -> itrReport_df[!,Symbol("dynPar_",x)] = Union{Float64,Vector{Float64}}[fill(Float64[],size(itrReport_df,1))...], stabSetup_obj.method)
+			foreach(x -> itrReport_df[!,Symbol("dynPar_",x[1])] = Union{Float64,Vector{Float64}}[fill(Float64[],size(itrReport_df,1))...], stabSetup_obj.method)
 		end
 
 		# extend reporting dataframe in case of near-optimal
@@ -208,8 +219,8 @@ mutable struct bendersObj
 		#region # * initialize stabilization
 
 		benders_obj.stab, curBest_obj = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
-
-		benders_obj.itr = itrStatus(curBest_obj, (i = maximum(benders_obj.report.itr[!,:i]) + 1, nOpt = 0, srs = 0, null = 0), 1.0, Dict{Symbol,Float64}())
+		benders_obj.itr = itrStatus(curBest_obj, countItr(maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0), 1.0, Dict{Symbol,Float64}())
+		benders_obj.itr.res[:curBest] = curBest_obj.objVal
 
 		#endregion
 

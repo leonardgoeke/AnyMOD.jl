@@ -6,7 +6,6 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 
 	report_m = benders_obj.report.mod
 
-	
 	if !isempty(stabSetup_obj.method)
 
 		cutData_dic = Dict{Tuple{Int64,Int64},resData}()
@@ -35,10 +34,10 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 	
 		# first result for first iteration
 		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = 0)
-		if !isnothing(benders_obj.nearOpt) firstItr_df[!,:objective] .= "costs" end
+		if !isnothing(benders_obj.nearOpt) firstItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			firstItr_df[!,:actMethod] .= Symbol()
-			foreach(x -> firstItr_df[!,Symbol("dynPar_",x)] .= 0.0, stabSetup_obj.method)
+			foreach(x -> firstItr_df[!,Symbol("dynPar_",x[1])] .= 0.0, stabSetup_obj.method)
 		end
 		append!(benders_obj.report.itr, firstItr_df)
 
@@ -52,7 +51,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			if benders_obj.algOpt.dist # distributed case
 				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), :barrier, 1e-8)
 			else # non-distributed case
-				time_dic[s], cutData_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), :barrier, 1e-8)
+				cutData_dic[s], time_dic[s], ~ = runSub(benders_obj.sub[s], copy(startSol_obj), :barrier, 1e-8)
 			end
 		end
 		
@@ -60,7 +59,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		if benders_obj.algOpt.dist
 			wait.(collect(values(futData_dic)))
 			for s in collect(keys(benders_obj.sub))
-				time_dic[s], cutData_dic[s] = fetch(futData_dic[s])
+				cutData_dic[s], time_dic[s], ~  = fetch(futData_dic[s])
 			end
 		end
 	
@@ -73,15 +72,15 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		
 		# write results for second iteration
 		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = timeSub_fl)
-		if !isnothing(benders_obj.nearOpt) secItr_df[!,:objective] .= "costs" end
+		if !isnothing(benders_obj.nearOpt) secItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			secItr_df[!,:actMethod] .= Symbol()
-			foreach(x -> secItr_df[!,Symbol("dynPar_",x)] .= 0.0, stabSetup_obj.method)
+			foreach(x -> secItr_df[!,Symbol("dynPar_",x[1])] .= 0.0, stabSetup_obj.method)
 		end
 		append!(benders_obj.report.itr, secItr_df)
 
 		#endregion
-	
+
 		#region # * initialize stabilization 
 
 		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.srsThr, stabSetup_obj.switch, stabSetup_obj.weight, startSol_obj, lowBd_fl, benders_obj.top);
@@ -128,7 +127,7 @@ function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_
 	if length(meth_arr) != length(unique(meth_arr)) error("stabilization methods must be unique") end
 
 	# method specific adjustments (e.g. starting value for dynamic parameter, new variables for objective function)
-	dynPar_arr = computeDynPar(meth_arr,methOpt_arr,lowBd_fl,upBd_fl,top_m)
+	dynPar_arr = computeDynPar(meth_arr, methOpt_arr, lowBd_fl, upBd_fl, top_m)
 
 	
 	return meth_arr, methOpt_arr, dynPar_arr
@@ -164,7 +163,7 @@ function computeDynPar(meth_arr::Array{Symbol, 1},methOpt_arr::Array{NamedTuple,
 		end
 		push!(dynPar_arr, dynPar)
 	end
-
+	return dynPar_arr
 end
 
 # function to update the center of stabilization method
@@ -409,7 +408,7 @@ function computePrx2Aux(cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, 
 end
 
 # update dynamic parameter of stabilization method
-function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::Dict{Symbol,Float64}, cnt_ntup::NamedTuple{(:i,:nOpt,:srs,:null), Tuple{Int,Int,Int,Int}}, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, report_m::anyModel)
+function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::Dict{Symbol,Float64}, cnt_obj::countItr, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, report_m::anyModel)
 
 	opt_tup = stab_obj.methodOpt[x_int]
 	if stab_obj.method[x_int] == :qtr # adjust radius of quadratic trust-region
@@ -425,13 +424,13 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::
 		# check if serious step
 		if srsStep_boo
 			# adjust τ_aux, if last 5 steps have been serious
-			if cnt_ntup.srs > 5
+			if cnt_obj.srs > 5
 				stab_obj.dynPar[x_int][:prxAux] = opt_tup.a * stab_obj.dynPar[x_int][:prxAux]
 			end
 			# update proximal term
 			stab_obj.dynPar[x_int][:prx] = min(stab_obj.dynPar[x_int][:prxAux], 10 * stab_obj.dynPar[x_int][:prx])
 		else # if null-step
-			if cnt_ntup.null > 10
+			if cnt_obj.null > 10
 				stab_obj.dynPar[x_int][:prx] = (opt_tup.a) * stab_obj.dynPar[x_int][:prx]
 			end
 			stab_obj.dynPar[x_int][:prx] = min(stab_obj.dynPar[x_int][:prx], max(stab_obj.dynPar[x_int][:prxAux], stab_obj.dynPar[x_int][:prx]/opt_tup.a, opt_tup.min))
@@ -574,10 +573,10 @@ end
 #region # * near-optimal
 
 # ! adapt top-problem for the computation of near-optimal solutions
-function adaptNearOpt!(top_m::anyModel, nearOpt_ntup::NamedTuple, costOpt_fl::Float64, nOpt_int::Int)
+function adaptNearOpt!(top_m::anyModel, nearOptSetup_obj::nearOptSetup, costOpt_fl::Float64, nOpt_int::Int)
 	
 	obj_arr = Pair[]
-	for obj in nearOpt_ntup.obj[nOpt_int][2][2]
+	for obj in nearOptSetup_obj.obj[nOpt_int][2][2]
 		# build filter function
 		flt_tup = obj[2]
 		te_boo = !(flt_tup.variable in (:capaExc, :expExc))
@@ -588,32 +587,15 @@ function adaptNearOpt!(top_m::anyModel, nearOpt_ntup::NamedTuple, costOpt_fl::Fl
 	end
 	# change objective according to near-optimal
 	objFunc_tup = tuple(vcat([:cost => (fac = 0.0, flt = x -> true)], obj_arr)...)
-	@suppress setObjective!(objFunc_tup, top_m, nearOpt_ntup.obj[nOpt_int][2][1] == :min)
+	@suppress setObjective!(objFunc_tup, top_m, nearOptSetup_obj.obj[nOpt_int][2][1] == :min)
 	
 	# delete old restriction to near optimum
 	if :nearOpt in keys(top_m.parts.obj.cns) delete(top_m.optModel, top_m.parts.obj.cns[:nearOpt][1,:cns]) end
 	
 	# restrict system costs to near-optimum
 	cost_expr = sum(filter(x -> x.name in (:cost, :benders), top_m.parts.obj.var[:objVar])[!,:var])
-	nearOpt_eqn = @constraint(top_m.optModel, costOpt_fl * (1 + nearOpt_ntup.optThres)  >= cost_expr)
+	nearOpt_eqn = @constraint(top_m.optModel, costOpt_fl * (1 + nearOptSetup_obj.optThres)  >= cost_expr)
 	top_m.parts.obj.cns[:nearOpt] = DataFrame(cns = nearOpt_eqn)
-end
-
-# ! get capacity results for near optimal analysis
-function getCapaResult(anyM::anyModel)
-
-	# get capacities from summary file
-	sum_df = rename(reportResults(:summary, anyM, rtnOpt = (:csvDf,)), :region_dispatch => :region, :technology => :system)
-	sum_df = filter(x -> x.variable in (:capaStOut, :capaStIn, :capaStSize, :capaConv), sum_df)
-	select!(sum_df, setdiff(namesSym(sum_df), [:scenario, :carrier, :objName]))
-
-	# get capacity from exchange file
-	exc_df = rename(filter(x -> x.variable == :capaExc, reportResults(:exchange, anyM, rtnOpt = (:csvDf,))), :exchange => :system)
-	exc_df[!,:region] = string.(exc_df[!,:region_from]) .* " - " .* string.(exc_df[!,:region_to])
-	exc_df[!,:id] .= ""
-	select!(exc_df, setdiff(namesSym(exc_df), [:timestep_superordinate_expansion, :region_from, :region_to, :scenario, :directed, :carrier, :objName]))
-
-	return rename(vcat(sum_df, exc_df), :timestep_superordinate_dispatch => :timestep, :variable => :capacity_variable, :value => :capacity_value)
 end
 
 #endregion
@@ -625,13 +607,13 @@ function deleteCuts!(benders_obj::bendersObj)
 	
 	top_m = benders_obj.top
 	# numer of iterations after which unused cuts are delted
-	delCut_int = benders_obj.itr.cnt.nOpt == 0 ? benders_obj.algOpt.delCut : benders_obj.nearOpt.setup.delCut
+	delCut_int = benders_obj.nearOpt.cnt == 0 ? benders_obj.algOpt.delCut : benders_obj.nearOpt.setup.delCut
 	
 	if delCut_int < Inf
 		# tracking latest binding iteration for cuts
-		top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> abs(value(x.cns) / normalized_rhs(x.cns) - 1) < 1e-3 ? i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
+		top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> abs(value(x.cns) / normalized_rhs(x.cns) - 1) < 1e-3 ? benders_obj.itr.cnt.i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
 		# delete cuts that were not binding long enough
-		delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < i, top_m.parts.obj.cns[:bendersCuts])[!,:cns])
+		delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < benders_obj.itr.cnt.i, top_m.parts.obj.cns[:bendersCuts])[!,:cns])
 		filter!(x -> (x.actItr + delCut_int > benders_obj.itr.cnt.i), top_m.parts.obj.cns[:bendersCuts])
 	end
 end

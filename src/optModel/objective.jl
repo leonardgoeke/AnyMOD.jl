@@ -67,7 +67,7 @@ function createObjective!(obj_tup::Tuple,anyM::anyModel,minimize::Bool=true)
 		if !(:bendersCuts in keys(partObj.cns)) # create table for cuts if none exist yet
 			partObj.cns[:bendersCuts] = DataFrame(i=Int[], Ts_dis = Int[], scr = Int[], limCoef = Bool[], actItr = Int[], cns = ConstraintRef[])
 		else # connect cut variables with new overall benders variable
-			push!(top_m.parts.obj.cns[:objEqn], (name = :aggCut, cns = @constraint(top_m.optModel, sum(top_m.parts.obj.var[:cut][!,:var]) == filter(x -> x.name == :benders,top_m.parts.obj.var[:objVar])[1,:var])))
+			push!(anyM.parts.obj.cns[:objEqn], (name = :aggCut, cns = @constraint(anyM.optModel, sum(anyM.parts.obj.var[:cut][!,:var]) == filter(x -> x.name == :benders,anyM.parts.obj.var[:objVar])[1,:var])))
 		end
 	end
 
