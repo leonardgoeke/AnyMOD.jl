@@ -725,9 +725,8 @@ function checkConvergence(benders_obj::bendersObj, lss_dic::Dict{Tuple{Int64,Int
 			end 
 
 			benders_obj.nearOpt.cnt = benders_obj.nearOpt.cnt + 1 # update near-opt counter
-			println(benders_obj.nearOpt.cnt)
 			# adapt the objective and constraint to near-optimal
-			adaptNearOpt!(benders_obj.top, benders_obj.nearOpt.setup, itr_obj.res[:optCost], benders_obj.nearOpt.cnt)
+			adaptNearOpt!(benders_obj.top, benders_obj.nearOpt.setup, benders_obj.stab, itr_obj.res[:optCost], benders_obj.nearOpt.cnt)
 			produceMessage(report_m.options,report_m.report, 1," - Switched to near-optimal for $(benders_obj.nearOpt.setup.obj[benders_obj.nearOpt.cnt ][1])", testErr = false, printErr = false)
 		else
 			produceMessage(report_m.options,report_m.report, 1," - Finished iteration!", testErr = false, printErr = false)

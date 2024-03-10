@@ -412,7 +412,7 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::
 
 	opt_tup = stab_obj.methodOpt[x_int]
 	if stab_obj.method[x_int] == :qtr # adjust radius of quadratic trust-region
-		if nearOpt_boo ? !srsStep_boo : abs(1 - res_dic[:estTotCostNoStab] / res_dic[:estTotCost]) < opt_tup.thr && stab_obj.dynPar[x_int] > opt_tup.low
+		if (nearOpt_boo ? abs(1 - min(res_dic[:nearObj], res_dic[:nearObjNoStab]) / max(res_dic[:nearObj], res_dic[:nearObjNoStab]) ) < opt_tup.thr : abs(1 - res_dic[:estTotCostNoStab] / res_dic[:estTotCost]) < opt_tup.thr) && stab_obj.dynPar[x_int] > opt_tup.low
 			stab_obj.dynPar[x_int] = max(opt_tup.low, stab_obj.dynPar[x_int] / opt_tup.fac)
 			produceMessage(report_m.options, report_m.report, 1, " - Reduced quadratic trust-region!", testErr = false, printErr = false)	
 		end
@@ -533,7 +533,7 @@ function runTopWithoutStab!(benders_obj::bendersObj)
 	stab_obj = benders_obj.stab
 	
 	# remove stabilization
-	if stab_obj.method[stab_obj.actMet] == :qtr
+	if stab_obj.method[stab_obj.actMet] == :qtr && is_valid(benders_obj.top.optModel, stab_obj.cns)
 		delete(benders_obj.top.optModel, stab_obj.cns) # remove trust-region
 	elseif stab_obj.method[stab_obj.actMet] in (:prx1, :prx2)
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1,1]) # remove penalty form objective
@@ -566,6 +566,8 @@ function runTopWithoutStab!(benders_obj::bendersObj)
 	benders_obj.itr.res[:estTotCostNoStab] = benders_obj.itr.res[:topCostNoStab] + value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
 	benders_obj.itr.res[:lowLimCost] = benders_obj.itr.res[:estTotCostNoStab]
 
+	if benders_obj.nearOpt.cnt != 0 benders_obj.itr.res[:nearObjNoStab] = objective_value(benders_obj.top.optModel) end
+
 end
 
 #endregion
@@ -573,7 +575,7 @@ end
 #region # * near-optimal
 
 # ! adapt top-problem for the computation of near-optimal solutions
-function adaptNearOpt!(top_m::anyModel, nearOptSetup_obj::nearOptSetup, costOpt_fl::Float64, nOpt_int::Int)
+function adaptNearOpt!(top_m::anyModel, nearOptSetup_obj::nearOptSetup, stab_obj::stabObj, costOpt_fl::Float64, nOpt_int::Int)
 	
 	obj_arr = Pair[]
 	for obj in nearOptSetup_obj.obj[nOpt_int][2][2]
@@ -591,6 +593,11 @@ function adaptNearOpt!(top_m::anyModel, nearOptSetup_obj::nearOptSetup, costOpt_
 	
 	# delete old restriction to near optimum
 	if :nearOpt in keys(top_m.parts.obj.cns) delete(top_m.optModel, top_m.parts.obj.cns[:nearOpt][1,:cns]) end
+
+	# delete quadratic trust-region for first iteration
+	if !isnothing(stab_obj) && stab_obj.method[stab_obj.actMet] == :qtr
+		delete(top_m.optModel, stab_obj.cns)
+	end
 	
 	# restrict system costs to near-optimum
 	cost_expr = sum(filter(x -> x.name in (:cost, :benders), top_m.parts.obj.var[:objVar])[!,:var])

@@ -38,6 +38,7 @@ struct nearOptSetup
 	lssThres::Float64 # lss threshold to keep solution
 	optThres::Float64 # cost threshold for optimization
 	feasGap::Float64 # target feasibility gap
+	stab::Int # number of stabilization method for nearOpt (0 uses same as before)
 	delCut::Int64 # number of iterations that unused cuts are deleted during near-opt
 	obj::NTuple #  tuple with objectives
 end
