@@ -279,8 +279,7 @@ function prepareMod!(mod_m::anyModel, opt_obj::DataType, t_int::Int)
 	setObjective!(:cost, mod_m)
 	# set optimizer and attributes
 	set_optimizer(mod_m.optModel, opt_obj)
-	set_optimizer_attribute(mod_m.optModel, "Threads", t_int)
-	set_optimizer_attribute(mod_m.optModel, "QCPDual", 1)	
+	set_optimizer_attribute(mod_m.optModel, "Threads", t_int)	
 end
 
 # ! run top-problem
@@ -338,6 +337,21 @@ function runTop(benders_obj::bendersObj)
 			@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1,1])
 			optimize!(benders_obj.top.optModel)
 		end
+
+		# near-optimal can be infeasible with trust-region since near-optimum constraint cannot be fulfilled
+		if stab_obj.method[stab_obj.actMet] == :qtr && benders_obj.nearOpt.cnt != 0 && is_valid(benders_obj.top.optModel, stab_obj.cns)
+			# extend trust-region until problem is feasible
+			while !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+				# delte old trust-region
+				delete(benders_obj.top.optModel, stab_obj.cns)
+				# double radius of trust-region and enforce again
+				stab_obj.dynPar[stab_obj.actMet] = max(stab_obj.methodOpt[x_int].low, stab_obj.dynPar[x_int] * stab_obj.methodOpt[x_int].fac)
+				centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.solOpt.addVio, benders_obj.top, benders_obj.report.mod)
+				# solve again
+				optimize!(benders_obj.top.optModel)
+			end
+		end
+
 	end
 	checkIIS(benders_obj.top)
 
@@ -465,7 +479,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 
 	#endregion
 
-	#region # * extract data for cuts
+	#region # * extract results
 
 	# get objective value
 	scaObj_fl = sub_m.options.scaFac.obj
@@ -499,10 +513,14 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 		end
 	end
 
-	#endregion
-
-	lss_fl = sum(value.(sub_m.parts.bal.var[:lss][!,:var]))
+	# probability weighted loss-of-load
+	lssProb_df = matchSetParameter(sub_m.parts.bal.var[:lss], sub_m.parts.obj.par[:scrProb], sub_m.sets)
+	lss_fl = sum(lssProb_df[!,:val] .* value.(lssProb_df[!,:var]))
+	
+	# elapsed time
 	elpSub_time = now() - str_time
+
+	#endregion
 
 	return resData_obj, elpSub_time, lss_fl
 end
@@ -619,6 +637,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 
 	itr_obj = benders_obj.itr
 	best_obj = itr_obj.best
+	nameStab_dic = Dict(:lvl1 => "level bundle",:lvl2 => "level bundle",:qtr => "quadratic trust-region", :prx => "proximal bundle", :box => "box-step method")
 
 	# store information for cuts
 	benders_obj.cuts = collect(cutData_dic)
@@ -653,7 +672,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 
 		# adjust dynamic parameters of stabilization
 		prx2Aux_fl = stab_obj.method[stab_obj.actMet] == :prx2 ? computePrx2Aux(benders_obj.cuts, benders_obj.prevCuts) : nothing
-		foreach(x -> adjustDynPar!(x, benders_obj.stab, benders_obj.top, benders_obj.itr.res, itr_obj.cnt, srsStep_boo, prx2Aux_fl, benders_obj.nearOpt.cnt != 0, report_m), 1:length(stab_obj.method))
+		foreach(x -> adjustDynPar!(x, benders_obj.stab, benders_obj.top, benders_obj.itr.res, itr_obj.cnt, srsStep_boo, prx2Aux_fl, benders_obj.nearOpt.cnt != 0, benders_obj.report), 1:length(stab_obj.method))
 
 		# update center of stabilisation
 		if srsStep_boo
@@ -667,16 +686,14 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 			stab_obj = benders_obj.stab
 			# switch stabilization method
 			if !isempty(stab_obj.ruleSw) && itr_obj.cnt.i > stab_obj.ruleSw.itr && length(stab_obj.method) > 1
-				min_boo = itrReport_df[itr_obj.cnt.i - stab_obj.ruleSw.itr,:actMethod] == stab_obj.method[stab_obj.actMet] # check if method as been used for the minimum number of iterations 
-				pro_boo = itrReport_df[(itr_obj.cnt.i - min(itr_obj.cnt.i,stab_obj.ruleSw.itrAvg) + 1):end,:gap] |> (x -> (x[1]/x[end])^(1/(length(x) -1)) - 1 < stab_obj.ruleSw.avgImp) # check if progress in last iterations is below threshold
-				if min_boo && pro_boo
+				if checkSwitch(stab_obj, itr_obj.cnt, benders_obj.report.itr)
 					stab_obj.actMet = stab_obj.actMet + 1 |> (x -> length(stab_obj.method) < x ? 1 : x)
 					produceMessage(report_m.options,report_m.report, 1," - Switched stabilization to $(nameStab_dic[stab_obj.method[stab_obj.actMet]]) method!", testErr = false, printErr = false)
 				end
 			end
 			
 			# update stabilization method
-			centerStab!(stab_obj.method[stab_obj.actMet], stab_obj,benders_obj.algOpt.solOpt.addVio, benders_obj.top, report_m)
+			centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.solOpt.addVio, benders_obj.top, report_m)
 		end
 	end
 	
@@ -726,7 +743,7 @@ function checkConvergence(benders_obj::bendersObj, lss_dic::Dict{Tuple{Int64,Int
 
 			benders_obj.nearOpt.cnt = benders_obj.nearOpt.cnt + 1 # update near-opt counter
 			# adapt the objective and constraint to near-optimal
-			adaptNearOpt!(benders_obj.top, benders_obj.nearOpt.setup, benders_obj.stab, itr_obj.res[:optCost], benders_obj.nearOpt.cnt)
+			adaptNearOpt!(benders_obj.top, benders_obj.nearOpt.setup, itr_obj.res[:optCost], benders_obj.nearOpt.cnt)
 			produceMessage(report_m.options,report_m.report, 1," - Switched to near-optimal for $(benders_obj.nearOpt.setup.obj[benders_obj.nearOpt.cnt ][1])", testErr = false, printErr = false)
 		else
 			produceMessage(report_m.options,report_m.report, 1," - Finished iteration!", testErr = false, printErr = false)

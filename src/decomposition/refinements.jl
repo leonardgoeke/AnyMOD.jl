@@ -92,6 +92,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 	else
 		stab_obj = nothing
 		startSol_obj = resData()
+		benders_obj.cuts = Array{Pair{Tuple{Int,Int},Union{resData}},1}()
 	end
 
 	return stab_obj, startSol_obj
@@ -157,7 +158,6 @@ function computeDynPar(meth_arr::Array{Symbol, 1},methOpt_arr::Array{NamedTuple,
 		elseif meth_arr[m] == :dsb
 			dynPar = Dict(:yps=>(1-methOpt_arr[m].lam)*(upBd_fl-lowBd_fl)/top_m.options.scaFac.obj,
 			:prx => methOpt_arr[m].start, :my => 1.0)
-
 		else
 			error("unknown stabilization method provided, method must either be 'prx', 'lvl', 'qtr', or 'box'")
 		end
@@ -171,6 +171,9 @@ centerStab!(method::Symbol, stab_obj::stabObj, addVio_fl::Float64, top_m::anyMod
 
 # function for quadratic trust region
 function centerStab!(method::Val{:qtr}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+	
+	# set dual option according to demands of methos 
+	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj, top_m)
@@ -206,7 +209,10 @@ end
 
 # function for proximal bundle method
 function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
-	
+
+	# set dual option according to demands of methos 
+	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+
 	# get penalty factor
 	pen_fl = 1/(2 * stab_obj.dynPar[stab_obj.actMet][:prx])
 
@@ -248,6 +254,9 @@ end
 # functions for level bundle methods
 function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 	
+	# set dual option according to demands of methos 
+	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj, top_m)
 
@@ -268,6 +277,9 @@ end
 
 function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 	
+	# set dual option according to demands of methos 
+	set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
+		
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj, top_m)
 
@@ -292,6 +304,9 @@ end
 # function for box step method
 function centerStab!(method::Val{:box}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 
+	# set dual option according to demands of methos 
+	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
@@ -307,6 +322,9 @@ end
 # function for doubly stabilised bundle method
 function centerStab!(method::Val{:dsb}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 	
+	# set dual option according to demands of methos 
+	set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
+
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj, top_m)
 
@@ -408,13 +426,18 @@ function computePrx2Aux(cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, 
 end
 
 # update dynamic parameter of stabilization method
-function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::Dict{Symbol,Float64}, cnt_obj::countItr, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, report_m::anyModel)
+function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::Dict{Symbol,Float64}, cnt_obj::countItr, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, report_ntup::NamedTuple{(:itr,:nearOpt,:mod),Tuple{DataFrame,DataFrame,anyModel}})
 
 	opt_tup = stab_obj.methodOpt[x_int]
 	if stab_obj.method[x_int] == :qtr # adjust radius of quadratic trust-region
-		if (nearOpt_boo ? abs(1 - min(res_dic[:nearObj], res_dic[:nearObjNoStab]) / max(res_dic[:nearObj], res_dic[:nearObjNoStab]) ) < opt_tup.thr : abs(1 - res_dic[:estTotCostNoStab] / res_dic[:estTotCost]) < opt_tup.thr) && stab_obj.dynPar[x_int] > opt_tup.low
+		# reduce radius when trust-region is not binding
+		if (nearOpt_boo ? abs(1 - res_dic[:nearObjNoStab] / res_dic[:nearObj]) < opt_tup.thr : abs(1 - res_dic[:estTotCostNoStab] / res_dic[:estTotCost]) < opt_tup.thr) && stab_obj.dynPar[x_int] > opt_tup.low
 			stab_obj.dynPar[x_int] = max(opt_tup.low, stab_obj.dynPar[x_int] / opt_tup.fac)
-			produceMessage(report_m.options, report_m.report, 1, " - Reduced quadratic trust-region!", testErr = false, printErr = false)	
+			produceMessage(report_ntup.mod.options, report_ntup.mod.report, 1, " - Reduced quadratic trust-region!", testErr = false, printErr = false)	
+		# extend radius if algorithm "got stuck", applies same criterium as switching entire method
+		elseif nearOpt_boo && !isempty(stab_obj.ruleSw) && cnt_obj.i > stab_obj.ruleSw.itr && checkSwitch(stab_obj, cnt_obj, report_ntup.itr) && false
+			stab_obj.dynPar[x_int] = max(opt_tup.low, stab_obj.dynPar[x_int] * opt_tup.fac)
+			produceMessage(report_ntup.mod.options, report_ntup.mod.report, 1, " - Extended quadratic trust-region!", testErr = false, printErr = false)
 		end
 	elseif stab_obj.method[x_int] in (:prx1, :prx2) # adjust penalty term of proximal term, implementation according to doi.org/10.1007/s10107-015-0873-6, section 5.1.2
 		# compute τ_aux
@@ -570,12 +593,19 @@ function runTopWithoutStab!(benders_obj::bendersObj)
 
 end
 
+# check if switching criterium is met
+function checkSwitch(stab_obj::stabObj, cnt_obj::countItr, itr_df::DataFrame)
+	min_boo = itr_df[cnt_obj.i - stab_obj.ruleSw.itr,:actMethod] == stab_obj.method[stab_obj.actMet] # check if method as been used for the minimum number of iterations 
+	pro_boo = itr_df[(cnt_obj.i - min(cnt_obj.i,stab_obj.ruleSw.itrAvg) + 1):end,:gap] |> (x -> (x[1]/x[end])^(1/(length(x) -1)) - 1 < stab_obj.ruleSw.avgImp) # check if progress in last iterations is below threshold
+	return min_boo && pro_boo
+end
+
 #endregion
 
 #region # * near-optimal
 
 # ! adapt top-problem for the computation of near-optimal solutions
-function adaptNearOpt!(top_m::anyModel, nearOptSetup_obj::nearOptSetup, stab_obj::stabObj, costOpt_fl::Float64, nOpt_int::Int)
+function adaptNearOpt!(top_m::anyModel, nearOptSetup_obj::nearOptSetup, costOpt_fl::Float64, nOpt_int::Int)
 	
 	obj_arr = Pair[]
 	for obj in nearOptSetup_obj.obj[nOpt_int][2][2]
@@ -594,15 +624,69 @@ function adaptNearOpt!(top_m::anyModel, nearOptSetup_obj::nearOptSetup, stab_obj
 	# delete old restriction to near optimum
 	if :nearOpt in keys(top_m.parts.obj.cns) delete(top_m.optModel, top_m.parts.obj.cns[:nearOpt][1,:cns]) end
 
-	# delete quadratic trust-region for first iteration
-	if !isnothing(stab_obj) && stab_obj.method[stab_obj.actMet] == :qtr
-		delete(top_m.optModel, stab_obj.cns)
-	end
-	
 	# restrict system costs to near-optimum
 	cost_expr = sum(filter(x -> x.name in (:cost, :benders), top_m.parts.obj.var[:objVar])[!,:var])
 	nearOpt_eqn = @constraint(top_m.optModel, costOpt_fl * (1 + nearOptSetup_obj.optThres)  >= cost_expr)
 	top_m.parts.obj.cns[:nearOpt] = DataFrame(cns = nearOpt_eqn)
+end
+
+# ! filter pareto efficient near-optimal solutions
+function filterParetoEff!(nearOpt_df::DataFrame, nearOptSetup_obj::nearOptSetup)
+
+	filter!(x -> x.value > nearOptSetup_obj.parThres.zero || x.variable in (:lss,:cost,:thrs), nearOpt_df)
+	allDom_arr = Array{Array{Int,1},1}()
+
+	# loop over different objectives
+	for obj in nearOptSetup_obj.obj
+		
+		# get cost and lss variables
+		parRel_df = filter(x -> x.variable in (:cost,:lss), nearOpt_df)
+		
+		# get variables for specific objective and correct for direction
+		min_boo = obj[2][1] == :min
+		for fltObj in obj[2][2]
+			# skip case, if weight is zero
+			if fltObj[1] == 0.0 continue end
+			# create array of functions to filter relevant rows and apply it
+			relFlt_tup = fltObj[2]
+			fltFunc_arr = map(z -> (y -> occursin(string(getfield(relFlt_tup, z)), string(y[z]))), collect(keys(relFlt_tup)))
+			relNear_df = filter(x -> all(map(y -> y(x), fltFunc_arr)), nearOpt_df)
+			# apply factor and orientation of optimization
+			relNear_df[!,:value] = relNear_df[!,:value] .* (fltObj[1] > 0.0 ? 1.0 : -1.0) .* (min_boo ? 1.0 : -1.0)
+			# add to overall data-DataFrame
+			append!(parRel_df, relNear_df)
+		end
+
+		# check for dominated iterations
+		i_arr = unique(parRel_df[!,:i])
+		iDom_arr = Int[] # array of dominated iterations
+		
+		for i1 in i_arr
+			# get rows relating to first iteration of check
+			i1ParRel_df = select(rename(filter(x -> x.i == i1, parRel_df), :value => :value_1),Not([:i]))
+			# loop over rows for second iteration of check
+			for i2 in filter(x -> x > i1, i_arr)
+				# get data and join to single dataframe
+				i2ParRel_df = select(rename(filter(x -> x.i == i2, parRel_df), :value => :value_2),Not([:i]))
+				joinParRel_df = joinMissing(i1ParRel_df, i2ParRel_df, [:timestep, :region, :system, :id, :variable], :left, Dict(:value_1 => 0.0, :value_2 => 0.0))
+				
+				# check for domination
+				if all(joinParRel_df[!,:value_1] .<= joinParRel_df[!,:value_2] .* (1 + nearOptSetup_obj.parThres.dom)) # first dominating second
+					push!(iDom_arr,i2)
+				elseif all(joinParRel_df[!,:value_1] .* (1 + nearOptSetup_obj.parThres.dom) .>= joinParRel_df[!,:value_2]) # second dominating first
+					push!(iDom_arr,i1)
+					break
+				end
+			end
+		end
+
+		# filter unique dominated entries
+		push!(allDom_arr, unique(sort(iDom_arr)))
+	end
+
+	# filter dominated cases across all objectives
+	interDom_arr = intersect(allDom_arr...)
+	filter!(x -> !(x.i in interDom_arr), nearOpt_df)
 end
 
 #endregion

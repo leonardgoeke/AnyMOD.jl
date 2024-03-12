@@ -38,9 +38,13 @@ struct nearOptSetup
 	lssThres::Float64 # lss threshold to keep solution
 	optThres::Float64 # cost threshold for optimization
 	feasGap::Float64 # target feasibility gap
-	stab::Int # number of stabilization method for nearOpt (0 uses same as before)
 	delCut::Int64 # number of iterations that unused cuts are deleted during near-opt
 	obj::NTuple #  tuple with objectives
+	parThres::NamedTuple{(:dom, :zero), Tuple{Float64, Float64}} # thresholds for filtering pareto efficient solutions
+
+	function nearOptSetup(cutThres::Float64, lssThres::Float64, optThres::Float64, feasGap::Float64, delCut::Int64, obj::NTuple, parThres::NamedTuple{(:dom, :zero), Tuple{Float64, Float64}} = (dom = 0.005, zero = 1e-4))
+		return new(cutThres, lssThres, optThres, feasGap, delCut, obj, parThres)
+	end
 end
 
 mutable struct nearOptObj
@@ -220,7 +224,7 @@ mutable struct bendersObj
 		#region # * initialize stabilization
 
 		benders_obj.stab, curBest_obj = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
-		benders_obj.itr = itrStatus(curBest_obj, countItr(maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0), 1.0, Dict{Symbol,Float64}())
+		benders_obj.itr = itrStatus(curBest_obj, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0), 1.0, Dict{Symbol,Float64}())
 		benders_obj.itr.res[:curBest] = curBest_obj.objVal
 
 		#endregion
