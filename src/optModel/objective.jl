@@ -19,15 +19,15 @@ function setObjective!(obj::Symbol,anyM::anyModel,minimize::Bool=true,filterFunc
 
 end
 
-function setObjective!(obj_tup::Tuple,anyM::anyModel,minimize::Bool=true)
+function setObjective!(obj_tup::Tuple, anyM::anyModel, minimize::Bool=true)
 	
 	# set actual objective
-	createObjective!(obj_tup,anyM,minimize)
+	createObjective!(obj_tup, anyM, minimize)
 
 end
 
 # ! create actual objective
-function createObjective!(obj_tup::Tuple,anyM::anyModel,minimize::Bool=true)
+function createObjective!(obj_tup::Tuple, anyM::anyModel, minimize::Bool=true)
 
 	partObj = anyM.parts.obj
 
