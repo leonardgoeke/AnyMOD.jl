@@ -507,11 +507,21 @@ function getAllVariables(va::Symbol, anyM::anyModel; reflectRed::Bool = true, fi
 		else
 			# get all carriers and technologies that might be relevant to compute emissions
 			if :Te in namesSym(anyM.parts.lim.par[:emissionFac].data)
-				emC_arr = unique(vcat(map(x -> [x, getDescendants(x, anyM.sets[:C], true)...], unique(filter(x -> x.Te == 0, anyM.parts.lim.par[:emissionFac].data)[!,:C]))...))
 				emTe_arr = unique(vcat(map(x -> [x, getDescendants(x, anyM.sets[:Te], true)...], unique(filter(x -> x.Te != 0, anyM.parts.lim.par[:emissionFac].data)[!,:Te]))...))
-			else
+				if :C in namesSym(anyM.parts.lim.par[:emissionFac].data)
+					allTe_arr = unique(filter(x -> x.Te == 0, anyM.parts.lim.par[:emissionFac].data)[!,:C])
+				else
+					allTe_arr = union(map(x -> anyM.parts.tech[sysSym(x,anyM.sets[:Te])].carrier |> (z -> :use in keys(z) ? [z[:use]...] : Int[]),emTe_arr)...)
+				end
+				emC_arr = unique(vcat(map(x -> [x, getDescendants(x, anyM.sets[:C], true)...], allTe_arr)...))
+			elseif :C in namesSym(anyM.parts.lim.par[:emissionFac].data)
+				# add error message
 				emC_arr = unique(vcat(map(x -> [x, getDescendants(x, anyM.sets[:C], true)...], unique(anyM.parts.lim.par[:emissionFac].data[!,:C]))...))
 				emTe_arr = Array{Int64,1}()
+			else
+				push!(anyM.report, (3, "parameter read-in", "definition", "emission factors cannot be provided without specifying a technology or carrier"))
+				emC_arr = Int[]
+				emTe_arr = Int[]
 			end
 
 			# get use variables from technologies
