@@ -230,6 +230,9 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		# adjust sign, if enabled
 		if wrtSgn && va in (:use, :stIn, :stIntIn, :stExtIn, :crt, :trdSell) disp_df[!,:value] = disp_df[!,:value] .* -1 end
 
+		# add superordinate dispatch time-step if non-existing
+		if !(:Ts_disSup in names(disp_df)) disp_df[!,:Ts_disSup] .= 0 end
+
 		# adds region column potentially missing for paramter triggered data
 		if !(:R_dis in namesSym(disp_df)) disp_df[!,:R_dis] .= 0.0 end
 		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), disp_df))
