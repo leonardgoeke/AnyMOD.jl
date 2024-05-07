@@ -626,7 +626,7 @@ function createScenarioMapping!(anyM::anyModel)
 		control_df = combine(groupby(prop_df, [:Ts_dis]), :val => (x -> sum(x)) => :val)
 		sca_dic = Dict(control_df[!,:Ts_dis] .=> control_df[!,:val])
 
-		for x in eachrow(filter(x -> x.val != 1.0, control_df))
+		for x in eachrow(filter(x -> abs(x.val - 1.0) > 1e-8, control_df))
 			push!(anyM.report, (2, "scenario", "probability", "for timestep '$(createFullString(x.Ts_dis, anyM.sets[:Ts]))' scenario probabilities do not sum up to 1.0, values were adjusted accordingly"))
 		end
 		prop_df[!,:val] .= map(x -> x.val/sca_dic[x.Ts_dis], eachrow(prop_df))
