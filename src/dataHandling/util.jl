@@ -74,6 +74,7 @@ plus(a::Int, b::Int) = a + b
 plus(a::Int, b::Nothing) = a
 plus(a::Nothing, b::Int) = b
 
+
 # ! creates array of string from typical input of array
 makeC(in::Union{String, String1, String3, String7, String15, String31, String63, String127, String255}) = split(replace(in, " " => ""), ";")
 
@@ -123,6 +124,24 @@ makeLow(in::Symbol) = Symbol(lowercase(string(in)[1]), string(in)[2:end])
 
 getScaFac(x_int::Int, anyM::anyModel) = anyM.supTs.sca[getAncestors(x_int, anyM.sets[:Ts], :int, anyM.scr.lvl)[end]]
 
+# ! compute expected value
+function computeExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, Float64},ts_tree::Tree, lvlFrs_int::Int64, aggCol_sym::Symbol)
+            
+	if :scr in namesSym(in_df) && unique(in_df[!,:scr]) != [0]
+		# rename column for aggregation
+		in_df = rename(in_df, aggCol_sym => :agg)
+		# join probability
+		if lvlFrs_int == 0 # case of perfect foresight
+			in_df[!,:prob] = map(x -> (x.Ts_disSup, x.scr) in keys(scrProb_dic) ? scrProb_dic[(x.Ts_disSup, x.scr)] : 0.0, eachrow(in_df))
+		else # case of limited foresight
+			in_df[!,:prob] = map(x -> scrProb_dic[(getAncestors(x.Ts_dis, ts_tree, :int, lvlFrs_int)[end], x.scr)], eachrow(in_df))
+		end
+		# compute expected value and convert column name back again
+		in_df = vcat(select(in_df,Not([:prob])), combine(y -> (scr = 0, agg = sum(y.agg .* y.prob),), groupby(in_df, filter(x -> x != :scr, intCol(in_df)))))
+		in_df = rename(in_df, :agg => aggCol_sym)
+	end
+	return in_df
+end
 
 # ! create dataframe with all potential dimensions for carrier provided
 function createPotDisp(c_arr::Array{Int,1}, ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, anyM::anyModel)

@@ -107,7 +107,7 @@ Writes results to `.csv` file with content depending on `reportType`. Available 
 reportResults(reportType::Symbol, anyM::anyModel; kwargs...) = reportResults(Val{reportType}(), anyM::anyModel; kwargs...)
 
 # ! summary of all capacity and dispatch results
-function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=true, wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = tuple())
+function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=true, wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, expVal::Bool = false, addRep::Tuple{Vararg{Symbol,N} where N} = tuple())
 
 	if !isempty(setdiff(addRep, (:cyc, :flh, :effConv, :capaConvOut)))
 		error("Provided unsupported keywords for addRep argument. Supported are :cyc, :flh, :effConv, and :capaConvOut.")
@@ -118,8 +118,11 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
 	# ! get demand values
 	if :dem in keys(anyM.parts.bal.par) && (anyM.subPro != tuple(0,0) || anyM.options.createVI.bal)
+		
 		dem_df = copy(anyM.parts.bal.par[:dem].data)
+		
 		if !isempty(dem_df)
+
 			dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, :C in namesSym(dem_df) ? dem_df[!,:C] : filter(x -> x != 0, getfield.(values(anyM.sets[:C].nodes), :idx)))
 
 			# aggregates demand values
@@ -151,7 +154,14 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 				dem_df[!,:R_dis] .= 0
 			end
 
+			# aggregate and add expected value in case of scenarios
+			if expVal && length(anyM.scr.scr) > 1
+				dem_df = computeExpVal(dem_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.lvlFrs, :val) 
+			end
 			dem_df = combine(groupby(dem_df, [:Ts_disSup, :R_dis, :C, :scr]), :val => ( x -> sum(x) / 1000) => :value)
+			
+
+			# add columns and add to overall data
 			dem_df[!,:Te] .= 0
 			dem_df[!,:id] .= 0
 			dem_df[!,:variable] .= :demand
@@ -215,7 +225,17 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 			allVar_df[!,:Ts_disSup] = map(x -> getAncestors(x, anyM.sets[:Ts], :int, anyM.supTs.lvl)[end], allVar_df[!,:Ts_dis])
 		end
 
-		disp_df = combine(groupby(allVar_df, intersect(intCol(allVar_df), [:Ts_disSup, :R_dis, :C, :Te, :scr])), :var => (x -> value(sum(x))) => :value)
+		# add expected value in case of scenarios and aggregate
+		allVar_df[!,:value] .= value.(allVar_df[!,:var])
+		if expVal && :Ts_dis in namesSym(allVar_df) && length(anyM.scr.scr) > 1
+			allVar_df = computeExpVal(select(allVar_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.lvlFrs, :value) 
+		end
+		disp_df = combine(groupby(allVar_df, intersect(intCol(allVar_df), [:Ts_disSup, :R_dis, :C, :Te, :scr])), :value => (x -> sum(x)) => :value)
+			
+		if !(:Ts_disSup in names(disp_df)) && va == :emissionInf # add superordinate dispatch time-step if non-existing
+			disp_df[!,:Ts_disSup] .= 0
+		end
+		
 		# scales values to twh (except for emissions)
 		if !(va in (:emission, :emissionInf)) disp_df[!,:value] = disp_df[!,:value]  ./ 1000 end
 		disp_df[!,:variable] .= va
@@ -230,9 +250,6 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		# adjust sign, if enabled
 		if wrtSgn && va in (:use, :stIn, :stIntIn, :stExtIn, :crt, :trdSell) disp_df[!,:value] = disp_df[!,:value] .* -1 end
 
-		# add superordinate dispatch time-step if non-existing
-		if !(:Ts_disSup in names(disp_df)) disp_df[!,:Ts_disSup] .= 0 end
-
 		# adds region column potentially missing for paramter triggered data
 		if !(:R_dis in namesSym(disp_df)) disp_df[!,:R_dis] .= 0.0 end
 		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), disp_df))
@@ -241,10 +258,14 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 	# ! get exchange variables aggregated by import and export
 	allExc_df = getAllVariables(:exc, anyM)
 	
-
 	if !isempty(allExc_df)
 
 		allExc_arr = unique(allExc_df[!,:Exc])
+		
+		# get values and add expected value in case of scenarios
+		if expVal && length(anyM.scr.scr) > 1
+			allExc_df = computeExpVal(allExc_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.lvlFrs, :var)
+		end
 		
 		# compute export and import of each region, losses are considered at import
 	    excFrom_df = rename(combine(groupby(allExc_df, [:Ts_disSup, :R_from, :C, :scr]), :var => (x -> value(sum(x))/1000) => :value), :R_from => :R_dis)
@@ -422,6 +443,7 @@ function reportResults(objGrp::Val{:cost}, anyM::anyModel; addObjName::Bool=true
 
 	# loops over all objective variables with keyword "cost" in it
 	for cst in keys(anyM.parts.cost.var)
+
 		cost_df = copy(anyM.parts.cost.var[cst])
 		# rename all dispatch and expansion regions simply to region
 		if !isempty(intersect([:R_dis, :R_exp], namesSym(cost_df)))
@@ -437,6 +459,11 @@ function reportResults(objGrp::Val{:cost}, anyM::anyModel; addObjName::Bool=true
 		cost_df[:,:variable] .= cst
 		cost_df[:,:value] = value.(cost_df[:,:var])
         if :Ts_exp in namesSym(cost_df) cost_df = rename(cost_df, :Ts_exp => :Ts_disSup) end
+
+		if !(:Ts_disSup in names(cost_df)) && cst == :costEmInf # add superordinate dispatch time-step if non-existing
+			cost_df[!,:Ts_disSup] .= 0
+		end
+
 		append!(allData_df, select(cost_df, Not([:var])))
 	end
 
@@ -466,7 +493,7 @@ function reportResults(objGrp::Val{:cost}, anyM::anyModel; addObjName::Bool=true
 end
 
 # ! results for exchange
-function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=true, wrtNet::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
+function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=true, wrtNet::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, expVal::Bool = false, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc) error("No exchange data found") end
 
@@ -500,8 +527,13 @@ function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=
 
 	# ! dispatch variables
 	disp_df = getAllVariables(:exc, anyM)
+
 	if !isempty(disp_df)
-		disp_df = combine(groupby(disp_df, [:Ts_expSup, :Ts_disSup, :R_from, :R_to, :C, :Exc, :scr]), :var => (x -> value.(sum(x)) ./ 1000) => :value)
+		# add expected values and aggregate
+		disp_df[!,:value] = value.(disp_df[!,:var])
+		if expVal disp_df = computeExpVal(select(disp_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.lvlFrs, :value) end
+		disp_df = combine(groupby(disp_df, [:Ts_expSup, :Ts_disSup, :R_from, :R_to, :C, :Exc, :scr]), :value => (x -> sum(x) ./ 1000) => :value)
+
 		disp_df[!,:variable] .= :exc
 		disp_df[!,:dir] .= 0
 		filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), disp_df)
@@ -534,6 +566,7 @@ function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=
 		flh_df[!,:variable] .= :flhExc
 		flh_df[!,:C] .= 0
 
+		
 		append!(allData_df, select(flh_df, Not([:from_to, :to_from])))
 	end
 
@@ -1284,7 +1317,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
     #region # * initialize data
 
     if !isempty(setdiff(dropDown, [:region, :timestep, :scenario]))
-    error("dropDown only accepts array :region and :timestep as content")
+    	error("dropDown only accepts array :region and :timestep as content")
     end
 
 	# get mappings to create buttons of dropdown menue
@@ -1293,7 +1326,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 
 	if isempty(dataIn)
 		# get summarised data and filter dispatch variables
-		data_df = select(reportResults(:summary, anyM, rtnOpt = (:rawDf,)), Not([:objName]))
+		data_df = select(reportResults(:summary, anyM, expVal = true, rtnOpt = (:rawDf,)), Not([:objName]))
 		filter!(x -> x.variable in (:demand, :gen, :use, :stIn, :stOut, :trdBuy, :trdSell, :demand, :import, :export, :lss, :crt), data_df)
 
 		# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
@@ -1419,14 +1452,14 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 
 	# ! loop over potential buttons in dropdown menue
 	for drop in eachrow(unique(data_df[!, intersect(namesSym(data_df), dropDim_arr)]))
-	
+
 		#region # * filter data and create flow array
 		nodeLabel_arr = copy(nodeLabelAll_arr)
 	
 		dropData_df = copy(data_df)
 		if :region in dropDown subR_arr = [drop.R_dis, getDescendants(drop.R_dis, anyM.sets[:R], true)...] end
 		for d in dropDown
-			filter!(x -> d == :region ? x.R_dis in subR_arr : x.Ts_disSup == drop.Ts_disSup, dropData_df)
+			filter!(x -> d == :region ? x.R_dis in subR_arr : (d == :timestep ? x.Ts_disSup == drop.Ts_disSup : length(anyM.sets[:scr].nodes) == 1 || x.scr == drop.scr), dropData_df)
 		end
 		
 		if netExc
@@ -1442,6 +1475,8 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 				else
 					aggExc_df[!,:R_dis] .= drop.R_dis
 				end
+				if length(anyM.sets[:scr].nodes) != 1 aggExc_df[!,:scr] .= !(:scenario in dropDown) ? 0 : drop.scr end
+	
 				aggExc_df[!,:id] .= 0
 				dropData_df = vcat(filter(x -> !(x.variable in (:netImport, :netExport)), dropData_df), aggExc_df)
 			end
@@ -1498,7 +1533,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 			allFl = filter(y -> y[1:2] == fl[1:2], flow_arr)
 			return (allFl[1][1], allFl[1][2], sum(getindex.(allFl, 3)))
 		end
-
+	
 		# removes nodes accoring function input provided
 		for rmv in rmvNode
 			# splits remove expression by semicolon and searches for first part
@@ -1506,24 +1541,24 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 			relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
 			if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
 			if isempty(relNodes_arr) continue end
-
+	
 			if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
 				relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
 				if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
-
+	
 				if isempty(relC_arr)
 					continue
 				else
 					c_int = relC_arr[1]
 				end
-
+	
 				filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)), flow_arr)
 				elseif length(rmvStr_arr) > 2
 				error("one remove string contained more then one semicolon, this is not supported")
 				else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
 				out_tup = filter(x -> x[1] == relNodes_arr[1], flow_arr)
 				in_tup = filter(x -> x[2] == relNodes_arr[1], flow_arr)
-
+	
 				if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
 					filter!(x -> !(x in (out_tup[1], in_tup[1])), flow_arr)
 					push!(flow_arr, (in_tup[1][1], out_tup[1][2], in_tup[1][3]))
@@ -1544,8 +1579,8 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
 			(z -> replace(string("rgba", string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...))), " " => "")), flow_arr)
 		link_obj = attr(source = getindex.(flow_arr, 1) .- 1, target = getindex.(flow_arr, 2) .- 1, value = getindex.(flow_arr, 3), color = linkColor_arr)
-
-
+	
+	
 		# compute values for each node to written to graph
 		if wrtVal
 			for x in 1:length(nodeLabel_arr)
