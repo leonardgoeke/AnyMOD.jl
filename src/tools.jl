@@ -131,19 +131,27 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 			if :Ts_dis in namesSym(dem_df)
 				ts_dic = Dict(x => anyM.sets[:Ts].nodes[x].lvl == anyM.supTs.lvl ? x : getAncestors(x, anyM.sets[:Ts], :int, anyM.supTs.lvl)[end] for x in unique(dem_df[!,:Ts_dis]))
 				dem_df[!,:Ts_disSup] = map(x -> ts_dic[x], dem_df[!,:Ts_dis])
+				# replace zeros with actual resolution
+				if 0 in dem_df[!,:Ts_dis] 
+					zeroDem_df = filter(x -> x.Ts_dis == 0, dem_df)
+					zeroDem_df[!,:Ts_dis] = map(x -> getfield.(getNodesLvl(anyM.sets[:Ts], anyM.cInfo[x.C].tsDis),:idx), eachrow(zeroDem_df))
+					dem_df = vcat(flatten(zeroDem_df, :Ts_dis), filter(x -> x.Ts_dis != 0, dem_df))
+				end
 			else
 				dem_df[!,:Ts_disSup] .= collect(anyM.supTs.step) |> (z -> map(x -> z, 1:size(dem_df, 1)))
 				dem_df = flatten(dem_df, :Ts_disSup)
 				dem_df[!,:Ts_dis] = dem_df[!,:Ts_disSup]
 			end
-
-			# artificially add scenario dimensions, if none exist
-			if !(:scr in namesSym(dem_df))
+			
+			if !(:scr in namesSym(dem_df)) # artificially add scenario dimensions, if none exist
 				dem_df[!,:scr] = map(x -> anyM.scr.lvl == 0 ? [0] : anyM.scr[getAncestors(x, anyM.sets[:Ts], :int, anyM.scr.lvl)[end]], dem_df[!,:Ts_disSup])
 				dem_df = flatten(dem_df, :scr)
+			elseif !isempty(anyM.scr.scr) # filter non-relevant scenarios
+				relScr_arr = collect(keys(anyM.scr.scrProb))
+				filter!(x -> x.scr == 0 || (x.Ts_disSup,x.scr) in relScr_arr, dem_df)
 			end
 
-			dem_df[!,:val] = dem_df[!,:val]	.*  getResize(dem_df, anyM.sets[:Ts], anyM.supTs) .* anyM.options.redStep
+        	dem_df[!,:val] = dem_df[!,:val]	.*  getEnergyFac(dem_df[!,:Ts_dis], anyM.supTs)
 
 			allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R], 1), :idx)
 			allLvlR_arr = unique(dem_df[!,:lvlR])
@@ -566,7 +574,7 @@ function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=
 		flh_df[!,:variable] .= :flhExc
 		flh_df[!,:C] .= 0
 
-		
+
 		append!(allData_df, select(flh_df, Not([:from_to, :to_from])))
 	end
 
@@ -727,7 +735,7 @@ reportTimeSeries(car_sym::Symbol, model_object::anyModel)
 
 Writes elements of energy balance for carrier specified by `car_sym` to `.csv` file. See [Time-series](@ref).
 """
-function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in, :out), minVal::Number = 1e-3, mergeVar::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
+function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function = x -> true, unstck::Bool = true, signVar::Tuple = (:in, :out), minVal::Number = 1e-3, mergeVar::Bool = true, forceEner::Bool = false, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
 	# ! converts carrier named provided to index
 	node_arr = filter(x -> x.val == string(car_sym), collect(values(anyM.sets[:C].nodes)))
@@ -753,8 +761,16 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 
 	# ! add demand and size it
 	if :out in signVar
-		dem_df = matchSetParameter(relDim_df, anyM.parts.bal.par[:dem], anyM.sets, newCol = :value)
-		dem_df[!,:value] = dem_df[!,:value] .* getResize(dem_df, anyM.sets[:Ts], anyM.supTs) .* -1
+		dem_df = matchSetParameter(relDim_df, anyM.parts.bal.par[:dem], anyM.sets, newCol = :dem)
+		cSub_arr = filter(x -> x != c_int, getDescendants(c_int, anyM.sets[:C], false))
+		# add demand of descendant carriers
+		if !isempty(cSub_arr)
+			allDim_df = createPotDisp(cSub_arr, ts_dic, anyM)
+			dem_df = addSubDemand(dem_df, allDim_df, c_int, cSub_arr, anyM.sets, anyM.cInfo, anyM.parts.bal)
+		end
+		dem_df = rename(dem_df,:dem => :value)
+		# adjust sign and add to all data
+		dem_df[!,:value] = dem_df[!,:value] .* -1.0
 		dem_df[!,:variable] .= :demand
 		filter!(x -> abs(x.value) > minVal, dem_df)
 		append!(allData_dic[:out], select!(dem_df, Not(:C)))
@@ -850,10 +866,17 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		append!(allData_dic[:in], select(lss_df, Not(:C)))
 	end
 
+
+
 	# ! unstack data and write to csv
 	if mergeVar
 		# merges in and out files and writes to same csv file
 		data_df = vcat(values(allData_dic)...)
+
+		# convert to energy values 
+		if forceEner || anyM.cInfo[c_int].tsDis <= anyM.options.repTsLvl
+			data_df[!,:value] = data_df[!,:value] .* getEnergyFac(data_df[!,:Ts_dis], anyM.supTs)
+		end
 
 		if unstck && !isempty(data_df)
 			data_df[!,:variable] = CategoricalArray(string.(data_df[!, :variable]))
@@ -877,6 +900,12 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		# loops over different signs and writes to different csv files
 		for signItr in signVar
 			data_df = allData_dic[signItr]
+			
+			# convert to energy values 
+			if forceEner || anyM.cInfo[c_int].tsDis <= anyM.options.repTsLvl
+				data_df[!,:value] = data_df[!,:value] .* getEnergyFac(data_df[!,:Ts_dis], anyM.supTs)
+			end
+			
 			if unstck && !isempty(data_df)
 				data_df[!,:variable] = CategoricalArray(string.(data_df[!,:variable]))
 				data_df = unstack(data_df, :variable, :value)
@@ -1317,7 +1346,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
     #region # * initialize data
 
     if !isempty(setdiff(dropDown, [:region, :timestep, :scenario]))
-    	error("dropDown only accepts array :region and :timestep as content")
+    error("dropDown only accepts array :region and :timestep as content")
     end
 
 	# get mappings to create buttons of dropdown menue
@@ -1452,7 +1481,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 
 	# ! loop over potential buttons in dropdown menue
 	for drop in eachrow(unique(data_df[!, intersect(namesSym(data_df), dropDim_arr)]))
-
+	
 		#region # * filter data and create flow array
 		nodeLabel_arr = copy(nodeLabelAll_arr)
 	
@@ -1533,7 +1562,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 			allFl = filter(y -> y[1:2] == fl[1:2], flow_arr)
 			return (allFl[1][1], allFl[1][2], sum(getindex.(allFl, 3)))
 		end
-	
+
 		# removes nodes accoring function input provided
 		for rmv in rmvNode
 			# splits remove expression by semicolon and searches for first part
@@ -1541,24 +1570,24 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 			relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
 			if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
 			if isempty(relNodes_arr) continue end
-	
+
 			if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
 				relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
 				if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
-	
+
 				if isempty(relC_arr)
 					continue
 				else
 					c_int = relC_arr[1]
 				end
-	
+
 				filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)), flow_arr)
 				elseif length(rmvStr_arr) > 2
 				error("one remove string contained more then one semicolon, this is not supported")
 				else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
 				out_tup = filter(x -> x[1] == relNodes_arr[1], flow_arr)
 				in_tup = filter(x -> x[2] == relNodes_arr[1], flow_arr)
-	
+
 				if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
 					filter!(x -> !(x in (out_tup[1], in_tup[1])), flow_arr)
 					push!(flow_arr, (in_tup[1][1], out_tup[1][2], in_tup[1][3]))
@@ -1579,8 +1608,8 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
 			(z -> replace(string("rgba", string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...))), " " => "")), flow_arr)
 		link_obj = attr(source = getindex.(flow_arr, 1) .- 1, target = getindex.(flow_arr, 2) .- 1, value = getindex.(flow_arr, 3), color = linkColor_arr)
-	
-	
+
+
 		# compute values for each node to written to graph
 		if wrtVal
 			for x in 1:length(nodeLabel_arr)

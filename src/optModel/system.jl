@@ -883,7 +883,7 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 	mustRestr_df = filter(x -> x.cnstrType == "must",part.capaRestr)
 
 	if !isempty(mustRestr_df)
-		# gather must run constraints for all carriers n loop
+		# gather must run constraints for all carriers in loop
 		allMustCns_arr = Array{DataFrame}(undef,size(mustRestr_df,1))
 		idx = 1
 
@@ -920,14 +920,15 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			mustOut_df = innerjoin(mustOut_df,capaVar_df,on = intCol(capaVar_df))
 			select!(mustOut_df,Not([:Ts_disSup]))
 
-			# resize capacity variables
-			mustOut_df[!,:capa]  = mustOut_df[!,:capa] .* map(x -> anyM.supTs.sca[x], mustOut_df[!,:Ts_dis])
-
 			# gather relevant dispatch variables
 			dis_arr = collect(intersect(keys(part.var),[:gen,:stExtOut]))
 			join_arr = filter(x -> x != :C, intCol(mustOut_df))
 			for dis in dis_arr
-				grpDis_df = combine(groupby(filter(x -> x.C == m.car[1],part.var[dis]), join_arr),:var => (x -> sum(x)) => dis)
+				# get relevant dispatch variables and convert to energy units
+				disVar_df = filter(x -> x.C == m.car[1], part.var[dis])
+				disVar_df[!,:var]  .= disVar_df[!,:var] .* getEnergyFac(disVar_df[!,:Ts_dis], anyM.supTs)
+				# group variables and aggregate to must-out
+				grpDis_df = combine(groupby(disVar_df, join_arr),:var => (x -> sum(x)) => dis)
 				mustOut_df= joinMissing(mustOut_df, grpDis_df, join_arr,:left,Dict(dis => AffExpr()))
 
 				# in case the current must run replaces a restriction on conversion output, check if all relevant variables are constrained
@@ -1086,6 +1087,11 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 			if !part.dir allVar_df = flipExc(allVar_df) end
 		end
 
+		# convert dispatch variables to energy units (expect for stSize since these are already provided in energy units) 
+		if type_sym != :stSize
+			allVar_df[!,:var]  = allVar_df[!,:var] .* getEnergyFac(allVar_df[!,:Ts_dis], supTs_ntup)
+		end
+
 		# aggregate dispatch variables
 		capaDim_df[!,va] = aggUniVar(allVar_df, select(capaDim_df,intCol(capaDim_df)), agg_arr, resDis_ntup, sets_dic)
 	end
@@ -1099,13 +1105,11 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	capaDim_df = filter(x -> !(x.disp == AffExpr()),capaDim_df)
 
 	# join capacity and dispatch variables to create final constraint
-	grpCapaVar_df = combine(groupby(grpCapaVar_df,replace(filter(x -> x != :scr,dim_arr),:Ts_dis => :Ts_disSup)), :var => (x -> sum(x)) => :capa)
-	cns_df = innerjoin(capaDim_df,grpCapaVar_df,on = intCol(grpCapaVar_df))
+	grpCapaVar_df = combine(groupby(grpCapaVar_df, replace(filter(x -> x != :scr,dim_arr), :Ts_dis => :Ts_disSup)), :var => (x -> sum(x)) => :capa)
+	cns_df = innerjoin(capaDim_df, grpCapaVar_df, on = intCol(grpCapaVar_df))
 
-	# resize capacity variables (expect for stSize since these are already provided in energy units)
-	if type_sym != :stSize
-		cns_df[!,:capa]  = @expression(optModel,cns_df[!,:capa] .* map(x -> supTs_ntup.sca[x],	cns_df[!,:Ts_dis]))
-	end
+	# scale capacity to energy units as well
+	if type_sym != :stSize cns_df[!,:capa] = cns_df[!,:capa] .* getEnergyFac(cns_df[!,:Ts_dis], supTs_ntup) end
 
 	return cns_df
 end
@@ -1133,7 +1137,6 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 	# loop over parameters for conversion and exchange ratios
 	if isempty(anyM.subPro) || anyM.subPro != (0,0)
 		for par in filter(x -> occursin("ratio",string(x)),collectKeys(keys(parToLim_dic)))
-
 			for lim in parToLim_dic[par]
 
 				ratioType_sym = par == :ratioConvOut ? :convOut : :convIn
@@ -1164,10 +1167,11 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 					srcLvl_tup = vcat(part.type == :emerging ? [anyM.supTs.lvl] : Int[], [anyM.sets[:Ts].nodes[subCns_df[1,:Ts_dis]].lvl], par != :ratioExc ? [anyM.sets[:R].nodes[subCns_df[1,:R_dis]].lvl] : anyM.sets[:R].nodes[subCns_df[1,:R_from]].lvl |> (y -> [y,y]) )
 					srcRes_ntup = NamedTuple{srcSym_tup}(tuple(srcLvl_tup...))
 
-					# filter variables for denominator
-					relVar_df = vcat(map(x -> select(part.var[x],vcat(intCol(subCns_df),[:var])),par != :ratioExc ? intersect(keys(part.carrier),va_dic[ratioType_sym]) : [:exc])...)
+					# get variables
+					relVar_df = vcat(map(x -> select(part.var[x],vcat(intCol(subCns_df),[:var])), par != :ratioExc ? intersect(keys(part.carrier), va_dic[ratioType_sym]) : [:exc])...)
+					relVar_df[!,:var] .= relVar_df[!,:var] .* getEnergyFac(relVar_df[!,:Ts_dis], anyM.supTs) # convert to energy units
 
-					if :M in namesSym(subCns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated seperately
+					if :M in namesSym(subCns_df) # aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated separately
 						# find cases where ratio constraint is mode dependant
 						srcResM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(1,values(srcRes_ntup)...))...)
 						srcResNoM_ntup = (; zip(tuple(:M,keys(srcRes_ntup)...),tuple(0,values(srcRes_ntup)...))...)
@@ -1234,6 +1238,8 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 				cns_df = combine(groupby(cns_df,intCol(cns_df)), :var => (x -> sum(x)) => :var)
 				# extend to scenarios
 				cns_df = addScenarios(cns_df,anyM.sets[:Ts],anyM.scr)
+				# scale to energy units
+				cns_df[!,:var] .= cns_df[!,:var] .* getEnergyFac(cns_df[!,:Ts_dis], anyM.supTs) 
 			end
 
 			# matches variables with parameters denominator
@@ -1243,7 +1249,6 @@ function createRatioCns!(part::AbstractModelPart,cns_dic::Dict{Symbol,cnsCont},r
 				cns_df = rename(matchExcParameter(Symbol(par,lim),cns_df,part,anyM.sets,part.dir),:var => :denom)
 			end
 	
-
 			# get variables for numerator
 			rlvTop_arr =  intersect(keys(part.var),limVa[2] in keys(va_dic) ? intersect(keys(part.carrier),va_dic[limVa[2]]) : (limVa[2],))
 

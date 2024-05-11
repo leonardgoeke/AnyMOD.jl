@@ -332,10 +332,10 @@ function createCost!(partCost::OthPart,anyM::anyModel)
 				# compute discounted curtailment costs
 				allVar_df = rename(matchSetParameter(anyM.parts.bal.var[va],anyM.parts.bal.par[cost_sym],anyM.sets,newCol = :cost),:var => va)
 				allVar_df = matchSetParameter(rename(allVar_df,:R_dis => :R_exp),partCost.par[:disFac],anyM.sets,newCol = :disFac)
-				# add scenario probability
-				allVar_df[!,va] = allVar_df[!,va] .* map(x -> getScrProb(x.Ts_dis,x.scr,anyM.sets[:Ts],anyM.scr),eachrow(allVar_df))
+				# add scenario probability and scaling factor
+				allVar_df[!,va] = allVar_df[!,va] .* map(x -> getScrProb(x.Ts_dis,x.scr,anyM.sets[:Ts],anyM.scr),eachrow(allVar_df)) .* getEnergyFac(allVar_df[!,:Ts_dis], anyM.supTs)
 				# groups cost expressions scales groups expression and creates a variables for each grouped entry
-				allVar_df = rename(combine(x -> (expr = sum(x.disFac .* x[!,va] .* x.cost) ./ 1000.0 .* anyM.options.redStep,) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C])),:R_exp => :R_dis)
+				allVar_df = rename(combine(x -> (expr = sum(x.disFac .* x[!,va] .* x.cost) ./ 1000.0,) ,groupby(allVar_df, [:Ts_disSup,:R_exp,:C])),:R_exp => :R_dis)
 				transferCostEle!(allVar_df, partCost,va in (:crt,:lls) ? cost_sym : Symbol(cost_sym),anyM.optModel,anyM.lock,anyM.sets,anyM.options.coefRng,anyM.options.scaFac.costDisp,anyM.options.checkRng,anyM,(va == :trdSell ? NaN : 0.0))
 				reachEnd_boo = true
 			end

@@ -74,7 +74,6 @@ plus(a::Int, b::Int) = a + b
 plus(a::Int, b::Nothing) = a
 plus(a::Nothing, b::Int) = b
 
-
 # ! creates array of string from typical input of array
 makeC(in::Union{String, String1, String3, String7, String15, String31, String63, String127, String255}) = split(replace(in, " " => ""), ";")
 
@@ -121,8 +120,6 @@ makeUp(in::String) = isempty(in) ? "" : string(uppercase(in[1]), in[2:end])
 makeUp(in::Symbol) = Symbol(uppercase(string(in)[1]), string(in)[2:end])
 makeLow(in::String) = isempty(in) ? "" : string(lowercase(in[1]), in[2:end])
 makeLow(in::Symbol) = Symbol(lowercase(string(in)[1]), string(in)[2:end])
-
-getScaFac(x_int::Int, anyM::anyModel) = anyM.supTs.sca[getAncestors(x_int, anyM.sets[:Ts], :int, anyM.scr.lvl)[end]]
 
 # ! compute expected value
 function computeExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, Float64},ts_tree::Tree, lvlFrs_int::Int64, aggCol_sym::Symbol)
@@ -235,19 +232,27 @@ function joinMissing(leftData_df::DataFrame, rightData_df::DataFrame, key_arr::U
     return dropmissing(joinData_df)
 end
 
-# ! get array of scaling factors for add_df
-function getResize(add_df::DataFrame, ts_tr::Tree, supDis::NamedTuple)
-    tsDisLvl_dic = Dict(x => x == 0 ? 1 : getfield(ts_tr.nodes[x], :lvl) for x in unique(add_df[!,:Ts_dis]))
-	lvl_arr = map(x -> tsDisLvl_dic[x], add_df[!,:Ts_dis])
-	aboveSupResize_fl = maximum(values(supDis.sca)) * length(supDis.step) # scaling value used for variables above the superordinate dispatch level
-	sca_arr = map(x -> supDis.lvl > x[1] ? aboveSupResize_fl : supDis.sca[x[2]], zip(lvl_arr, add_df[!,:Ts_dis]))
-    return sca_arr
+# ! get array of factors converting variables in power units to energy
+getEnergyFac(ts_arr::Array{Int,1}, supDis::NamedTuple) = map(x -> supDis.sca[x], ts_arr)
+
+# ! get scaling factor for corresponding foresight period
+getEnergyFacFrs(x_int::Int, anyM::anyModel) = anyM.supTs.sca[getAncestors(x_int, anyM.sets[:Ts], :int, anyM.scr.lvl)[end]]
+
+# ! get scaling factor specifically for storage (needs correction depending on level of cycling and representative period)
+function getEnergyFacSt(tsDis_arr::Array{Int,1}, tsSupDis_arr::Array{Int,1}, repCyc_boo::Bool, supTs_ntup::NamedTuple{(:lvl, :step, :sca, :redFac),Tuple{Int64,Tuple{Int64},Dict{Int64,Float64},Dict{Int64, Float64}}})
+	# get scaling factor to convert to energy units
+	sca_arr = getEnergyFac(tsDis_arr, supTs_ntup)
+
+	# corrects scaling factor in case of storage only within the representative period
+	if repCyc_boo sca_arr = sca_arr ./ map(x -> supTs_ntup.redFac[x], tsSupDis_arr) end
+
+	return sca_arr
 end
 
 # ! gets the upper bound used for dispatch variables
 function getUpBound(in_df::DataFrame, dispBound_fl::Float64, supTs::NamedTuple, treeTs::Tree)
 	if !isnan(dispBound_fl)
-		upBound_arr = dispBound_fl * getResize(in_df, treeTs, supTs)
+		upBound_arr = dispBound_fl ./ getEnergyFac(in_df[!, :Ts_dis], supTs)
 	else
 		upBound_arr = fill(NaN, size(in_df, 1))
 	end
@@ -259,7 +264,7 @@ end
 #region # * functions and sub-functions to aggregate variables
 
 # ! aggregates variables in aggEtr_df to rows in srcEtr_df, function used, if all entries of search have the same resolution (all entries in a relevant column are on the same level)
-function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Symbol,1}, srcRes_tup::NamedTuple, sets_dic::Dict{Symbol,Tree})
+function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Symbol,1}, srcRes_tup::NamedTuple, sets_dic::Dict{Symbol,Tree}, avg::Bool = false)
 	if isempty(aggEtr_df) return map(x -> AffExpr(), 1:size(srcEtr_df, 1)) end
 
 	# only selects relevant columns
@@ -273,7 +278,7 @@ function aggUniVar(aggEtr_df::DataFrame, srcEtr_df::DataFrame, agg_arr::Array{Sy
 		aggEtr_df[!,dim] .= map(x -> dim_dic[x], aggEtr_df[!,dim])
 	end
 
-	aggEtrGrp_df = combine(groupby(aggEtr_df, agg_arr), :var => (x -> sum(x)) => :var)
+	aggEtrGrp_df = combine(groupby(aggEtr_df, agg_arr), :var => (x -> sum(x) / (avg ? length(x) : 1)) => :var)
 	joined_df = joinMissing(srcEtr_df, aggEtrGrp_df, agg_arr, :left, Dict(:var => AffExpr()))
 	sort!(joined_df, orderDim(intCol(joined_df)))
 	
@@ -446,7 +451,7 @@ function checkResiCapa(var_sym::Symbol, stockCapa_df::DataFrame, part::AbstractM
 end
 
 # ! get a dataframe with all variable of the specified type
-function getAllVariables(va::Symbol, anyM::anyModel; reflectRed::Bool = true, filterFunc::Function = x -> true)
+function getAllVariables(va::Symbol, anyM::anyModel; filterFunc::Function = x -> true)
 
 	exc_boo = occursin("exc", lowercase(string(va)))
 	sys_dic = getfield(anyM.parts, exc_boo ? :exc : :tech)
@@ -529,7 +534,7 @@ function getAllVariables(va::Symbol, anyM::anyModel; reflectRed::Bool = true, fi
 				emTe_arr = unique(vcat(map(x -> [x, getDescendants(x, anyM.sets[:Te], true)...], unique(filter(x -> x.Te != 0, anyM.parts.lim.par[:emissionFac].data)[!,:Te]))...))
 				if :C in namesSym(anyM.parts.lim.par[:emissionFac].data)
 					allTe_arr = unique(filter(x -> x.Te == 0, anyM.parts.lim.par[:emissionFac].data)[!,:C])
-				else
+			else
 					allTe_arr = union(map(x -> anyM.parts.tech[sysSym(x,anyM.sets[:Te])].carrier |> (z -> :use in keys(z) ? [z[:use]...] : Int[]),emTe_arr)...)
 				end
 				emC_arr = unique(vcat(map(x -> [x, getDescendants(x, anyM.sets[:C], true)...], allTe_arr)...))
@@ -583,7 +588,7 @@ function getAllVariables(va::Symbol, anyM::anyModel; reflectRed::Bool = true, fi
 
 							# add expression quantifying storage losses for storage discharge
 							if :stDis in keys(part.par)
-								sca_arr = getResize(stLvl_df, anyM.sets[:Ts], anyM.supTs)
+								sca_arr = getEnergyFac(stLvl_df[!,:Ts_dis], anyM.supTs)
 								stLvl_df = matchSetParameter(filter(x -> x.Te == tInt, stLvl_df), part.par[:stDis], anyM.sets)
 								stLvl_df[!,:var] = stLvl_df[!,:var] .* (1 .- (1 .- stLvl_df[!,:val]) .^ sca_arr)
 								select!(stLvl_df, Not(:val))
@@ -610,8 +615,8 @@ function getAllVariables(va::Symbol, anyM::anyModel; reflectRed::Bool = true, fi
 	end
 
 	# prevents scaling of variables that do have to be scaled or are scaled already because they are computed form scaled variables (e.g. emissions)
-	if va in (:stIn, :stExtIn, :stIntIn, :stOut, :stExtOut, :stIntOut, :convIn, :use, :gen, :convOut) && !isempty(allVar_df) && reflectRed
-		allVar_df[!,:var] .= allVar_df[!,:var] .* anyM.options.redStep
+	if va in (:stIn, :stExtIn, :stIntIn, :stOut, :stExtOut, :stIntOut, :convIn, :use, :gen, :convOut, :crt, :lss, :trdBuy, :trdSell) && !isempty(allVar_df)
+		allVar_df[!,:var] .= allVar_df[!,:var] .* getEnergyFac(allVar_df[!,:Ts_dis], anyM.supTs) 
 	end
 
 	return orderDf(filter(filterFunc, allVar_df))
@@ -635,6 +640,22 @@ function getCarrierFields(car_ntup::NamedTuple, field_tup::Tuple)
     extFields_arr = intersect(keys(car_ntup), field_tup)
 	allCar_arr = [getproperty(car_ntup, u) |> (p -> u in (:use, :gen) ? collect(p) : collect(p...))  for u in extFields_arr]
     return isempty(allCar_arr) ? Int[] : union(allCar_arr...)
+end
+
+# ! add demand for descendant carriers to dataframe (computes average if resolution more detailed)
+function addSubDemand(in_df::DataFrame, allDim_df::DataFrame, c_int::Int, cSub_arr::Array{Int64,1}, sets_dic::Dict{Symbol, Tree}, cInfo_dic::Dict{Int64,@NamedTuple{tsDis::Int64, tsExp::Int64, rDis::Int64, rExp::Int64, balSign::Symbol, stBalCapa::Symbol}}, partBal_obj::OthPart)	
+    
+    for cSub in cSub_arr # demand for descendant carriers that has to be aggregated
+        demSub_df = filter(x -> x.val != 0.0, matchSetParameter(filter(x -> x.C == cSub, allDim_df),partBal_obj.par[:dem],sets_dic))
+        if isempty(demSub_df) continue end
+        # average demand for descendant carriers
+        in_df[!,:demSub] = aggUniVar(rename(demSub_df,:val => :var), select(in_df, intCol(in_df)), [:Ts_dis,:R_dis,:scr], (Ts_dis =  cInfo_dic[c_int].tsDis, R_dis = cInfo_dic[c_int].rDis, scr = 1), sets_dic, true)
+        # add to overall demand and remove column again
+        in_df[!,:dem] = in_df[!,:dem] .+ in_df[!,:demSub]
+        select!(in_df,Not(:demSub))
+    end
+
+    return in_df
 end
 
 # ! collapse input expansion dataframe to acutal variables by timestep of expansion instead of superordinate dispatch timesteps

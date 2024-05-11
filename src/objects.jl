@@ -322,7 +322,8 @@ mutable struct modOptions
 	interCapa::Symbol
 	supTsLvl::Int
 	shortExp::Int
-	redStep::Float64
+	stepLen::Float64
+	repTsLvl::Int
 	holdFixed::Bool
 	onlyDesFac::Bool
 	# managing numerical issues
@@ -500,7 +501,7 @@ mutable struct anyModel <: AbstractModel
 	optModel::Model
 	lock::ReentrantLock
 
-	supTs::NamedTuple{(:lvl,:step,:sca),Tuple{Int,Tuple{Vararg{Int,N} where N},Dict{Int,Float64}}}
+	supTs::NamedTuple{(:lvl, :step, :sca, :redFac),Tuple{Int64,Tuple{Int64},Dict{Int64,Float64},Dict{Int64, Float64}}}
 	scr::NamedTuple{(:lvl,:scr,:scrProb),Tuple{Int,Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
 	dbInf::Bool
 	subPro::Union{Tuple{},Tuple{Int,Int}}
@@ -510,7 +511,7 @@ mutable struct anyModel <: AbstractModel
 	parts::NamedTuple{(:tech,:exc,:bal,:lim,:cost,:obj),Tuple{Dict{Symbol,TechPart},Dict{Symbol,ExcPart},OthPart,OthPart,OthPart,OthPart}}
 
 	graInfo::graInfo
-	function anyModel(inDir::Union{String,Array{String,1}}, outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, redStep = 1.0, holdFixed = false, onlyDesFac = false, emissionLoss = true,
+	function anyModel(inDir::Union{String,Array{String,1}}, outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, stepLen = 1.0, repTsLvl = 0, holdFixed = false, onlyDesFac = false, emissionLoss = true,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e4), rhs = (1e-2,1e2)),
 																											scaFac = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
 																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true), forceScr = nothing, lvlFrs = 0, createVI = (bal = false, st = false), dbInf = false)
@@ -528,10 +529,10 @@ mutable struct anyModel <: AbstractModel
 		anyM.optModel = Model()
 		anyM.lock = ReentrantLock()
 
-		# ! sets whole options object from specified directories TODO arbeite mit kwargs später
+		# ! sets whole options object from specified directories
 		outStamp_str = string(objName, "_", Dates.format(now(), "yyyymmddHHMM"))
 		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, interCapa = interCapa, supTsLvl = supTsLvl, shortExp = shortExp, 
-																										redStep = redStep, holdFixed = holdFixed, onlyDesFac = onlyDesFac, emissionLoss = emissionLoss, coefRng = coefRng, scaFac = scaFac, bound = bound,
+																										stepLen = stepLen, repTsLvl = repTsLvl, holdFixed = holdFixed, onlyDesFac = onlyDesFac, emissionLoss = emissionLoss, coefRng = coefRng, scaFac = scaFac, bound = bound,
 																											avaMin = avaMin, checkRng = checkRng, forceScr = forceScr, createVI = createVI, lvlFrs = lvlFrs, dbInf = dbInf, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
 
 		anyM.options = modOptions(defOpt_ntup...)

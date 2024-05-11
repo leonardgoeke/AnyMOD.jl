@@ -26,8 +26,6 @@ function createTradeVarCns!(partBal::OthPart,ts_dic::Dict{Tuple{Int64,Int64},Arr
 			trdCap_sym = Symbol(trd_sym,:Cap)
 			if trdCap_sym in keys(partBal.par)
 				cns_df = matchSetParameter(var_df,partBal.par[trdCap_sym],anyM.sets,newCol = :cap)
-				sca_arr = getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
-				cns_df[!,:cap] = cns_df[!,:cap] .* sca_arr
 
 				# prepare, scale and create constraints
 				cns_df[!,:cnsExpr] = cns_df[:var] .- cns_df[:cap]
@@ -102,7 +100,6 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 
 		# ! add and scale demand values
 		cns_df = matchSetParameter(filter(x -> x.C == c,allDim_df),partBal.par[:dem],anyM.sets) # demand for carrier being balanced
-		cns_df[!,:val] = cns_df[!,:val] .* getResize(cns_df,anyM.sets[:Ts],anyM.supTs)
 		cns_df = rename(cns_df,:val => :dem)
 				
 		# ! get relevant variables
@@ -163,14 +160,8 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1},ts_dic::Dict{Tuple{Int64,
 		end
 		
 		# ! add demand from descendant carriers
-		for cSub in filter(x -> x != c, getDescendants(c,anyM.sets[:C],false)) # demand for descendant carriers that has to be aggregated
-			demSub_df = filter(x -> x.val != 0.0, matchSetParameter(filter(x -> x.C == cSub,allDim_df),partBal.par[:dem],anyM.sets))
-			if isempty(demSub_df) continue end
-			if anyM.cInfo[c].tsDis == anyM.cInfo[cSub].tsDis # also scales demand to be aggregated if dispatch resolution is the same as for the ancestral carrier
-				demSub_df[!,:val] = demSub_df[!,:val] .* getResize(demSub_df,anyM.sets[:Ts],anyM.supTs)
-			end
-			cns_df[!,:dem] = aggDivVar(vcat(demSub_df,rename(select(cns_df,intCol(cns_df,:dem)),:dem => :val)),select(cns_df,intCol(cns_df)),(:Ts_dis,:R_dis,:scr),anyM.sets)
-		end
+		sSub_arr = filter(x -> x != c, getDescendants(c, anyM.sets[:C], false))
+		cns_df = addSubDemand(cns_df, allDim_df, c, sSub_arr, anyM.sets, anyM.cInfo, anyM.parts.bal)
 
 		# ! prepare, scale and save constraints to dictionary
 		c_str = Symbol(anyM.sets[:C].nodes[c].val)

@@ -41,7 +41,7 @@ function createObjective!(obj_tup::Tuple, anyM::anyModel, minimize::Bool=true)
 
 	
 	for obj in obj_tup
-		allObjVar_df = getAllVariables(obj[1],anyM, reflectRed = false, filterFunc = obj[2].flt)
+		allObjVar_df = getAllVariables(obj[1],anyM, filterFunc = obj[2].flt)
 
 		if length(findall(map(x -> x[1] == obj[1], obj_tup))) == 1
 			objName_sym = Symbol(obj[1])

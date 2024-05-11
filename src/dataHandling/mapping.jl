@@ -130,11 +130,31 @@ function createTimestepMapping!(anyM::anyModel)
 	supTs_tup = tuple(sort(getfield.(filter(x -> x.lvl == supTsLvl_int, collect(values(anyM.sets[:Ts].nodes))), :idx))...)
 	ts_tr = anyM.sets[:Ts]
 	scaSupTs_dic = Dict{Int,Float64}()
+
+	# reporting on length and threshold for representative time-series level
+	push!(anyM.report, (1, "timestep mapping", "", "time-steps on level $(string(ts_tr.height)) set to correspond to $(string(anyM.options.stepLen)) hours"))
 	
+	if anyM.options.repTsLvl >= ts_tr.height 
+		push!(anyM.report, (3, "timestep mapping", "", "representative time-step level $(string(anyM.options.repTsLvl)) not greater than lowest level of time-steps"))
+	elseif supTsLvl_int > anyM.options.repTsLvl && anyM.options.repTsLvl != 0
+		push!(anyM.report, (3, "timestep mapping", "", "representative time-step level $(string(anyM.options.repTsLvl)) less detailed than superordinate dispatch level"))
+	elseif anyM.options.lvlFrs > anyM.options.repTsLvl && anyM.options.repTsLvl != 0
+		push!(anyM.report, (3, "timestep mapping", "", "representative time-step level $(string(anyM.options.repTsLvl)) less detailed than foresight dispatch level"))
+	else
+		if anyM.options.repTsLvl == 0
+			anyM.options.repTsLvl = supTsLvl_int
+			push!(anyM.report, (1, "timestep mapping", "", "representative time-step level set to $(string(anyM.options.repTsLvl))"))
+		end	
+	end
+
+	redFac_dic = Dict{Int,Float64}() # dictionary of reduction factors for each year
 	for sup in supTs_tup
-		# compute scaling factors on lowest level
 		tsBase_arr = getDescendants(sup, anyM.sets[:Ts], false, ts_tr.height)
-		foreach(x -> scaSupTs_dic[x] = (1/anyM.options.redStep) * 8760/(length(tsBase_arr)), tsBase_arr)
+		# compute correction factor on non-continous levels
+		redFac_dic[sup] = 8760/(length(tsBase_arr))
+		# compute scaling factors on lowest level
+		foreach(x -> scaSupTs_dic[x] = anyM.options.stepLen * redFac_dic[sup], tsBase_arr)
+
 		# compute other scaling factors as sum of lower levels
 		if ts_tr.height > supTsLvl_int
 			for l in reverse(supTsLvl_int:(ts_tr.height-1))
@@ -143,7 +163,7 @@ function createTimestepMapping!(anyM::anyModel)
 		end
 	end	
 
-	anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic)
+	anyM.supTs = (lvl = supTsLvl_int, step = supTs_tup, sca = scaSupTs_dic, redFac = redFac_dic)
 
     if length(anyM.supTs.step) > 50
 		push!(anyM.report, (2, "timestep mapping", "", "problem specification resulted in more than 50 superordinate dispatch timesteps, this looks faulty"))
@@ -212,8 +232,8 @@ function createSysInfo!(sys::Symbol, sSym::Symbol, setData_dic::Dict, anyM::anyM
 					if anyM.supTs.lvl == anyM.cInfo[c].tsDis
 						carId_dic[type] = tuple(map(z -> filter(x -> x != c, z), collect(carId_dic[type]))...)
 						push!(anyM.report, (2, "technology mapping", "carrier", "carrier '$(createFullString(c, anyM.sets[:C]))' of technology '$(string(sSym))' cannot be stored, because carrier is balanced on superordinate dispatch level"))
-					end
-				end 
+					end	
+				end
 			end
 		end
 
@@ -451,6 +471,16 @@ function createSysInfo!(sys::Symbol, sSym::Symbol, setData_dic::Dict, anyM::anyM
 		else
 			stCyc_int = anyM.supTs.lvl
 		end
+
+		# reports on resolution of cyclic storage constraint
+		if any(map(x -> x in (:stExtIn,:stExtOut,:stIntIn,:stIntOut), collect(keys(part.carrier))))
+			if stCyc_int >= anyM.options.repTsLvl  
+				push!(anyM.report, (2, "technology mapping", "storage cycling", "storage cycling level for technology '$(string(sSym))' is equal or more detailed than representative level, storage operates as short-term storage"))		
+			else
+				push!(anyM.report, (2, "technology mapping", "storage cycling", "storage cycling level for technology '$(string(sSym))' is less detailed than representative level, storage operates as a seasonal storage"))
+			end
+		end
+
 		part.stCyc = stCyc_int
 
 		# ! check if a specific resolution is enforced for tracking the storage level

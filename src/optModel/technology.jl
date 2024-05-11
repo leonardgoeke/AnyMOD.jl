@@ -74,7 +74,7 @@ function createTech!(tInt::Int,part::TechPart,prepTech_dic::Dict{Symbol,NamedTup
 					inPar_df = rename(copy(part.par[:stInflow].data),:Ts_expSup => :Ts_disSup)
 					inPar_df[!,:Ts_expSup] = inPar_df[!,:Ts_disSup]
 					inPar_df[!,:Ts_disSup] .= inPar_df[!,:Ts_dis]
-					inPar_df[!,:val] = inPar_df[!,:val] .* getResize(inPar_df,anyM.sets[:Ts],anyM.supTs)
+					inPar_df[!,:val] = inPar_df[!,:val] .* getEnergyFac(inPar_df[!,:Ts_dis],anyM.supTs)
 					inPar_df[!,:R_dis] .= 0
 					inPar_df[!,:M] .= 0
 					part.var[:gen] = combine(x -> (var = AffExpr(sum(x.val)),),groupby(inPar_df,filter(x -> x != :id, intCol(inPar_df))))
@@ -375,7 +375,10 @@ function createConvBal(part::TechPart,anyM::anyModel)
 
 	for va in union(in_arr,out_arr)
 		# add energy content to expression if defined
-		var_df = addEnergyCont(part.var[va],part,anyM.sets)
+		var_df = copy(addEnergyCont(part.var[va],part,anyM.sets))
+
+		# scale to energy units
+		var_df[!,:var] .= var_df[!,:var] .* getEnergyFac(var_df[!,:Ts_dis], anyM.supTs) 
 		
 		# aggregated dispatch variables, if a mode is specified somewhere, mode dependant and non-mode dependant balances have to be aggregated separately
 		if :M in namesSym(cns_df) 
@@ -423,7 +426,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 
 	# determines dimensions for aggregating dispatch variables
 	agg_arr = filter(x -> !(x in (:M, :Te)) && (part.type == :emerging || x != :Ts_expSup), cnsDim_arr)
-
+	
 	# obtain all different carriers of level variable and create array to store the respective level constraint data
 	uniId_arr = map(x -> (x.C,x.id),eachrow(unique(cns_df[!,[:C,:id]])))
 	cCns_arr = Array{DataFrame}(undef,length(uniId_arr))
@@ -468,6 +471,8 @@ function createStBal(part::TechPart,anyM::anyModel)
 
 			# adds dispatch variable to constraint dataframe, mode dependant and non-mode dependant balances have to be aggregated separately and timesteps only need aggregration if resolution for storage level differs
 			dispVar_df = vcat(typExpr_arr...)
+			dispVar_df[!,:var] = dispVar_df[!,:var] .* getEnergyFacSt(dispVar_df[!,:Ts_dis], dispVar_df[!,:Ts_disSup], part.stCyc >= anyM.options.repTsLvl, anyM.supTs)
+			
 			cnsC_df[!,typ] .= AffExpr()
 			if isempty(dispVar_df) continue end
 
@@ -477,8 +482,10 @@ function createStBal(part::TechPart,anyM::anyModel)
 			cnsC_df[noM_arr,typ] = aggUniVar(dispVar_df, select(cnsC_df[noM_arr,:],intCol(cnsC_df)), [:M,agg_arr...], noMAgg_tup, anyM.sets)			
 		end
 
-		# ! adds further parameters that depend on the carrier specified in storage level (superordinate or the same as dispatch carriers)
-		sca_arr = getResize(cnsC_df,anyM.sets[:Ts],anyM.supTs)
+		# ! adds further parameters that depend on the carrier specified in storage level (superordinate or the same as dispatch carriers)	
+		
+		sca_arr = getEnergyFacSt(cnsC_df[!,:Ts_dis], cnsC_df[!,:Ts_disSup], part.stCyc >= anyM.options.repTsLvl, anyM.supTs)
+
 
 		# add discharge parameter, if defined
 		if :stDis in keys(part.par)
@@ -543,7 +550,7 @@ function createStBal(part::TechPart,anyM::anyModel)
 	return cnsCont(orderDf(cns_df[!,[cnsDim_arr...,:cnsExpr]]),part.balSign.st == :eq ? :equal : :greater)
 end
 
-# ! enforces storage levels that can actually be achieved with the available capacity
+# ! enforces storage levels that can actually be achieved with the available capacity, relevant for top-problem in case of reduced foresight
 function createStVI(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}},cns_dic::Dict{Symbol,cnsCont},anyM::anyModel)
 
 	stLvl_df = copy(part.var[:stLvl])
@@ -615,7 +622,7 @@ function createStVI(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1
 					cns_df = combine(x -> fltRedIn(x), groupby(cns_df,filter(x -> x != :scr,intCol(cns_df))))
 						
 					# create constraint expression
-					expr_arr = map(x -> getScaFac(x.Ts_dis,anyM) |> (y -> x.stLvlCur - x.stLvlPrev - x.capa * x.avaEff * y - x.inf * y), eachrow(cns_df))
+					expr_arr = map(x -> getEnergyFacFrs(x.Ts_dis,anyM) |> (y -> x.stLvlCur - x.stLvlPrev - x.capa * x.avaEff * y - x.inf * y), eachrow(cns_df))
 				else
 					# correct output capacity with availability
 					if !isempty(part.par[:avaStOut].data)
@@ -635,7 +642,7 @@ function createStVI(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1
 						~, stSize_df, ~ = getCapaToRestr(part,copy(part.var[:capaStSize]),restr,:capaStSize,ts_dic,r_dic,anyM.sets,anyM.supTs)
 						# get average product of discharge and availability for each foresight period
 						disAva_df = matchSetParameter(rename(part.par[:stDis].data,:val => :dis),part.par[:avaStSize],anyM.sets; newCol = :ava)
-						disAva_df[!,:Ts_dis] .= map(x -> inTs_dic[x],disAva_df[!,:Ts_dis]) # replace actual timestep with ending timestep of foresight period
+						disAva_df[!,:Ts_dis] .= map(x -> inTs_dic[x], disAva_df[!,:Ts_dis]) # replace actual timestep with ending timestep of foresight period
 						disAva_df = combine(x -> (maxStDis = sum(x.dis.*x.ava)/length(x.dis),), groupby(disAva_df,intCol(disAva_df)))
 						disAva_df[!,:Ts_disSup] .= map(x -> getAncestors(x,anyM.sets[:Ts],:int,anyM.supTs.lvl)[end],disAva_df[!,:Ts_dis])
 						# join with storage size to compute self-discharge losses
@@ -651,7 +658,7 @@ function createStVI(part::TechPart,ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1
 					cns_df = combine(x -> fltRedOut(x), groupby(cns_df,filter(x -> x != :scr,intCol(cns_df))))
 
 					# create constraint expression
-					expr_arr = map(x -> getScaFac(x.Ts_dis,anyM) |> (y -> x.stLvlPrev - x.stLvlCur + x.inf * y - (x.capa * x.ava + x.maxStDis) * y), eachrow(cns_df))
+					expr_arr = map(x -> getEnergyFacFrs(x.Ts_dis,anyM) |> (y -> x.stLvlPrev - x.stLvlCur + x.inf * y - (x.capa * x.ava + x.maxStDis) * y), eachrow(cns_df))
 				end
 
 				cns_df[!,:cnsExpr] = @expression(anyM.optModel,expr_arr)
@@ -822,8 +829,13 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 
 	# check for pre-defined capacity factors and use them instead of computed values
 	if :desFac in keys(part.par)
-		preDefFac_df = matchSetParameter(select(allFac_df,Not([:desFac])),part.par[:desFac],anyM.sets, newCol = :desFac)
-		allFac_df = vcat(antijoin(allFac_df,preDefFac_df,on = intCol(allFac_df)),preDefFac_df)
+		preDefFac_df = matchSetParameter(select(allFac_df,Not([:desFac])),part.par[:desFac],anyM.sets, newCol = :desFac_pre)
+		# check cases with pre-existing factors
+		extDesFac_df = innerjoin(allFac_df, preDefFac_df, on = intCol(allFac_df))
+		# use maximum of pre-defined and computed value to ensure feasibility
+		extDesFac_df[!,:desFac] = map(x -> max(x.desFac, x.desFac_pre), eachrow(extDesFac_df))
+		select!(extDesFac_df, Not([:desFac_pre]))
+		allFac_df = vcat(antijoin(allFac_df, extDesFac_df, on = intCol(allFac_df)), extDesFac_df)
 	end
 
 	# add computed factors to parameter data

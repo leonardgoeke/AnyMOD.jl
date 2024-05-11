@@ -100,12 +100,10 @@ function readParameters!(files_dic::Dict{String,Array{String,1}}, setData_dic::D
 
 	# read-in parameter files and convert their content
 	@threads for parFile in files_dic["par"]
-		cont_boo = false
 		parData_df = convertReadIn(CSV.read(parFile, DataFrame;delim = anyM.options.csvDelim[1]), parFile, set_arr, setLngShrt_dic, anyM.report, anyM.lock, anyM.sets)
 		lock(anyM.lock)
-		if isempty(parData_df) || any(getindex.(anyM.report, 1) .== 3) cont_boo = true end
+		if isempty(parData_df) || any(getindex.(anyM.report, 1) .== 3) continue end
 		unlock(anyM.lock)
-		if cont_boo continue end
 		para_obj =  writeParameter(parData_df, anyM.sets, setLngShrt_dic, parFile, anyM.report, anyM.lock)
 		lock(anyM.lock)
 		paraTemp_dic[parFile] = para_obj
