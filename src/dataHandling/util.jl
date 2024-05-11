@@ -239,7 +239,7 @@ getEnergyFac(ts_arr::Array{Int,1}, supDis::NamedTuple) = map(x -> supDis.sca[x],
 getEnergyFacFrs(x_int::Int, anyM::anyModel) = anyM.supTs.sca[getAncestors(x_int, anyM.sets[:Ts], :int, anyM.scr.lvl)[end]]
 
 # ! get scaling factor specifically for storage (needs correction depending on level of cycling and representative period)
-function getEnergyFacSt(tsDis_arr::Array{Int,1}, tsSupDis_arr::Array{Int,1}, repCyc_boo::Bool, supTs_ntup::NamedTuple{(:lvl, :step, :sca, :redFac),Tuple{Int64,Tuple{Int64},Dict{Int64,Float64},Dict{Int64, Float64}}})
+function getEnergyFacSt(tsDis_arr::Array{Int,1}, tsSupDis_arr::Array{Int,1}, repCyc_boo::Bool, supTs_ntup::NamedTuple{(:lvl, :step, :sca, :redFac),Tuple{Int64,Tuple,Dict{Int64,Float64},Dict{Int64, Float64}}})
 	# get scaling factor to convert to energy units
 	sca_arr = getEnergyFac(tsDis_arr, supTs_ntup)
 

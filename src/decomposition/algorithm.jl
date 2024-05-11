@@ -698,7 +698,6 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	end
 	
 	# computes optimality gap for cost minimization and feasibility gap for near-optimal
-	println(itr_obj.res[:actSubCost] - itr_obj.res[:estSubCost])
 	itr_obj.gap = benders_obj.nearOpt.cnt == 0 ? (1 - benders_obj.itr.res[:lowLimCost] / benders_obj.itr.res[:curBest]) : abs((itr_obj.res[:actSubCost] - itr_obj.res[:estSubCost]) / benders_obj.itr.res[:optCost])
 
 end

@@ -743,7 +743,7 @@ function distributedMapping!(anyM::anyModel, prepSys_dic::Dict{Symbol,Dict{Symbo
 		end
 
 		# rewrite information on scenarios and superordinate time-steps
-		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(getAncestors(subPro[1], anyM.sets[:Ts], :int, anyM.supTs.lvl)[end],), sca = filter(x -> x[1] in relTsDis_arr, anyM.supTs.sca))
+		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(getAncestors(subPro[1], anyM.sets[:Ts], :int, anyM.supTs.lvl)[end],), sca = filter(x -> x[1] in relTsDis_arr, anyM.supTs.sca), redFac = anyM.supTs.redFac)
 		anyM.scr =  (lvl = anyM.scr.lvl, scr = Dict(subPro[1] => [subPro[2],]), scrProb = filter(x -> x[1] == subPro, anyM.scr.scrProb))
 		
 		# ! adjust dictionaries for expansion preparation

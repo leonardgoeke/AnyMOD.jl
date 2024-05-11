@@ -501,7 +501,7 @@ mutable struct anyModel <: AbstractModel
 	optModel::Model
 	lock::ReentrantLock
 
-	supTs::NamedTuple{(:lvl, :step, :sca, :redFac),Tuple{Int64,Tuple{Int64},Dict{Int64,Float64},Dict{Int64, Float64}}}
+	supTs::NamedTuple{(:lvl, :step, :sca, :redFac),Tuple{Int64,Tuple,Dict{Int64,Float64},Dict{Int64, Float64}}}
 	scr::NamedTuple{(:lvl,:scr,:scrProb),Tuple{Int,Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
 	dbInf::Bool
 	subPro::Union{Tuple{},Tuple{Int,Int}}
