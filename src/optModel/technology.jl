@@ -829,13 +829,8 @@ function computeDesFac!(part::TechPart,yTs_dic::Dict{Int64,Int64},anyM::anyModel
 
 	# check for pre-defined capacity factors and use them instead of computed values
 	if :desFac in keys(part.par)
-		preDefFac_df = matchSetParameter(select(allFac_df,Not([:desFac])),part.par[:desFac],anyM.sets, newCol = :desFac_pre)
-		# check cases with pre-existing factors
-		extDesFac_df = innerjoin(allFac_df, preDefFac_df, on = intCol(allFac_df))
-		# use maximum of pre-defined and computed value to ensure feasibility
-		extDesFac_df[!,:desFac] = map(x -> max(x.desFac, x.desFac_pre), eachrow(extDesFac_df))
-		select!(extDesFac_df, Not([:desFac_pre]))
-		allFac_df = vcat(antijoin(allFac_df, extDesFac_df, on = intCol(allFac_df)), extDesFac_df)
+		preDefFac_df = matchSetParameter(select(allFac_df,Not([:desFac])),part.par[:desFac],anyM.sets, newCol = :desFac)
+		allFac_df = vcat(antijoin(allFac_df,preDefFac_df,on = intCol(allFac_df)),preDefFac_df)
 	end
 
 	# add computed factors to parameter data
