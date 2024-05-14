@@ -229,7 +229,7 @@ function createSysInfo!(sys::Symbol, sSym::Symbol, setData_dic::Dict, anyM::anyM
 		if !anyM.options.createVI.bal
 			for type in (:carrier_stored_out, :carrier_stored_in)
 				for c in union(carId_dic[type]...)
-					if anyM.supTs.lvl == anyM.cInfo[c].tsDis
+					if anyM.supTs.lvl == anyM.cInfo[c].tsDis && (type != :carrier_stored_in || !(c in carId_dic[:carrier_conversion_in]))
 						carId_dic[type] = tuple(map(z -> filter(x -> x != c, z), collect(carId_dic[type]))...)
 						push!(anyM.report, (2, "technology mapping", "carrier", "carrier '$(createFullString(c, anyM.sets[:C]))' of technology '$(string(sSym))' cannot be stored, because carrier is balanced on superordinate dispatch level"))
 					end	
