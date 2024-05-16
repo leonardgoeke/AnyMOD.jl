@@ -926,7 +926,6 @@ function createCapaRestr!(part::AbstractModelPart,ts_dic::Dict{Tuple{Int64,Int64
 			for dis in dis_arr
 				# get relevant dispatch variables and convert to energy units
 				disVar_df = filter(x -> x.C == m.car[1], part.var[dis])
-				disVar_df[!,:var]  .= disVar_df[!,:var] .* getEnergyFac(disVar_df[!,:Ts_dis], anyM.supTs)
 				# group variables and aggregate to must-out
 				grpDis_df = combine(groupby(disVar_df, join_arr),:var => (x -> sum(x)) => dis)
 				mustOut_df= joinMissing(mustOut_df, grpDis_df, join_arr,:left,Dict(dis => AffExpr()))
