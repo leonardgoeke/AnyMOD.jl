@@ -473,7 +473,7 @@ function createSysInfo!(sys::Symbol, sSym::Symbol, setData_dic::Dict, anyM::anyM
 		end
 
 		# reports on resolution of cyclic storage constraint
-		if any(map(x -> x in (:stExtIn,:stExtOut,:stIntIn,:stIntOut), collect(keys(part.carrier))))
+		if any(map(x -> x in (:stExtIn, :stExtOut, :stIntIn, :stIntOut), collect(keys(part.carrier))))
 			if stCyc_int >= anyM.options.repTsLvl  
 				push!(anyM.report, (2, "technology mapping", "storage cycling", "storage cycling level for technology '$(string(sSym))' is equal or more detailed than representative level, storage operates as short-term storage"))		
 			else

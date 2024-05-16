@@ -14,7 +14,7 @@ mutable struct algSetup
 	conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} # range and interpolation method for convergence criteria of subproblems, use of crossover for sub-problems when using barrier
 	solOpt::NamedTuple{(:dbInf, :numFoc, :addVio), Tuple{Bool, Int64, Float64}} # infeasible variable at start of foresight period, numeric focus for top-problem, factor by which quadratic trust-region is allowed to violate paramete range
 
-	function algSetup(gap_fl::Float64, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, threads_int::Int, opt_type::DataType, conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} = (rng = [1e-8,1e-8], int = :log, crs = false), solOpt::NamedTuple{(:dbInf, :numFoc, :addVio), Tuple{Bool, Int64, Float64}} = (dbInf = true, numFoc = 3, addVio = 1e4))
+	function algSetup(gap_fl::Float64, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, threads_int::Int, opt_type::DataType, conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false), solOpt::NamedTuple{(:dbInf, :numFoc, :addVio), Tuple{Bool, Int64, Float64}} = (dbInf = true, numFoc = 3, addVio = 1e4))
 		return new(gap_fl, delCut_int, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, threads_int, opt_type, conSub, solOpt)
 	end
 end
@@ -155,8 +155,6 @@ mutable struct bendersObj
 		benders_obj.info = info_ntup
         benders_obj.algOpt = algSetup_obj
 		benders_obj.nearOpt = nearOptObj(0, nearOptSetup_obj)
-
-		if !isnothing(nearOptSetup_obj) && any(getindex.(stabSetup_obj.method, 1) .!= :qtr) error("Near-optimal can only be paired with quadratic stabilization!") end
 	
 		#endregion
 
@@ -171,8 +169,8 @@ mutable struct bendersObj
 
 		# add column for active stabilization method
 		if !isempty(stabSetup_obj.method)
-			itrReport_df[!,:actMethod] = fill(Symbol(),size(itrReport_df,1))
-			foreach(x -> itrReport_df[!,Symbol("dynPar_",x[1])] = Union{Float64,Vector{Float64}}[fill(Float64[],size(itrReport_df,1))...], stabSetup_obj.method)
+			itrReport_df[!,:actMethod] = fill(Symbol(), size(itrReport_df, 1))
+			foreach(x -> itrReport_df[!,Symbol("dynPar_", x[1])] = Union{Float64,Vector{Float64}}[fill(Float64[], size(itrReport_df, 1))...], stabSetup_obj.method)
 		end
 
 		# extend reporting dataframe in case of near-optimal
@@ -185,14 +183,14 @@ mutable struct bendersObj
         #region # * create top- and sub-problems
 
 		# start creating top-problem and extract info on sub-problem structure
-		produceMessage(report_m.options,report_m.report, 1," - Started creation of top-problem", testErr = false, printErr = false)
+		produceMessage(report_m.options, report_m.report, 1, " - Started creation of top-problem", testErr = false, printErr = false)
 
 		top_m = anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel" * info_ntup.name, lvlFrs = info_ntup.frs, supTsLvl = info_ntup.supTsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, createVI = algSetup_obj.useVI)
 		sub_tup = tuple([(x.Ts_dis, x.scr) for x in eachrow(top_m.parts.obj.par[:scrProb].data)]...) # get all time-step/scenario combinations
 
 		# creation of sub-problems
 
-		produceMessage(report_m.options,report_m.report, 1," - Started creation of sub-problems", testErr = false, printErr = false)
+		produceMessage(report_m.options, report_m.report, 1, " - Started creation of sub-problems", testErr = false, printErr = false)
 		benders_obj.sub = Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}()
 		for (id, s) in enumerate(sub_tup)
 			if benders_obj.algOpt.dist # distributed case
@@ -217,7 +215,7 @@ mutable struct bendersObj
 		# wait for construction of sub-problems
 		if benders_obj.algOpt.dist wait.(collect(values(benders_obj.sub))) end
 
-		produceMessage(report_m.options,report_m.report, 1," - Finished creation of top-problem and sub-problems", testErr = false, printErr = false)
+		produceMessage(report_m.options, report_m.report, 1, " - Finished creation of top-problem and sub-problems", testErr = false, printErr = false)
 	
         #endregion
 

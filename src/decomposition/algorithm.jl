@@ -176,7 +176,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	
 	# get sum of absolute values 
 	absVar_arr = [:CapaConv, :CapaExc, :CapaStOut, :CapaStIn, :CapaStSize, :ExpConv, :ExpExc, :ExpStOut, :ExpStIn, :ExpStSize]
-	absVal_expr = sum(map(x -> sum(getAllVariables(Symbol(:abs, x), top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])),vcat(absVar_arr, Symbol.(:Must, absVar_arr))))
+	absVal_expr = sum(map(x -> sum(getAllVariables(Symbol(:abs, x), top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])), vcat(absVar_arr, Symbol.(:Must, absVar_arr))))
 	# get sum of missing capacities and apply high weight 
 	missCapa_expr = :missCapa in keys(top_m.parts.bal.var) ? sum(top_m.parts.bal.var[:missCapa][!,:var] ./ top_m.options.scaFac.insCapa .* 10) : AffExpr()
 	objExpr_df = DataFrame(cnsExpr = [missCapa_expr + absVal_expr])
@@ -345,7 +345,7 @@ function runTop(benders_obj::bendersObj)
 				# delte old trust-region
 				delete(benders_obj.top.optModel, stab_obj.cns)
 				# double radius of trust-region and enforce again
-				stab_obj.dynPar[stab_obj.actMet] = max(stab_obj.methodOpt[x_int].low, stab_obj.dynPar[x_int] * stab_obj.methodOpt[x_int].fac)
+				stab_obj.dynPar[stab_obj.actMet] = max(stab_obj.methodOpt[stab_obj.actMet].low, stab_obj.dynPar[stab_obj.actMet] * stab_obj.methodOpt[stab_obj.actMet].fac)
 				centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.solOpt.addVio, benders_obj.top, benders_obj.report.mod)
 				# solve again
 				optimize!(benders_obj.top.optModel)
@@ -633,11 +633,11 @@ function addCuts!(top_m::anyModel, cuts_arr::Array{Pair{Tuple{Int,Int},Union{res
 end
 
 # ! update results and stabilization
-function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64,Int64},resData}, stabVar_obj::resData)
+function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64,Int64},resData}, resData_obj::resData, stabVar_obj::resData)
 
 	itr_obj = benders_obj.itr
 	best_obj = itr_obj.best
-	nameStab_dic = Dict(:lvl1 => "level bundle",:lvl2 => "level bundle",:qtr => "quadratic trust-region", :prx => "proximal bundle", :box => "box-step method")
+	nameStab_dic = Dict(:lvl1 => "level bundle", :lvl2 => "level bundle", :qtr => "quadratic trust-region", :prx => "proximal bundle", :box => "box-step method")
 
 	# store information for cuts
 	benders_obj.cuts = collect(cutData_dic)
@@ -678,7 +678,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		if srsStep_boo
 			stab_obj.var = filterStabVar(stabVar_obj.capa, stabVar_obj.stLvl, stab_obj.weight, benders_obj.top)
 			stab_obj.objVal = best_obj.objVal
-			produceMessage(report_m.options,report_m.report, 1," - Updated reference point for stabilization!", testErr = false, printErr = false)
+			produceMessage(report_m.options, report_m.report, 1, " - Updated reference point for stabilization!", testErr = false, printErr = false)
 		end
 
 		# switch quadratic stabilization method
@@ -688,7 +688,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 			if !isempty(stab_obj.ruleSw) && itr_obj.cnt.i > stab_obj.ruleSw.itr && length(stab_obj.method) > 1
 				if checkSwitch(stab_obj, itr_obj.cnt, benders_obj.report.itr)
 					stab_obj.actMet = stab_obj.actMet + 1 |> (x -> length(stab_obj.method) < x ? 1 : x)
-					produceMessage(report_m.options,report_m.report, 1," - Switched stabilization to $(nameStab_dic[stab_obj.method[stab_obj.actMet]]) method!", testErr = false, printErr = false)
+					produceMessage(report_m.options, report_m.report, 1, " - Switched stabilization to $(nameStab_dic[stab_obj.method[stab_obj.actMet]]) method!", testErr = false, printErr = false)
 				end
 			end
 			
@@ -735,20 +735,23 @@ function checkConvergence(benders_obj::bendersObj, lss_dic::Dict{Tuple{Int64,Int
 			itr_obj.gap = 1.0
 			itr_obj.res[:nearObj] = Inf
 			itr_obj.best.objVal = Inf
-			
-			if !isnothing(benders_obj.stab) # reset current best tracking for stabilization
-				benders_obj.stab.objVal = Inf
-				benders_obj.stab.dynPar = computeDynPar(benders_obj.stab.method, benders_obj.stab.methodOpt, itr_obj.res[:estTotCost], itr_obj.res[:curBest], benders_obj.top)
+
+			# remove stabilization for near-optimum
+			if !isnothing(benders_obj.stab) 
+				removeStab!(benders_obj)
+				benders_obj.stab = nothing 
 			end 
 
 			benders_obj.nearOpt.cnt = benders_obj.nearOpt.cnt + 1 # update near-opt counter
 			# adapt the objective and constraint to near-optimal
 			adaptNearOpt!(benders_obj.top, benders_obj.nearOpt.setup, itr_obj.res[:optCost], benders_obj.nearOpt.cnt)
-			produceMessage(report_m.options,report_m.report, 1," - Switched to near-optimal for $(benders_obj.nearOpt.setup.obj[benders_obj.nearOpt.cnt ][1])", testErr = false, printErr = false)
+			produceMessage(report_m.options, report_m.report, 1, " - Switched to near-optimal for $(benders_obj.nearOpt.setup.obj[benders_obj.nearOpt.cnt ][1])", testErr = false, printErr = false)
 		else
-			produceMessage(report_m.options,report_m.report, 1," - Finished iteration!", testErr = false, printErr = false)
+			produceMessage(report_m.options, report_m.report, 1, " - Finished iteration!", testErr = false, printErr = false)
 			rtn_boo = true
 		end
+	elseif Dates.value(floor(now() - report_m.options.startTime, Dates.Minute(1))) > benders_obj.algOpt.timeLim
+		rtn_boo = true
 	end
 
 	return rtn_boo
@@ -980,7 +983,7 @@ function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part
 		end
 	else
 		# adjust rhs and factor of existing constraint
-		fix_df = innerjoin(select(part_obj.cns[Symbol(var_sym, cns_sym)], Not([:fac])), fix_df, on = intCol(fix_df, :dir))
+		fix_df = innerjoin(select(part_obj.cns[Symbol(var_sym, cns_sym)], Not([:fac])), select(fix_df, intersect(namesSym(fix_df),vcat(intCol(fix_df,:dir),[:var,:value,:setZero,:fac,:rhs]))), on = intCol(fix_df, :dir))
 		set_normalized_rhs.(fix_df[!,:cns], fix_df[!,:rhs])
 		set_normalized_coefficient.(fix_df[!,:cns], fix_df[!,:var], fix_df[!,:fac])	
 	end
@@ -1066,8 +1069,8 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 	end
 	produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Time for top: $timeTop_fl Time for sub: $timeSub_fl", testErr = false, printErr = false)
 
-	if Dates.value(floor(now() - report_m.options.startTime,Dates.Minute(1))) > benders_obj.algOpt.timeLim
-		produceMessage(report_m.options,report_m.report, 1," - Aborted due to time-limit!", testErr = false, printErr = false)
+	if Dates.value(floor(now() - report_m.options.startTime, Dates.Minute(1))) > benders_obj.algOpt.timeLim
+		produceMessage(report_m.options, report_m.report, 1, " - Aborted due to time-limit!", testErr = false, printErr = false)
 	end
 
 	#endregion
@@ -1078,10 +1081,14 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 	etr_arr = Pair{Symbol,Any}[:i => itr_obj.cnt.i, :lowCost => itr_obj.res[:lowLimCost], :bestObj => itr_obj.res[:curBest], :gap => benders_obj.itr.gap, :curCost => itr_obj.res[:actTotCost],
 					:time_ges => Dates.value(floor(now() - report_obj.mod.options.startTime, Dates.Second(1)))/60, :time_top => timeTop_fl/60, :time_sub => timeSub_fl/60]
 
-	if !isnothing(benders_obj.stab) # add info about stabilization
+	# add info about stabilization
+	if !isnothing(benders_obj.stab) 
 		stab_obj = benders_obj.stab
 		push!(etr_arr, :actMethod => stab_obj.method[stab_obj.actMet])	
 		append!(etr_arr, map(x -> Symbol("dynPar_", stab_obj.method[x]) => isa(stab_obj.dynPar[x], Dict) ? [round(stab_obj.dynPar[x][j], sigdigits = 2) for j in keys(stab_obj.dynPar[x])] : stab_obj.dynPar[x], 1:length(stab_obj.method)))
+	elseif :actMethod in namesSym(report_obj.itr) # adds empty entries for near-opt case
+		push!(etr_arr, :actMethod => :none)
+		foreach(y -> push!(etr_arr, Symbol(y) => 0.0), filter(x -> occursin("dynPar",string(x)), namesSym(report_obj.itr)))
 	end
 
 	# add info about near-optimal
@@ -1109,10 +1116,10 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 					capa_df = printObject(resData_obj.capa[sys][sSym][capaSym], benders_obj.top, rtnDf = (:csvDf,))
 					# merge into common format
 					if capaSym != :capaExc
-						capa_df = rename(select(capa_df,Not([:timestep_superordinate_expansion])), :timestep_superordinate_dispatch => :timestep, :region_expansion => :region, :technology => :system)
+						capa_df = rename(select(capa_df, Not([:timestep_superordinate_expansion])), :timestep_superordinate_dispatch => :timestep, :region_expansion => :region, :technology => :system)
 					else
 						capa_df[!,:region] = capa_df[!,:region_from] .* " - " .* capa_df[!,:region_to]
-						capa_df = rename(select(capa_df,Not([:timestep_superordinate_expansion,:region_from,:region_to,:directed])), :timestep_superordinate_dispatch => :timestep, :exchange => :system)
+						capa_df = rename(select(capa_df, Not([:timestep_superordinate_expansion, :region_from, :region_to, :directed])), :timestep_superordinate_dispatch => :timestep, :exchange => :system)
 					end
 					if capaSym in (:capaConv, :capaExc) capa_df[!,:id] .= "" end
 					capa_df[!,:variable] .= capaSym

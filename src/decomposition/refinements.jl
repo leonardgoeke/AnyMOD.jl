@@ -17,14 +17,14 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		
 		# ! get starting solution with heuristic solve or generic
 		if stabSetup_obj.ini.setup != :none
-			produceMessage(report_m.options,report_m.report, 1," - Started heuristic pre-solve for starting solution", testErr = false, printErr = false)
+			produceMessage(report_m.options, report_m.report, 1, " - Started heuristic pre-solve for starting solution", testErr = false, printErr = false)
 			heu_m, startSol_obj =  @suppress heuristicSolve(heuOpt_ntup, 1.0, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = true);
 			lowBd_fl = 0.0
 		else
 			@suppress optimize!(benders_obj.top.optModel)
 			startSol_obj = resData()
 			startSol_obj.objVal = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
-			startSol_obj.capa, startSol_obj.stLvl = writeResult(benders_obj.top,[:capa,:exp,:mustCapa,:mustExp,:stLvl])
+			startSol_obj.capa, startSol_obj.stLvl = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :mustExp, :stLvl])
 			lowBd_fl = startSol_obj.objVal
 		end
 	
@@ -33,11 +33,11 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		#region # * evaluate heuristic solution
 	
 		# first result for first iteration
-		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = 0)
+		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_sub = 0)
 		if !isnothing(benders_obj.nearOpt.setup) firstItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			firstItr_df[!,:actMethod] .= Symbol()
-			foreach(x -> firstItr_df[!,Symbol("dynPar_",x[1])] .= 0.0, stabSetup_obj.method)
+			foreach(x -> firstItr_df[!, Symbol("dynPar_",x[1])] .= 0.0, stabSetup_obj.method)
 		end
 		append!(benders_obj.report.itr, firstItr_df)
 
@@ -47,7 +47,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		time_dic = Dict{Tuple{Int64,Int64},Millisecond}()
 		
 		# solve sub-problems
-		for (id,s) in enumerate(collect(keys(benders_obj.sub)))
+		for (id, s) in enumerate(collect(keys(benders_obj.sub)))
 			if benders_obj.algOpt.dist # distributed case
 				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), :barrier, 1e-8)
 			else # non-distributed case
@@ -71,7 +71,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		timeSub_fl = Dates.toms(benders_obj.algOpt.dist ? maximum(collect(values(time_dic))) : sum(collect(values(time_dic)))) / Dates.toms(Second(1))
 		
 		# write results for second iteration
-		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime,Dates.Second(1)))/60, time_top = 0, time_sub = timeSub_fl)
+		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_sub = timeSub_fl)
 		if !isnothing(benders_obj.nearOpt.setup) secItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			secItr_df[!,:actMethod] .= Symbol()
@@ -88,7 +88,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 
 		#endregion
 		
-		produceMessage(report_m.options,report_m.report, 1," - Initialized stabilization with $eleNum_int variables", testErr = false, printErr = false)
+		produceMessage(report_m.options, report_m.report, 1, " - Initialized stabilization with $eleNum_int variables", testErr = false, printErr = false)
 	else
 		stab_obj = nothing
 		startSol_obj = resData()
@@ -135,7 +135,7 @@ function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_
 end
 
 # compute dynamic parameter
-function computeDynPar(meth_arr::Array{Symbol, 1},methOpt_arr::Array{NamedTuple, 1}, lowBd_fl::Float64, upBd_fl::Float64, top_m::anyModel)
+function computeDynPar(meth_arr::Array{Symbol, 1}, methOpt_arr::Array{NamedTuple, 1}, lowBd_fl::Float64, upBd_fl::Float64, top_m::anyModel)
 	
 	dynPar_arr = []
 	for m in 1:size(meth_arr, 1)
@@ -309,7 +309,7 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, addVio_fl::Float64, t
 
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
-	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
+	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!, [:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
 	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x], collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df))
 
@@ -551,33 +551,11 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 end
 
 # solves top problem without trust region and obtains lower limits
-function runTopWithoutStab!(benders_obj::bendersObj)
+function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 
-	stab_obj = benders_obj.stab
-	
 	# remove stabilization
-	if stab_obj.method[stab_obj.actMet] == :qtr && is_valid(benders_obj.top.optModel, stab_obj.cns)
-		delete(benders_obj.top.optModel, stab_obj.cns) # remove trust-region
-	elseif stab_obj.method[stab_obj.actMet] in (:prx1, :prx2)
-		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1,1]) # remove penalty form objective
-	elseif stab_obj.method[stab_obj.actMet] in (:lvl1, :lvl2)
-		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1,1])
-		delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1])
-	elseif stab_obj.method[stab_obj.actMet] == :dsb
-		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1,1])
-		delete(benders_obj.top.optModel, stab_obj.cns)
-		delete(benders_obj.top.optModel, stab_obj.helper_var)
-		unregister(benders_obj.top.optModel, :r)
-	elseif stab_obj.method[stab_obj.actMet] == :box
-		stabVar_dic = matchValWithVar(stab_obj.var, stab_obj.weight, benders_obj.top)
-		for grp in (:capa, :stLvl), sys in keys(stabVar_dic[grp]), sSym in keys(stabVar_dic[grp][sys]), capaSym in keys(stabVar_dic[grp][sys][sSym])
-			relVar_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[grp][sys][sSym][capaSym][!,:var])
-			delete_lower_bound.(relVar_arr)
-			set_lower_bound.(relVar_arr, 0.0)
-			delete_upper_bound.(relVar_arr)
-		end
-	end
-	
+	removeStab!(benders_obj)
+
 	# solve problem
 	set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
 	set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
@@ -595,9 +573,35 @@ end
 
 # check if switching criterium is met
 function checkSwitch(stab_obj::stabObj, cnt_obj::countItr, itr_df::DataFrame)
-	min_boo = itr_df[cnt_obj.i - stab_obj.ruleSw.itr,:actMethod] == stab_obj.method[stab_obj.actMet] # check if method as been used for the minimum number of iterations 
-	pro_boo = itr_df[(cnt_obj.i - min(cnt_obj.i,stab_obj.ruleSw.itrAvg) + 1):end,:gap] |> (x -> (x[1]/x[end])^(1/(length(x) -1)) - 1 < stab_obj.ruleSw.avgImp) # check if progress in last iterations is below threshold
+	min_boo = itr_df[cnt_obj.i - stab_obj.ruleSw.itr, :actMethod] == stab_obj.method[stab_obj.actMet] # check if method as been used for the minimum number of iterations 
+	pro_boo = itr_df[(cnt_obj.i - min(cnt_obj.i, stab_obj.ruleSw.itrAvg) + 1):end, :gap] |> (x -> (x[1]/x[end])^(1/(length(x) -1)) - 1 < stab_obj.ruleSw.avgImp) # check if progress in last iterations is below threshold
 	return min_boo && pro_boo
+end
+
+# remove stabilization from problem
+function removeStab!(benders_obj::bendersObj)
+	stab_obj = benders_obj.stab
+	if stab_obj.method[stab_obj.actMet] == :qtr && is_valid(benders_obj.top.optModel, stab_obj.cns)
+		delete(benders_obj.top.optModel, stab_obj.cns) # remove trust-region
+	elseif stab_obj.method[stab_obj.actMet] in (:prx1, :prx2)
+		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1]) # remove penalty form objective
+	elseif stab_obj.method[stab_obj.actMet] in (:lvl1, :lvl2)
+		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
+		delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
+	elseif stab_obj.method[stab_obj.actMet] == :dsb
+		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
+		delete(benders_obj.top.optModel, stab_obj.cns)
+		delete(benders_obj.top.optModel, stab_obj.helper_var)
+		unregister(benders_obj.top.optModel, :r)
+	elseif stab_obj.method[stab_obj.actMet] == :box
+		stabVar_dic = matchValWithVar(stab_obj.var, stab_obj.weight, benders_obj.top)
+		for grp in (:capa, :stLvl), sys in keys(stabVar_dic[grp]), sSym in keys(stabVar_dic[grp][sys]), capaSym in keys(stabVar_dic[grp][sys][sSym])
+			relVar_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[grp][sys][sSym][capaSym][!,:var])
+			delete_lower_bound.(relVar_arr)
+			set_lower_bound.(relVar_arr, 0.0)
+			delete_upper_bound.(relVar_arr)
+		end
+	end
 end
 
 #endregion
@@ -633,14 +637,14 @@ end
 # ! filter pareto efficient near-optimal solutions
 function filterParetoEff!(nearOpt_df::DataFrame, nearOptSetup_obj::nearOptSetup)
 
-	filter!(x -> x.value > nearOptSetup_obj.parThres.zero || x.variable in (:lss,:cost,:thrs), nearOpt_df)
+	filter!(x -> x.value > nearOptSetup_obj.parThres.zero || x.variable in (:lss, :cost, :thrs), nearOpt_df)
 	allDom_arr = Array{Array{Int,1},1}()
 
 	# loop over different objectives
 	for obj in nearOptSetup_obj.obj
 		
 		# get cost and lss variables
-		parRel_df = filter(x -> x.variable in (:cost,:lss), nearOpt_df)
+		parRel_df = filter(x -> x.variable in (:cost, :lss), nearOpt_df)
 		
 		# get variables for specific objective and correct for direction
 		min_boo = obj[2][1] == :min
@@ -663,18 +667,18 @@ function filterParetoEff!(nearOpt_df::DataFrame, nearOptSetup_obj::nearOptSetup)
 		
 		for i1 in i_arr
 			# get rows relating to first iteration of check
-			i1ParRel_df = select(rename(filter(x -> x.i == i1, parRel_df), :value => :value_1),Not([:i]))
+			i1ParRel_df = select(rename(filter(x -> x.i == i1, parRel_df), :value => :value_1), Not([:i]))
 			# loop over rows for second iteration of check
 			for i2 in filter(x -> x > i1, i_arr)
 				# get data and join to single dataframe
-				i2ParRel_df = select(rename(filter(x -> x.i == i2, parRel_df), :value => :value_2),Not([:i]))
+				i2ParRel_df = select(rename(filter(x -> x.i == i2, parRel_df), :value => :value_2), Not([:i]))
 				joinParRel_df = joinMissing(i1ParRel_df, i2ParRel_df, [:timestep, :region, :system, :id, :variable], :left, Dict(:value_1 => 0.0, :value_2 => 0.0))
 				
 				# check for domination
 				if all(joinParRel_df[!,:value_1] .<= joinParRel_df[!,:value_2] .* (1 + nearOptSetup_obj.parThres.dom)) # first dominating second
-					push!(iDom_arr,i2)
+					push!(iDom_arr, i2)
 				elseif all(joinParRel_df[!,:value_1] .* (1 + nearOptSetup_obj.parThres.dom) .>= joinParRel_df[!,:value_2]) # second dominating first
-					push!(iDom_arr,i1)
+					push!(iDom_arr, i1)
 					break
 				end
 			end

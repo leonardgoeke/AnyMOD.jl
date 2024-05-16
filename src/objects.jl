@@ -438,14 +438,14 @@ mutable struct graInfo
 
 		# specify some default names and colors used in visualisations
 		namesDef_arr = ["exchangeLoss" => "exchange losses", "coalPlant" => "coal plant", "gasPlant" => "gas plant", "districtHeat" => "district heat", "naturalGas" => "natural gas", "synthGas" => "synthetic gas", "fossilGas" => "fossil gas",
-									"demand" => "final demand", "export" => "export", "import" => "import", "netImport" => "net import", "netExport" => "net export","crt" => "curtailment", "lss" => "loss of load", "trdSell" => "trade sell", "trdBuy" => "trade buy"]
+									"demand" => "final demand", "export" => "export", "import" => "import", "netImport" => "net import", "netExport" => "net export", "crt" => "curtailment", "lss" => "loss of load", "trdSell" => "trade sell", "trdBuy" => "trade buy"]
 
 		# create dictionary assigning internal model names to names used within visualisations
 		allVal_arr = unique(vcat(map(x -> getfield.(values(anyM.sets[x].nodes), :val), collect(keys(anyM.sets)))...))
 		names_dic = setdiff(allVal_arr, getindex.(namesDef_arr, 1))  |> (z -> Dict(vcat(namesDef_arr, Pair.(z, z))))
 
 		# define default colors for default energy carriers
-		colorsCar_arr = ["electricity" => (1.0, 0.9215, 0.2313),"heat" => (0.769, 0.176, 0.290), "districtHeat" => (0.6, 0.0, 0.169),  "gas" => (1.0, 0.416, 0.212), 
+		colorsCar_arr = ["electricity" => (1.0, 0.9215, 0.2313), "heat" => (0.769, 0.176, 0.290), "districtHeat" => (0.6, 0.0, 0.169),  "gas" => (1.0, 0.416, 0.212), 
 									"naturalGas" => (1.0, 0.506, 0.294), "fossilGas" => (0.898, 0.259, 0.075),  "synthGas" => (0.235, 0.506, 0.325),  "hydrogen" => (0.329, 0.447, 0.827), 
 													"coal" => (0.459, 0.286, 0.216), "biomass" => (0.682, 0.898, 0.443), "bioGas" => (0.682, 0.898, 0.443)]
 
@@ -512,8 +512,8 @@ mutable struct anyModel <: AbstractModel
 
 	graInfo::graInfo
 	function anyModel(inDir::Union{String,Array{String,1}}, outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, stepLen = 1.0, repTsLvl = 0, holdFixed = false, onlyDesFac = false, emissionLoss = true,
-																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2,1e4), rhs = (1e-2,1e2)),
-																											scaFac = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1,dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
+																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2, 1e4), rhs = (1e-2, 1e2)),
+																											scaFac = (capa = 1e2,  capaStSize = 1e2, insCapa = 1e1, dispConv = 1e3, dispSt = 1e5, dispExc = 1e3, dispTrd = 1e3, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
 																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true), forceScr = nothing, lvlFrs = 0, createVI = (bal = false, st = false), dbInf = false)
 		anyM = new()
 
@@ -546,7 +546,7 @@ mutable struct anyModel <: AbstractModel
 		# ! read-in sets and parameters
 		setData_dic = readSets!(files_dic, anyM)
 		if !any(map(x -> x[1] == 3, anyM.report))
-			paraTemp_dic = readParameters!(files_dic, setData_dic, anyM)
+			paraTemp_dic = readParameters!(files_dic, anyM)
 		end
 
 		produceMessage(anyM.options, anyM.report, 1, " - Read-in all set and parameter files")

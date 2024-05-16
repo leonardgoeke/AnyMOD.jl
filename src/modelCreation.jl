@@ -98,7 +98,7 @@ function createOptModel!(anyM::anyModel)
 	exc_itr = collect(enumerate(excSym_arr))
 
 	@threads for (idx,eSym) in exc_itr
-		excCnsDic_arr[idx] = createExc!(sysInt(eSym, anyM.sets[:Exc]), anyM.parts.exc[eSym], prepSys_dic[:Exc][eSym], parDef_dic, ts_dic, r_dic, excDir_arr, anyM)
+		excCnsDic_arr[idx] = createExc!(sysInt(eSym, anyM.sets[:Exc]), anyM.parts.exc[eSym], prepSys_dic[:Exc][eSym], ts_dic, r_dic, excDir_arr, anyM)
 	end
 
 	# connect retrofitting variables from the different exchange
@@ -109,7 +109,7 @@ function createOptModel!(anyM::anyModel)
 		anyM.parts.exc[excSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym], anyM.optModel, anyM.options.holdFixed)
 	end
 
-	produceMessage(anyM.options, anyM.report, 1," - Created variables and constraints for all exchange")
+	produceMessage(anyM.options, anyM.report, 1, " - Created variables and constraints for all exchange")
 
 	#endregion
 
@@ -130,5 +130,5 @@ function createOptModel!(anyM::anyModel)
 
 	#endregion
 
-	produceMessage(anyM.options, anyM.report, 1," - Completed model creation")
+	produceMessage(anyM.options, anyM.report, 1, " - Completed model creation")
 end

@@ -2,7 +2,7 @@
 #region # * definition and handling of parameters
 
 # ! defines all existing parameters
-function defineParameter(options::modOptions,report::Array{Tuple,1})
+function defineParameter(options::modOptions, report::Array{Tuple,1})
     parDef_dic = Dict{Symbol, NamedTuple}()
 
     #region # * expansion and retrofit parameters
@@ -701,7 +701,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, sy
                 filtParData_df = sym in namesSym(allParData_df) ? filter(row -> row[sym] in sysToPar_dic[sym][herit_sym][relSys], allParData_df) : allParData_df
 
                 # removes potential zero columns from data being actually written to part
-                rmvZeroParData_df = filtParData_df[!,filter(x -> unique(filtParData_df[!,x]) != [0] || x == :val, namesSym(filtParData_df))]
+                rmvZeroParData_df = filtParData_df[!, filter(x -> unique(filtParData_df[!,x]) != [0] || x == :val, namesSym(filtParData_df))]
 
                 # gets corresponding part
                 part_obj = getfield(anyM.parts, sym == :Te ? :tech : :exc)[sysSym(relSys, anyM.sets[sym])]
@@ -859,7 +859,7 @@ function presetDispatchParameter!(part::TechPart, prepTech_dic::Dict{Symbol,Name
                             dimCol = Symbol(dim, :_dis); lvl = Symbol(:lvl, dim)
                             dim_dic = Dict((x[dimCol], x[lvl]) =>  getDescendants(x[dimCol], anyM.sets[dim], false, x[lvl]) |> (y -> isempty(y) ? getAncestors(x[dimCol], anyM.sets[dim], :int, x[lvl])[end] : y)
                                                                                                                                                             for x in eachrow(unique(modeItr_df[!,[dimCol, lvl]])))
-                            modeItr_df[!,dimCol] = map(x -> dim_dic[(x[dimCol],x[lvl])],eachrow(modeItr_df[!,[dimCol,lvl]]))
+                            modeItr_df[!,dimCol] = map(x -> dim_dic[(x[dimCol],x[lvl])], eachrow(modeItr_df[!,[dimCol,lvl]]))
                             modeItr_df = flatten(modeItr_df[!,Not(lvl)], dimCol)
                         end
 
