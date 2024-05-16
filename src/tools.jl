@@ -164,7 +164,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
 			# aggregate and add expected value in case of scenarios
 			if expVal && length(anyM.scr.scrProb) > 1
-				dem_df = computeExpVal(dem_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.lvlFrs, :val) 
+				dem_df = computeExpVal(dem_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.frsLvl, :val) 
 			end
 			dem_df = combine(groupby(dem_df, [:Ts_disSup, :R_dis, :C, :scr]), :val => ( x -> sum(x) / 1000) => :value)
 			
@@ -236,7 +236,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		# add expected value in case of scenarios and aggregate
 		allVar_df[!,:value] .= value.(allVar_df[!,:var])
 		if expVal && :Ts_dis in namesSym(allVar_df) && length(anyM.scr.scrProb) > 1
-			allVar_df = computeExpVal(select(allVar_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.lvlFrs, :value) 
+			allVar_df = computeExpVal(select(allVar_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.frsLvl, :value) 
 		end
 		disp_df = combine(groupby(allVar_df, intersect(intCol(allVar_df), [:Ts_disSup, :R_dis, :C, :Te, :scr])), :value => (x -> sum(x)) => :value)
 			
@@ -272,7 +272,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		
 		# get values and add expected value in case of scenarios
 		if expVal && length(anyM.scr.scrProb) > 1
-			allExc_df = computeExpVal(allExc_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.lvlFrs, :var)
+			allExc_df = computeExpVal(allExc_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.frsLvl, :var)
 		end
 		
 		# compute export and import of each region, losses are considered at import
@@ -539,7 +539,7 @@ function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=
 	if !isempty(disp_df)
 		# add expected values and aggregate
 		disp_df[!,:value] = value.(disp_df[!,:var])
-		if expVal disp_df = computeExpVal(select(disp_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.lvlFrs, :value) end
+		if expVal disp_df = computeExpVal(select(disp_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.frsLvl, :value) end
 		disp_df = combine(groupby(disp_df, [:Ts_expSup, :Ts_disSup, :R_from, :R_to, :C, :Exc, :scr]), :value => (x -> sum(x) ./ 1000) => :value)
 
 		disp_df[!,:variable] .= :exc
@@ -814,22 +814,28 @@ function reportTimeSeries(car_sym::Symbol, anyM::anyModel; filterFunc::Function 
 		
 		if !isempty(relExc_arr)
 			if :out in signVar
-				excFrom_df = filterCarrier(vcat(map(x -> anyM.parts.exc[x].var[:exc], relExc_arr)...), relC_arr)
-				excFrom_df = combine(groupby(filter(filterFunc, rename(copy(excFrom_df), :R_from => :R_dis)), [:Ts_disSup, :Ts_dis, :R_dis, :scr]), :var => (x -> value(sum(x)) * -1) => :value)
-				excFrom_df[!,:variable] .= :export
-				filter!(x -> abs(x.value) > minVal, excFrom_df)
-				if !isempty(excFrom_df)
-					append!(allData_dic[:out], excFrom_df)
+				excAll_df = vcat(map(x -> anyM.parts.exc[x].var[:exc], filter(z -> :exc in keys(anyM.parts.exc[z].var),relExc_arr))...)
+				if !isempty(excAll_df)
+					excFrom_df = filterCarrier(excAll_df, relC_arr)
+					excFrom_df = combine(groupby(filter(filterFunc, rename(copy(excFrom_df), :R_from => :R_dis)), [:Ts_disSup, :Ts_dis, :R_dis, :scr]), :var => (x -> value(sum(x)) * -1) => :value)
+					excFrom_df[!,:variable] .= :export
+					filter!(x -> abs(x.value) > minVal, excFrom_df)
+					if !isempty(excFrom_df)
+						append!(allData_dic[:out], excFrom_df)
+					end
 				end
 			end
 
 			if :in in signVar
-				excTo_df = filterCarrier(vcat(map(x -> anyM.parts.exc[x] |> (z -> addLossesExc(z.var[:exc], z, anyM.sets)), relExc_arr)...), relC_arr)
-				excTo_df = combine(groupby(filter(filterFunc, rename(copy(excTo_df), :R_to => :R_dis)), [:Ts_disSup, :Ts_dis, :R_dis, :scr]), :var => (x -> value(sum(x))) => :value)
-				excTo_df[!,:variable] .= :import
-				filter!(x -> abs(x.value) > minVal, excTo_df)
-				if !isempty(excTo_df)
-					append!(allData_dic[:in], excTo_df)
+				excAll_df = vcat(map(x -> anyM.parts.exc[x] |> (z -> addLossesExc(z.var[:exc], z, anyM.sets)), filter(z -> :exc in keys(anyM.parts.exc[z].var),relExc_arr))...)
+				if !isempty(excAll_df)
+					excTo_df = filterCarrier(excAll_df, relC_arr)
+					excTo_df = combine(groupby(filter(filterFunc, rename(copy(excTo_df), :R_to => :R_dis)), [:Ts_disSup, :Ts_dis, :R_dis, :scr]), :var => (x -> value(sum(x))) => :value)
+					excTo_df[!,:variable] .= :import
+					filter!(x -> abs(x.value) > minVal, excTo_df)
+					if !isempty(excTo_df)
+						append!(allData_dic[:in], excTo_df)
+					end
 				end
 			end
 		end
@@ -944,7 +950,7 @@ printDuals(print_df::DataFrame, model_object::anyModel)
 
 Writes duals of a constraint DataFrame to a `.csv` file in readable format (strings instead of ids). See [Individual elements](@ref).
 """
-function printDuals(cns_df::DataFrame, anyM::anyModel;filterFunc::Function = x -> true, fileName::String = "", rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
+function printDuals(cns_df::DataFrame, anyM::anyModel; filterFunc::Function = x -> true, fileName::String = "", rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
     if !(:cns in namesSym(cns_df)) error("No constraint column found!") end
     cns_df = copy(filter(filterFunc, cns_df))
@@ -967,7 +973,7 @@ function printDuals(cns_df::DataFrame, anyM::anyModel;filterFunc::Function = x -
 	end
 end
 
-function printAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}}, anyM::anyModel)
+function reportAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}}, anyM::anyModel)
 
     # assigns variables to scaling factors for correting duals for scaling later
     scaFac_dic = Dict(:stExtIn => :dispSt, :stExtOut => :dispSt, :stIntIn => :dispSt, :stIntOut => :dispSt, :stLvl => :dispSt, :exc => :dispExc, :gen => :dispConv, :use => :dispConv, :trdBuy => :dispTrd, :trdSell => :dispTrd, :crt => :dispTrd , :lss => :dispTrd,
@@ -981,9 +987,6 @@ function printAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}}, anyM::anyModel)
             # get specific constraint
             if x == :enBal  
                 cnsDual_df = copy(anyM.parts.bal.cns[Symbol(:enBal, makeUp(y))])
-
-                cnsDual_df[1,:cns]
-                anyM.options.scaFac
             elseif x == :excRestr
                 cnsDual_df = copy(anyM.parts.exc[y].cns[:excRestr])
             elseif x == :stBal
@@ -1010,8 +1013,62 @@ function printAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}}, anyM::anyModel)
         end
     end
 
-    printObject(dual_df, anyM, fileName = "dualValues")
+    printObject(dual_df, anyM, fileName = "aggDuals")
 
+end
+
+# ! write storage levels
+function reportStorageLevel(anyM, writeAgg::Bool=false)
+
+	stLvl_df = DataFrame(timestep_superordinate_expansion = String[], timestep_superordinate_dispatch = String[],  timestep_dispatch = String[], region_dispatch = String[], carrier = String[], technology = String[], mode = String[], scenario = String[], id = String[], variable = Float64[])
+
+	for tSym in filter(x -> :stLvl in keys(anyM.parts.tech[x].var), keys(anyM.parts.tech))
+		append!(stLvl_df, printObject(anyM.parts.tech[tSym].var[:stLvl],anyM, rtnDf = (:csvDf,)))
+	end
+
+	CSV.write("$(anyM.options.outDir)/results_storageLevels_$(anyM.options.outStamp).csv", rename(stLvl_df, :variable => :value))
+
+	if writeAgg 
+		aggStLvl_df = combine(x -> (value = sum(x.variable),), groupby(stLvl_df,[:timestep_dispatch, :technology, :scenario]))
+		CSV.write("$(anyM.options.outDir)/results_aggStorageLevels_$(anyM.options.outStamp).csv", aggStLvl_df) 
+	end
+
+end
+
+# ! write results specified in named tuple
+function writeAllResults!(anyM::anyModel, res_ntup::NamedTuple)
+
+	if !isempty(res_ntup)
+		# write general results
+		for x in res_ntup.general reportResults(x, anyM) end
+
+		# write time-series results
+		for x in res_ntup.carrierTs reportTimeSeries(x, anyM) end
+
+		# write storage results
+		if !isempty(res_ntup.storage) && res_ntup.storage.write reportStorageLevel(anyM, res_ntup.storage.agg) end
+
+		# write aggregated duals
+		if !isempty(res_ntup.duals)
+			cns_dic = Dict{Symbol, Vector{Symbol}}()
+			# get relevant cases for differnt types of dual to be reported
+			if :enBal in res_ntup.duals
+				cns_dic[:enBal] = map(x -> Symbol(replace(string(x),"enBal" => "")), filter(x -> occursin("enBal", String(x)), collect(keys(anyM.parts.bal.cns))))
+			end
+
+			if :excRestr in res_ntup.duals
+				cns_dic[:excRestr] = filter(x -> :excRestr in keys(anyM.parts.exc[x].cns), collect(keys(anyM.parts.exc)))
+			end
+
+			if :stBal in res_ntup.duals
+				cns_dic[:stBal] = filter(x -> :stBal in keys(anyM.parts.tech[x].cns), collect(keys(anyM.parts.tech)))
+			end
+
+			reportAggDuals(cns_dic, anyM)
+		end
+
+
+	end
 end
 
 #endregion
@@ -1836,8 +1893,5 @@ printIIS(model_object::anyModel)
 
 Uses Gurobi's computeIIS function to determine the constraints of the optimization problem that cause infeasibility.
 """
-function printIIS(anyM::anyModel, d::Int)
-end
-
 # ! checks termination status and computes and prints IIS if infeasible
 checkIIS(mod_m::anyModel) = if termination_status(mod_m.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) && isdefined(AnyMOD, :printIIS) printIIS(mod_m) end

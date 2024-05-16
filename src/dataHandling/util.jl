@@ -122,19 +122,19 @@ makeLow(in::String) = isempty(in) ? "" : string(lowercase(in[1]), in[2:end])
 makeLow(in::Symbol) = Symbol(lowercase(string(in)[1]), string(in)[2:end])
 
 # ! compute expected value
-function computeExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, Float64},ts_tree::Tree, lvlFrs_int::Int64, aggCol_sym::Symbol)
+function computeExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, Float64}, ts_tree::Tree, frsLvl_int::Int64, aggCol_sym::Symbol)
             
 	if :scr in namesSym(in_df) && unique(in_df[!,:scr]) != [0]
 		# rename column for aggregation
 		in_df = rename(in_df, aggCol_sym => :agg)
 		# join probability
-		if lvlFrs_int == 0 # case of perfect foresight
+		if frsLvl_int == 0 # case of perfect foresight
 			in_df[!,:prob] = map(x -> (x.Ts_disSup, x.scr) in keys(scrProb_dic) ? scrProb_dic[(x.Ts_disSup, x.scr)] : 0.0, eachrow(in_df))
 		else # case of limited foresight
-			in_df[!,:prob] = map(x -> scrProb_dic[(getAncestors(x.Ts_dis, ts_tree, :int, lvlFrs_int)[end], x.scr)], eachrow(in_df))
+			in_df[!,:prob] = map(x -> scrProb_dic[(getAncestors(x.Ts_dis, ts_tree, :int, frsLvl_int)[end], x.scr)], eachrow(in_df))
 		end
 		# compute expected value and convert column name back again
-		in_df = vcat(select(in_df,Not([:prob])), combine(y -> (scr = 0, agg = sum(y.agg .* y.prob),), groupby(in_df, filter(x -> x != :scr, intCol(in_df)))))
+		in_df = vcat(select(in_df, Not([:prob])), combine(y -> (scr = 0, agg = sum(y.agg .* y.prob),), groupby(in_df, filter(x -> x != :scr, intCol(in_df)))))
 		in_df = rename(in_df, :agg => aggCol_sym)
 	end
 	return in_df
@@ -535,7 +535,7 @@ function getAllVariables(va::Symbol, anyM::anyModel; filterFunc::Function = x ->
 				if :C in namesSym(anyM.parts.lim.par[:emissionFac].data)
 					allTe_arr = unique(filter(x -> x.Te == 0, anyM.parts.lim.par[:emissionFac].data)[!,:C])
 			else
-					allTe_arr = union(map(x -> anyM.parts.tech[sysSym(x,anyM.sets[:Te])].carrier |> (z -> :use in keys(z) ? [z[:use]...] : Int[]),emTe_arr)...)
+					allTe_arr = union(map(x -> anyM.parts.tech[sysSym(x, anyM.sets[:Te])].carrier |> (z -> :use in keys(z) ? [z[:use]...] : Int[]), emTe_arr)...)
 				end
 				emC_arr = unique(vcat(map(x -> [x, getDescendants(x, anyM.sets[:C], true)...], allTe_arr)...))
 			elseif :C in namesSym(anyM.parts.lim.par[:emissionFac].data)
@@ -555,7 +555,7 @@ function getAllVariables(va::Symbol, anyM::anyModel; filterFunc::Function = x ->
 			allVar_df = allTechVar_df
 			# get use expression from exchange
 			#=
-			allExcVar_df = getAllVariables(:useExc,anyM, filterFunc = x -> x.C in emC_arr)
+			allExcVar_df = getAllVariables(:useExc, anyM, filterFunc = x -> x.C in emC_arr)
 			allExcVar_df[!,:var] = allExcVar_df[!,:var] .* 0.5 # attributes energy use equally to exporting and importing region
 			allExcVar_df = vcat(select(rename(allExcVar_df, :R_from => :R_dis), Not([:R_to])), select(rename(allExcVar_df, :R_to => :R_dis), Not([:R_from])))
 			allExcVar_df[!,:Te] .= 0; allExcVar_df[!,:M] .= 0
@@ -646,13 +646,13 @@ end
 function addSubDemand(in_df::DataFrame, allDim_df::DataFrame, c_int::Int, cSub_arr::Array{Int64,1}, sets_dic::Dict{Symbol, Tree}, cInfo_dic::Dict{Int64,@NamedTuple{tsDis::Int64, tsExp::Int64, rDis::Int64, rExp::Int64, balSign::Symbol, stBalCapa::Symbol}}, partBal_obj::OthPart)	
     
     for cSub in cSub_arr # demand for descendant carriers that has to be aggregated
-        demSub_df = filter(x -> x.val != 0.0, matchSetParameter(filter(x -> x.C == cSub, allDim_df),partBal_obj.par[:dem],sets_dic))
+        demSub_df = filter(x -> x.val != 0.0, matchSetParameter(filter(x -> x.C == cSub, allDim_df), partBal_obj.par[:dem], sets_dic))
         if isempty(demSub_df) continue end
         # average demand for descendant carriers
-        in_df[!,:demSub] = aggUniVar(rename(demSub_df,:val => :var), select(in_df, intCol(in_df)), [:Ts_dis,:R_dis,:scr], (Ts_dis =  cInfo_dic[c_int].tsDis, R_dis = cInfo_dic[c_int].rDis, scr = 1), sets_dic, true)
+        in_df[!,:demSub] = aggUniVar(rename(demSub_df, :val => :var), select(in_df, intCol(in_df)), [:Ts_dis, :R_dis, :scr], (Ts_dis =  cInfo_dic[c_int].tsDis, R_dis = cInfo_dic[c_int].rDis, scr = 1), sets_dic, true)
         # add to overall demand and remove column again
         in_df[!,:dem] = in_df[!,:dem] .+ in_df[!,:demSub]
-        select!(in_df,Not(:demSub))
+        select!(in_df, Not(:demSub))
     end
 
     return in_df
@@ -678,31 +678,31 @@ function addScenarios(in_df::DataFrame, ts_tr::Tree, scr_ntup::NamedTuple, defSc
 	return in_df
 end
 
-getScrProb(ts_int::Int, scr_int::Int, ts_tr::Tree, scr_ntup::NamedTuple) = isempty(scr_ntup.scrProb) ? 1.0 : scr_ntup.scrProb[getAncestors(ts_int, ts_tr, :int, scr_ntup.lvl)[end],scr_int]
+getScrProb(ts_int::Int, scr_int::Int, ts_tr::Tree, scr_ntup::NamedTuple) = isempty(scr_ntup.scrProb) ? 1.0 : scr_ntup.scrProb[getAncestors(ts_int, ts_tr, :int, scr_ntup.lvl)[end], scr_int]
 
 # ! extends relevant scenarios for intersection of interdependent subperiods
 function getStScr(ts::Int, syCyc_int::Int, ts_tr::Tree, scr_ntup::NamedTuple)
 	# get previous time-step in storage balance for input time-step
 	presTs_int = getDescendants(getAncestors(ts, ts_tr, :int, syCyc_int)[end], ts_tr, false, ts_tr.nodes[ts].lvl) |> (v -> v[findall(v .== ts)[end] |> (w -> w < length(v) ? w + 1 : 1)])
 	# get relevant scenarios for current and previous time-step
-	return sort(union(map(x -> scr_ntup.scr[getAncestors(x, ts_tr, :int, scr_ntup.lvl)[end]], [ts,presTs_int])...))
+	return sort(union(map(x -> scr_ntup.scr[getAncestors(x, ts_tr, :int, scr_ntup.lvl)[end]], [ts, presTs_int])...))
 end
 
 # ! adds reduced foresight timestep based on dispatch timestep
-getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, lvlFrs_int::Int, varType::Symbol) = getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, lvlFrs_int::Int, Val{varType}())
+getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, varType::Symbol) = getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, Val{varType}())
 
-function getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, lvlFrs_int::Int, objGrp::Val{:dis})
-	if lvlFrs_int != 0
-		frsTs_arr = map(x -> getAncestors(x, ts_tr, :int, lvlFrs_int) |> (x -> isempty(x) ? 0 : x[end]), ts_arr)
+function getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, objGrp::Val{:dis})
+	if frsLvl_int != 0
+		frsTs_arr = map(x -> getAncestors(x, ts_tr, :int, frsLvl_int) |> (x -> isempty(x) ? 0 : x[end]), ts_arr)
 	else
 		frsTs_arr = fill(0, length(ts_arr))
 	end
 	return frsTs_arr
 end
 
-function getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, lvlFrs_int::Int, objGrp::Val{:capa})
-	if lvlFrs_int != 0
-		frsTs_arr = map(x -> getDescendants(x, ts_tr, false, lvlFrs_int), ts_arr)
+function getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, objGrp::Val{:capa})
+	if frsLvl_int != 0
+		frsTs_arr = map(x -> getDescendants(x, ts_tr, false, frsLvl_int), ts_arr)
 	else
 		frsTs_arr = fill([0], length(ts_arr))
 	end

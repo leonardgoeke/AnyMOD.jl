@@ -90,7 +90,7 @@ function readSets!(files_dic::Dict{String,Array{String,1}}, anyM::anyModel)
 end
 
 # ! read-in all parameter files, create model parts and assign parameter
-function readParameters!(files_dic::Dict{String,Array{String,1}}, setData_dic::Dict{Symbol,DataFrame}, anyM::anyModel)
+function readParameters!(files_dic::Dict{String,Array{String,1}}, anyM::anyModel)
 	# ! read-in parameters (do not add to parts yet)
 	paraTemp_dic = Dict{String, Dict{Symbol, DataFrame}}()
 
@@ -165,7 +165,7 @@ function convertReadIn(readIn_df::DataFrame, fileName_str::String, set_arr::Arra
 	valCol_arr = filter(x -> occursin("value", string(x)), readInCol_arr)
 
 	# ! convert missing values and change array container type for editing later
-	for j in 1:size(readIn_df,2)
+	for j in 1:size(readIn_df, 2)
 		col = collect(readIn_df[!,j])
 
 		if eltype(col) >: Int
@@ -406,10 +406,10 @@ function createTreeLevel!(readIn_df::DataFrame, tree_obj::Tree, setLoad_str::Str
 	# adds dictionary for occurrence of single strings
 	for v in getNodesLvl(tree_obj, i)
 		a = v.val
-		if haskey(tree_obj.srcStr, (a,i))
-			push!(tree_obj.srcStr[(a,i)], v.idx)
+		if haskey(tree_obj.srcStr, (a, i))
+			push!(tree_obj.srcStr[(a, i)], v.idx)
 		else
-			tree_obj.srcStr[(a,i)] = [v.idx]
+			tree_obj.srcStr[(a, i)] = [v.idx]
 		end
 	end
 end
@@ -610,9 +610,9 @@ end
 
 # ! initializes dictionary that saves lookups in tree
 function initializeLookup(size_int::Int)
-    Ini_arr = Array{String}(undef,size_int)
-    Ini_arr .= ""
-    return Ini_arr
+    ini_arr = Array{String}(undef,size_int)
+    ini_arr .= ""
+    return ini_arr
 end
 
 #endregion
