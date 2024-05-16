@@ -317,7 +317,7 @@ function createCapaBal!(r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, anyM::an
 	end
 
 	# merge all capacity variables with design factors
-	allCapa_df = combine(x -> (var = sum(x.var .* round.(x.desFac, sigdigits = 10)),), groupby(vcat(allDesFac_arr...),[:Ts_disSup,:R_dis,:C]) )
+	allCapa_df = combine(x -> (var = sum(x.var .* x.desFac),), groupby(vcat(allDesFac_arr...),[:Ts_disSup,:R_dis,:C]))
 
 	#endregion
 
