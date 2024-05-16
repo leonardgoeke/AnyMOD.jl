@@ -138,7 +138,7 @@ function createTimestepMapping!(anyM::anyModel)
 		push!(anyM.report, (3, "timestep mapping", "", "representative time-step level $(string(anyM.options.repTsLvl)) not greater than lowest level of time-steps"))
 	elseif supTsLvl_int > anyM.options.repTsLvl && anyM.options.repTsLvl != 0
 		push!(anyM.report, (3, "timestep mapping", "", "representative time-step level $(string(anyM.options.repTsLvl)) less detailed than superordinate dispatch level"))
-	elseif anyM.options.lvlFrs > anyM.options.repTsLvl && anyM.options.repTsLvl != 0
+	elseif anyM.options.frsLvl > anyM.options.repTsLvl && anyM.options.repTsLvl != 0
 		push!(anyM.report, (3, "timestep mapping", "", "representative time-step level $(string(anyM.options.repTsLvl)) less detailed than foresight dispatch level"))
 	else
 		if anyM.options.repTsLvl == 0
@@ -623,18 +623,18 @@ function createScenarioMapping!(anyM::anyModel)
 
 		minDis_int = minimum(map(x -> getfield(x, :tsDis), values(anyM.cInfo)))
 	
-		if anyM.options.lvlFrs != 0 
-			if anyM.options.supTsLvl >= anyM.options.lvlFrs
-				anyM.options.lvlFrs = 0
+		if anyM.options.frsLvl != 0 
+			if anyM.options.supTsLvl >= anyM.options.frsLvl
+				anyM.options.frsLvl = 0
 				push!(anyM.report, (2, "scenario mapping", "", "specified foresight level is not more detailed than superordinate dispatch level, therefore model still uses perfect foresight"))
-			elseif minDis_int < anyM.options.lvlFrs 
-				anyM.options.lvlFrs = minDis_int
+			elseif minDis_int < anyM.options.frsLvl 
+				anyM.options.frsLvl = minDis_int
 				push!(anyM.report, (1, "scenario mapping", "", "specified foresight level exceeds least detailed dispatch resolution, model uses level $(minDis_int) instead"))
 			end
 		end
 
 		# gets level for scenarios
-		lvl_int = anyM.options.lvlFrs == 0 ? anyM.supTs.lvl : anyM.options.lvlFrs
+		lvl_int = anyM.options.frsLvl == 0 ? anyM.supTs.lvl : anyM.options.frsLvl
 		prop_df = flatten(flatten(DataFrame(Ts_dis  = [getfield.(getNodesLvl(anyM.sets[:Ts], lvl_int), :idx)], scr = [allScr_arr]), :Ts_dis), :scr)
 
 		# assigns probabilities defined as parameters
@@ -691,8 +691,8 @@ function createScenarioMapping!(anyM::anyModel)
 		tsToScr_dic = Dict{Int64, Vector{Int64}}()
 		tsScrToProp_dic = Dict{Tuple{Int64, Int64}, Float64}()
 		lvl_int = 0
-		if anyM.options.lvlFrs != 0
-			anyM.options.lvlFrs = 0
+		if anyM.options.frsLvl != 0
+			anyM.options.frsLvl = 0
 			push!(anyM.report, (2, "scenario mapping", "", "foresight level set but not scenarios specified"))
 		end
 	end
@@ -710,14 +710,14 @@ function distributedMapping!(anyM::anyModel, prepSys_dic::Dict{Symbol,Dict{Symbo
 	if subPro != (0, 0) # ! case of sub-problem
 
 		# find relevant time-steps for sub-problem
-		relTsDis_arr = anyM.options.lvlFrs == 0 ? [subPro[1]] : Int[]
+		relTsDis_arr = anyM.options.frsLvl == 0 ? [subPro[1]] : Int[]
 		
 		supTs_int = getAncestors(subPro[1], anyM.sets[:Ts], :int, anyM.supTs.lvl)[end]
 		for i in (anyM.supTs.lvl+1):anyM.sets[:Ts].height	
 			relLvl_arr = getDescendants(subPro[1], anyM.sets[:Ts], false, i)
 			append!(relTsDis_arr, relLvl_arr)
 			# gathers time-steps only relevant with limited foresight 
-			if anyM.options.lvlFrs != 0
+			if anyM.options.frsLvl != 0
 				allLvl_arr = getDescendants(supTs_int, anyM.sets[:Ts], false, i)
 				nonRelLvl_arr = setdiff(allLvl_arr, relLvl_arr)
 				exRel_int = minimum(relLvl_arr) - 1 in allLvl_arr ? minimum(relLvl_arr) - 1 : maximum(nonRelLvl_arr)

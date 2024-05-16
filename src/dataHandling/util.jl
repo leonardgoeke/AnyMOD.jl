@@ -122,16 +122,16 @@ makeLow(in::String) = isempty(in) ? "" : string(lowercase(in[1]), in[2:end])
 makeLow(in::Symbol) = Symbol(lowercase(string(in)[1]), string(in)[2:end])
 
 # ! compute expected value
-function computeExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, Float64}, ts_tree::Tree, lvlFrs_int::Int64, aggCol_sym::Symbol)
+function computeExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, Float64}, ts_tree::Tree, frsLvl_int::Int64, aggCol_sym::Symbol)
             
 	if :scr in namesSym(in_df) && unique(in_df[!,:scr]) != [0]
 		# rename column for aggregation
 		in_df = rename(in_df, aggCol_sym => :agg)
 		# join probability
-		if lvlFrs_int == 0 # case of perfect foresight
+		if frsLvl_int == 0 # case of perfect foresight
 			in_df[!,:prob] = map(x -> (x.Ts_disSup, x.scr) in keys(scrProb_dic) ? scrProb_dic[(x.Ts_disSup, x.scr)] : 0.0, eachrow(in_df))
 		else # case of limited foresight
-			in_df[!,:prob] = map(x -> scrProb_dic[(getAncestors(x.Ts_dis, ts_tree, :int, lvlFrs_int)[end], x.scr)], eachrow(in_df))
+			in_df[!,:prob] = map(x -> scrProb_dic[(getAncestors(x.Ts_dis, ts_tree, :int, frsLvl_int)[end], x.scr)], eachrow(in_df))
 		end
 		# compute expected value and convert column name back again
 		in_df = vcat(select(in_df, Not([:prob])), combine(y -> (scr = 0, agg = sum(y.agg .* y.prob),), groupby(in_df, filter(x -> x != :scr, intCol(in_df)))))
@@ -689,20 +689,20 @@ function getStScr(ts::Int, syCyc_int::Int, ts_tr::Tree, scr_ntup::NamedTuple)
 end
 
 # ! adds reduced foresight timestep based on dispatch timestep
-getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, lvlFrs_int::Int, varType::Symbol) = getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, lvlFrs_int::Int, Val{varType}())
+getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, varType::Symbol) = getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, Val{varType}())
 
-function getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, lvlFrs_int::Int, objGrp::Val{:dis})
-	if lvlFrs_int != 0
-		frsTs_arr = map(x -> getAncestors(x, ts_tr, :int, lvlFrs_int) |> (x -> isempty(x) ? 0 : x[end]), ts_arr)
+function getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, objGrp::Val{:dis})
+	if frsLvl_int != 0
+		frsTs_arr = map(x -> getAncestors(x, ts_tr, :int, frsLvl_int) |> (x -> isempty(x) ? 0 : x[end]), ts_arr)
 	else
 		frsTs_arr = fill(0, length(ts_arr))
 	end
 	return frsTs_arr
 end
 
-function getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, lvlFrs_int::Int, objGrp::Val{:capa})
-	if lvlFrs_int != 0
-		frsTs_arr = map(x -> getDescendants(x, ts_tr, false, lvlFrs_int), ts_arr)
+function getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, objGrp::Val{:capa})
+	if frsLvl_int != 0
+		frsTs_arr = map(x -> getDescendants(x, ts_tr, false, frsLvl_int), ts_arr)
 	else
 		frsTs_arr = fill([0], length(ts_arr))
 	end

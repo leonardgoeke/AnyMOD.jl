@@ -981,8 +981,8 @@ function createCapaRestr!(part::AbstractModelPart, ts_dic::Dict{Tuple{Int64,Int6
 		
 		# check special cases relevant for reduced foresight and storage level
 		if typeof(part) == TechPart
-			topFrs_boo = anyM.subPro == (0,0) && anyM.options.lvlFrs != 0
-			subFrs_boo = anyM.subPro != (0,0) && !isempty(anyM.subPro ) && anyM.options.lvlFrs != 0 && anyM.scr.lvl > part.stCyc
+			topFrs_boo = anyM.subPro == (0,0) && anyM.options.frsLvl != 0
+			subFrs_boo = anyM.subPro != (0,0) && !isempty(anyM.subPro ) && anyM.options.frsLvl != 0 && anyM.scr.lvl > part.stCyc
 		else
 			topFrs_boo = false
 			subFrs_boo = false

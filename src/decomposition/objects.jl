@@ -144,10 +144,10 @@ mutable struct bendersObj
 	stab::Union{Nothing,stabObj}
     algOpt::algSetup
 	nearOpt::nearOptObj
-	info::NamedTuple{(:name,:frs,:supTsLvl, :shortExp),Tuple{String,Int64,Int64,Int64}}
+	info::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}
 	report::NamedTuple{(:itr,:nearOpt,:mod),Tuple{DataFrame,DataFrame,anyModel}}
 	
-	function bendersObj(info_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
+	function bendersObj(info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
 
         #region # * checks and initialization
 
@@ -185,7 +185,7 @@ mutable struct bendersObj
 		# start creating top-problem and extract info on sub-problem structure
 		produceMessage(report_m.options, report_m.report, 1, " - Started creation of top-problem", testErr = false, printErr = false)
 
-		top_m = anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel" * info_ntup.name, lvlFrs = info_ntup.frs, supTsLvl = info_ntup.supTsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, createVI = algSetup_obj.useVI)
+		top_m = anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel" * info_ntup.name, frsLvl = info_ntup.frsLvl, supTsLvl = info_ntup.supTsLvl, repTsLvl = info_ntup.repTsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, createVI = algSetup_obj.useVI)
 		sub_tup = tuple([(x.Ts_dis, x.scr) for x in eachrow(top_m.parts.obj.par[:scrProb].data)]...) # get all time-step/scenario combinations
 
 		# creation of sub-problems

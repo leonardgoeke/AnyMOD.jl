@@ -2,7 +2,7 @@
 #region # * stabilization
 
 # initialize stabilization when creating benders object, returns the stabilization object
-function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64}}, scale_dic::Dict{Symbol,NamedTuple}, runSubDist::Function)
+function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, scale_dic::Dict{Symbol,NamedTuple}, runSubDist::Function)
 
 	report_m = benders_obj.report.mod
 
@@ -13,7 +13,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 	
 		#region # * compute heuristic solution
 	
-		heuOpt_ntup = (inputDir = inputFolder_ntup.heu, resultDir = inputFolder_ntup.results, suffix = info_ntup.name, supTsLvl = info_ntup.supTsLvl, lvlFrs = info_ntup.frs, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facHeu])
+		heuOpt_ntup = (inputDir = inputFolder_ntup.heu, resultDir = inputFolder_ntup.results, suffix = info_ntup.name, supTsLvl = info_ntup.supTsLvl, repTsLvl = info_ntup.repTsLvl, frsLvl = info_ntup.frsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facHeu])
 		
 		# ! get starting solution with heuristic solve or generic
 		if stabSetup_obj.ini.setup != :none

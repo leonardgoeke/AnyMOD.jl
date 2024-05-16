@@ -122,7 +122,7 @@ function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,
 end
 
 # ! runs top problem again with optimal results
-function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, zeroThrs_fl::Float64;cutSmall::Bool=false, wrtRes::Bool=false)
+function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, zeroThrs_fl::Float64; cutSmall::Bool=false, resultOpt::NamedTuple=NamedTuple())
 	
 	# create absolute value constraints for capacities or expansion variables
 	for sys in (:tech, :exc)
@@ -192,11 +192,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
-	if wrtRes
-		reportResults(:summary, top_m)
-		reportResults(:cost, top_m)
-		reportResults(:exchange, top_m)
-	end
+	writeAllResults!(top_m, resultOpt)
 
 	return top_m
 end
@@ -263,9 +259,9 @@ end
 #region # * basic benders algorithm
 
 # build sub-problems
-function buildSub(id::Int, genSetup_ntup::NamedTuple{(:name, :frs, :supTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
+function buildSub(id::Int, genSetup_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
 	# create sub-problems
-	sub_m = @suppress anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "subModel_" * string(id) * genSetup_ntup.name, lvlFrs = genSetup_ntup.frs, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.solOpt.dbInf, reportLvl = 1)
+	sub_m = @suppress anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "subModel_" * string(id) * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.solOpt.dbInf, reportLvl = 1)
 	sub_m.subPro = tuple([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)]...)[id]
 	@suppress prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.threads)
 	set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
@@ -396,7 +392,7 @@ function runTop(benders_obj::bendersObj)
 end
 
 # ! run sub-problem
-function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, wrtRes_boo::Bool=false)
+function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, resultOpt::NamedTuple = NamedTuple())
 
 	str_time = now()
 
@@ -455,27 +451,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 	checkIIS(sub_m)
 
 	# write results into files (only used once optimum is obtained)
-	if wrtRes_boo
-		# write common results
-		reportResults(:summary, sub_m)
-		reportResults(:cost, sub_m)
-		reportResults(:exchange, sub_m)
-		#reportResults(:stLvl, sub_m)
-
-		#=
-		# write storage levels in case of reduced foresight
-		for tSym in (:h2Cavern,:reservoir,:pumpedStorage,:redoxBattery,:lithiumBattery)
-			stLvl_df = DataFrame(Ts_dis = Int[], scr = Int[], lvl = Float64[])
-			for x in collect(sub_tup)
-				append!(stLvl_df,combine(x -> (lvl = sum(value.(x.var)),), groupby(sub_dic[x].parts.tech[tSym].var[:stLvl],[:Ts_dis,:scr])))
-			end
-			stLvl_df = unstack(sort(unique(stLvl_df),:Ts_dis),:scr,:lvl)
-			CSV.write(b * "results/stLvl_" * string(tSym) * "_" * suffix_str * ".csv",stLvl_df)
-		end
-		=#
-
-
-	end
+	writeAllResults!(sub_m, resultOpt)
 
 	#endregion
 
@@ -907,7 +883,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = fa
 	# write storage levels in case of reduced foresight
 	stLvl_dic = Dict{Symbol,DataFrame}()
 
-	if :stLvl in var_arr && in_m.options.lvlFrs != 0
+	if :stLvl in var_arr && in_m.options.frsLvl != 0
 		for sSym in keys(in_m.parts.tech)
 			if :stLvl in keys(in_m.parts.tech[sSym].var)
 				stLvl_dic[sSym] = getResult(copy(in_m.parts.tech[sSym].var[:stLvl]))	
@@ -1152,5 +1128,36 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 	#endregion
 
 end
+
+# write results for overall algorithm
+function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res_ntup::NamedTuple)
+
+	# reporting on iteration
+	benders_obj.report.itr[!,:case] .= benders_obj.info.name
+	CSV.write(benders_obj.report.mod.options.outDir * "/iterationCuttingPlane_$(benders_obj.info.name).csv", benders_obj.report.itr)
+
+	# reporting on near-optimal
+	if !isnothing(benders_obj.nearOpt.setup)
+		# get pareto-efficient near-optimal solutions
+		filterParetoEff!(benders_obj.report.nearOpt, benders_obj.nearOpt.setup)
+		# write result file
+		CSV.write(benders_obj.report.mod.options.outDir * "/nearOptSol_$(benders_obj.info.name).csv", benders_obj.report.nearOpt)
+	end
+
+	# run top-problem and sub-problems with optimal values fixed and write results
+	@suppress computeFeas(benders_obj.top, benders_obj.itr.best.capa, 1e-5, cutSmall = false, resultOpt = (general = res_ntup.general, carrierTs = tuple(), storage = tuple(), duals = tuple()))
+
+	if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
+
+	for (id,s) in enumerate(collect(keys(benders_obj.sub)))
+		if benders_obj.algOpt.dist # distributed case
+			futData_dic[s] = runSubDist(id + 1, copy(benders_obj.itr.best), :barrier, 1e-8, false, res_ntup)
+		else # non-distributed case
+			runSub(benders_obj.sub[s], copy(benders_obj.itr.best), :barrier, 1e-8, false, res_ntup)
+		end
+	end
+	
+end
+
 
 #endregion
