@@ -733,33 +733,7 @@ function checkConvergence(benders_obj::bendersObj, lss_dic::Dict{Tuple{Int64,Int
 		rtn_boo = true
 	end
 
-	# do general preparation for next near-opt step
-	if nextNear_boo
-		# reset iteration variables
-		itr_obj.gap = 1.0
-		itr_obj.res[:nearObj] = Inf
-		itr_obj.best.objVal = Inf
-		
-		if !isnothing(benders_obj.stab) # reset current best tracking for stabilization
-			benders_obj.stab.objVal = Inf
-			benders_obj.stab.dynPar = computeDynPar(benders_obj.stab.method, benders_obj.stab.methodOpt, itr_obj.res[:estTotCost], itr_obj.res[:curBest], benders_obj.top)
-		end 
-
-		benders_obj.nearOpt.cnt = benders_obj.nearOpt.cnt + 1 # update near-opt counter
-		# adapt the objective and constraint to near-optimal
-		adaptNearOpt!(benders_obj.top, benders_obj.nearOpt.setup, itr_obj.res[:optCost], benders_obj.nearOpt.cnt)
-		produceMessage(report_m.options,report_m.report, 1," - Switched to near-optimal for $(benders_obj.nearOpt.setup.obj[benders_obj.nearOpt.cnt ][1])", testErr = false, printErr = false)
-
-	end
-	
-	if rtn_boo 
-		produceMessage(report_m.options,report_m.report, 1," - Finished iteration!", testErr = false, printErr = false)
-	elseif Dates.value(floor(now() - report_m.options.startTime,Dates.Minute(1))) > benders_obj.algOpt.timeLim
-		rtn_boo = true
-		produceMessage(report_m.options,report_m.report, 1," - Aborted due to time-limit!", testErr = false, printErr = false)
-	end
-
-	return rtn_boo	
+	return rtn_boo
 end
 
 #endregion
