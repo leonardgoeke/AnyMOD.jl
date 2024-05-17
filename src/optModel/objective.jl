@@ -39,34 +39,30 @@ function createObjective!(obj_tup::Tuple, anyM::anyModel, minimize::Bool=true)
 	partObj.var[:objVar] = DataFrame(name = Symbol[], fac = Float64[], var = AffExpr[])
 	partObj.cns[:objEqn] = DataFrame(name = Symbol[], cns = ConstraintRef[])
 
+	
 	for obj in obj_tup
+		allObjVar_df = getAllVariables(obj[1], anyM, filterFunc = obj[2].flt)
 
-		if obj[1] == :lagSlack || length(findall(map(x -> x[1] == obj[1], obj_tup))) == 1
+		if length(findall(map(x -> x[1] == obj[1], obj_tup))) == 1
 			objName_sym = Symbol(obj[1])
 		else
-			objName_sym = Symbol(obj[1], "_", sum(findall(map(x -> x[1] == obj[1], obj_tup)) .<= findall(map(x -> x == obj, obj_tup))))
+			objName_sym = Symbol(obj[1], "_", sum(findall(map(x -> x[1] == obj[1] obj_tup)) .<= findall(map(x -> x == obj, obj_tup))))
 		end
-		
-		obj_var = anyM.options.scaFac.obj * JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, false, NaN, false, NaN, false, NaN, false, false)), string(objName_sym))
-		push!(partObj.var[:objVar], (name = objName_sym, fac = obj[2].fac, var = obj_var))
 
-		# create defining expression (slack variable for lagrange is defined later within near-optimal constraint)
-		if obj[1] != :lagSlack
-			allObjVar_df = getAllVariables(obj[1], anyM, filterFunc = obj[2].flt)
-			
-			if isempty(allObjVar_df)
-				error("At least one cost argument returned no variables. Check for typo in name!")
-			end
-			
-			obj_expr = sum(allObjVar_df[!,:var])
-			push!(partObj.cns[:objEqn], (name = objName_sym, cns = @constraint(anyM.optModel, obj_var == obj_expr)))
+		if isempty(allObjVar_df)
+			error("At least one cost argument returned no variables. Check for typo in name!")
 		end
+		obj_expr = sum(allObjVar_df[!,:var])
+		obj_var = anyM.options.scaFac.obj * JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(false, NaN, false, NaN, false, NaN, false, NaN, false, false)), string(objName_sym))
+
+		push!(partObj.var[:objVar], (name = objName_sym, fac = obj[2].fac, var = obj_var))
+		push!(partObj.cns[:objEqn], (name = objName_sym, cns = @constraint(anyM.optModel, obj_var == obj_expr)))
 	end
 
 	# ! add cut variable for benders
-	if anyM.subPro == (0, 0)
-		facCost_fl = filter(x -> occursin("cost", string(x.name)), partObj.var[:objVar])[1,:fac]
-		push!(partObj.var[:objVar], (name = :benders, fac = facCost_fl, var = anyM.options.scaFac.obj * JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)), "allCut")))
+	if anyM.subPro == (0,0)
+		facCost_fl = filter(x -> occursin("cost",string(x.name)),partObj.var[:objVar])[1,:fac]
+		push!(partObj.var[:objVar],(name = :benders, fac = facCost_fl, var = anyM.options.scaFac.obj * JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)), "allCut")))
 		
 		if !(:bendersCuts in keys(partObj.cns)) # create table for cuts if none exist yet
 			partObj.cns[:bendersCuts] = DataFrame(i=Int[], Ts_dis = Int[], scr = Int[], limCoef = Bool[], actItr = Int[], cns = ConstraintRef[])
@@ -86,7 +82,7 @@ function createObjective!(obj_tup::Tuple, anyM::anyModel, minimize::Bool=true)
 
 	# set objective function equal to objective variable
 	if :obj in keys(partObj.cns) delete(anyM.optModel, partObj.cns[:obj][1,:cns]) end
-	obj_eqn = @constraint(anyM.optModel, obj_var == sum(partObj.var[:objVar][!,:fac] .* getindex.(collect.(keys.(getfield.(partObj.var[:objVar][!,:var], :terms))), 1)))
+	obj_eqn = @constraint(anyM.optModel, obj_var == sum(partObj.var[:objVar][!,:fac] .* getindex.(collect.(keys.(getfield.(partObj.var[:objVar][!,:var],:terms))), 1)))
 	partObj.cns[:obj] = DataFrame(cns = obj_eqn)
 
 	if minimize
@@ -95,5 +91,5 @@ function createObjective!(obj_tup::Tuple, anyM::anyModel, minimize::Bool=true)
 		@objective(anyM.optModel, Max, obj_var)
 	end
 
-	produceMessage(anyM.options, anyM.report, 1, " - Set objective function according to inputs")
+	produceMessage(anyM.options,anyM.report, 1," - Set objective function according to inputs")
 end
