@@ -46,7 +46,7 @@ function createObjective!(obj_tup::Tuple, anyM::anyModel, minimize::Bool=true)
 		if length(findall(map(x -> x[1] == obj[1], obj_tup))) == 1
 			objName_sym = Symbol(obj[1])
 		else
-			objName_sym = Symbol(obj[1], "_", sum(findall(map(x -> x[1] == obj[1] obj_tup)) .<= findall(map(x -> x == obj, obj_tup))))
+			objName_sym = Symbol(obj[1], "_", sum(findall(map(x -> x[1] == obj[1], obj_tup)) .<= findall(map(x -> x == obj, obj_tup))))
 		end
 
 		if isempty(allObjVar_df)
