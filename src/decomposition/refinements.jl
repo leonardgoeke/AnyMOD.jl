@@ -18,7 +18,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# ! get starting solution with heuristic solve or generic
 		if stabSetup_obj.ini.setup != :none
 			produceMessage(report_m.options, report_m.report, 1, " - Started heuristic pre-solve for starting solution", testErr = false, printErr = false)
-			heu_m, startSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = true);
+			~, startSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = true);
 			lowBd_fl = 0.0
 		else
 			@suppress optimize!(benders_obj.top.optModel)

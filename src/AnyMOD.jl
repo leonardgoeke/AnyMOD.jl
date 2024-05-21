@@ -43,6 +43,6 @@ module AnyMOD
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
     function __init__()
-        @require Gurobi="2e9cd046-0924-5485-92f1-d5272153d98b" include("dataHandling/gurobiTools.jl")
+        @suppress @require Gurobi="2e9cd046-0924-5485-92f1-d5272153d98b" include("dataHandling/gurobiTools.jl")
     end
 end
