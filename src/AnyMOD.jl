@@ -31,7 +31,7 @@ module AnyMOD
 
     # general functions and objects
     export anyModel, initializeModel, createOptModel!, setObjective! # basic model functions
-    export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML, convertYAML2GEXF # write results
+    export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML, convertYAML2GEXF, reportStorageLevel # write results
     export plotTree, plotSankeyDiagram, plotNetworkGraph, moveNode!, produceMessage, produceMessageShort # reporting
     export intCol, getAllVariables, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic! # low-level data management
     export heuristicSolve, evaluateHeu, getFeasResult, writeFixToFiles, exportDesignFactors! # functions for heuristic pre-solves
