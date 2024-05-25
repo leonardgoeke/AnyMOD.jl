@@ -194,9 +194,8 @@ mutable struct bendersObj
 		benders_obj.sub = Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}()
 		for (id, s) in enumerate(sub_tup)
 			if benders_obj.algOpt.dist # distributed case
-				benders_obj.sub[s] = Distributed.@spawnat id + 1 begin
-					id_int = myid() - 1
-					sub_m = buildSub(id_int, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
+				benders_obj.sub[s] = @async @everywhere id + 1 begin
+					sub_m = fetch(@spawnat myid() buildSub(myid() - 1, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj))
 				end
 			else # non-distributed case
 				benders_obj.sub[s] = buildSub(id, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
