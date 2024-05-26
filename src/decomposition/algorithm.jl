@@ -504,6 +504,11 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 	return resData_obj, elpSub_time, lss_fl
 end
 
+# ! run sub-problem on worker (sub_m is a global variable at package scope)
+function runSub(resData_obj::resData, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, resultOpt::NamedTuple = NamedTuple())
+	return runSub(sub_m, resData_obj, sol_sym, optTol_fl, crsOver_boo, resultOpt)
+end
+
 # ! add all cuts from input dictionary to top problem
 function addCuts!(top_m::anyModel, cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, i::Int)
 	
