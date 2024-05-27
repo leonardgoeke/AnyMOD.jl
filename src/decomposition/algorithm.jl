@@ -435,6 +435,8 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 	#endregion
 
 	#region # * solve problem
+	
+
 
 	# set optimizer attributes and solves
 	if sol_sym == :barrier
@@ -448,7 +450,18 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 		set_optimizer_attribute(sub_m.optModel, "OptimalityTol", optTol_fl)
 		set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
 	end
-	optimize!(sub_m.optModel)
+
+	# increase numeric focus if model did not solve
+	numFoc_int = 0
+	while true
+		set_optimizer_attribute(sub_m.optModel, "NumericFocus", numFoc_int)
+		optimize!(sub_m.optModel)
+		if termination_status(sub_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3 
+			break
+		else
+			numFoc_int = i + 1
+		end
+	end
 	checkIIS(sub_m)
 
 	# write results into files (only used once optimum is obtained)
