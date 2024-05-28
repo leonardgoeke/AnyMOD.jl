@@ -459,7 +459,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 		if termination_status(sub_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3 
 			break
 		else
-			numFoc_int = i + 1
+			numFoc_int = numFoc_int + 1
 		end
 	end
 	checkIIS(sub_m)
