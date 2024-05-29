@@ -615,7 +615,7 @@ function getAllVariables(va::Symbol, anyM::anyModel; filterFunc::Function = x ->
 	end
 
 	# prevents scaling of variables that do have to be scaled or are scaled already because they are computed form scaled variables (e.g. emissions)
-	if va in (:stIn, :stExtIn, :stIntIn, :stOut, :stExtOut, :stIntOut, :convIn, :use, :gen, :convOut, :crt, :lss, :trdBuy, :trdSell) && !isempty(allVar_df)
+	if va in (:stIn, :stExtIn, :stIntIn, :stOut, :stExtOut, :stIntOut, :convIn, :use, :gen, :convOut, :crt, :lss, :trdBuy, :trdSell, :exc) && !isempty(allVar_df)
 		allVar_df[!,:var] .= allVar_df[!,:var] .* getEnergyFac(allVar_df[!,:Ts_dis], anyM.supTs) 
 	end
 
