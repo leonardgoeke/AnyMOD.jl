@@ -261,9 +261,9 @@ end
 # build sub-problems
 function buildSub(id::Int, genSetup_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
 	# create sub-problems
-	sub_m = @suppress anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, repTsLvl = genSetup_ntup.repTsLvl, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.solOpt.dbInf, reportLvl = 1)
+	sub_m = anyModel(inputFolder_ntup.in, inputFolder_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, repTsLvl = genSetup_ntup.repTsLvl, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.solOpt.dbInf, reportLvl = 1)
 	sub_m.subPro = tuple([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)]...)[id]
-	@suppress prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.threads)
+	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.threads)
 	set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
 	return sub_m
 end
@@ -435,21 +435,32 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 	#endregion
 
 	#region # * solve problem
+	
+
 
 	# set optimizer attributes and solves
-	@suppress begin
-		if sol_sym == :barrier
-			set_optimizer_attribute(sub_m.optModel, "Method", 2)
-			set_optimizer_attribute(sub_m.optModel, "Crossover", crsOver_boo ? 1 : 0)
-			set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
-			set_optimizer_attribute(sub_m.optModel, "BarConvTol", optTol_fl)
-		elseif sol_sym == :simplex
-			set_optimizer_attribute(sub_m.optModel, "Method", 1)
-			set_optimizer_attribute(sub_m.optModel, "Threads", 1)
-			set_optimizer_attribute(sub_m.optModel, "OptimalityTol", optTol_fl)
-			set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
-		end
+	if sol_sym == :barrier
+		set_optimizer_attribute(sub_m.optModel, "Method", 2)
+		set_optimizer_attribute(sub_m.optModel, "Crossover", crsOver_boo ? 1 : 0)
+		set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
+		set_optimizer_attribute(sub_m.optModel, "BarConvTol", optTol_fl)
+	elseif sol_sym == :simplex
+		set_optimizer_attribute(sub_m.optModel, "Method", 1)
+		set_optimizer_attribute(sub_m.optModel, "Threads", 1)
+		set_optimizer_attribute(sub_m.optModel, "OptimalityTol", optTol_fl)
+		set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
+	end
+
+	# increase numeric focus if model did not solve
+	numFoc_int = 0
+	while true
+		set_optimizer_attribute(sub_m.optModel, "NumericFocus", numFoc_int)
 		optimize!(sub_m.optModel)
+		if termination_status(sub_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3 
+			break
+		else
+			numFoc_int = numFoc_int + 1
+		end
 	end
 	checkIIS(sub_m)
 
@@ -502,6 +513,11 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 	#endregion
 
 	return resData_obj, elpSub_time, lss_fl
+end
+
+# ! run sub-problem on worker (sub_m is a global variable at package scope)
+function runSub(resData_obj::resData, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, resultOpt::NamedTuple = NamedTuple())
+	return runSub(sub_m, resData_obj, sol_sym, optTol_fl, crsOver_boo, resultOpt)
 end
 
 # ! add all cuts from input dictionary to top problem
