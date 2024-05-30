@@ -980,8 +980,8 @@ function createCapaRestr!(part::AbstractModelPart, ts_dic::Dict{Tuple{Int64,Int6
 		
 		# check special cases relevant for reduced foresight and storage level
 		if typeof(part) == TechPart
-			topFrs_boo = anyM.subPro == (0,0) && anyM.options.frsLvl != 0
-			subFrs_boo = anyM.subPro != (0,0) && !isempty(anyM.subPro ) && anyM.options.frsLvl != 0 && anyM.scr.lvl > part.stCyc
+			topFrs_boo = anyM.subPro == (0,0) && anyM.scr.frsLvl != 0
+			subFrs_boo = anyM.subPro != (0,0) && !isempty(anyM.subPro ) && anyM.scr.frsLvl != 0 && anyM.scr.frsLvl > part.stCyc
 		else
 			topFrs_boo = false
 			subFrs_boo = false
@@ -1236,7 +1236,7 @@ function createRatioCns!(part::AbstractModelPart, cns_dic::Dict{Symbol,cnsCont},
 
 				cns_df = combine(groupby(cns_df, intCol(cns_df)), :var => (x -> sum(x)) => :var)
 				# extend to scenarios
-				cns_df = addScenarios(cns_df, anyM.sets[:Ts], anyM.scr)
+				cns_df = addScenarios(cns_df, anyM.sets[:Ts], anyM.scr, anyM.supTs)
 				# scale to energy units
 				cns_df[!,:var] .= cns_df[!,:var] .* getEnergyFac(cns_df[!,:Ts_dis], anyM.supTs) 
 			end

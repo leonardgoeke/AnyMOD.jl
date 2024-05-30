@@ -502,7 +502,7 @@ mutable struct anyModel <: AbstractModel
 	lock::ReentrantLock
 
 	supTs::NamedTuple{(:lvl, :step, :sca, :redFac),Tuple{Int64,Tuple,Dict{Int64,Float64},Dict{Int64, Float64}}}
-	scr::NamedTuple{(:lvl,:scr,:scrProb),Tuple{Int,Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
+	scr::NamedTuple{(:lvl,:frsLvl,:scr,:scrProb),Tuple{Int,Int,Dict{Int,Array{Int,1}},Dict{Tuple{Int,Int},Float64}}}
 	dbInf::Bool
 	subPro::Union{Tuple{},Tuple{Int,Int}}
 	cInfo::Dict{Int,NamedTuple{(:tsDis,:tsExp,:rDis,:rExp,:balSign,:stBalCapa),Tuple{Int,Int,Int,Int,Symbol,Symbol}}}
@@ -570,13 +570,14 @@ mutable struct anyModel <: AbstractModel
 
 		createCarrierMapping!(setData_dic, anyM)
 		createTimestepMapping!(anyM)
+		lvlScr_int = getScrLvl(anyM)
 
 		# ! write general info about systems (technologies and exchange)
 		if :Exc in keys(setData_dic) && !(:carrier_exchange in namesSym(setData_dic[:Exc])) 
 			push!(anyM.report, (3, "exchange mapping", "carrier", "column 'carrier_exchange' missing from set file for exchange"))
 		else
 			for sys in keys(sysArr_dic), s in sysArr_dic[sys] 
-				createSysInfo!(sys, sysSym(s, anyM.sets[sys]), setData_dic, anyM) 
+				createSysInfo!(sys, sysSym(s, anyM.sets[sys]), setData_dic, lvlScr_int, anyM) 
 			end
 		end
 		produceMessage(anyM.options, anyM.report, 2, " - Created all mappings among sets", testErr = 3 in getindex.(anyM.report, 1))
@@ -586,7 +587,7 @@ mutable struct anyModel <: AbstractModel
 		produceMessage(anyM.options, anyM.report, 2, " - Assigned parameter data to model parts")
 
 		# ! add scenario mappings
-		createScenarioMapping!(anyM)
+		createScenarioMapping!(lvlScr_int,anyM)
 
 		# ! create object for data visualization
 		anyM.graInfo = graInfo(anyM)

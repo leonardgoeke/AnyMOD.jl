@@ -124,20 +124,43 @@ makeLow(in::Symbol) = Symbol(lowercase(string(in)[1]), string(in)[2:end])
 # ! compute expected value
 function computeExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, Float64}, ts_tree::Tree, frsLvl_int::Int64, aggCol_sym::Symbol)
             
-	if :scr in namesSym(in_df) && unique(in_df[!,:scr]) != [0]
+	if :scr in namesSym(in_df) && unique(in_df[!,:scr]) != [0] && !isempty(in_df)
+		frs_boo = :Ts_frs in namesSym(in_df)
 		# rename column for aggregation
 		in_df = rename(in_df, aggCol_sym => :agg)
 		# join probability
 		if frsLvl_int == 0 # case of perfect foresight
-			in_df[!,:prob] = map(x -> (x.Ts_disSup, x.scr) in keys(scrProb_dic) ? scrProb_dic[(x.Ts_disSup, x.scr)] : 0.0, eachrow(in_df))
+			in_df[!,:prob] = map(x -> (getindex(x, frs_boo ? :Ts_frs : :Ts_disSup), x.scr) in keys(scrProb_dic) ? getScrProb(getindex(x, frs_boo ? :Ts_frs : :Ts_disSup), x.scr, scrProb_dic) : 0.0, eachrow(in_df))
 		else # case of limited foresight
-			in_df[!,:prob] = map(x -> scrProb_dic[(getAncestors(x.Ts_dis, ts_tree, :int, frsLvl_int)[end], x.scr)], eachrow(in_df))
+			in_df[!,:prob] = map(x -> getScrProb(getAncestors(x.Ts_dis, ts_tree, :int, frsLvl_int)[end], x.scr, scrProb_dic), eachrow(in_df))
 		end
 		# compute expected value and convert column name back again
 		in_df = vcat(select(in_df, Not([:prob])), combine(y -> (scr = 0, agg = sum(y.agg .* y.prob),), groupby(in_df, filter(x -> x != :scr, intCol(in_df)))))
 		in_df = rename(in_df, :agg => aggCol_sym)
 	end
+
 	return in_df
+end
+
+# ! compute scenario probability for time-step/scenario combination (average across all time-steps in case of 0)
+function getScrProb(ts_int::Int, scr_int::Int, scrProb_dic::Dict{Tuple{Int64, Int64}, Float64})
+	if ts_int != 0
+		return scrProb_dic[(ts_int, scr_int)]
+	else
+		return unique(getindex.(collect(keys(scrProb_dic)),1)) |> (x -> sum(map(y -> scrProb_dic[(y, scr_int)],x))/length(x))
+	end
+end
+
+# ! assigns array of relevant foresight steps
+function getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int)
+
+    if frsLvl_int != 0
+        tsLvl_dic = Dict(x => ts_tr.nodes[x].lvl |> (y -> y == frsLvl_int ? [x] : (x < frsLvl_int ? getDescendants(x, ts_tr, false, frsLvl_int) : [getAncestors(x, ts_tr, :int, frsLvl_int)[end]])) for x in unique(ts_arr))
+		frsTs_arr = map(x -> tsLvl_dic[x], ts_arr)
+	else
+		frsTs_arr = fill([0], length(ts_arr))
+	end
+	return frsTs_arr
 end
 
 # ! create dataframe with all potential dimensions for carrier provided
@@ -236,7 +259,7 @@ end
 getEnergyFac(ts_arr::Array{Int,1}, supDis::NamedTuple) = map(x -> supDis.sca[x], ts_arr)
 
 # ! get scaling factor for corresponding foresight period
-getEnergyFacFrs(x_int::Int, anyM::anyModel) = anyM.supTs.sca[getAncestors(x_int, anyM.sets[:Ts], :int, anyM.scr.lvl)[end]]
+getEnergyFacFrs(x_int::Int, anyM::anyModel) = anyM.supTs.sca[getAncestors(x_int, anyM.sets[:Ts], :int, anyM.scr.frsLvl)[end]]
 
 # ! get scaling factor specifically for storage (needs correction depending on level of cycling and representative period)
 function getEnergyFacSt(tsDis_arr::Array{Int,1}, tsSupDis_arr::Array{Int,1}, repCyc_boo::Bool, supTs_ntup::NamedTuple{(:lvl, :step, :sca, :redFac),Tuple{Int64,Tuple,Dict{Int64,Float64},Dict{Int64, Float64}}})
@@ -686,27 +709,6 @@ function getStScr(ts::Int, syCyc_int::Int, ts_tr::Tree, scr_ntup::NamedTuple)
 	presTs_int = getDescendants(getAncestors(ts, ts_tr, :int, syCyc_int)[end], ts_tr, false, ts_tr.nodes[ts].lvl) |> (v -> v[findall(v .== ts)[end] |> (w -> w < length(v) ? w + 1 : 1)])
 	# get relevant scenarios for current and previous time-step
 	return sort(union(map(x -> scr_ntup.scr[getAncestors(x, ts_tr, :int, scr_ntup.lvl)[end]], [ts, presTs_int])...))
-end
-
-# ! adds reduced foresight timestep based on dispatch timestep
-getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, varType::Symbol) = getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, Val{varType}())
-
-function getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, objGrp::Val{:dis})
-	if frsLvl_int != 0
-		frsTs_arr = map(x -> getAncestors(x, ts_tr, :int, frsLvl_int) |> (x -> isempty(x) ? 0 : x[end]), ts_arr)
-	else
-		frsTs_arr = fill(0, length(ts_arr))
-	end
-	return frsTs_arr
-end
-
-function getTsFrs(ts_arr::Array{Int64, 1}, ts_tr::Tree, frsLvl_int::Int, objGrp::Val{:capa})
-	if frsLvl_int != 0
-		frsTs_arr = map(x -> getDescendants(x, ts_tr, false, frsLvl_int), ts_arr)
-	else
-		frsTs_arr = fill([0], length(ts_arr))
-	end
-	return frsTs_arr
 end
 
 # ! compute expected value for input dataframe

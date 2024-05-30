@@ -536,7 +536,7 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     # ! further dispatch parameters
 
     # probability of dispatch scenarios
-    parDef_dic[:scrProb] = (dim = (:Ts_dis, :scr), problem = :sub, defVal = nothing, herit = (:scr => :up, :Ts_dis => :up, :Ts_dis => :avg_any), part = :obj)
+    parDef_dic[:scrProb] = (dim = (:Ts_dis, :scr), problem = :both, defVal = nothing, herit = (:scr => :up, :Ts_dis => :up, :Ts_dis => :avg_any), part = :obj)
 
     # output capacity related parameters
     parDef_dic[:capaDem] =      (dim = (:Ts_disSup, :R_dis, :C), problem = :both, defVal = nothing, herit = (:R_dis => :sum_any, :Ts_disSup => :avg_any), part = :bal)
@@ -673,8 +673,6 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, sy
         end
         
         # ! assign parameters to parts
-
-
         if !(parPart_sym in (:techSt, :techConv, :exc))
             # adds parameter to non-system parts
             getfield(anyM.parts, parPart_sym).par[parIt] = ParElement(allParData_df, paraDef_ntup, parIt, anyM.report)

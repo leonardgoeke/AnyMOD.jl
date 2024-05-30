@@ -182,7 +182,7 @@ function createTimestepMapping!(anyM::anyModel)
 end
 
 # ! writes basic information for all systems (technology and exchange)
-function createSysInfo!(sys::Symbol, sSym::Symbol, setData_dic::Dict, anyM::anyModel)
+function createSysInfo!(sys::Symbol, sSym::Symbol, setData_dic::Dict, lvlScr_int::Int, anyM::anyModel)
 
 	# ! prepares data
 	sysLong = sys == :Te ? :technology : :exchange
@@ -458,13 +458,22 @@ function createSysInfo!(sys::Symbol, sSym::Symbol, setData_dic::Dict, anyM::anyM
 
 		# ! check if a specific resolution is enforced for the cyclic constraint of storage
 		if :timestep_cyclic in namesSym(row_df) && row_df[:timestep_cyclic] != ""
-			stCyc_int =tryparse(Int, row_df[:timestep_cyclic])
-			if isnothing(stCyc_int)
+			stCyc_int = tryparse(Int, row_df[:timestep_cyclic])
+			
+			if isnothing(stCyc_int) && row_df[:timestep_cyclic] != "inter"
 				stCyc_int = anyM.supTs.lvl
-				push!(anyM.report, (2, "technology mapping", "storage cycling", "specific storage cycling level provided for technology '$(string(sSym))' could not parsed into a integer, value was ignored"))
+				push!(anyM.report, (2, "technology mapping", "storage cycling", "specific storage cycling provided for technology '$(string(sSym))' could not parsed into a integer or used keyword 'inter', value was ignored"))
+			elseif row_df[:timestep_cyclic] == "inter"
+				if !isnothing(anyM.options.forceScr) || length(anyM.sets[:scr].nodes) == 1
+					stCyc_int = anyM.supTs.lvl
+					push!(anyM.report, (1, "technology mapping", "storage cycling", "detected keyword 'inter' for storage cycling of technology '$(string(sSym))', but model is deterministic, storage operates as yearly storage"))
+				else
+					stCyc_int = -1
+					push!(anyM.report, (1, "technology mapping", "storage cycling", "detected keyword 'inter' for storage cycling of technology '$(string(sSym))', storage operates as a stochastic inter-annual storage"))
+				end
 			else
 				if stCyc_int < anyM.supTs.lvl
-					push!(anyM.report, (3, "technology mapping", "storage cycling", "specific storage cycling level provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch timestep"))
+					push!(anyM.report, (3, "technology mapping", "storage cycling", "specific storage cycling provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch timestep"))
 					return
 				end
 			end
@@ -473,25 +482,30 @@ function createSysInfo!(sys::Symbol, sSym::Symbol, setData_dic::Dict, anyM::anyM
 		end
 
 		# reports on resolution of cyclic storage constraint
-		if any(map(x -> x in (:stExtIn, :stExtOut, :stIntIn, :stIntOut), collect(keys(part.carrier))))
+		if any(map(x -> x in (:stExtIn, :stExtOut, :stIntIn, :stIntOut), collect(keys(part.carrier)))) && row_df[:timestep_cyclic] != "inter"
 			if stCyc_int >= anyM.options.repTsLvl  
-				push!(anyM.report, (1, "technology mapping", "storage cycling", "storage cycling level for technology '$(string(sSym))' is equal or more detailed than representative level, storage operates as short-term storage"))		
+				push!(anyM.report, (1, "technology mapping", "storage cycling", "storage cycling for technology '$(string(sSym))' is equal or more detailed than representative level, storage operates as short-term storage"))		
 			else
-				push!(anyM.report, (1, "technology mapping", "storage cycling", "storage cycling level for technology '$(string(sSym))' is less detailed than representative level, storage operates as a seasonal storage"))
+				push!(anyM.report, (1, "technology mapping", "storage cycling", "storage cycling for technology '$(string(sSym))' is less detailed than representative level, storage operates as long-term storage"))
 			end
 		end
 
 		part.stCyc = stCyc_int
 
 		# ! check if a specific resolution is enforced for tracking the storage level
-		if :timestep_tracked in namesSym(row_df) && row_df[:timestep_tracked] != ""
-			stTrack_int =tryparse(Int, row_df[:timestep_tracked])
+		if stCyc_int == -1
+			stTrack_int = lvlScr_int != 0 ? lvlScr_int : anyM.supTs.lvl
+			if :timestep_tracked in namesSym(row_df) && row_df[:timestep_tracked] != ""
+				push!(anyM.report, (2, "technology mapping", "storage tracking", "specific resolution for tracking storage level provided for technology '$(string(sSym))' was overwritten by foresight level since storage operates as a stochastic inter-annual storage"))
+			end
+		elseif :timestep_tracked in namesSym(row_df) && row_df[:timestep_tracked] != ""
+			stTrack_int = tryparse(Int, row_df[:timestep_tracked])
 			if isnothing(stTrack_int)
 				stTrack_int = nothing
-				push!(anyM.report, (2, "technology mapping", "storage tracked", "specific resolution for tracking storage level provided for technology '$(string(sSym))' could not parsed into a integer, value was ignored"))
+				push!(anyM.report, (2, "technology mapping", "storage tracking", "specific resolution for tracking storage level provided for technology '$(string(sSym))' could not parsed into a integer, value was ignored"))
 			else
 				if stTrack_int < anyM.supTs.lvl
-					push!(anyM.report, (3, "technology mapping", "storage tracked", "specific resolution for tracking storage level provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch timestep"))
+					push!(anyM.report, (3, "technology mapping", "storage tracking", "specific resolution for tracking storage level provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch timestep"))
 					return
 				end
 			end
@@ -600,6 +614,7 @@ function createCapaRestrMap!(part::AbstractModelPart, anyM::anyModel)
 		stInVar_arr, stOutVar_arr = [intersect(x, keys(carGrp_ntup)) for x in ((:stExtIn, :stIntIn), (:stExtOut, :stIntOut))]
 		if isempty(stInVar_arr) && isempty(stOutVar_arr) continue end
 		for st in (:stIn, :stOut, :stSize)
+			if part.stCyc == -1 && st == :stSize continue end
 			stC_arr = unique(vcat(collect.([getproperty(carGrp_ntup, y)[g] for y in (st == :stSize ? union(stInVar_arr, stOutVar_arr) : (st == :stIn ? stInVar_arr : stOutVar_arr))])...))
 			if isempty(stC_arr) continue end
 			carDis_arr = map(x -> [x, anyM.cInfo[x].tsDis, anyM.cInfo[x].rDis], stC_arr)
@@ -613,8 +628,8 @@ function createCapaRestrMap!(part::AbstractModelPart, anyM::anyModel)
 	return rmvOutC_arr
 end
 
-# ! create scenario
-function createScenarioMapping!(anyM::anyModel)
+# ! get level of scenarios
+function getScrLvl(anyM::anyModel)
 
 	allScr_arr = filter(x -> x != 0, getfield.(collect(values(anyM.sets[:scr].nodes)), :idx))
 
@@ -622,20 +637,31 @@ function createScenarioMapping!(anyM::anyModel)
 	if !(isempty(allScr_arr))
 
 		minDis_int = minimum(map(x -> getfield(x, :tsDis), values(anyM.cInfo)))
-	
 		if anyM.options.frsLvl != 0 
-			if anyM.options.supTsLvl >= anyM.options.frsLvl
-				anyM.options.frsLvl = 0
-				push!(anyM.report, (2, "scenario mapping", "", "specified foresight level is not more detailed than superordinate dispatch level, therefore model still uses perfect foresight"))
+			if anyM.options.supTsLvl > anyM.options.frsLvl
+				anyM.options.frsLvl = anyM.supTs.lvl
+				push!(anyM.report, (2, "scenario mapping", "", "specified foresight level is less detailed than superordinate dispatch level, therefore model uses yearly foresight"))
 			elseif minDis_int < anyM.options.frsLvl 
 				anyM.options.frsLvl = minDis_int
 				push!(anyM.report, (1, "scenario mapping", "", "specified foresight level exceeds least detailed dispatch resolution, model uses level $(minDis_int) instead"))
 			end
 		end
-
 		# gets level for scenarios
-		lvl_int = anyM.options.frsLvl == 0 ? anyM.supTs.lvl : anyM.options.frsLvl
-		prop_df = flatten(flatten(DataFrame(Ts_dis  = [getfield.(getNodesLvl(anyM.sets[:Ts], lvl_int), :idx)], scr = [allScr_arr]), :Ts_dis), :scr)
+		lvl_int = anyM.options.frsLvl
+	else
+		lvl_int = 0
+	end
+
+	return lvl_int
+
+end
+
+# ! create scenario mappings
+function createScenarioMapping!(lvl_int::Int, anyM::anyModel)
+
+	if length(anyM.sets[:scr].nodes) > 1
+		allScr_arr = filter(x -> x != 0, getfield.(collect(values(anyM.sets[:scr].nodes)), :idx))
+		prop_df = flatten(flatten(DataFrame(Ts_dis  = [getfield.(getNodesLvl(anyM.sets[:Ts], lvl_int == 0 ? anyM.supTs.lvl : lvl_int), :idx)], scr = [allScr_arr]), :Ts_dis), :scr)
 
 		# assigns probabilities defined as parameters
 		if :scrProb in collectKeys(keys(anyM.parts.obj.par))
@@ -668,8 +694,8 @@ function createScenarioMapping!(anyM::anyModel)
 		tsScrToProp_dic = Dict((x.Ts_dis, x.scr) => x.val for x in eachrow(prop_df))
 		# create parameter object if not existing yet
 		if !(:scrProb in keys(anyM.parts.obj.par)) 
-			parDef_ntup = (dim = (:Ts_dis, :scr), problem = :sub, defVal = nothing, herit = (:scr => :up, :Ts_dis => :up, :Ts_dis => :avg_any), part = :obj)
-			anyM.parts.obj.par[:scrProb] = ParElement(DataFrame(), parDef_ntup, :desFac, anyM.report)
+			parDef_ntup = (dim = (:Ts_dis, :scr), problem = :both, defVal = nothing, herit = (:scr => :up, :Ts_dis => :up, :Ts_dis => :avg_any), part = :obj)
+			anyM.parts.obj.par[:scrProb] = ParElement(DataFrame(), parDef_ntup, :scrProb, anyM.report)
 		end
 		anyM.parts.obj.par[:scrProb].data = prop_df
 
@@ -690,15 +716,11 @@ function createScenarioMapping!(anyM::anyModel)
 	else
 		tsToScr_dic = Dict{Int64, Vector{Int64}}()
 		tsScrToProp_dic = Dict{Tuple{Int64, Int64}, Float64}()
-		lvl_int = 0
-		if anyM.options.frsLvl != 0
-			anyM.options.frsLvl = 0
-			push!(anyM.report, (2, "scenario mapping", "", "foresight level set but not scenarios specified"))
-		end
+		if lvl_int != 0 push!(anyM.report, (2, "scenario mapping", "", "foresight level set but not scenarios specified")) end
 	end
 
 	# assigns mappings to final object
-	anyM.scr = (lvl = lvl_int, scr = tsToScr_dic, scrProb = tsScrToProp_dic)
+	anyM.scr = (lvl = lvl_int == 0 ? anyM.supTs.lvl : lvl_int, frsLvl = lvl_int, scr = tsToScr_dic, scrProb = tsScrToProp_dic)
 end
 
 # ! adjusts model object according to distributed generation
@@ -710,14 +732,14 @@ function distributedMapping!(anyM::anyModel, prepSys_dic::Dict{Symbol,Dict{Symbo
 	if subPro != (0, 0) # ! case of sub-problem
 
 		# find relevant time-steps for sub-problem
-		relTsDis_arr = anyM.options.frsLvl == 0 ? [subPro[1]] : Int[]
+		relTsDis_arr = anyM.scr.frsLvl == 0 ? [subPro[1]] : Int[]
 		
-		supTs_int = getAncestors(subPro[1], anyM.sets[:Ts], :int, anyM.supTs.lvl)[end]
-		for i in (anyM.supTs.lvl+1):anyM.sets[:Ts].height	
+		supTs_int = getAncestors(subPro[1], anyM.sets[:Ts], :int, anyM.supTs.frsLvl)[end]
+		for i in (anyM.supTs.frsLvl+1):anyM.sets[:Ts].height	
 			relLvl_arr = getDescendants(subPro[1], anyM.sets[:Ts], false, i)
 			append!(relTsDis_arr, relLvl_arr)
 			# gathers time-steps only relevant with limited foresight 
-			if anyM.options.frsLvl != 0
+			if anyM.scr.frsLvl != 0
 				allLvl_arr = getDescendants(supTs_int, anyM.sets[:Ts], false, i)
 				nonRelLvl_arr = setdiff(allLvl_arr, relLvl_arr)
 				exRel_int = minimum(relLvl_arr) - 1 in allLvl_arr ? minimum(relLvl_arr) - 1 : maximum(nonRelLvl_arr)
@@ -744,7 +766,7 @@ function distributedMapping!(anyM::anyModel, prepSys_dic::Dict{Symbol,Dict{Symbo
 
 		# rewrite information on scenarios and superordinate time-steps
 		anyM.supTs =  (lvl = anyM.supTs.lvl, step = tuple(getAncestors(subPro[1], anyM.sets[:Ts], :int, anyM.supTs.lvl)[end],), sca = filter(x -> x[1] in relTsDis_arr, anyM.supTs.sca), redFac = anyM.supTs.redFac)
-		anyM.scr =  (lvl = anyM.scr.lvl, scr = Dict(subPro[1] => [subPro[2],]), scrProb = filter(x -> x[1] == subPro, anyM.scr.scrProb))
+		anyM.scr =  (lvl = anyM.scr.lvl, frsLvl = anyM.scr.frsLvl, scr = Dict(subPro[1] => [subPro[2],]), scrProb = filter(x -> x[1] == subPro, anyM.scr.scrProb))
 		
 		# ! adjust dictionaries for expansion preparation
 

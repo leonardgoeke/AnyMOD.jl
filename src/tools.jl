@@ -7,7 +7,7 @@ printObject(print_df::DataFrame, model_object::anyModel)
 
 Writes a DataFrame of parameters, constraints, or variables to a `.csv` file in readable format (strings instead of ids). See [Individual elements](@ref).
 """
-function printObject(print_df::DataFrame, anyM::anyModel; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true, wrtGap::Bool = false)
+function printObject(print_df::DataFrame, anyM::anyModel; fileName::String = "", rtnDf::Tuple{Vararg{Symbol,N} where N} = (:csv,), filterFunc::Function = x -> true, wrtGap::Bool = false, rdcFrs = false)
 
 	sets = anyM.sets
 	options = anyM.options
@@ -35,11 +35,17 @@ function printObject(print_df::DataFrame, anyM::anyModel; fileName::String = "",
     end
 
 	# rename columns
-	colName_dic = Dict(:Ts_dis => :timestep_dispatch, :Ts_exp => :timestep_expansion, :Ts_expSup => :timestep_superordinate_expansion, :Ts_disSup => :timestep_superordinate_dispatch,
+	colName_dic = Dict(:Ts_dis => :timestep_dispatch, :Ts_exp => :timestep_expansion, :Ts_expSup => :timestep_superordinate_expansion, :Ts_disSup => :timestep_superordinate_dispatch, :Ts_frs => :timestep_foresight,
 															:R => :region, :R_tech => :region, :R_dis => :region_dispatch, :R_exp => :region_expansion, :R_to => :region_to, :R_from => :region_from, :C => :carrier, :Sys => :system, :Te => :technology, :Exc => :exchange,
 																:M => :mode, :dir => :directed, :scr => :scenario, :cns => :constraint, :var => :variable)
 
 	rename!(print_df, map(x -> x in keys(colName_dic) ? colName_dic[x] : x, namesSym(print_df)) )
+	
+	# reduce string length of foresight periods to avoid redundance
+	if :timestep_foresight in namesSym(print_df) && rdcFrs
+		print_df[!,:timestep_foresight] = map(x -> split(x, "<")[end], print_df[!,:timestep_foresight])
+	end
+	
 	if :csv in rtnDf
     	CSV.write("$(options.outDir)/$(fileName)_$(options.outStamp).csv", print_df)
 	end
@@ -107,27 +113,27 @@ Writes results to `.csv` file with content depending on `reportType`. Available 
 reportResults(reportType::Symbol, anyM::anyModel; kwargs...) = reportResults(Val{reportType}(), anyM::anyModel; kwargs...)
 
 # ! summary of all capacity and dispatch results
-function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=true, wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, expVal::Bool = false, addRep::Tuple{Vararg{Symbol,N} where N} = tuple())
+function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=true, wrtSgn::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = tuple())
 
 	if !isempty(setdiff(addRep, (:cyc, :flh, :effConv, :capaConvOut)))
-		error("Provided unsupported keywords for addRep argument. Supported are :cyc, :flh, :effConv, and :capaConvOut.")
+		error("Provided unsupported keywords for addRep argument. Supported are :cyc, :flh, :effConv, and :capaConvOut.")	
 	end
 
     techSym_arr = collect(keys(anyM.parts.tech))
-	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], id = Int[], variable = Symbol[], value = Float64[])
+	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], Ts_frs = Int[], id = Int[], variable = Symbol[], value = Float64[])
+	if anyM.scr.frsLvl == anyM.supTs.lvl || !(length(anyM.scr.scrProb) > 1) select!(allData_df, Not([:Ts_frs])) end
 
 	# ! get demand values
 	if :dem in keys(anyM.parts.bal.par) && (anyM.subPro != tuple(0,0) || anyM.options.createVI.bal)
 		
 		dem_df = copy(anyM.parts.bal.par[:dem].data)
-		
 		if !isempty(dem_df)
 
 			dem_df[!,:lvlR] = map(x -> anyM.cInfo[x].rDis, :C in namesSym(dem_df) ? dem_df[!,:C] : filter(x -> x != 0, getfield.(values(anyM.sets[:C].nodes), :idx)))
 
 			# aggregates demand values
 
-			# artificially add dispatch dimensions, if none exist
+			# add superordinate timestep (and dispatch timestep if non-existing)
 			if :Ts_dis in namesSym(dem_df)
 				ts_dic = Dict(x => anyM.sets[:Ts].nodes[x].lvl == anyM.supTs.lvl ? x : getAncestors(x, anyM.sets[:Ts], :int, anyM.supTs.lvl)[end] for x in unique(dem_df[!,:Ts_dis]))
 				dem_df[!,:Ts_disSup] = map(x -> ts_dic[x], dem_df[!,:Ts_dis])
@@ -142,16 +148,26 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 				dem_df = flatten(dem_df, :Ts_disSup)
 				dem_df[!,:Ts_dis] = dem_df[!,:Ts_disSup]
 			end
-			
-			if !(:scr in namesSym(dem_df)) # artificially add scenario dimensions, if none exist
-				dem_df[!,:scr] = map(x -> anyM.scr.lvl == 0 ? [0] : anyM.scr[getAncestors(x, anyM.sets[:Ts], :int, anyM.scr.lvl)[end]], dem_df[!,:Ts_disSup])
-				dem_df = flatten(dem_df, :scr)
-			elseif !isempty(anyM.scr.scr) # filter non-relevant scenarios
-				relScr_arr = collect(keys(anyM.scr.scrProb))
-				filter!(x -> x.scr == 0 || (x.Ts_disSup,x.scr) in relScr_arr, dem_df)
+
+			# add foresight period if applies
+			if anyM.scr.frsLvl != anyM.supTs.lvl && length(anyM.scr.scrProb) > 1
+				dem_df[!,:Ts_frs] = getTsFrs(dem_df[!,:Ts_dis], anyM.sets[:Ts], anyM.scr.frsLvl)
+				dem_df = flatten(dem_df,:Ts_frs)
 			end
 
-        	dem_df[!,:val] = dem_df[!,:val]	.*  getEnergyFac(dem_df[!,:Ts_dis], anyM.supTs)
+			if !(:scr in namesSym(dem_df)) # artificially add scenario dimensions, if none exist and perfect foresight
+				if length(anyM.scr.scrProb) > 1
+					dem_df[!,:scr] = map(x -> anyM.scr.frsLvl == anyM.supTs.lvl ? [0] : anyM.scr.scr[getindex(x, anyM.scr.frsLvl != anyM.supTs.lvl ? :Ts_frs : :Ts_disSup)], eachrow(dem_df))
+					dem_df = flatten(dem_df, :scr)
+				else
+					dem_df[!,:scr] .= 0
+				end
+			elseif !isempty(anyM.scr.scr) # filter non-relevant scenarios
+				relScr_arr = collect(keys(anyM.scr.scrProb))
+				filter!(x -> x.scr == 0 || (getindex(x, anyM.scr.frsLvl != anyM.supTs.lvl ? :Ts_frs : :Ts_disSup), x.scr) in relScr_arr, dem_df)
+			end
+
+			dem_df[!,:val] = dem_df[!,:val]	.*  getEnergyFac(dem_df[!,:Ts_dis], anyM.supTs)
 
 			allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R], 1), :idx)
 			allLvlR_arr = unique(dem_df[!,:lvlR])
@@ -163,12 +179,11 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 			end
 
 			# aggregate and add expected value in case of scenarios
-			if expVal && length(anyM.scr.scrProb) > 1
-				dem_df = computeExpVal(dem_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.frsLvl, :val) 
+			if length(anyM.scr.scrProb) > 1
+				dem_df = computeExpVal(dem_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :val) 
 			end
-			dem_df = combine(groupby(dem_df, [:Ts_disSup, :R_dis, :C, :scr]), :val => ( x -> sum(x) / 1000) => :value)
+			dem_df = combine(groupby(dem_df, intersect(namesSym(dem_df), [:Ts_disSup, :Ts_frs, :R_dis, :C, :scr])), :val => ( x -> sum(x) / 1000) => :value)
 			
-
 			# add columns and add to overall data
 			dem_df[!,:Te] .= 0
 			dem_df[!,:id] .= 0
@@ -184,7 +199,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		if !isempty(missCapa_df)
 			missCapa_df[!,:value] .= value.(missCapa_df[!,:var])
 			missCapa_df[!,:variable] .= :missCapa
-			foreach(x -> missCapa_df[!,x] .= 0, (:Te, :scr, :id))
+			foreach(x -> missCapa_df[!,x] .= 0, intersect(namesSym(allData_df), [:Ts_frs, :Te, :scr, :id]))
 			append!(allData_df, select(missCapa_df, Not([:var])))
 		end
 	end
@@ -218,6 +233,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		end
 
 		# add tech dataframe to overall data frame
+		if :Ts_frs in namesSym(allData_df) tech_df[!,:Ts_frs] .= 0 end
 		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), tech_df))
 	end
 
@@ -233,12 +249,26 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 			allVar_df[!,:Ts_disSup] = map(x -> getAncestors(x, anyM.sets[:Ts], :int, anyM.supTs.lvl)[end], allVar_df[!,:Ts_dis])
 		end
 
+		# add foresight period if applies
+		if anyM.scr.frsLvl != anyM.supTs.lvl && length(anyM.scr.scrProb) > 1
+			checkScrFrs_boo = false
+			# add dispatch timestep if non-existing (can only occur for emissionInf)
+			if !(:Ts_dis in namesSym(allVar_df))
+				allVar_df[!,:Ts_dis] .= 0;
+				allVar_df[!,:Ts_frs] .= 0;
+				checkScrFrs_boo = true
+			else
+				allVar_df[!,:Ts_frs] = getTsFrs(allVar_df[!,:Ts_dis], anyM.sets[:Ts], anyM.scr.frsLvl)
+				allVar_df = flatten(allVar_df, :Ts_frs)
+			end
+		end
+
 		# add expected value in case of scenarios and aggregate
 		allVar_df[!,:value] .= value.(allVar_df[!,:var])
-		if expVal && :Ts_dis in namesSym(allVar_df) && length(anyM.scr.scrProb) > 1
-			allVar_df = computeExpVal(select(allVar_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.frsLvl, :value) 
+		if :Ts_dis in namesSym(allVar_df) && length(anyM.scr.scrProb) > 1
+			allVar_df = computeExpVal(select(allVar_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value) 
 		end
-		disp_df = combine(groupby(allVar_df, intersect(intCol(allVar_df), [:Ts_disSup, :R_dis, :C, :Te, :scr])), :value => (x -> sum(x)) => :value)
+		disp_df = combine(groupby(allVar_df, intersect(intCol(allVar_df), intersect(namesSym(allVar_df),[:Ts_disSup, :Ts_frs, :R_dis, :C, :Te, :scr]))), :value => (x -> sum(x)) => :value)
 			
 		if !(:Ts_disSup in names(disp_df)) && va == :emissionInf # add superordinate dispatch time-step if non-existing
 			disp_df[!,:Ts_disSup] .= 0
@@ -260,6 +290,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
 		# adds region column potentially missing for paramter triggered data
 		if !(:R_dis in namesSym(disp_df)) disp_df[!,:R_dis] .= 0.0 end
+
 		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), disp_df))
 	end
 
@@ -269,26 +300,32 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 	if !isempty(allExc_df)
 
 		allExc_arr = unique(allExc_df[!,:Exc])
+	
+		# add foresight period if applies
+		if anyM.scr.frsLvl != anyM.supTs.lvl && length(anyM.scr.scrProb) > 1
+			allExc_df[!,:Ts_frs] = getTsFrs(allExc_df[!,:Ts_dis], anyM.sets[:Ts], anyM.scr.frsLvl)
+			allExc_df = flatten(allExc_df,:Ts_frs)
+		end
 		
 		# get values and add expected value in case of scenarios
-		if expVal && length(anyM.scr.scrProb) > 1
-			allExc_df = computeExpVal(allExc_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.frsLvl, :var)
+		if length(anyM.scr.scrProb) > 1
+			allExc_df = computeExpVal(allExc_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :var)
 		end
 		
 		# compute export and import of each region, losses are considered at import
-	    excFrom_df = rename(combine(groupby(allExc_df, [:Ts_disSup, :R_from, :C, :scr]), :var => (x -> value(sum(x))/1000) => :value), :R_from => :R_dis)
-	    excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
+		excFrom_df = rename(combine(groupby(allExc_df, intersect(namesSym(allExc_df), [:Ts_disSup, :Ts_frs, :R_from, :C, :scr])), :var => (x -> value(sum(x))/1000) => :value), :R_from => :R_dis)
+		excFrom_df[!,:variable] .= :export; excFrom_df[!,:Te] .= 0
 		if wrtSgn excFrom_df[!,:value] = excFrom_df[!,:value] .* -1 end
-
+	
 		# add losses to all exchange variables
 		lossExc_df = vcat(map(x -> addLossesExc(filter(y -> y.Exc == x, allExc_df), anyM.parts.exc[sysSym(x, anyM.sets[:Exc])], anyM.sets), allExc_arr)...)
-		excTo_df = rename(combine(groupby(lossExc_df, [:Ts_disSup, :R_to, :C, :scr]), :var => (x -> value(sum(x))/1000) => :value), :R_to => :R_dis)
-	    excTo_df[!,:variable] .= :import; excTo_df[!,:Te] .= 0
-
+		excTo_df = rename(combine(groupby(lossExc_df, intersect(namesSym(allExc_df), [:Ts_disSup, :Ts_frs, :R_to, :C, :scr])), :var => (x -> value(sum(x))/1000) => :value), :R_to => :R_dis)
+		excTo_df[!,:variable] .= :import; excTo_df[!,:Te] .= 0
+	
 		excFrom_df[!,:id] .= 0
 		excTo_df[!,:id] .= 0
-
-	    append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), vcat(excFrom_df, excTo_df)))
+	
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), vcat(excFrom_df, excTo_df)))
 	end
 	
 	# ! comptue full load hours
@@ -296,10 +333,15 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		flh_dic = Dict(:capaConv => :flhConv, :capaStIn => :flhStIn, :capaStOut => :flhStOut)
 
 		for flhCapa in collect(keys(flh_dic))
+
 			# get capacities relevant for full load hours
 			capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
-			capaFlh_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaFlh_df[!,:Ts_disSup])
-			capaFlh_df = flatten(capaFlh_df, :scr)
+			
+			# expand to scenarios if sensible
+			if anyM.scr.frsLvl <= anyM.supTs.lvl && length(anyM.scr.scrProb) > 1
+				capaFlh_df[!,:scr] = map(x -> vcat([0], anyM.scr.scr[x]), capaFlh_df[!,:Ts_disSup])
+				capaFlh_df = flatten(capaFlh_df, :scr)
+			end
 			
 			# get dispatch quantities relevant for full load hours
 			if flhCapa == :capaConv
@@ -344,8 +386,12 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
 		for cycCapa in collect(keys(cyc_dic))
 			capaCyc_df = filter(x -> x.variable == :capaStSize, allData_df)
-			capaCyc_df[!,:scr] = map(x -> anyM.supTs.scr[x], capaCyc_df[!,:Ts_disSup])
-			capaCyc_df = flatten(capaCyc_df, :scr)
+			
+			# expand to scenarios if sensible
+			if anyM.scr.frsLvl == anyM.supTs.lvl 
+				capaCyc_df[!,:scr] = map(x -> anyM.scr.scr[x], capaCyc_df[!,:Ts_disSup])
+				capaCyc_df = flatten(capaCyc_df, :scr)
+			end
 			
 			# get dispatch quantities relevant for cycling
 			if cycCapa  == :capaStIn
@@ -413,10 +459,9 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
 		# add efficiencies to output
 		if :effConv in addRep
-			eff_df[!,:variable] .= :effConv
-			append!(allData_df, rename(eff_df, :eff => :value))
+			outCapa_df[!,:variable] .= :effConv
+			append!(allData_df, rename(select(outCapa_df, Not([:value, :capa])), :eff => :value))
 		end
-
 	end
 
 	# removes scenario column if only one scenario is defined
@@ -429,7 +474,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allData_df, anyM, fileName = "results_summary", rtnDf = rtnOpt)
+		csvData_df = printObject(allData_df, anyM, fileName = "results_summary", rtnDf = rtnOpt, rdcFrs = true)
 	end
 
 	if :raw in rtnOpt
@@ -501,7 +546,7 @@ function reportResults(objGrp::Val{:cost}, anyM::anyModel; addObjName::Bool=true
 end
 
 # ! results for exchange
-function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=true, wrtNet::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, expVal::Bool = false, addRep::Tuple{Vararg{Symbol,N} where N} = ())
+function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=true, wrtNet::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, expVal::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc) error("No exchange data found") end
 
@@ -539,7 +584,14 @@ function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=
 	if !isempty(disp_df)
 		# add expected values and aggregate
 		disp_df[!,:value] = value.(disp_df[!,:var])
-		if expVal disp_df = computeExpVal(select(disp_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.options.frsLvl, :value) end
+		
+		# add foresight period if applies
+		if anyM.scr.frsLvl != anyM.supTs.lvl && length(anyM.scr.scrProb) > 1
+			disp_df[!,:Ts_frs] = getTsFrs(disp_df[!,:Ts_dis], anyM.sets[:Ts], anyM.scr.frsLvl)
+			disp_df = flatten(disp_df,:Ts_frs)
+		end
+
+		if expVal disp_df = computeExpVal(select(disp_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value) end
 		disp_df = combine(groupby(disp_df, [:Ts_expSup, :Ts_disSup, :R_from, :R_to, :C, :Exc, :scr]), :value => (x -> sum(x) ./ 1000) => :value)
 
 		disp_df[!,:variable] .= :exc
