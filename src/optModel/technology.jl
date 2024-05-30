@@ -95,6 +95,7 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 			# additional constraints for interannual stochastic storage 
 			if part.stCyc == -1 && (isempty(anyM.subPro) || anyM.subPro == (0,0))
 				cns_dic = controlExpecStLvl(part, cns_dic, anyM)
+				cns_dic = stochStRestr(part, cns_dic, anyM)
 			end
 				
 			produceMessage(anyM.options, anyM.report, 3, " - Prepared capacity restrictions for technology $(tech_str)")
@@ -691,21 +692,6 @@ function createStVI(part::TechPart, ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,
 
 end
 
-# ! enforce expected storage level greater than zero for stochastic interannual storage
-function controlExpecStLvl(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyModel)
-
-    # get storage levels (= delta per period) and combine with scenario probability
-    cns_df = rename(part.var[:stLvl], :var => :stLvl)
-    cns_df = matchSetParameter(cns_df, anyM.parts.obj.par[:scrProb], anyM.sets, newCol = :scrProb)
-    cns_df[!,:probDelta] = map(x -> x.scrProb * x.stLvl, eachrow(cns_df))
-
-    # aggregate into expression for constaint and create constraint
-    cns_df = combine(x -> (Ts_disSup = x.Ts_disSup[1], R_dis = x.R_dis[1], C = x.C[1], id = x.id[1], cnsExpr = sum(x.probDelta)), groupby(cns_df, [:Ts_disSup, :R_dis, :C, :id]))
-	cns_dic[:expecStLvl] = cnsCont(cns_df, :greater)
-    
-	return cns_dic
-end
-
 # filter redundant constraints for valid inequalities on storage (see function above)
 function fltRedIn(in_dfr::SubDataFrame)
 	# in case input capacity does not exist or maximum input is the same in both scenarios, only keep case with smaller inflows
@@ -1008,3 +994,78 @@ end
 
 #endregion
 
+#region # * constraints on stochastic interannual storage
+
+# ! enforce expected storage level greater than zero for stochastic interannual storage
+function controlExpecStLvl(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyModel)
+
+    # get storage levels (= delta per period) and combine with scenario probability
+    cns_df = rename(part.var[:stLvl], :var => :stLvl)
+    cns_df = matchSetParameter(cns_df, anyM.parts.obj.par[:scrProb], anyM.sets, newCol = :scrProb)
+    cns_df[!,:probDelta] = map(x -> x.scrProb * x.stLvl, eachrow(cns_df))
+
+    # aggregate into expression for constaint and create constraint
+    cns_df = combine(x -> (Ts_disSup = x.Ts_disSup[1], R_dis = x.R_dis[1], C = x.C[1], id = x.id[1], cnsExpr = sum(x.probDelta)), groupby(cns_df, [:Ts_disSup, :R_dis, :C, :id]))
+	cns_dic[:expecStLvl] = cnsCont(cns_df, :greater)
+    
+	return cns_dic
+end
+
+# ! enforce restrictions on size of stochastic interannual storage
+function stochStRestr(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyModel)
+
+    # ! create variable for worst-case storage level
+    scaFac_fl = anyM.options.scaFac.dispSt
+    var_df = unique(select(part.var[:stLvl], Not([:scr,:var])))
+    upBound_arr = getUpBound(var_df, anyM.options.bound.disp / scaFac_fl, anyM.supTs, anyM.sets[:Ts])
+    part.var[:worstCaseStDelta] = createVar(var_df, "worstCaseStDelta", upBound_arr, anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl, lowBd = -1 * maximum(upBound_arr))
+
+    # ! create constraints to enforce worst case
+    enfWorst_df = innerjoin(rename(part.var[:stLvl], :var => :delta), rename(part.var[:worstCaseStDelta], :var => :worst), on = intCol(part.var[:worstCaseStDelta]))
+    enfWorst_df[!,:cnsExpr] = map(x -> x.delta - x.worst, eachrow(enfWorst_df))
+    cns_dic[:worstCaseStDelta] = cnsCont(select(enfWorst_df, Not([:delta,:worst])), :greater)
+
+    # ! control start level
+    # prepare and create variable
+    conLvl_df = combine(x -> (delta = sum(x.var),), groupby(part.var[:worstCaseStDelta], filter(x -> x != :Ts_dis, intCol(part.var[:worstCaseStDelta]))))
+    conLvl_df = matchSetParameter(conLvl_df, part.par[:repWorstCase], anyM.sets, newCol = :repWorst)
+    part.var[:startStLvl] = createVar(orderDf(select(conLvl_df, Not([:repWorst, :delta]))), "startStLvl", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
+
+    # create constraint
+    conLvl_df = innerjoin(conLvl_df, part.var[:startStLvl], on = intCol(conLvl_df))
+    conLvl_df[!,:cnsExpr] = map(x -> - x.repWorst * x.delta - x.var, eachrow(conLvl_df)) 
+    cns_dic[:startStLvl] = cnsCont(orderDf(select(conLvl_df, Not([:repWorst,:delta,:var]))), :equal)
+
+    # ! compute "net-overshoot"
+    overSh_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], id = Int[], var = AffExpr[])
+
+    # expand to sum worst-cases step-by-step
+    for wc in groupby(copy(part.var[:worstCaseStDelta]), filter(x -> x != :Ts_dis, intCol(part.var[:worstCaseStDelta])))
+        ts_arr = collect(wc[!,:Ts_dis])
+        wc[!,:Ts_dis] = map(x -> filter(y -> x <= y, ts_arr), wc[!,:Ts_dis])
+        wc = flatten(wc, :Ts_dis)
+        append!(overSh_df, wc)
+    end
+    overSh_df = combine(x -> (Ts_dis = maximum(x.Ts_dis), delta = sum(x.var),), groupby(overSh_df, intCol(overSh_df)))
+
+    # create overshoot variable and create constraint
+    part.var[:overStLvl] = createVar(unique(select(overSh_df, Not([:Ts_dis,:delta]))), "overStLvl", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
+    overSh_df = innerjoin(overSh_df, part.var[:overStLvl], on = intCol(part.var[:overStLvl]))
+    overSh_df[!,:cnsExpr] = map(x -> x.delta - x.var, eachrow(overSh_df)) 
+    cns_dic[:overStLvl] = cnsCont(select(overSh_df, Not([:delta,:var])), :smaller)
+
+    # ! enforce storage size based on starting level and overshoot
+    # compute lower restriction on storage size
+    enfSize_df = innerjoin(rename(part.var[:startStLvl], :var => :start), rename(part.var[:overStLvl], :var => :over), on = intCol(part.var[:startStLvl]))
+    enfSize_df[!,:var] = enfSize_df[!,:start] .+ enfSize_df[!,:over]
+
+    # create constraint
+    enfSizeCns_df = copy(part.var[:capaStSize])
+    enfSizeCns_df[!,:aggLvl] = aggDivVar(rename(select(enfSize_df,Not([:start,:over])), :R_dis => :R_exp), select(part.var[:capaStSize], Not([:var])), (:Ts_expSup, :Ts_disSup, :R_exp, :Te, :id), anyM.sets)
+    enfSizeCns_df[!,:cnsExpr] = map(x -> x.var - x.aggLvl, eachrow(enfSizeCns_df)) 
+    cns_dic[:enfStSize] = cnsCont(select(enfSizeCns_df, Not([:var,:aggLvl])), :greater)
+
+    return cns_dic
+end
+
+#endregion

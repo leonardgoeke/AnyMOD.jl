@@ -237,6 +237,17 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), tech_df))
 	end
 
+	# ! get fill levels of stochastic inter-annual storage
+	startStLvl_df = getAllVariables(:startStLvl, anyM)
+	if !isempty(startStLvl_df)
+		startStLvl_df[!,:value] = value.(startStLvl_df[!,:var])
+		startStLvl_df[!,:variable] .= :startStLvl
+		startStLvl_df[!,:scr] .= 0
+		# add tech to overall data frame
+		if :Ts_frs in namesSym(allData_df) startStLvl_df[!,:Ts_frs] .= 0 end
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), select(startStLvl_df, Not([:Ts_expSup, :M, :var]))))
+	end
+
 	# ! get dispatch variables
 	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :crt, :lss, :trdBuy, :trdSell, :emissionInf)
 

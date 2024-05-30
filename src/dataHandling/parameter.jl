@@ -487,9 +487,13 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     parDef_dic[:enCont]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :Te => :up, :C => :up, :C => :avg_any, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :reference, mode = (:convIn, :convOut)))
 
     # specific storage parameters
-    parDef_dic[:stDis]        = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :both,  defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :C => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up, :id => :up), part = :techSt, techPre = (preset = :carrierSt, mode = (:stIn, :stOut, :stLvl)))
+    parDef_dic[:stDis]        = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :both, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :C => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up, :id => :up), part = :techSt, techPre = (preset = :carrierSt, mode = (:stIn, :stOut, :stLvl)))
     parDef_dic[:stInflow]     = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id, :scr),     problem = :both, defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :avg_any, :R_dis => :sum_any, :Te => :up, :scr => :up, :id => :up),                                part = :techSt, techPre = (preset = :carrierSt, mode = tuple()))
     parDef_dic[:costStLvlLss] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id),           problem = :sub,  defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :avg_any, :R_dis => :sum_any, :Te => :up, :id => :up),                                             part = :cost, techPre = (preset = :carrierSt, mode = tuple()))
+
+    # specific interannual-stochastic storage parameter 
+    parDef_dic[:costStStartLvl]    = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost)
+    parDef_dic[:repWorstCase]    = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr), problem = :top, defVal = 1.0,     herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt)
 
     # variable costs
     parDef_dic[:costVarUse]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost)
@@ -744,7 +748,7 @@ function presetDispatchParameter!(part::TechPart, prepTech_dic::Dict{Symbol,Name
 	preType_arr = union(values(parPre_dic))
 
     typeVar_dic = Dict(:convOut => [:gen, :stIntIn], :convIn => [:use, :stIntOut], :stIn => [:stExtIn, :stOut], :stOut => [:stExtOut, :stIntOut], :stLvl => [:stLvl])
-    modeDep_dic = Dict(x => DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], scr = Int[]) for x in union(values(typeVar_dic)...))
+    modeDep_dic = Dict(x => x in (:gen, :use) ? DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], scr = Int[]) : DataFrame(Ts_expSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], scr = Int[], id = Int[]) for x in union(values(typeVar_dic)...))
 
     for preType in preType_arr
 
@@ -814,6 +818,7 @@ function presetDispatchParameter!(part::TechPart, prepTech_dic::Dict{Symbol,Name
 
         # loops over all parameters of specific pre-setting type
         for parItr in keys(filter(x -> x[2] == preType, parPre_dic))
+
             parPef_ntup = parDef_dic[parItr]
 
             modRel_boo = specMode_boo && :M in namesSym(part.par[parItr].data)

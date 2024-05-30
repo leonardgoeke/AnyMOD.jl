@@ -86,6 +86,21 @@ function createCost!(partCost::OthPart, anyM::anyModel)
 			transferCostEle!(allExp_df, partCost, costPar_sym, anyM.optModel, anyM.lock, anyM.sets, anyM.options.coefRng, anyM.options.scaFac.costCapa, anyM.options.checkRng, anyM)
 			reachEnd_boo = true
 		end
+
+		# ! costs for filling stochastic inter-annual storage
+		if :costStStartLvl in keys(partCost.par)
+			# get level variables
+			startStLvl_df = getAllVariables(:startStLvl, anyM)
+			if !isempty(startStLvl_df)
+				# match variables with cost and discount factor
+				startStLvl_df = matchSetParameter(startStLvl_df, partCost.par[:costStStartLvl], anyM.sets, newCol = :cost)
+				startStLvl_df = matchSetParameter(rename(startStLvl_df,:R_dis => :R_exp), partCost.par[:disFac], anyM.sets, newCol = :disFac)
+				# create cost expression
+				startStLvl_df = combine(x -> (expr = sum(x.disFac .* x.var .* x.cost) ./ 1000,), groupby(startStLvl_df, [:Ts_disSup, :R_exp, :Te]))
+				transferCostEle!(startStLvl_df, partCost, :costStartStLvl, anyM.optModel, anyM.lock, anyM.sets, anyM.options.coefRng, anyM.options.scaFac.costCapa, anyM.options.checkRng, anyM)
+			end
+			reachEnd_boo = true
+		end
 		
 		if reachEnd_boo 
 			produceMessage(anyM.options, anyM.report, 3, " - Created variables and constraints for expansion costs")
@@ -222,6 +237,7 @@ function createCost!(partCost::OthPart, anyM::anyModel)
 			produceMessage(anyM.options, anyM.report, 3, " - Created variables and constraints for retrofitting costs")
 			reachEnd_boo = false
 		end
+
 	end
 	
 	# costs of missing capacity
