@@ -49,9 +49,9 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# solve sub-problems
 		for (id, s) in enumerate(collect(keys(benders_obj.sub)))
 			if benders_obj.algOpt.dist # distributed case
-				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), :barrier, 1e-8)
+				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8)
 			else # non-distributed case
-				cutData_dic[s], time_dic[s], ~ = runSub(benders_obj.sub[s], copy(startSol_obj), :barrier, 1e-8)
+				cutData_dic[s], time_dic[s], ~ = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8)
 			end
 		end
 		
@@ -84,7 +84,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		#region # * initialize stabilization 
 
 		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.srsThr, stabSetup_obj.switch, stabSetup_obj.weight, startSol_obj, lowBd_fl, benders_obj.top);
-		centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.solOpt.addVio, benders_obj.top, report_m);
+		centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, report_m);
 
 		#endregion
 		
@@ -167,10 +167,10 @@ function computeDynPar(meth_arr::Array{Symbol, 1}, methOpt_arr::Array{NamedTuple
 end
 
 # function to update the center of stabilization method
-centerStab!(method::Symbol, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel) = centerStab!(Val{method}(), stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+centerStab!(method::Symbol, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel) = centerStab!(Val{method}(), stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 
 # function for quadratic trust region
-function centerStab!(method::Val{:qtr}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 	
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
@@ -195,20 +195,20 @@ function centerStab!(method::Val{:qtr}, stab_obj::stabObj, addVio_fl::Float64, t
 	rhs_fl = ((abs_fl * stab_obj.dynPar[stab_obj.actMet])^2 - capaSum_expr.aff.constant)  * scaEq_fl
  
 	# create final constraint
-	if top_m.options.coefRng.rhs[1] / addVio_fl < abs(rhs_fl) && top_m.options.coefRng.rhs[2] * addVio_fl > abs(rhs_fl)
+	if top_m.options.coefRng.rhs[1] / rngVio_fl < abs(rhs_fl) && top_m.options.coefRng.rhs[2] * rngVio_fl > abs(rhs_fl)
 		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= (abs_fl * stab_obj.dynPar[stab_obj.actMet])^2  * scaEq_fl)
 	else
-		if top_m.options.coefRng.rhs[2] * addVio_fl < abs(rhs_fl)
-			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[2]* addVio_fl + capaSum_expr.aff.constant * scaEq_fl)
+		if top_m.options.coefRng.rhs[2] * rngVio_fl < abs(rhs_fl)
+			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[2]* rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
 		else 
-			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[1]* addVio_fl + capaSum_expr.aff.constant * scaEq_fl)
+			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[1]* rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
 		end
 		produceMessage(report_m.options, report_m.report, 1, " - Adjusted radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
 	end
 end
 
 # function for proximal bundle method
-function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
@@ -234,8 +234,8 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, ad
 	const_fl = capaSum_expr.aff.constant * scaFac_fl |> (x -> x == 0.0 ? top_m.options.coefRng.rhs[1] : x)
 	
 	# maximum and minimum value for penalty
-	maxPen_fl =  min(top_m.options.coefRng.mat[2]/fac_arr[2], top_m.options.coefRng.rhs[2]/const_fl) * addVio_fl	
-	minPen_fl =  max(top_m.options.coefRng.mat[1]/fac_arr[1], top_m.options.coefRng.rhs[1]/const_fl) / addVio_fl
+	maxPen_fl =  min(top_m.options.coefRng.mat[2]/fac_arr[2], top_m.options.coefRng.rhs[2]/const_fl) * rngVio_fl	
+	minPen_fl =  max(top_m.options.coefRng.mat[1]/fac_arr[1], top_m.options.coefRng.rhs[1]/const_fl) / rngVio_fl
 	
 	# adjust objective function
 	if pen_fl < maxPen_fl && pen_fl > minPen_fl
@@ -252,7 +252,7 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, ad
 end
 
 # functions for level bundle methods
-function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 	
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
@@ -275,7 +275,7 @@ function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, addVio_fl::Float64, 
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet])
 end
 
-function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 	
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
@@ -302,7 +302,7 @@ function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, addVio_fl::Float64, 
 end
 
 # function for box step method
-function centerStab!(method::Val{:box}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
@@ -320,7 +320,7 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, addVio_fl::Float64, t
 end
 
 # function for doubly stabilised bundle method
-function centerStab!(method::Val{:dsb}, stab_obj::stabObj, addVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 	
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
@@ -736,7 +736,7 @@ end
 #region # * manage linear trust region (same concept as box-step method, but here not implemented as a stabilization method for benders)
 
 # ! adds limits specified by dictionary to problem
-function addLinearTrust!(top_m::anyModel, lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}})
+function addLinearTrust!(top_m::anyModel, lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, rngVio_fl::Float64)
 	for sys in (:tech, :exc)
 		part_dic = getfield(top_m.parts, sys)
 		for sSym in keys(lim_dic[sys])
@@ -745,7 +745,7 @@ function addLinearTrust!(top_m::anyModel, lim_dic::Dict{Symbol,Dict{Symbol,Dict{
 				grpBothCapa_arr = collect(groupby(lim_dic[sys][sSym][trstSym], :limCns))
 				# get variables of top model
 				trstVar_df = filter(x -> !isempty(x.var.terms), part_dic[sSym].var[trstSym])
-				foreach(lim -> limitVar!(select(rename(lim, :limVal => :value), Not([:limCns])), trstVar_df, trstSym, part_dic[sSym], top_m, lim[1,:limCns]), grpBothCapa_arr)
+				foreach(lim -> limitVar!(select(rename(lim, :limVal => :value), Not([:limCns])), trstVar_df, trstSym, part_dic[sSym], top_m, rngVio_fl, lim[1,:limCns]), grpBothCapa_arr)
 			end
 		end
 	end

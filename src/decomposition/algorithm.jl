@@ -103,7 +103,7 @@ function evaluateHeu(heu_m::anyModel, heuSca_obj::resData, heuCom_obj::resData, 
 end
 
 # ! returns a feasible solution as close as possible to the input dictionary
-function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, t_int::Int, zeroThrs_fl::Float64, opt_obj::DataType; roundDown::Int = 0)
+function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, t_int::Int, zeroThrs_fl::Float64, opt_obj::DataType; rngVio_fl::Float64 = 1e0, roundDown::Int = 0)
 
 	# create top-problem
 	topFeas_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), holdFixed = true)
@@ -112,7 +112,7 @@ function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,
 	prepareMod!(topFeas_m, opt_obj, t_int)
 
 	# add limits to problem
-	if !isempty(lim_dic) addLinearTrust!(topFeas_m, lim_dic) end
+	if !isempty(lim_dic) addLinearTrust!(topFeas_m, lim_dic, rngVio_fl) end
 
 	# compute feasible capacites
 	topFeas_m = computeFeas(topFeas_m, fix_dic, zeroThrs_fl, cutSmall = true);
@@ -289,7 +289,7 @@ function runTop(benders_obj::bendersObj)
 		# save values of previous cut for proximal method variation 2
 		benders_obj.prevCuts = !isnothing(stab_obj) && stab_obj.method[stab_obj.actMet] == :prx2 ? copy(benders_obj.cuts) : Array{Pair{Tuple{Int,Int},Union{resData}},1}() 	
 		# add cuts and reset collecting array
-		addCuts!(benders_obj.top, benders_obj.cuts, benders_obj.itr.cnt.i) 
+		addCuts!(benders_obj.top, benders_obj.algOpt.rngVio.cut, benders_obj.cuts, benders_obj.itr.cnt.i) 
 		benders_obj.cuts = Array{Pair{Tuple{Int,Int},Union{resData}},1}()
 	end
 
@@ -342,7 +342,7 @@ function runTop(benders_obj::bendersObj)
 				delete(benders_obj.top.optModel, stab_obj.cns)
 				# double radius of trust-region and enforce again
 				stab_obj.dynPar[stab_obj.actMet] = max(stab_obj.methodOpt[stab_obj.actMet].low, stab_obj.dynPar[stab_obj.actMet] * stab_obj.methodOpt[stab_obj.actMet].fac)
-				centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.solOpt.addVio, benders_obj.top, benders_obj.report.mod)
+				centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, benders_obj.report.mod)
 				# solve again
 				optimize!(benders_obj.top.optModel)
 			end
@@ -395,7 +395,7 @@ function runTop(benders_obj::bendersObj)
 end
 
 # ! run sub-problem
-function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, resultOpt::NamedTuple = NamedTuple())
+function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, resultOpt::NamedTuple = NamedTuple())
 
 	str_time = now()
 
@@ -412,7 +412,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 				if !(sSym in keys(part_dic)) || !(capaSym in keys(part_dic[sSym].var)) || isempty(resData_obj.capa[sys][sSym][capaSym])
 					delete!(resData_obj.capa[sys][sSym], capaSym)
 				else
-					resData_obj.capa[sys][sSym][capaSym] = limitVar!(resData_obj.capa[sys][sSym][capaSym], part_dic[sSym].var[capaSym], capaSym, part_dic[sSym], sub_m)
+					resData_obj.capa[sys][sSym][capaSym] = limitVar!(resData_obj.capa[sys][sSym][capaSym], part_dic[sSym].var[capaSym], capaSym, part_dic[sSym], rngVio_fl, sub_m)
 				end
 			end
 			# remove system if no capacities exist
@@ -425,7 +425,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 		for sSym in keys(resData_obj.stLvl)
 			if sSym in keys(sub_m.parts.tech)
 				part_obj = sub_m.parts.tech[sSym]
-				resData_obj.stLvl[sSym] = limitVar!(select(resData_obj.stLvl[sSym], Not([:scr])), select(part_obj.var[:stLvl], Not([:scr])), :stLvl, part_obj, sub_m)
+				resData_obj.stLvl[sSym] = limitVar!(select(resData_obj.stLvl[sSym], Not([:scr])), select(part_obj.var[:stLvl], Not([:scr])), :stLvl, part_obj, rngVio_fl, sub_m)
 				# remove system if no storage level exists
 				removeEmptyDic!(resData_obj.stLvl, sSym)
 			end
@@ -435,8 +435,6 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 	#endregion
 
 	#region # * solve problem
-	
-
 
 	# set optimizer attributes and solves
 	if sol_sym == :barrier
@@ -516,12 +514,12 @@ function runSub(sub_m::anyModel, resData_obj::resData, sol_sym::Symbol, optTol_f
 end
 
 # ! run sub-problem on worker (sub_m is a global variable at package scope)
-function runSub(resData_obj::resData, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, resultOpt::NamedTuple = NamedTuple())
-	return runSub(sub_m, resData_obj, sol_sym, optTol_fl, crsOver_boo, resultOpt)
+function runSub(resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, resultOpt::NamedTuple = NamedTuple())
+	return runSub(sub_m, resData_obj, rngVio_fl, sol_sym, optTol_fl, crsOver_boo, resultOpt)
 end
 
 # ! add all cuts from input dictionary to top problem
-function addCuts!(top_m::anyModel, cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, i::Int)
+function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, i::Int)
 	
 	# create array of expressions with duals for sub-problems
 	cut_df = DataFrame(i = Int[], Ts_dis = Int[], scr = Int[], limCoef = Bool[], actItr = Int[], cnsExpr = AffExpr[])
@@ -559,19 +557,19 @@ function addCuts!(top_m::anyModel, cuts_arr::Array{Pair{Tuple{Int,Int},Union{res
 
 			# ! ensure cut variable complies with limits on rhs
 			cutFac_fl = abs(collect(values(cut_var.terms))[1]) # get scaling factor of cut variable
-			scaRng_tup = top_m.options.coefRng.rhs ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
+			scaRng_tup = (top_m.options.coefRng.rhs[1] / rngVio_fl, top_m.options.coefRng.rhs[2] * rngVio_fl) ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
 				
 			# adjust rhs to avoid violation of range only from cut variable and rhs
 			if top_m.options.coefRng.mat[1]/cutFac_fl > scaRng_tup[2] 
-				cut_expr.constant = top_m.options.coefRng.rhs[2] / (top_m.options.coefRng.mat[1]/cutFac_fl) # biggest rhs possible within range
+				cut_expr.constant = top_m.options.coefRng.rhs[2] * rngVio_fl  / (top_m.options.coefRng.mat[1]/cutFac_fl) # biggest rhs possible within range
 				limCoef_boo = true
 			elseif top_m.options.coefRng.mat[2]/cutFac_fl < scaRng_tup[1]
-				cut_expr.constant = top_m.options.coefRng.rhs[1] / (top_m.options.coefRng.mat[2]/cutFac_fl) # smallest rhs possible within range
+				cut_expr.constant = top_m.options.coefRng.rhs[1] / rngVio_fl / (top_m.options.coefRng.mat[2]/cutFac_fl) # smallest rhs possible within range
 				limCoef_boo = true
 			end
 			
 			# ! ensure factors remain within overall range
-			maxRng_fl = top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1] # maximum range of coefficients
+			maxRng_fl = (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1]) * rngVio_fl # maximum range of coefficients
 			facRng_fl = abs.(collect(values(cut_expr.terms))) |> (w -> (min(minimum(w), cutFac_fl), max(maximum(w), cutFac_fl))) # actual range of coefficients
 			
 			# manipulates factors to stay within range
@@ -591,26 +589,26 @@ function addCuts!(top_m::anyModel, cuts_arr::Array{Pair{Tuple{Int,Int},Union{res
 			end
 
 			# ! ensure scaling of factors does not move rhs out of range
-			scaRng_tup = top_m.options.coefRng.rhs ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
+			scaRng_tup = (top_m.options.coefRng.rhs[1] / rngVio_fl, top_m.options.coefRng.rhs[2] * rngVio_fl) ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
 
 			for x in keys(cut_expr.terms)
 				val_fl = abs(cut_expr.terms[x])
-				if top_m.options.coefRng.mat[1]/val_fl > scaRng_tup[2] # factor requires more up-scaling than possible
+				if top_m.options.coefRng.mat[1] / rngVio_fl / val_fl > scaRng_tup[2] # factor requires more up-scaling than possible
 					delete!(cut_expr.terms, x) # removes term
-				elseif top_m.options.coefRng.mat[2]/val_fl < scaRng_tup[1] # factor requires more down-scaling than possible
-					cut_expr.terms[x] = sign(cut_expr.terms[x]) * top_m.options.coefRng.mat[2]/scaRng_tup[1] # set to biggest factor possible within range
+				elseif top_m.options.coefRng.mat[2] * rngVio_fl / val_fl < scaRng_tup[1] # factor requires more down-scaling than possible
+					cut_expr.terms[x] = sign(cut_expr.terms[x]) * top_m.options.coefRng.mat[2] * rngVio_fl / scaRng_tup[1] # set to biggest factor possible within range
 					limCoef_boo = true
 				end
 			end
 		else # check if cut without variables can be scaled into range
 			cutFac_fl = abs(collect(values(cut_var.terms))[1]) # get scaling factor of cut variable
-			scaRng_tup = top_m.options.coefRng.rhs ./ cut_expr
+			scaRng_tup = (top_m.options.coefRng.rhs[1] / rngVio_fl, top_m.options.coefRng.rhs[2] * rngVio_fl) ./ cut_expr
 
-			if top_m.options.coefRng.mat[1]/cutFac_fl > scaRng_tup[2] 
-				cut_expr = top_m.options.coefRng.rhs[2] / (top_m.options.coefRng.mat[1]/cutFac_fl) # biggest rhs possible within range
+			if top_m.options.coefRng.mat[1] / rngVio_fl / cutFac_fl > scaRng_tup[2] 
+				cut_expr = top_m.options.coefRng.rhs[2] * rngVio_fl / (top_m.options.coefRng.mat[1]/cutFac_fl) # biggest rhs possible within range
 				limCoef_boo = true
-			elseif top_m.options.coefRng.mat[2]/cutFac_fl < scaRng_tup[1]
-				cut_expr = top_m.options.coefRng.rhs[1] / (top_m.options.coefRng.mat[2]/cutFac_fl) # smallest rhs possible within range
+			elseif top_m.options.coefRng.mat[2] * rngVio_fl / cutFac_fl < scaRng_tup[1]
+				cut_expr = top_m.options.coefRng.rhs[1] / rngVio_fl / (top_m.options.coefRng.mat[2]/cutFac_fl) # smallest rhs possible within range
 				limCoef_boo = true
 			end
 		end
@@ -691,7 +689,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 			end
 			
 			# update stabilization method
-			centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.solOpt.addVio, benders_obj.top, report_m)
+			centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, report_m)
 		end
 	end
 	
@@ -930,7 +928,7 @@ function getResult(res_df::DataFrame)
 end
 
 # ! create constraint fixing capacity (or setting a lower limits)
-function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part_obj::AbstractModelPart, fix_m::anyModel, lim_sym::Symbol=:Fix)
+function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part_obj::AbstractModelPart, rngVio_fl::Float64, fix_m::anyModel, lim_sym::Symbol=:Fix)
 
 	# compute smallest and biggest capacity that can be enforced
 	rngMat_tup = fix_m.options.coefRng.mat
@@ -963,8 +961,8 @@ function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part
 	end
 
 	# comptue factor and rhs, values below enforceable range are set to zero, values are above are set to largest value possible
-	fix_df[!,:fac] = map(x -> x.value < rngRhs_tup[1] ? rngRhs_tup[1]/x.value : (x.value > rngRhs_tup[2] ? rngRhs_tup[2]/x.value : 1.0), eachrow(fix_df))
-	fix_df[!,:rhs], fix_df[!,:fac] = map(x -> x.fac < rngMat_tup[1] ?  [rngRhs_tup[2], rngMat_tup[1]] : (x.fac > rngMat_tup[2] && x.setZero ? [0.0, 1.0] : [x.value*x.fac, x.fac]), eachrow(fix_df)) |> (w  -> map(x -> getindex.(w, x), [1, 2]))
+	fix_df[!,:fac] = map(x -> x.value < rngRhs_tup[1] / rngVio_fl ? rngRhs_tup[1] / rngVio_fl / x.value : (x.value > rngRhs_tup[2] * rngVio_fl ? rngRhs_tup[2] * rngVio_fl / x.value : 1.0), eachrow(fix_df))
+	fix_df[!,:rhs], fix_df[!,:fac] = map(x -> x.fac < rngMat_tup[1] / rngVio_fl ?  [rngRhs_tup[2] * rngVio_fl, rngMat_tup[1] / rngVio_fl] : (x.fac > rngMat_tup[2] * rngVio_fl && x.setZero ? [0.0, 1.0] : [x.value * x.fac, x.fac]), eachrow(fix_df)) |> (w  -> map(x -> getindex.(w, x), [1, 2]))
 
 	if !(Symbol(var_sym, cns_sym) in keys(part_obj.cns))
 		# create actual constraint and attach to model part
@@ -1169,9 +1167,9 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res
 
 	for (id,s) in enumerate(collect(keys(benders_obj.sub)))
 		if benders_obj.algOpt.dist # distributed case
-			futData_dic[s] = runSubDist(id + 1, copy(benders_obj.itr.best), :barrier, 1e-8, false, res_ntup)
+			futData_dic[s] = runSubDist(id + 1, copy(benders_obj.itr.best), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
 		else # non-distributed case
-			runSub(benders_obj.sub[s], copy(benders_obj.itr.best), :barrier, 1e-8, false, res_ntup)
+			runSub(benders_obj.sub[s], copy(benders_obj.itr.best), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
 		end
 	end
 	
