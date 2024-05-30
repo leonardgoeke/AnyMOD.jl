@@ -734,8 +734,8 @@ function distributedMapping!(anyM::anyModel, prepSys_dic::Dict{Symbol,Dict{Symbo
 		# find relevant time-steps for sub-problem
 		relTsDis_arr = anyM.scr.frsLvl == 0 ? [subPro[1]] : Int[]
 		
-		supTs_int = getAncestors(subPro[1], anyM.sets[:Ts], :int, anyM.supTs.frsLvl)[end]
-		for i in (anyM.supTs.frsLvl+1):anyM.sets[:Ts].height	
+		supTs_int = getAncestors(subPro[1], anyM.sets[:Ts], :int, anyM.supTs.lvl)[end]
+		for i in (anyM.supTs.lvl + 1):anyM.sets[:Ts].height	
 			relLvl_arr = getDescendants(subPro[1], anyM.sets[:Ts], false, i)
 			append!(relTsDis_arr, relLvl_arr)
 			# gathers time-steps only relevant with limited foresight 
