@@ -526,14 +526,9 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 	
 				# merge limit constraint to other limits for the same variables
 				limit_df = rename(limit_df, :val => lim)
-				join_arr = [intersect(intCol(allLimit_df), intCol(limit_df))..., :var]
+				join_arr = intersect(namesSym(allLimit_df), namesSym(limit_df))
 				miss_arr = [intCol(allLimit_df), intCol(limit_df)] |> (y -> union(setdiff(y[1], y[2]), setdiff(y[2], y[1])))
-				
-				if sort(names(limit_df)) == sort(names(allLimit_df))
-					allLimit_df = vcat(allLimit_df,limit_df)
-				else
-					allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr), Dict(:Up => nothing, :Low => nothing, :Fix => nothing, :UpDir => nothing, :LowDir => nothing, :FixDir=> nothing)))
-				end
+				allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr), Dict(:Up => nothing, :Low => nothing, :Fix => nothing, :UpDir => nothing, :LowDir => nothing, :FixDir=> nothing)))
 			end
 		end
 	
