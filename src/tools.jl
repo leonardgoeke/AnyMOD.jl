@@ -180,7 +180,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
 			# aggregate and add expected value in case of scenarios
 			if length(anyM.scr.scrProb) > 1
-				dem_df = computeExpVal(dem_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :val) 
+				dem_df = addExpVal(dem_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :val) 
 			end
 			dem_df = combine(groupby(dem_df, intersect(namesSym(dem_df), [:Ts_disSup, :Ts_frs, :R_dis, :C, :scr])), :val => ( x -> sum(x) / 1000) => :value)
 			
@@ -277,7 +277,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		# add expected value in case of scenarios and aggregate
 		allVar_df[!,:value] .= value.(allVar_df[!,:var])
 		if :Ts_dis in namesSym(allVar_df) && length(anyM.scr.scrProb) > 1
-			allVar_df = computeExpVal(select(allVar_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value) 
+			allVar_df = addExpVal(select(allVar_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value) 
 		end
 		disp_df = combine(groupby(allVar_df, intersect(intCol(allVar_df), intersect(namesSym(allVar_df),[:Ts_disSup, :Ts_frs, :R_dis, :C, :Te, :scr]))), :value => (x -> sum(x)) => :value)
 			
@@ -320,7 +320,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		
 		# get values and add expected value in case of scenarios
 		if length(anyM.scr.scrProb) > 1
-			allExc_df = computeExpVal(allExc_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :var)
+			allExc_df = addExpVal(allExc_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :var)
 		end
 		
 		# compute export and import of each region, losses are considered at import
@@ -602,7 +602,7 @@ function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=
 			disp_df = flatten(disp_df,:Ts_frs)
 		end
 
-		if expVal disp_df = computeExpVal(select(disp_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value) end
+		if expVal disp_df = addExpVal(select(disp_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value) end
 		disp_df = combine(groupby(disp_df, [:Ts_expSup, :Ts_disSup, :R_from, :R_to, :C, :Exc, :scr]), :value => (x -> sum(x) ./ 1000) => :value)
 
 		disp_df[!,:variable] .= :exc

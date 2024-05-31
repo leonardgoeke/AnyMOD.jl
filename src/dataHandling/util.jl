@@ -122,20 +122,29 @@ makeLow(in::String) = isempty(in) ? "" : string(lowercase(in[1]), in[2:end])
 makeLow(in::Symbol) = Symbol(lowercase(string(in)[1]), string(in)[2:end])
 
 # ! compute expected value
-function computeExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, Float64}, ts_tree::Tree, frsLvl_int::Int64, aggCol_sym::Symbol)
-            
+function computeExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, Float64}, ts_tree::Tree, frsLvl_int::Int64)
+
+	frs_boo = :Ts_frs in namesSym(in_df)
+	# join probability
+	if frsLvl_int == 0 # case of perfect foresight
+		in_df[!,:prob] = map(x -> (getindex(x, frs_boo ? :Ts_frs : :Ts_disSup), x.scr) in keys(scrProb_dic) ? getScrProb(getindex(x, frs_boo ? :Ts_frs : :Ts_disSup), x.scr, scrProb_dic) : 0.0, eachrow(in_df))
+	else # case of limited foresight
+		in_df[!,:prob] = map(x -> getScrProb(getAncestors(x.Ts_dis, ts_tree, :int, frsLvl_int)[end], x.scr, scrProb_dic), eachrow(in_df))
+	end
+	# compute expected value and convert column name back again
+	in_df = combine(y -> (scr = 0, agg = sum(y.agg .* y.prob),), groupby(in_df, filter(x -> x != :scr, intCol(in_df))))
+
+	return in_df
+end
+
+# ! compute expected value
+function addExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, Float64}, ts_tree::Tree, frsLvl_int::Int64, aggCol_sym::Symbol)
+
 	if :scr in namesSym(in_df) && unique(in_df[!,:scr]) != [0] && !isempty(in_df)
-		frs_boo = :Ts_frs in namesSym(in_df)
 		# rename column for aggregation
 		in_df = rename(in_df, aggCol_sym => :agg)
-		# join probability
-		if frsLvl_int == 0 # case of perfect foresight
-			in_df[!,:prob] = map(x -> (getindex(x, frs_boo ? :Ts_frs : :Ts_disSup), x.scr) in keys(scrProb_dic) ? getScrProb(getindex(x, frs_boo ? :Ts_frs : :Ts_disSup), x.scr, scrProb_dic) : 0.0, eachrow(in_df))
-		else # case of limited foresight
-			in_df[!,:prob] = map(x -> getScrProb(getAncestors(x.Ts_dis, ts_tree, :int, frsLvl_int)[end], x.scr, scrProb_dic), eachrow(in_df))
-		end
 		# compute expected value and convert column name back again
-		in_df = vcat(select(in_df, Not([:prob])), combine(y -> (scr = 0, agg = sum(y.agg .* y.prob),), groupby(in_df, filter(x -> x != :scr, intCol(in_df)))))
+		in_df = vcat(select(in_df, Not([:prob])), computeExpVal(in_df, scrProb_dic, ts_tree, frsLvl_int))
 		in_df = rename(in_df, :agg => aggCol_sym)
 	end
 
@@ -709,15 +718,6 @@ function getStScr(ts::Int, syCyc_int::Int, ts_tr::Tree, scr_ntup::NamedTuple)
 	presTs_int = getDescendants(getAncestors(ts, ts_tr, :int, syCyc_int)[end], ts_tr, false, ts_tr.nodes[ts].lvl) |> (v -> v[findall(v .== ts)[end] |> (w -> w < length(v) ? w + 1 : 1)])
 	# get relevant scenarios for current and previous time-step
 	return sort(union(map(x -> scr_ntup.scr[getAncestors(x, ts_tr, :int, scr_ntup.lvl)[end]], [ts, presTs_int])...))
-end
-
-# ! compute expected value for input dataframe
-function computeExpDis(in_df::DataFrame, scrProb_df::DataFrame)
-	in_df = innerjoin(in_df, rename(scrProb_df, :value => :prob), on = intCol(scrProb_df))
-	in_df[!,:value] = in_df[!,:value] .* in_df[!,:prob]
-	select!(in_df, Not([:prob]))
-	in_df = combine(x -> (scr = 0, value = sum(x.value)), groupby(in_df, filter(x -> x != :scr, intCol(in_df))))
-	return in_df
 end
 
 #endregion

@@ -494,19 +494,47 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 		# ! loop over respective type of limits to obtain data
 		for lim in varToPar_dic[va]
 			if !(Symbol(va, lim) in keys(partLim.par)) continue end
-			par_obj = copy(partLim.par[Symbol(va, lim)])
-
-			if occursin("exc", lowercase(string(va))) && !occursin("Dir", string(lim)) && :R_from in namesSym(par_obj.data) && :R_to in namesSym(par_obj.data)
-				par_obj.data = vcat(par_obj.data, rename(par_obj.data, :R_from => :R_to, :R_to => :R_from))
-			end
 			
-			limit_df = matchLimitParameter(allVar_df, par_obj, anyM)
-
-			# merge limit constraint to other limits for the same variables
-			limit_df = rename(limit_df, :val => lim)
-			join_arr = [intersect(intCol(allLimit_df), intCol(limit_df))..., :var]
-			miss_arr = [intCol(allLimit_df), intCol(limit_df)] |> (y -> union(setdiff(y[1], y[2]), setdiff(y[2], y[1])))
-			allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr), Dict(:Up => nothing, :Low => nothing, :Fix => nothing, :UpDir => nothing, :LowDir => nothing, :FixDir=> nothing)))
+			for stochLim in (false, true)
+				par_obj = copy(partLim.par[Symbol(va, lim)])
+				
+				# for stochLim = true, limits are enforced on the expected value across scenarios
+				stochVar_boo = !any(occursin.(["capa","Capa","exp","Exp","retro"],string(va)))
+				if stochLim 
+					if length(anyM.scr.scrProb) > 1 && stochVar_boo 
+						if :scr in namesSym(par_obj.data) par_obj.data = filter(x -> x.scr == 0, par_obj.data) end # filter relevant parameters
+						allRelVar_df = rename(computeExpVal(rename(allVar_df,:var => :agg), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl), :agg => :var) # transfer variables to expected values
+					else
+						continue
+					end
+				else
+					if length(anyM.scr.scrProb) > 1 && stochVar_boo 
+						if :scr in namesSym(par_obj.data)
+							par_obj.data = filter(x -> x.scr != 0, par_obj.data) # filter relevant parameters
+						else
+							continue
+						end
+					end
+					allRelVar_df = allVar_df
+				end
+	
+				if occursin("exc", lowercase(string(va))) && !occursin("Dir", string(lim)) && :R_from in namesSym(par_obj.data) && :R_to in namesSym(par_obj.data)
+					par_obj.data = vcat(par_obj.data, rename(par_obj.data, :R_from => :R_to, :R_to => :R_from))
+				end
+	
+				limit_df = matchLimitParameter(allRelVar_df, par_obj, anyM)
+	
+				# merge limit constraint to other limits for the same variables
+				limit_df = rename(limit_df, :val => lim)
+				join_arr = [intersect(intCol(allLimit_df), intCol(limit_df))..., :var]
+				miss_arr = [intCol(allLimit_df), intCol(limit_df)] |> (y -> union(setdiff(y[1], y[2]), setdiff(y[2], y[1])))
+				
+				if sort(names(limit_df)) == sort(names(allLimit_df))
+					allLimit_df = vcat(allLimit_df,limit_df)
+				else
+					allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr), Dict(:Up => nothing, :Low => nothing, :Fix => nothing, :UpDir => nothing, :LowDir => nothing, :FixDir=> nothing)))
+				end
+			end
 		end
 	
 		# hold cases where undirected capacity is fixed for later error checking
