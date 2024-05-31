@@ -132,9 +132,9 @@ function computeExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, 
 		in_df[!,:prob] = map(x -> getScrProb(getAncestors(x.Ts_dis, ts_tree, :int, frsLvl_int)[end], x.scr, scrProb_dic), eachrow(in_df))
 	end
 	# compute expected value and convert column name back again
-	in_df = combine(y -> (scr = 0, agg = sum(y.agg .* y.prob),), groupby(in_df, filter(x -> x != :scr, intCol(in_df))))
-
-	return in_df
+	out_df = combine(y -> (scr = 0, agg = sum(y.agg .* y.prob),), groupby(in_df, filter(x -> x != :scr, intCol(in_df))))
+	
+	return out_df
 end
 
 # ! compute expected value
@@ -144,7 +144,7 @@ function addExpVal(in_df::DataFrame, scrProb_dic::Dict{Tuple{Int64, Int64}, Floa
 		# rename column for aggregation
 		in_df = rename(in_df, aggCol_sym => :agg)
 		# compute expected value and convert column name back again
-		in_df = vcat(select(in_df, Not([:prob])), computeExpVal(in_df, scrProb_dic, ts_tree, frsLvl_int))
+		in_df = computeExpVal(in_df, scrProb_dic, ts_tree, frsLvl_int) |> (x -> vcat(select(in_df, Not([:prob])),x))
 		in_df = rename(in_df, :agg => aggCol_sym)
 	end
 

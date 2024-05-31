@@ -277,7 +277,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		# add expected value in case of scenarios and aggregate
 		allVar_df[!,:value] .= value.(allVar_df[!,:var])
 		if :Ts_dis in namesSym(allVar_df) && length(anyM.scr.scrProb) > 1
-			allVar_df = addExpVal(select(allVar_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value) 
+			allVar_df = vcat(addExpVal(select(filter(x -> x.scr != 0, allVar_df),Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value), select(filter(x -> x.scr == 0, allVar_df)))
 		end
 		disp_df = combine(groupby(allVar_df, intersect(intCol(allVar_df), intersect(namesSym(allVar_df),[:Ts_disSup, :Ts_frs, :R_dis, :C, :Te, :scr]))), :value => (x -> sum(x)) => :value)
 			
