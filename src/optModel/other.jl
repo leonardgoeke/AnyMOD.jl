@@ -471,7 +471,6 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 	# loop over all variables that are subject to any type of limit (except emissions)
 	allKeys_arr = collect(keys(varToPar_dic))
 	cns_dic = Dict{Symbol,cnsCont}()
-	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal, :UpDir => :smaller, :LowDir => :greater, :FixDir => :equal)
 
 	@threads for va in allKeys_arr 
 
@@ -667,24 +666,42 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 			push!(anyM.report, (2, "limit", string(va), "enforced limit for sum of variables across all scenarios, to prevent this add a scenario column to the input file"))
 		end
 
-		# ! write constraint containers
-		for lim in limitCol_arr
-			# filter respective limits (low, fix or up) out of the entire dataframe
-			relLim_df = filter(x -> !isnothing(x[lim]), allLimit_df[!,Not(filter(x -> x != lim, limitCol_arr))])
-			relLim_df = filter(x -> x.var != AffExpr(), relLim_df)
+		# ! get complicating limits covering several sub-problems
+		stochVar_boo = !any(occursin.(["capa","Capa","exp","Exp","retro"],string(va)))
+		if !isempty(anyM.subPro) && anyM.subPro != (0,0) && stochVar_boo
 			
-            if isempty(relLim_df) continue end
-			rename!(relLim_df, lim => :Lim)
-
-			# prepare, scale and save constraints to dictionary
-			relLim_df[!,:cnsExpr] = map(x -> x.var - x.Lim, eachrow(relLim_df))
-			relLim_df = orderDf(relLim_df[!,[intCol(relLim_df)..., :cnsExpr]])
-
-			scaleCnsExpr!(relLim_df, anyM.options.coefRng, anyM.options.checkRng)
-			cns_dic[Symbol(va,lim)] = cnsCont(relLim_df, signLim_dic[lim])
-
-			produceMessage(anyM.options, anyM.report, 3, " - Created constraints for $(lim in (:Up, :UpDir) ? "upper" : (lim in (:Low, :LowDir) ? "lower" : "fixed")) limit of variable $va")
+			comLimit_df = filter(x -> false, allLimit_df)
+			
+			# covering several subproblems due to scenario resolution
+			if :scr in intCol(allLimit_df)
+				comLimit_df = filter(x -> x.scr == 0, allLimit_df)
+			end
+		
+			# covering several subproblems due to timestep resolution
+			if anyM.supTs.lvl < anyM.scr.lvl
+				if !(:Ts_dis in intCol(allLimit_df))
+					comLimit_df = vcat(comLimit_df, copy(allLimit_df))
+				else
+					comLimit_df = vcat(comLimit_df, filter(x -> anyM.sets[:Ts].nodes[x.Ts_dis].lvl < anyM.scr.lvl, allLimit_df))    
+				end
+			end
+			if !isempty(comLimit_df) comLimit_df = unique(comLimit_df) end
+	
+			# remove complicating limits from all limits
+			allLimit_df = antijoin(allLimit_df, comLimit_df, on = intCol(allLimit_df))
+	
+			# create complicatint variable and constraint
+			lock(anyM.lock)
+			partLim.var[Symbol(va,:BendersCom)] = createVar(orderDf(select(comLimit_df, filter(x -> x != :var, namesSym(comLimit_df)))),string(va,:BendersCom), NaN, anyM.optModel, anyM.lock, anyM.sets; scaFac = anyM.options.scaFac.dispConv, lowBd = va == :emission ? NaN : 0.0)
+			unlock(anyM.lock)
+			comLimitCns_df = innerjoin(partLim.var[Symbol(va,:BendersCom)], rename(select(comLimit_df, intCol(comLimit_df,:var)), :var => :limVar), on = intCol(comLimit_df))
+			comLimitCns_df[!,:cnsExpr] = map(x -> x.var - x.limVar, eachrow(comLimitCns_df))
+			cns_dic[Symbol(va,:BendersCom)] = cnsCont(select(comLimitCns_df, intCol(comLimitCns_df,:cnsExpr)), :equal)
 		end
+
+		# ! write constraint containers
+		cns_dic = createLimitCont(allLimit_df, va, cns_dic,anyM)
+		
 		typeLim_sym = va in (:emission,) ? "term" : "variable"
 		produceMessage(anyM.options, anyM.report, 2, " - Prepared constraints to limit $typeLim_sym $va")
 	end
@@ -695,6 +712,34 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 	end
 
 	produceMessage(anyM.options, anyM.report, 1, " - Created all limiting constraints")
+end
+
+# ! create container for expression with limiting constraints
+function createLimitCont(allLimit_df::DataFrame, va::Symbol, cns_dic::Dict{Symbol,cnsCont} ,anyM::anyModel)
+	
+	limitCol_arr = intersect(namesSym(allLimit_df), (:Fix, :Up, :Low))
+	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal, :UpDir => :smaller, :LowDir => :greater, :FixDir => :equal)
+
+	for lim in limitCol_arr
+		# filter respective limits (low, fix or up) out of the entire dataframe
+		relLim_df = filter(x -> !isnothing(x[lim]), allLimit_df[!,Not(filter(x -> x != lim, limitCol_arr))])
+		relLim_df = filter(x -> x.var != AffExpr(), relLim_df)
+		
+		if isempty(relLim_df) continue end
+		rename!(relLim_df, lim => :Lim)
+
+		# prepare, scale and save constraints to dictionary
+		relLim_df[!,:cnsExpr] = map(x -> x.var - x.Lim, eachrow(relLim_df))
+		relLim_df = orderDf(relLim_df[!,[intCol(relLim_df)..., :cnsExpr]])
+
+		scaleCnsExpr!(relLim_df, anyM.options.coefRng, anyM.options.checkRng)
+		cns_dic[Symbol(va,lim)] = cnsCont(relLim_df, signLim_dic[lim])
+
+		produceMessage(anyM.options, anyM.report, 3, " - Created constraints for $(lim in (:Up, :UpDir) ? "upper" : (lim in (:Low, :LowDir) ? "lower" : "fixed")) limit of variable $va")
+	end
+
+	return cns_dic
+
 end
 
 #endregion

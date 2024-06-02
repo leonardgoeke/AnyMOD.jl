@@ -13,7 +13,7 @@ function getElapsed(start::DateTime)
 end
 
 # ! teste for errors so far and optional writes report file, even if no serious errrors occured yet
-function errorTest(report::Array{Tuple,1}, options::modOptions;write::Bool = false, inCode::Bool = false)
+function errorTest(report::Array{Tuple,1}, options::modOptions; write::Bool = false, inCode::Bool = false)
     errStatus_dic = Dict(1 => :green, 2 => :yellow, 3 => :red)
     if any(getindex.(report, 1) .== 3)
 		output_df = DataFrame(map(idx -> getindex.(report, idx), eachindex(first(report))), [:type, :section, :location, :message])

@@ -265,7 +265,14 @@ function buildSub(id::Int, genSetup_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl,
 	sub_m.subPro = tuple([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)]...)[id]
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.threads)
 	set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
-	return sub_m
+
+	# collect complicating constraints
+	comVar_dic = Dict{Symbol,DataFrame}()
+	for comVa in filter(x -> occursin("BendersCom",string(x)), keys(sub_m.parts.lim.var))
+		comVar_dic[comVa] = sub_m.parts.lim.var[comVa] |> (y -> select(y, filter(x -> x != :var, namesSym(y))))
+	end
+
+	return sub_m, comVar_dic
 end
 
 # ! set optimizer attributes and options, in case gurobi is used (recommended)
@@ -517,6 +524,8 @@ end
 function runSub(resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, resultOpt::NamedTuple = NamedTuple())
 	return runSub(sub_m, resData_obj, rngVio_fl, sol_sym, optTol_fl, crsOver_boo, resultOpt)
 end
+
+getComVar() = comVar_dic
 
 # ! add all cuts from input dictionary to top problem
 function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, i::Int)
