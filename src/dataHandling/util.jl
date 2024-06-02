@@ -212,7 +212,7 @@ function getFix(src_df::DataFrame, par_obj::ParElement, anyM::anyModel)
 	if isdefined(par_obj, :name)
 		# copies parameter obj and adds ":up" to inheritance for any dimensions, otherwise variables would be created, but fixed to zero due to a zero limit on a higher level in the tree
 		modPar_obj = par_obj
-		modPar_obj.herit = modPar_obj.herit |> (y -> tuple(vcat(y..., map(x -> x => :up, getindex.(y, 1))...)...))
+		modPar_obj.herit = tuple(unique(modPar_obj.herit |> (y -> vcat(y..., map(x -> x => :up, getindex.(y, 1))...)))...)
 		# filter zero cases
 		zero_df =  matchSetParameter(src_df, modPar_obj, anyM.sets)
 	else
