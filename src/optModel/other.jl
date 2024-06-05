@@ -463,14 +463,18 @@ end
 # ! create constraints that enforce any type of limit (Up/Low/Fix) on any type of variable
 function createLimitCns!(partLim::OthPart, anyM::anyModel)
 
+	cns_dic = Dict{Symbol,cnsCont}()
+
+	# check defined limit parameters
 	parLim_arr = String.(collectKeys(keys(partLim.par)))
 	symLim_arr = filter(x ->  any(map(y -> occursin(y,x), ["Up", "Low", "Fix", "UpDir", "LowDir", "FixDir"])), parLim_arr)
-	limVar_arr = union(map(x -> map(k -> Symbol(k[1]) => Symbol(k[2][1]), filter(z -> length(z[2]) == 2, map(y -> y => split(x,y), ["Up", "Low", "Fix", "UpDir", "LowDir", "FixDir"]))), symLim_arr)...)
+	if isempty(symLim_arr) return cns_dic end
+	
+	# loop over all variables that are subject to any type of limit (except emissions)
+	limVar_arr = map(x -> map(k -> Symbol(k[1]) => Symbol(k[2][1]), filter(z -> length(z[2]) == 2, map(y -> y => split(x,y), ["Up", "Low", "Fix", "UpDir", "LowDir", "FixDir"]))), symLim_arr) |> (x -> isempty(x) ? String[] : union(x...))
 	varToPar_dic = Dict(y => getindex.(filter(z -> z[2] == y, limVar_arr), 1) for y in unique(getindex.(limVar_arr, 2)))
 
-	# loop over all variables that are subject to any type of limit (except emissions)
 	allKeys_arr = collect(keys(varToPar_dic))
-	cns_dic = Dict{Symbol,cnsCont}()
 
 	@threads for va in allKeys_arr 
 
@@ -670,7 +674,7 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 		stochVar_boo = !any(occursin.(["capa","Capa","exp","Exp","retro"],string(va)))
 		if !isempty(anyM.subPro) && anyM.subPro != (0,0) && stochVar_boo
 			
-			comLimit_df = filter(x -> false, allLimit_df)
+			comLimit_df = filter(x -> true, allLimit_df)
 			
 			# covering several subproblems due to scenario resolution
 			if :scr in intCol(allLimit_df)
@@ -686,9 +690,22 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 				end
 			end
 			if !isempty(comLimit_df) comLimit_df = unique(comLimit_df) end
-	
-			# remove complicating limits from all limits
-			allLimit_df = antijoin(allLimit_df, comLimit_df, on = intCol(allLimit_df))
+			
+			# remove complicating limits from all limits (filter case that there is only single column in the dataframe)
+			allLimit_df = isempty(intCol(allLimit_df)) ? filter(x -> false, allLimit_df) : antijoin(allLimit_df, comLimit_df, on = intCol(allLimit_df))
+			if isempty(intCol(allLimit_df)) comLimit_df[!,:scr] .= 0 end
+
+			# filter only upper limits (include warning)
+			nonSupLim_arr = intersect([:Fix, :Low], namesSym(comLimit_df))
+			if !isempty(nonSupLim_arr)
+				push!(anyM.report, (2, "limit", string(va), "enforced a lower or fixed limit across scenarios, this is not supported and limit is dropped"))
+			end
+
+			if :Up in namesSym(comLimit_df)
+				select!(comLimit_df, Not(nonSupLim_arr)) 
+			else
+				continue
+			end
 	
 			# create complicatint variable and constraint
 			lock(anyM.lock)
@@ -696,7 +713,7 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 			unlock(anyM.lock)
 			comLimitCns_df = innerjoin(partLim.var[Symbol(va,:BendersCom)], rename(select(comLimit_df, intCol(comLimit_df,:var)), :var => :limVar), on = intCol(comLimit_df))
 			comLimitCns_df[!,:cnsExpr] = map(x -> x.var - x.limVar, eachrow(comLimitCns_df))
-			cns_dic[Symbol(va,:BendersCom)] = cnsCont(select(comLimitCns_df, intCol(comLimitCns_df,:cnsExpr)), :equal)
+			cns_dic[Symbol(va,:BendersCom)] = cnsCont(select(comLimitCns_df, intCol(comLimitCns_df,:cnsExpr)), :greater)
 		end
 
 		# ! write constraint containers

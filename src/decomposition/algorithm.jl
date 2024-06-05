@@ -137,7 +137,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 				if sys == :tech var_df = removeFixStorage(varSym, var_df, part) end # remove storage variables controlled by ratio
 				if isempty(var_df) continue end
 				# gets variable value and set variables below threshold to zero
-				abs_df = deSelectSys(var_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df, z, on = intersect(intCol(z, :dir), intCol(var_df, :dir)))) |> (y -> y[completecases(y), :])
+				abs_df = deSelect(var_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df, z, on = intersect(intCol(z, :dir), intCol(var_df, :dir)))) |> (y -> y[completecases(y), :])
 				abs_df[!,:value] = map(x -> x.value < zeroThrs_fl ? 0.0 : x.value, eachrow(abs_df))
 				# applies weights to make achieving zero values a priority 
 				abs_df[!,:weight] .= 1.0
@@ -366,8 +366,8 @@ function runTop(benders_obj::bendersObj)
 	#region # * write results
 
 	# write technology capacites and level of capacity balance to benders object
-	resData_obj.capa, resData_obj.stLvl = writeResult(benders_obj.top, [:capa, :mustCapa, :stLvl]; rmvFix = true)
-	stabVar_obj.capa, stabVar_obj.stLvl = writeResult(benders_obj.top, [:capa, :exp, :stLvl]; rmvFix = true)
+	resData_obj.capa, resData_obj.stLvl, resData_obj.lim = writeResult(benders_obj.top, [:capa, :mustCapa, :stLvl, :lim]; rmvFix = true)
+	stabVar_obj.capa, stabVar_obj.stLvl, stabVar_obj.lim = writeResult(benders_obj.top, [:capa, :exp, :stLvl, :lim]; rmvFix = true)
 
 	# record level dual
 	if !isnothing(stab_obj)
@@ -439,6 +439,18 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 		end
 	end
 
+	# fixing limiting variables
+	if !isempty(resData_obj.lim)
+		for limSym in keys(resData_obj.lim)
+			lim_df = select(filter(x -> x.sub == sub_m.subPro, resData_obj.lim[limSym]), Not([:sub]))
+			if !isempty(lim_df)
+				resData_obj.lim[limSym] = limitVar!(lim_df, sub_m.parts.lim.var[limSym], limSym, sub_m.parts.lim, rngVio_fl, sub_m)
+				# remove system if no storage level exists
+				removeEmptyDic!(resData_obj.lim, limSym)
+			end
+		end
+	end
+	
 	#endregion
 
 	#region # * solve problem
@@ -487,7 +499,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 			for capaSym in filter(x -> occursin("capa", lowercase(string(x))), collect(keys(resData_obj.capa[sys][sSym])))
 				if Symbol(capaSym, :BendersFix) in keys(part_dic[sSym].cns)
 					scaCapa_fl = getfield(sub_m.options.scaFac, occursin("StSize", string(capaSym)) ? :capaStSize : :capa)
-					resData_obj.capa[sys][sSym][capaSym] = addDual(resData_obj.capa[sys][sSym][capaSym], part_dic[sSym].cns[Symbol(capaSym, :BendersFix)], scaObj_fl/scaCapa_fl)
+					resData_obj.capa[sys][sSym][capaSym] = addDual(resData_obj.capa[sys][sSym][capaSym], part_dic[sSym].cns[Symbol(capaSym, :BendersFix)], scaObj_fl / scaCapa_fl)
 					# remove capacity if none exists (again necessary because dual can be zero)
 					removeEmptyDic!(resData_obj.capa[sys][sSym], capaSym)
 				end
@@ -502,9 +514,17 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 		for sSym in keys(resData_obj.stLvl)
 			if sSym in keys(sub_m.parts.tech)
 				part_obj = sub_m.parts.tech[sSym]
-				resData_obj.stLvl[sSym] = addDual(resData_obj.stLvl[sSym], part_obj.cns[:stLvlBendersFix], scaObj_fl/sub_m.options.scaFac.dispSt)
+				resData_obj.stLvl[sSym] = addDual(resData_obj.stLvl[sSym], part_obj.cns[:stLvlBendersFix], scaObj_fl / sub_m.options.scaFac.dispSt)
 				removeEmptyDic!(resData_obj.stLvl, sSym)
 			end
+		end
+	end
+
+	# get duals on limits
+	if !isempty(resData_obj.lim)
+		for limSym in keys(resData_obj.lim)
+			resData_obj.lim[limSym] = addDual(resData_obj.lim[limSym], sub_m.parts.lim.cns[Symbol(limSym,:BendersFix)], scaObj_fl / sub_m.options.scaFac.dispConv)
+			removeEmptyDic!(resData_obj.lim, limSym)
 		end
 	end
 
@@ -554,7 +574,14 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 				end
 			end
 		end
-		
+
+		# compute cut element for each limit
+		if !isempty(subCut.lim)
+			for limSym in keys(subCut.lim)
+				push!(cutExpr_arr, getBendersCut(subCut.lim[limSym], top_m.parts.lim.var[limSym], top_m.options.scaFac.dispConv))
+			end
+		end
+
 		# get cut variable and compute cut expression 
 		cut_var = filter(x -> x.Ts_dis == cut[1][1] && x.scr == cut[1][2], top_m.parts.obj.var[:cut])[1,:var]
 		cut_expr = @expression(top_m.optModel, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)))
@@ -654,7 +681,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	# update current best
 	if benders_obj.nearOpt.cnt == 0 ? (itr_obj.res[:actTotCost] < best_obj.objVal) : (itr_obj.res[:nearObj] <= best_obj.objVal && itr_obj.gap <= benders_obj.algOpt.gap)
 		best_obj.objVal = benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:actTotCost] : itr_obj.res[:nearObj]
-		best_obj.capa, best_obj.stLvl = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :stLvl]; rmvFix = true)	
+		best_obj.capa, best_obj.stLvl, best_obj.lim = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)	
 		itr_obj.res[:curBest] = best_obj.objVal
 	end
 
@@ -681,7 +708,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 
 		# update center of stabilisation
 		if srsStep_boo
-			stab_obj.var = filterStabVar(stabVar_obj.capa, stabVar_obj.stLvl, stab_obj.weight, benders_obj.top)
+			stab_obj.var = filterStabVar(stabVar_obj.capa, stabVar_obj.stLvl, stabVar_obj.lim, stab_obj.weight, benders_obj.top)
 			stab_obj.objVal = best_obj.objVal
 			produceMessage(report_m.options, report_m.report, 1, " - Updated reference point for stabilization!", testErr = false, printErr = false)
 		end
@@ -773,9 +800,10 @@ function getStabDf(stab_obj::stabObj, top_m::anyModel)
 	expExpr_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
 	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x], collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
-	
+	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : select(z, [:var, :value, :scaFac]))
+
 	# filter zero scaling factors
-	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df))
+	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
 	
 	# normalize scaling factors
 	allVar_df[!,:scaFac] .= allVar_df[!,:scaFac] ./ minimum(allVar_df[!,:scaFac])
@@ -784,7 +812,7 @@ function getStabDf(stab_obj::stabObj, top_m::anyModel)
 end
 
 # ! matches values in dictionary with variables of provided problem
-function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, Dict{Symbol, DataFrame}}}, Dict{Symbol, DataFrame}}}, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}}, mod_m::anyModel, prsvExp::Bool=false)
+function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, Dict{Symbol, DataFrame}}}, Dict{Symbol, DataFrame}}}, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl,:lim), NTuple{4, Float64}}, mod_m::anyModel, prsvExp::Bool=false)
 	
 	expExpr_dic = Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}()
 	
@@ -796,14 +824,14 @@ function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, D
 		for sSym in keys(var_dic[:capa][sys])
 			expExpr_dic[:capa][sys][sSym] = Dict{Symbol,DataFrame}()
 			for varSym in keys(var_dic[:capa][sys][sSym])
-				val_df = deSelectSys(var_dic[:capa][sys][sSym][varSym])
+				val_df = deSelect(var_dic[:capa][sys][sSym][varSym])
 				# get scaling factor for variables (corrects scaling within model going back to standard units and apply weights defined for stabilization)
 				modSca_fl =  getfield(mod_m.options.scaFac, occursin("exp", string(varSym)) ? :insCapa : (occursin("StSize", string(varSym)) ? :capaStSize : :capa))
 				wgtSca_fl =  getfield(weight_ntup, occursin("exp", string(varSym)) ? :capa : (occursin("StSize", string(varSym)) ? :capaStSize : :capa))			
 				val_df[!,:value] = val_df[!,:value] ./ modSca_fl # correct value with scaling factor for variable
 				# join variables and values
 				sel_arr = prsvExp ? (:Ts_exp in intCol(val_df) ? [:Ts_exp, :var, :value] : [:Ts_disSup, :var, :value]) : [:var, :value]
-				join_df = unique(select(innerjoin(deSelectSys(part_dic[sSym].var[varSym]), val_df, on = intCol(val_df, :dir)), sel_arr))			
+				join_df = unique(select(innerjoin(deSelect(part_dic[sSym].var[varSym]), val_df, on = intCol(val_df, :dir)), sel_arr))			
 				join_df[!,:scaFac] .=  wgtSca_fl^2	
 				expExpr_dic[:capa][sys][sSym][varSym] = prsvExp && :Ts_exp in intCol(val_df) ? rename(join_df, :Ts_exp => :Ts_disSup) : join_df
 			end
@@ -825,6 +853,22 @@ function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, D
 			end
 		end
 	end
+
+	# match limit values with variables
+	expExpr_dic[:lim] = Dict{Symbol,DataFrame}()
+	
+	if !isempty(var_dic[:lim])
+		for limSym in keys(var_dic[:lim])
+			val_df = var_dic[:lim][limSym] 
+			val_df[!,:value] = val_df[!,:value] ./ mod_m.options.scaFac.dispConv
+			
+			join_df = orderDf(select(innerjoin(val_df, mod_m.parts.lim.var[limSym], on  = intCol(var_dic[:lim][limSym], :sub)), vcat(intCol(val_df),[:var, :value])))
+			join_df[!,:scaFac] .= weight_ntup.lim^2
+			
+			expExpr_dic[:lim][limSym] = join_df
+		end
+	end
+
 
 	return expExpr_dic
 end
@@ -917,7 +961,15 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = fa
 		end
 	end
 
-	return capa_dic, stLvl_dic
+	comLim_dic = Dict{Symbol,DataFrame}()
+
+	if :lim in var_arr
+		for lim in filter(x -> occursin("BendersCom", string(x)), keys(in_m.parts.lim.var))
+			comLim_dic[lim] = getResult(copy(in_m.parts.lim.var[lim]))
+		end
+	end
+
+	return capa_dic, stLvl_dic, comLim_dic
 end
 
 # ! replaces the variable column with a column storing the value of the entire variable
@@ -946,10 +998,11 @@ function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part
 	cns_sym = Symbol(:Benders, lim_sym)
 
 	# join variables with capacity values
-	fix_df = deSelectSys(value_df) |>  (z -> leftjoin(var_df, z, on = intCol(z, :dir))) |> (y -> y[completecases(y), :])
+	fix_df = deSelect(value_df) |>  (z -> leftjoin(var_df, z, on = intCol(z, :dir))) |> (y -> y[completecases(y), :])
 
 	# correct values with scaling factor
-	scaFac_sym = lowercase(string(var_sym)) |> (z -> occursin("stlvl", z) ? :dispSt : (occursin("exp", z) ? :insCapa : occursin("stsize", string(z)) ? :capaStSize : :capa))
+	mapScaFac_arr = ["stlvl" => :dispSt, "exp" => :insCapa, "stsize" => :capaStSize, "benderscom" => :dispConv]
+	scaFac_sym = occursin.(getindex.(mapScaFac_arr,1), lowercase(string(var_sym)))|> (z -> any(z) ? getindex.(mapScaFac_arr,2)[findall(z)[1]] : :capa)
 	fix_df[!,:value]  = fix_df[!,:value] ./ getfield(fix_m.options.scaFac, scaFac_sym)
 	
 	# filter cases where no variable exists
@@ -1002,14 +1055,14 @@ end
 
 # ! adds a dual into the first dataframe based on the matching variable column in the second
 function addDual(dual_df::DataFrame, cns_df::DataFrame, scaFac_fl::Float64)
-	new_df = deSelectSys(cns_df) |> (z -> innerjoin(dual_df, z, on = intCol(z, :dir)))
+	new_df = deSelect(cns_df) |> (z -> innerjoin(dual_df, z, on = intCol(z, :dir)))
 	new_df[!,:dual] = map(x -> dual(x), new_df[!,:cns]) .* new_df[!,:fac] .* scaFac_fl
 	return select(filter(x -> x.dual != 0.0, new_df), Not([:cns,:fac]))
 end
 
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
 function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaFac_fl::Float64)
-	ben_df = deSelectSys(sub_df) |> (z -> innerjoin(deSelectSys(var_df), z, on = intCol(z, :dir)))
+	ben_df = deSelect(sub_df) |> (z -> innerjoin(deSelect(var_df), z, on = intCol(z, :dir)))
 	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual * scaFac_fl * (collect(keys(x.var.terms))[1] - x.value / scaFac_fl), eachrow(ben_df)))
 end
 

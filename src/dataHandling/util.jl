@@ -64,7 +64,7 @@ mergePrep(in_tup::NamedTuple) = isempty(in_tup.resi) ? in_tup.var : unique(vcat(
 aggCol!(col_df::DataFrame, col_arr::Array{Symbol,1}) = foreach(x -> add_to_expression!.(col_df[!,col_arr[1]], col_df[!,x]), col_arr[2:end])
 
 # ! removes column relating to system (technology or exchange)
-deSelectSys(in_df::DataFrame) = select(in_df, Not([:Te in namesSym(in_df) ? :Te : :Exc]))
+deSelect(in_df::DataFrame) = intersect([:Te,:Exc,:Low,:Up,:Fix], namesSym(in_df)) |> (x -> isempty(x) ? in_df : select(in_df, Not(x)))
 
 # ! removes entry from dictionary if it is empty 
 removeEmptyDic!(rmvDic::Dict, keySys::Symbol) = if isempty(rmvDic[keySys]) delete!(rmvDic, keySys) end
@@ -100,8 +100,8 @@ intCol(in_df::DataFrame, add_sym::Array) = union(intCol(in_df), intersect(namesS
 countStGrp(carGrp_ntup::NamedTuple) = intersect((:stExtIn, :stExtOut, :stIntIn, :stIntOut), collect(keys(carGrp_ntup))) |> (z ->  isempty(z) ? 0 : maximum(map(x -> length(getfield(carGrp_ntup, x)), z)))
 
 # ! puts relevant dimensions in consistent order and adds remaining entries at the end
-orderDim(inDim_arr::Array{Symbol,1}, intCol_arr::Array{Symbol,1}) = intersect([:Ts, :Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_frs, :Ts_dis, :R, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr, :variable, :value], intersect(inDim_arr, intCol_arr)) |> (x -> [x..., setdiff(inDim_arr, x)...])
-orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts, :Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_frs, :Ts_dis, :R, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr, :variable, :value], inDim_arr) |> (x -> [x..., setdiff(inDim_arr, x)...])
+orderDim(inDim_arr::Array{Symbol,1}, intCol_arr::Array{Symbol,1}) = intersect([:Ts, :Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_frs, :Ts_dis, :R, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr, :sub, :variable, :value], intersect(inDim_arr, intCol_arr)) |> (x -> [x..., setdiff(inDim_arr, x)...])
+orderDim(inDim_arr::Array{Symbol,1}) = intersect([:Ts, :Ts_exp, :Ts_retro, :Ts_expSup, :Ts_disSup_last, :Ts_expSup_i, :Ts_expSup_j, :Ts_expSup_a, :Ts_expSup_b, :Ts_disSup, :Ts_frs, :Ts_dis, :R, :R_exp, :R_exp_i, :R_exp_j, :R_exp_from, :R_exp_to, :R_dis, :R_from, :R_to, :R_from_i, :R_to_i, :R_from_j, :R_to_j, :C, :Te, :Te_i, :Te_j, :Exc, :Exc_i, :Exc_j, :M, :scr, :sub, :variable, :value], inDim_arr) |> (x -> [x..., setdiff(inDim_arr, x)...])
 
 # ! puts dataframes columns in consistent order
 orderDf(in_df::DataFrame) = select(in_df, orderDim(namesSym(in_df), intCol(in_df) |> (z -> isempty(z) ? Symbol[] : z)))

@@ -164,7 +164,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 				end
 			elseif !isempty(anyM.scr.scr) # filter non-relevant scenarios
 				relScr_arr = collect(keys(anyM.scr.scrProb))
-				filter!(x -> x.scr == 0 || (getindex(x, anyM.scr.frsLvl != anyM.supTs.lvl ? :Ts_frs : :Ts_disSup), x.scr) in relScr_arr, dem_df)
+				filter!(x -> x.scr == 0 || (getindex(x, anyM.supTs.lvl < anyM.scr.lvl ? :Ts_frs : :Ts_disSup), x.scr) in relScr_arr, dem_df)
 			end
 
 			dem_df[!,:val] = dem_df[!,:val]	.*  getEnergyFac(dem_df[!,:Ts_dis], anyM.supTs)

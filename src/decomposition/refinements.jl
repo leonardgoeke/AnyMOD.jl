@@ -24,7 +24,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			@suppress optimize!(benders_obj.top.optModel)
 			startSol_obj = resData()
 			startSol_obj.objVal = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
-			startSol_obj.capa, startSol_obj.stLvl = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :mustExp, :stLvl])
+			startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim  = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :mustExp, :stLvl, :lim])
 			lowBd_fl = startSol_obj.objVal
 		end
 	
@@ -311,7 +311,8 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, t
 	expExpr_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!, [:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
 	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x], collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
-	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df))
+	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
+	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
 
 	# set lower and upper bound
 	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], x.value*(1-stab_obj.methodOpt[stab_obj.actMet].low) |> (y -> y < top_m.options.coefRng.rhs[1]/1e2 ? 0.0 : y))), eachrow(allVar_df))
@@ -496,7 +497,7 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::
 end
  
 # filter variables used for stabilization
-function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, stLvl_dic::Dict{Symbol,DataFrame}, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}}, top_m::anyModel)
+function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, stLvl_dic::Dict{Symbol,DataFrame}, lim_dic::Dict{Symbol,DataFrame}, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl, :lim), NTuple{4, Float64}}, top_m::anyModel)
 
 	var_dic = Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}()
 
@@ -524,7 +525,7 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 				if trstSym == :capaExc && !part_dic[sSym].dir filter!(x -> x.R_from < x.R_to, var_df) end # only get relevant capacity variables of exchange
 				if sys == :tech var_df = removeFixStorage(trstSym, var_df, part_dic[sSym]) end # remove storage variables controlled by ratio
 				# filter cases where actual variables are defined
-				var_dic[:capa][sys][sSym][trstSym] = intCol(var_df) |> (w ->innerjoin(var_df, unique(select(filter(x -> !isempty(x.var.terms), part_dic[sSym].var[trstSym]), w)), on = w))
+				var_dic[:capa][sys][sSym][trstSym] = intCol(var_df) |> (w -> innerjoin(var_df, unique(select(filter(x -> !isempty(x.var.terms), part_dic[sSym].var[trstSym]), w)), on = w))
 				# remove if no capacities remain
 				removeEmptyDic!(var_dic[:capa][sys][sSym], trstSym)
 			end
@@ -542,8 +543,17 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 			if sSym in keys(top_m.parts.tech)
 				part_obj = top_m.parts.tech[sSym]
 				var_df = stLvl_dic[sSym]
-				var_dic[:stLvl][sSym] = intCol(var_df) |> (w ->innerjoin(var_df, unique(select(filter(x -> !isempty(x.var.terms), part_obj.var[:stLvl]), w)), on = w))
+				var_dic[:stLvl][sSym] = intCol(var_df) |> (w -> innerjoin(var_df, unique(select(filter(x -> !isempty(x.var.terms), part_obj.var[:stLvl]), w)), on = w))
 			end
+		end
+	end
+
+	# write limit values
+	var_dic[:lim] = Dict{Symbol,DataFrame}()
+
+	if !isempty(lim_dic) && weight_ntup.lim != 0.0
+		for limSym in keys(lim_dic)
+			var_dic[:lim][limSym] = intCol(lim_dic[limSym]) |> (w -> innerjoin(lim_dic[limSym], unique(select(filter(x -> !isempty(x.var.terms), top_m.parts.lim.var[limSym]), w)), on = w))
 		end
 	end
 

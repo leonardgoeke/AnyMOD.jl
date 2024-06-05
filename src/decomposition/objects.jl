@@ -26,9 +26,9 @@ struct stabSetup
 	srsThr::Float64 # threshold for serious step
 	ini::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}} # rule for stabilization (:none will skip stabilization)
 	switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} # rule to switch between different methods
-	weight::NamedTuple{(:capa, :capaStSize, :stLvl), Tuple{Float64, Float64, Float64}} # weight of variables in stabilization
+	weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} # weight of variables in stabilization
 	
-	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_ntup::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 6, avgImp = 0.2, itrAvg = 4), weight::NamedTuple{(:capa, :capaStSize, :stLvl), Tuple{Float64, Float64, Float64}} = (capa = 1.0, capaStSize = 1e-1, stLvl = 1e-2))
+	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_ntup::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 6, avgImp = 0.2, itrAvg = 4), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1.0, capaStSize = 1e-1, stLvl = 1e-2, lim = 1e-2))
 		return new(method_tup, srsThr_fl, ini_ntup, switch, weight)
 	end
 end
@@ -62,7 +62,8 @@ mutable struct resData
 	objVal::Float64
 	capa::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}
 	stLvl::Dict{Symbol,DataFrame}
-	resData() = new(Inf, Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(), Dict{Symbol,DataFrame}())
+	lim::Dict{Symbol,DataFrame}
+	resData() = new(Inf, Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(), Dict{Symbol,DataFrame}(), Dict{Symbol,DataFrame}())
 end
 
 # copy functions for model results
@@ -71,6 +72,7 @@ function copy(ben_obj::resData)
 	out.objVal = ben_obj.objVal
 	out.capa = deepcopy(ben_obj.capa)
 	out.stLvl = deepcopy(ben_obj.stLvl)
+	out.lim = deepcopy(ben_obj.lim)
 	return out
 end
 
@@ -84,14 +86,14 @@ mutable struct stabObj
 	methodOpt::Array{NamedTuple,1} # array of options for adjustment of stabilization parameters
 	srsThr::Float64 # threshold for serious step
 	ruleSw::Union{NamedTuple{(), Tuple{}}, NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}}} # rule for switching between stabilization methods
-	weight::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}} # weight of variables in stabilization
+	weight::NamedTuple{(:capa,:capaStSize,:stLvl, :lim), NTuple{4, Float64}} # weight of variables in stabilization
 	actMet::Int # index of currently active stabilization method
 	objVal::Float64 # array of objective value for current center
 	dynPar::Array{Union{Dict,Float64},1} # array of dynamic parameters for each method
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
 	
-	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl), NTuple{3, Float64}}, resData_obj::resData, lowBd_fl::Float64, top_m::anyModel)
+	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, top_m::anyModel)
 		stab_obj = new()
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64,Float64,Int64}})
@@ -110,15 +112,17 @@ mutable struct stabObj
 		stab_obj.weight = weight_ntup
 		stab_obj.actMet = 1
 		stab_obj.objVal = resData_obj.objVal
-		stab_obj.var = filterStabVar(resData_obj.capa, resData_obj.stLvl, weight_ntup, top_m)
+		stab_obj.var = filterStabVar(resData_obj.capa, resData_obj.stLvl, resData_obj.lim, weight_ntup, top_m)
 		
 		# compute number of variables subject to stabilization
 		stabCapa_arr = vcat(vcat(vcat(map(x -> stab_obj.var[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
 		stLvl_arr = vcat(map(x -> stab_obj.var[:stLvl][x][!,:value], collect(keys(stab_obj.var[:stLvl])))...)
-		stabExpr_arr = vcat(stabCapa_arr, stLvl_arr)
+		lim_arr = vcat(map(x -> stab_obj.var[:lim][x][!,:value], collect(keys(stab_obj.var[:lim])))...)
+		stabExpr_arr = vcat(stabCapa_arr, stLvl_arr, lim_arr)
 
 		return stab_obj, size(stabExpr_arr, 1)
 	end
+	stabObj() = new()
 end
 
 # monitoring iteration 
@@ -268,7 +272,6 @@ mutable struct bendersObj
 
 		end
 
-
 		#endregion
 
 		#region # * initialize stabilization
@@ -281,6 +284,7 @@ mutable struct bendersObj
 
 		return benders_obj
 	end
+	bendersObj() = new()
 end
 
 #endregion
