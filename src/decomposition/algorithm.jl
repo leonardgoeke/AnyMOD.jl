@@ -578,7 +578,7 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 		# compute cut element for each limit
 		if !isempty(subCut.lim)
 			for limSym in keys(subCut.lim)
-				push!(cutExpr_arr, getBendersCut(subCut.lim[limSym], top_m.parts.lim.var[limSym], top_m.options.scaFac.dispConv))
+				push!(cutExpr_arr, getBendersCut(subCut.lim[limSym], filter(x -> x.sub == cut[1], top_m.parts.lim.var[limSym]), top_m.options.scaFac.dispConv)) 
 			end
 		end
 
@@ -965,7 +965,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = fa
 
 	if :lim in var_arr
 		for lim in filter(x -> occursin("BendersCom", string(x)), keys(in_m.parts.lim.var))
-			comLim_dic[lim] = getResult(copy(in_m.parts.lim.var[lim]))
+			comLim_dic[lim] = getResult(copy(in_m.parts.lim.var[lim]); pos_boo = false)
 		end
 	end
 
@@ -973,7 +973,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = fa
 end
 
 # ! replaces the variable column with a column storing the value of the entire variable
-function getResult(res_df::DataFrame)
+function getResult(res_df::DataFrame; pos_boo::Bool = true)
 	
 	if :Ts_exp in namesSym(res_df) # for expansion filter unique variables
 		# aggregates expansion, if spread across different years
@@ -983,7 +983,7 @@ function getResult(res_df::DataFrame)
 	end
 
 	# write value of variable dataframe
-	res_df[!,:value] = map(x -> round(max(0, value(x) - x.constant), digits = 12), res_df[!,:var])
+	res_df[!,:value] = map(x -> (pos_boo ? max(0, value(x) - x.constant) : (value(x) - x.constant)) |> (y -> round(y, digits = 12)), res_df[!,:var])
 
 	return select(res_df, Not([:var]))
 end

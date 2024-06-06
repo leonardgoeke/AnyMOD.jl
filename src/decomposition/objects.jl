@@ -136,7 +136,7 @@ mutable struct itrStatus
 	best::resData
 	cnt::countItr
 	gap::Float64
-	res::Dict{Symbol,Float64} # store different results here, potential keys are: 
+	res::Dict{Symbol,Float64} # store different results here
 end
 
 # overall benders structure
@@ -230,11 +230,10 @@ mutable struct bendersObj
         #endregion
 
 		#region # * write complicating constraints into top problem
-		relVar_arr = map(x -> keys(complCon_dic[x]), collect(keys(complCon_dic)))
-
+		relVar_arr::Vector{Symbol} = unique(vcat(filter(x -> !isempty(x), map(x -> collect(keys(complCon_dic[x])), collect(keys(complCon_dic))))...))
 		# loop over types of complicating variables
 		if !isempty(relVar_arr)
-			for compl in union(relVar_arr...)
+			for compl in relVar_arr
 				allCompl_df = DataFrame()
 				# loop over subproblems to get data
 				for s in keys(complCon_dic)
@@ -253,13 +252,15 @@ mutable struct bendersObj
 				# create complicating variables for benders
 				top_m = benders_obj.top
 				top_m.parts.lim.var[compl] = createVar(select(allCompl_df, intCol(allCompl_df, :sub)), string(compl), NaN, top_m.optModel, top_m.lock, top_m.sets; scaFac = benders_obj.top.options.scaFac.dispConv, lowBd = compl == :emissionBendersCom ? NaN : 0.0)
-				top_m.parts.lim.var[compl][!,:var] = map(x -> x.var * top_m.scr.scrProb[x.sub], eachrow(top_m.parts.lim.var[compl]))
-
-				# create constraints using complicating variables
-				allCompl_df = unique(select(allCompl_df, Not([:sub])))
-				allCompl_df[!,:var] = aggDivVar(copy(top_m.parts.lim.var[compl]), allCompl_df, tuple(intCol(allCompl_df)...), top_m.sets)
-				cns_dic = Dict{Symbol,cnsCont}()
 				
+				# create constraints using complicating variables
+				topVar_df = copy(top_m.parts.lim.var[compl])
+				topVar_df[!,:var] = map(x -> x.var * top_m.scr.scrProb[x.sub], eachrow(topVar_df))
+				allCompl_df = unique(select(allCompl_df, Not([:sub])))
+				allCompl_df[!,:var] = aggDivVar(topVar_df, allCompl_df, tuple(intCol(allCompl_df)...), top_m.sets)
+
+
+				cns_dic = Dict{Symbol,cnsCont}()
 				cns_dic = createLimitCont(allCompl_df, compl, cns_dic, top_m)
 				
 				for cnsSym in keys(cns_dic)
