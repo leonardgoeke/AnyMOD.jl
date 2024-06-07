@@ -681,7 +681,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	# update current best
 	if benders_obj.nearOpt.cnt == 0 ? (itr_obj.res[:actTotCost] < best_obj.objVal) : (itr_obj.res[:nearObj] <= best_obj.objVal && itr_obj.gap <= benders_obj.algOpt.gap)
 		best_obj.objVal = benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:actTotCost] : itr_obj.res[:nearObj]
-		best_obj.capa, best_obj.stLvl, best_obj.lim = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)	
+		best_obj.capa, best_obj.stLvl, best_obj.lim = map(x -> getfield(resData_obj,x), [:capa, :stLvl, :lim])	
 		itr_obj.res[:curBest] = best_obj.objVal
 	end
 
@@ -1023,8 +1023,8 @@ function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part
 	end
 
 	# comptue factor and rhs, values below enforceable range are set to zero, values are above are set to largest value possible
-	fix_df[!,:fac] = map(x -> x.value < rngRhs_tup[1] / rngVio_fl ? rngRhs_tup[1] / rngVio_fl / x.value : (x.value > rngRhs_tup[2] * rngVio_fl ? rngRhs_tup[2] * rngVio_fl / x.value : 1.0), eachrow(fix_df))
-	fix_df[!,:rhs], fix_df[!,:fac] = map(x -> x.fac < rngMat_tup[1] / rngVio_fl ?  [rngRhs_tup[2] * rngVio_fl, rngMat_tup[1] / rngVio_fl] : (x.fac > rngMat_tup[2] * rngVio_fl && x.setZero ? [0.0, 1.0] : [x.value * x.fac, x.fac]), eachrow(fix_df)) |> (w  -> map(x -> getindex.(w, x), [1, 2]))
+	fix_df[!,:fac] = map(x -> abs(x.value) < rngRhs_tup[1] / rngVio_fl ? rngRhs_tup[1] / rngVio_fl / abs(x.value) : (abs(x.value) > rngRhs_tup[2] * rngVio_fl ? rngRhs_tup[2] * rngVio_fl / abs(x.value) : 1.0), eachrow(fix_df))
+	fix_df[!,:rhs], fix_df[!,:fac] = map(x -> x.fac < rngMat_tup[1] / rngVio_fl ?  [rngRhs_tup[2] * rngVio_fl, rngMat_tup[1] / rngVio_fl] : (x.fac > rngMat_tup[2] * rngVio_fl && x.setZero ? [0.0, 1.0] : [abs(x.value) * x.fac, x.fac]), eachrow(fix_df)) |> (w  -> map(x -> getindex.(w, x), [1, 2]))
 
 	if !(Symbol(var_sym, cns_sym) in keys(part_obj.cns))
 		# create actual constraint and attach to model part

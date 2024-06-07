@@ -1060,8 +1060,8 @@ function reportAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}}, anyM::anyModel)
             # determine scaling applied to equations
             scaFac_arr = map(cnsDual_df[!,:cns]) do z
                 firstVar_str = filter(y -> y != "", vcat(map(x -> split.(x, "-"), split(constraint_string(MIME("text/plain"), z), "+"))...))[1]
-                firstFac_fl = parse(Float64, split(firstVar_str, " ")[1])
-                firstVar_sym = Symbol(split(split(firstVar_str, " ")[2], "[")[1])
+                firstFac_fl = tryparse(Float64, split(firstVar_str, " ")[1]) |> (x -> isnothing(x) ? 1.0 : x)
+                firstVar_sym = Symbol(split(firstFac_fl == 1.0 ? split(firstVar_str, " ")[1] : split(firstVar_str, " ")[2], "[")[1])
                 return getfield(anyM.options.scaFac, scaFac_dic[firstVar_sym])/firstFac_fl
             end
             

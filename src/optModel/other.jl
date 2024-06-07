@@ -552,6 +552,7 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 		# ! infeas variables for emissions
 		if va == :emission && :emissionInf in keys(partLim.par) && !anyM.options.createVI.bal
 			# check if corresponding parameter is defined
+			if isempty(intCol(allLimit_df)) foreach(x -> allLimit_df[!,x] .= 0, partLim.par[:emissionInf].dim) end
 			infVar_df = matchSetParameter(select(allLimit_df, intCol(allLimit_df)), partLim.par[:emissionInf], anyM.sets)
 			if !isempty(infVar_df)
 				infVar_df = select(createVar(infVar_df, "emissionInf", NaN, anyM.optModel, anyM.lock, anyM.sets), Not([:val]))
