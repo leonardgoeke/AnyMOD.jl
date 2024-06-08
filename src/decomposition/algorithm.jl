@@ -138,7 +138,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 				if isempty(var_df) continue end
 				# gets variable value and set variables below threshold to zero
 				abs_df = deSelect(var_dic[sys][sSym][varSym]) |>  (z -> leftjoin(var_df, z, on = intersect(intCol(z, :dir), intCol(var_df, :dir)))) |> (y -> y[completecases(y), :])
-				abs_df[!,:value] = map(x -> x.value < zeroThrs_fl ? 0.0 : x.value, eachrow(abs_df))
+				abs_df[!,:value] = map(x -> abs(x.value) < zeroThrs_fl ? 0.0 : x.value, eachrow(abs_df))
 				# applies weights to make achieving zero values a priority 
 				abs_df[!,:weight] .= 1.0
 				# create variable for absolute value and connect with rest of dataframe again
@@ -393,7 +393,7 @@ function runTop(benders_obj::bendersObj)
 	# get object for near-optimal case
 	if benders_obj.nearOpt.cnt != 0 
 		benders_obj.itr.res[:nearObj] = objective_value(benders_obj.top.optModel) 
-		if !isnothing(benders_obj.stab) benders_obj.itr.res[:thrStab] = 1 - normalized_rhs(benders_obj.stab.cns)/value(benders_obj.stab.cns) end
+		if !isnothing(benders_obj.stab) benders_obj.itr.res[:thrStab] = 1 - normalized_rhs(benders_obj.stab.cns) / value(benders_obj.stab.cns) end
 	end
 	
 	#endregion
@@ -797,7 +797,7 @@ mergeVar(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, outCol::Arra
 function getStabDf(stab_obj::stabObj, top_m::anyModel)
 
 	# match values with variables in model
-	expExpr_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
+	expExpr_dic = matchValWithVar(deepcopy(stab_obj.var), stab_obj.weight, top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
 	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x], collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
 	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : select(z, [:var, :value, :scaFac]))
@@ -1023,8 +1023,8 @@ function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part
 	end
 
 	# comptue factor and rhs, values below enforceable range are set to zero, values are above are set to largest value possible
-	fix_df[!,:fac] = map(x -> abs(x.value) < rngRhs_tup[1] / rngVio_fl ? rngRhs_tup[1] / rngVio_fl / abs(x.value) : (abs(x.value) > rngRhs_tup[2] * rngVio_fl ? rngRhs_tup[2] * rngVio_fl / abs(x.value) : 1.0), eachrow(fix_df))
-	fix_df[!,:rhs], fix_df[!,:fac] = map(x -> x.fac < rngMat_tup[1] / rngVio_fl ?  [rngRhs_tup[2] * rngVio_fl, rngMat_tup[1] / rngVio_fl] : (x.fac > rngMat_tup[2] * rngVio_fl && x.setZero ? [0.0, 1.0] : [abs(x.value) * x.fac, x.fac]), eachrow(fix_df)) |> (w  -> map(x -> getindex.(w, x), [1, 2]))
+	fix_df[!,:fac] = map(x -> abs(x.value) < rngRhs_tup[1] / rngVio_fl ? rngRhs_tup[1] / rngVio_fl / x.value : (abs(x.value) > rngRhs_tup[2] * rngVio_fl ? rngRhs_tup[2] * rngVio_fl / x.value : 1.0), eachrow(fix_df))
+	fix_df[!,:rhs], fix_df[!,:fac] = map(x -> x.fac < rngMat_tup[1] / rngVio_fl ?  [rngRhs_tup[2] * rngVio_fl, rngMat_tup[1] / rngVio_fl] : (x.fac > rngMat_tup[2] * rngVio_fl && x.setZero ? [0.0, 1.0] : [x.value * x.fac, x.fac]), eachrow(fix_df)) |> (w  -> map(x -> getindex.(w, x), [1, 2]))
 
 	if !(Symbol(var_sym, cns_sym) in keys(part_obj.cns))
 		# create actual constraint and attach to model part
@@ -1046,8 +1046,7 @@ function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part
 
 	# correct value_df to values actually enforced
 	value_df = innerjoin(select(value_df, Not([:value])), select(fix_df, Not([:var, :value, :cns, :setZero])), on = intCol(value_df, :dir))
-	corSca_fl = getfield(fix_m.options.scaFac, var_sym == :stLvl ? :dispSt : (occursin("StSize", string(var_sym)) ? :capaStSize : :capa))
-	value_df[!,:value] .=  value_df[!,:rhs] ./ value_df[!,:fac] .* corSca_fl
+	value_df[!,:value] .=  value_df[!,:rhs] ./ value_df[!,:fac] .* getfield(fix_m.options.scaFac, scaFac_sym)
 	select!(value_df, Not([:fac, :rhs]))
 
 	return value_df
