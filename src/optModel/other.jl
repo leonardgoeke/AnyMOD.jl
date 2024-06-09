@@ -308,7 +308,7 @@ function createCapaBal!(r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, anyM::an
 			allDesFac_arr[idx] = matchSetParameter(teCapa_df, part.par[:desFac], anyM.sets; newCol = :desFac)
 		else
 			for t in unique(teCapa_df[!,:Te])
-				push!(anyM.report, (2, "must output", "", "expected must output or design factor '$(createFullString(t, anyM.sets[:Te]))', but nothing was defined"))
+				push!(anyM.report, (2, "must output", "", "expected must output or design factor for '$(createFullString(t, anyM.sets[:Te]))', but nothing was defined"))
 			end
 			add_df = filter(x -> false, teCapa_df)
 			add_df[!,:desFac] .= Float64[]
