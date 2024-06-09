@@ -179,8 +179,8 @@ function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, t
 	allVar_df = getStabDf(stab_obj, top_m)
 
 	# sets values of variables that will violate range to zero
-	minFac_fl = (2*maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> 2*x.value*x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
+	minFac_fl = (2*maximum(abs.(allVar_df[!,:value]) .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
+	allVar_df[!,:value] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
 
 	# absolute value for rhs of equation
 	abs_fl = sum(allVar_df[!,:value] .* sqrt.(allVar_df[!,:scaFac]) ) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
@@ -221,7 +221,7 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, rn
 
 	# sets values of variables that will violate range to zero
 	minFac_fl = (2 * maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> 2*x.value*x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
+	allVar_df[!,:value] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
 	scaRng_tup = top_m.options.coefRng.rhs ./ (sum(allVar_df[!,:value] .^ 2) |> (x -> x == 0.0 ? 1.0 : x))
@@ -261,8 +261,8 @@ function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, 
 	allVar_df = getStabDf(stab_obj, top_m)
 
 	# sets values of variables that will violate range to zero
-	minFac_fl = (2 * maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> 2 * x.value < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
+	minFac_fl = (2 * maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
+	allVar_df[!,:value] = map(x -> 2 * abs(x.value) < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
 	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
@@ -285,7 +285,7 @@ function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, 
 
 	# sets values of variables that will violate range to zero
 	minFac_fl = (2 * maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> 2 * x.value < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
+	allVar_df[!,:value] = map(x -> 2 * abs(x.value) < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
 	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
@@ -315,8 +315,8 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, t
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
 
 	# set lower and upper bound
-	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], x.value*(1-stab_obj.methodOpt[stab_obj.actMet].low) |> (y -> y < top_m.options.coefRng.rhs[1]/1e2 ? 0.0 : y))), eachrow(allVar_df))
-	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], max(stab_obj.methodOpt[stab_obj.actMet].minUp/z[2], x.value*(1+stab_obj.methodOpt[stab_obj.actMet].up)))), eachrow(allVar_df))
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], x.value * (1 - stab_obj.methodOpt[stab_obj.actMet].low) |> (y -> y < top_m.options.coefRng.rhs[1] / 1e2 ? 0.0 : y))), eachrow(allVar_df))
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], max(stab_obj.methodOpt[stab_obj.actMet].minUp/z[2], x.value * (1 + stab_obj.methodOpt[stab_obj.actMet].up)))), eachrow(allVar_df))
 
 end
 
@@ -331,7 +331,7 @@ function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, t
 
 	# sets values of variables that will violate range to zero
 	minFac_fl = (maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> x.value < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
+	allVar_df[!,:value] = map(x -> abs(x.value) < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
 	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
@@ -357,15 +357,15 @@ function computeL2Norm(allVar_df::DataFrame, stab_obj::stabObj, scaRng_tup::Tupl
 
 	# set values of variable to zero or biggest value possible without scaling violating rhs range
 	for x in eachrow(allVar_df)	
-		if top_m.options.coefRng.mat[1]/(x.value*x.scaFac*2) > scaRng_tup[2] # factor requires more up-scaling than possible
+		if top_m.options.coefRng.mat[1] / (abs(x.value) * x.scaFac * 2) > scaRng_tup[2] # factor requires more up-scaling than possible
 			x[:value] = 0 # set value to zero
-		elseif top_m.options.coefRng.mat[2]/(x.value*x.scaFac*2) < scaRng_tup[1] # factor requires more down-scaling than possible
-			x[:value] = top_m.options.coefRng.mat[2]/(scaRng_tup[1]*2) # set to biggest value possible within range
+		elseif top_m.options.coefRng.mat[2] / (abs(x.value) * x.scaFac * 2) < scaRng_tup[1] # factor requires more down-scaling than possible
+			x[:value] = top_m.options.coefRng.mat[2] / (scaRng_tup[1] * 2) # set to biggest value possible within range
 		end
 	end
 
 	# computes left hand side expression and scaling factor
-	capaSum_expr = sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> x.scaFac * (z^2 - 2*x.value*z + x.value^2)), eachrow(allVar_df)))
+	capaSum_expr = sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> x.scaFac * (z^2 - 2 * x.value * z + x.value^2)), eachrow(allVar_df)))
 	scaEq_fl = top_m.options.coefRng.mat[1]/minimum(abs.(vcat(collect(values(capaSum_expr.terms)), collect(values(capaSum_expr.aff.terms))) |> (z -> isempty(z) ? [1.0] : z)))
 
 	return capaSum_expr, scaEq_fl
