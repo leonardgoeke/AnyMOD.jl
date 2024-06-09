@@ -1475,7 +1475,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 
 	if isempty(dataIn)
 		# get summarised data and filter dispatch variables
-		data_df = select(reportResults(:summary, anyM, expVal = true, rtnOpt = (:rawDf,)), Not([:objName]))
+		data_df = select(reportResults(:summary, anyM; rtnOpt = (:rawDf,)), Not([:objName]))
 		filter!(x -> x.variable in (:demand, :gen, :use, :stIn, :stOut, :trdBuy, :trdSell, :demand, :import, :export, :lss, :crt), data_df)
 
 		# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
