@@ -713,6 +713,15 @@ function createScenarioMapping!(lvl_int::Int, anyM::anyModel)
 			tsScrToProp_dic = Dict((x, propScr_int) => 1.0 for x in relTs_arr)
 			tsToScr_dic = Dict(x => [propScr_int] for x in relTs_arr)
 		end
+		
+		# check if there are multiple foresight periods 
+		if lvl_int != 0 && length(getNodesLvl(anyM.sets[:Ts], anyM.supTs.lvl)) == length(getNodesLvl(anyM.sets[:Ts], lvl_int)) && anyM.subPro != (0,0)
+			for x in anyM.supTs.step
+				if length(getDescendants(x, anyM.sets[:Ts], false, lvl_int)) == 1
+					push!(anyM.report, (3, "scenario", "foresight", "for superordinate dispatch timestep '$(createFullString(x, anyM.sets[:Ts]))', there is only a single foresight step, this is not supported"))
+				end
+			end
+		end
 	else
 		tsToScr_dic = Dict{Int64, Vector{Int64}}()
 		tsScrToProp_dic = Dict{Tuple{Int64, Int64}, Float64}()
