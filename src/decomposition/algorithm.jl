@@ -6,7 +6,7 @@
 function heuristicSolve(modOpt_tup::NamedTuple, t_int::Int, opt_obj::DataType; rtrnMod::Bool=true, solDet::Bool=false, fltSt::Bool=true)
 
 	# create and solve model
-	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, repTsLvl = modOpt_tup.repTsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), forceScr = solDet ? Symbol() : nothing)
+	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, repTsLvl = modOpt_tup.repTsLvl, frsLvl = modOpt_tup.frsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), forceScr = solDet ? Symbol() : nothing)
 	
 	prepareMod!(heu_m, opt_obj, t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)

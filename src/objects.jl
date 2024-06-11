@@ -554,6 +554,7 @@ mutable struct anyModel <: AbstractModel
 		#endregion
 
 		#region # * create part objects and general mappings
+		
 		sysArr_dic = Dict{Symbol,Array{Int64,1}}()
 		# assign actual tech to parents
 		for sys in [(:Te, "technology"), (:Exc, "exchange")]
@@ -600,3 +601,5 @@ mutable struct anyModel <: AbstractModel
 
 	anyModel() = new()
 end
+
+#endregion

@@ -270,7 +270,6 @@ mutable struct bendersObj
 			push!(top_m.report, (2, "limit", "", "enforced at least one limit across scenarios which creates a complicating constraint, Benders can not converge in case of overlapping complicating constraints (e.g., a national and system-wide emission limit)"))
 			errorTest(unique(top_m.report), top_m.options, write = true)
 			produceMessage(report_m.options, report_m.report, 1, " - Added complicating constraints to top-problem", testErr = false, printErr = false)
-
 		end
 
 		#endregion

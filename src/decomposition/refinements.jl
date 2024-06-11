@@ -18,8 +18,50 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# ! get starting solution with heuristic solve or generic
 		if stabSetup_obj.ini.setup != :none
 			produceMessage(report_m.options, report_m.report, 1, " - Started heuristic pre-solve for starting solution", testErr = false, printErr = false)
-			~, startSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = true);
+			heu_m, startSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = true);
 			lowBd_fl = 0.0
+
+			top_m = benders_obj.top
+			# extend starting solution with complicating limits
+			for var in filter(x -> occursin("BendersCom", string(x)), keys(top_m.parts.lim.var))
+				# get relevant variables from heuristic model
+				heuVar_df = getAllVariables(:emission, heu_m)
+				# get relevant complicating variables
+				comVar_df = copy(select(top_m.parts.lim.var[var], Not([:var])))
+				comVar_df[!,:Ts_dis] = getindex.(comVar_df[!,:sub], 1)
+				comVar_df[!,:scr] = getindex.(comVar_df[!,:sub], 2)
+				# check where values are defined
+				comVar_df[!,:value] = aggDivVar(heuVar_df, comVar_df, tuple(intersect(intCol(comVar_df), intCol(heuVar_df))...), top_m.sets)
+				# compute value for cases where complicating variabels were found in heuristic problem  
+				comVarWith_df = filter(x -> x.value != AffExpr(), comVar_df)
+				comVarWith_df[!,:value] = value.(comVarWith_df[!,:value])
+				# compute expected values for each scenario / timestep combination and use for undefiend values
+				expVarWith_df = combine(y -> (value = sum(y.value)/length(y.value),), groupby(comVarWith_df, filter(x -> x != :scr, intCol(comVarWith_df))))
+				comVarWithout_df = select(filter(x -> x.value == AffExpr(), comVar_df), Not([:value]))	
+				if isempty(comVarWithout_df)
+					comVarBoth_df = comVarWith_df
+					comVarWithout_df[!,:value] .= Float64[]
+				else
+					comVarWithout_df = innerjoin(comVarWithout_df, expVarWith_df, on = filter(x -> x != :scr, intersect(intCol(expVarWith_df), intCol(comVar_df))))
+					comVarBoth_df = vcat(comVarWith_df, comVarWithout_df)
+				end
+				# remove timestep and scenario info again and add to starting solution
+				comVarBoth_df = vcat(comVarWith_df, comVarWithout_df)
+				relCol_arr = filter(x -> !(x in (:Ts_dis, :scr)), intCol(comVarBoth_df, :sub))
+				startSol_obj.lim[var] = innerjoin(select(copy(top_m.parts.lim.var[var]), Not([:var])), select(comVarBoth_df, vcat(relCol_arr,[:value])), on = relCol_arr)
+			end
+
+			# extend starting solution with storage levels
+			for tSym in keys(top_m.parts.tech)
+				if :stLvl in keys(top_m.parts.tech[tSym].var)
+					lvlTop_df = select(copy(top_m.parts.tech[:h2Cavern].var[:stLvl]), Not([:var]))
+					lvlHeu_df = copy(heu_m.parts.tech[:h2Cavern].var[:stLvl])
+					lvlHeu_df[!,:scr] .= 0
+					lvlHeu_df[!,:value] .= value.(lvlHeu_df[!,:var])
+					startSol_obj.stLvl[tSym] = innerjoin(lvlTop_df, select(lvlHeu_df, Not([:scr,:var])), on = filter(x -> x != :scr, intCol(lvlHeu_df)))
+				end
+			end
+	
 		else
 			@suppress optimize!(benders_obj.top.optModel)
 			startSol_obj = resData()
