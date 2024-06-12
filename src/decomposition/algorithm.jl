@@ -894,7 +894,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = fa
 			# continue in case of technology without changing capacites
 			if part_dic[sSym].type == :stock &&  part_dic[sSym].decomm == :none continue end	
 
-			varSym_arr = filter(x -> any(occursin.(string.(var_arr), string(x))), keys(part_dic[sSym].var))
+			varSym_arr = filter(x -> any(occursin.(string.(var_arr), string(x))) && x != :stLvl, keys(part_dic[sSym].var))
 
 			# get relevant capcities filtering fixed ones in case option is active
 			capa_dic[sys][sSym] = Dict{Symbol, DataFrame}()
