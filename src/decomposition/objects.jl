@@ -4,6 +4,7 @@
 # setup for benders computation
 mutable struct algSetup
 	gap::Float64 # target gap
+	inAcc::Symbol # method used for inaccurate cuts
 	delCut::Int # number of iterations since cut creation or last binding before cut is deleted
 	useVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}} # use vaild inequalities
 	reportFreq::Int # number of iterations report files are written
@@ -15,8 +16,8 @@ mutable struct algSetup
 	conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} # range and interpolation method for convergence criteria of subproblems, use of crossover for sub-problems when using barrier
 	solOpt::NamedTuple{(:dbInf, :numFoc), Tuple{Bool, Int64}} # infeasible variable at start of foresight period, numeric focus for top-problem, factor by which quadratic trust-region is allowed to violate paramete range
 
-	function algSetup(gap_fl::Float64, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, threads_int::Int, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false), solOpt::NamedTuple{(:dbInf, :numFoc), Tuple{Bool, Int64}} = (dbInf = true, numFoc = 3))
-		return new(gap_fl, delCut_int, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, threads_int, opt_type, rngVio, conSub, solOpt)
+	function algSetup(gap_fl::Float64, inAcc_sym::Symbol, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, threads_int::Int, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false), solOpt::NamedTuple{(:dbInf, :numFoc), Tuple{Bool, Int64}} = (dbInf = true, numFoc = 3))
+		return new(gap_fl, inAcc_sym, delCut_int, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, threads_int, opt_type, rngVio, conSub, solOpt)
 	end
 end
 
