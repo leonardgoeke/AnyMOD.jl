@@ -4,7 +4,6 @@
 # setup for benders computation
 mutable struct algSetup
 	gap::Float64 # target gap
-	inAcc::Symbol # method used for inaccurate cuts
 	delCut::Int # number of iterations since cut creation or last binding before cut is deleted
 	useVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}} # use vaild inequalities
 	reportFreq::Int # number of iterations report files are written
@@ -16,8 +15,8 @@ mutable struct algSetup
 	conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} # range and interpolation method for convergence criteria of subproblems, use of crossover for sub-problems when using barrier
 	solOpt::NamedTuple{(:dbInf, :numFoc), Tuple{Bool, Int64}} # infeasible variable at start of foresight period, numeric focus for top-problem, factor by which quadratic trust-region is allowed to violate paramete range
 
-	function algSetup(gap_fl::Float64, inAcc_sym::Symbol, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, threads_int::Int, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false), solOpt::NamedTuple{(:dbInf, :numFoc), Tuple{Bool, Int64}} = (dbInf = true, numFoc = 3))
-		return new(gap_fl, inAcc_sym, delCut_int, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, threads_int, opt_type, rngVio, conSub, solOpt)
+	function algSetup(gap_fl::Float64, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, threads_int::Int, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, conSub::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false), solOpt::NamedTuple{(:dbInf, :numFoc), Tuple{Bool, Int64}} = (dbInf = true, numFoc = 3))
+		return new(gap_fl, delCut_int, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, threads_int, opt_type, rngVio, conSub, solOpt)
 	end
 end
 
@@ -167,7 +166,7 @@ mutable struct bendersObj
 		#region # * initialize reporting
 
         # dataframe for reporting during iteration
-        itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_sub = Float64[])
+        itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_subTot = Float64[], time_sub = Array{Float64,1}[], numFoc = Array{Int,1}[])
         nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], variable = Symbol[], value = Float64[])
 
         # empty model just for reporting
@@ -192,7 +191,7 @@ mutable struct bendersObj
 		produceMessage(report_m.options, report_m.report, 1, " - Started creation of top-problem", testErr = false, printErr = false)
 
 		top_m = anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel_" * info_ntup.name, frsLvl = info_ntup.frsLvl, supTsLvl = info_ntup.supTsLvl, repTsLvl = info_ntup.repTsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, createVI = algSetup_obj.useVI)
-		sub_tup = tuple([(x.Ts_dis, x.scr) for x in eachrow(top_m.parts.obj.par[:scrProb].data)]...) # get all time-step/scenario combinations
+		sub_tup = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(top_m.parts.obj.par[:scrProb].data)])...) # get all time-step/scenario combinations
 
 		# creation of sub-problems
 
@@ -256,7 +255,7 @@ mutable struct bendersObj
 				
 				# create constraints using complicating variables
 				topVar_df = copy(top_m.parts.lim.var[compl])
-				topVar_df[!,:var] = map(x -> x.var * top_m.scr.scrProb[x.sub], eachrow(topVar_df))
+				topVar_df[!,:var] = map(x -> x.var * ((!(:scr in keys(x)) || x.scr == 0) ? top_m.scr.scrProb[x.sub] : 1.0), eachrow(topVar_df))
 				allCompl_df = unique(select(allCompl_df, Not([:sub])))
 				allCompl_df[!,:var] = aggDivVar(topVar_df, allCompl_df, tuple(intCol(allCompl_df)...), top_m.sets)
 
@@ -289,3 +288,5 @@ mutable struct bendersObj
 end
 
 #endregion
+
+sub_tup = ((3,2),(3,1))

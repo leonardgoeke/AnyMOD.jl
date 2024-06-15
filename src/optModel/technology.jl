@@ -278,7 +278,7 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 		allVar_df = joinMissing(allVar_df, modeDep_df, namesSym(modeDep_dic[va]), :left, Dict(:M => 0))
 	
 		# adjust table for case of reduced foresight and stochastic storage
-		if anyM.scr.frsLvl != 0 && va == :stLvl && part.stCyc != -1 
+		if va == :stLvl && part.stCyc != -1 && part.stCyc < anyM.scr.frsLvl && anyM.scr.frsLvl != 0  
 		
 			# get time-steps that are at the start of a foresight period
 			frsStep_arr = [getDescendants(x, anyM.sets[:Ts], false, y) for x in getfield.(getNodesLvl(anyM.sets[:Ts], anyM.scr.frsLvl), :idx), y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x], :lvl), allVar_df[!,:Ts_dis]))]
@@ -346,7 +346,7 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 		end
 	
 		# extend table again for case of reduced foresight 
-		if anyM.scr.frsLvl != 0 && va == :stLvl && anyM.subPro != (0,0) && part.stCyc != -1
+		if anyM.scr.frsLvl != 0 && va == :stLvl && anyM.subPro != (0,0) && part.stCyc != -1 && part.stCyc < anyM.scr.frsLvl
 			# create entries for all conceivable scenarios for start of each period again
 			allScr_arr = filter(x -> x != 0, collect(keys(anyM.sets[:scr].nodes)))
 			allVar_df[!,:scr] = map(x ->  x.scr == 0 ? allScr_arr : [x.scr], eachrow(allVar_df))

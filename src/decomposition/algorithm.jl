@@ -262,7 +262,7 @@ end
 function buildSub(id::Int, genSetup_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
 	# create sub-problems
 	sub_m = anyModel(inputFolder_ntup.in, inputFolder_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, repTsLvl = genSetup_ntup.repTsLvl, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.solOpt.dbInf, reportLvl = 1)
-	sub_m.subPro = tuple([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)]...)[id]
+	sub_m.subPro = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)])...)[id]
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.threads)
 	set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
 
@@ -326,7 +326,7 @@ function runTop(benders_obj::bendersObj)
 			stab_obj.dynPar[stab_obj.actMet][:yps] = (1 - opt_tup.lam) * (stab_obj.objVal - lowBd_fl*benders_obj.top.options.scaFac.obj) / benders_obj.top.options.scaFac.obj
 			ell_fl = stab_obj.objVal/benders_obj.top.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
 			set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], ell_fl)
-            optimize!(benders_obj.top.optModel)
+			@suppress optimize!(benders_obj.top.optModel)
         end
 
 		while stab_obj.method[stab_obj.actMet] == :lvl1 && termination_status(benders_obj.top.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) 
@@ -351,7 +351,7 @@ function runTop(benders_obj::bendersObj)
 				stab_obj.dynPar[stab_obj.actMet] = max(stab_obj.methodOpt[stab_obj.actMet].low, stab_obj.dynPar[stab_obj.actMet] * stab_obj.methodOpt[stab_obj.actMet].fac)
 				centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, benders_obj.report.mod)
 				# solve again
-				optimize!(benders_obj.top.optModel)
+				@suppress optimize!(benders_obj.top.optModel)
 			end
 		end
 
@@ -456,27 +456,30 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	#region # * solve problem
 
 	# set optimizer attributes and solves
-	if sol_sym == :barrier
-		set_optimizer_attribute(sub_m.optModel, "Method", 2)
-		set_optimizer_attribute(sub_m.optModel, "Crossover", crsOver_boo ? 1 : 0)
-		set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
-		set_optimizer_attribute(sub_m.optModel, "BarConvTol", optTol_fl)
-	elseif sol_sym == :simplex
-		set_optimizer_attribute(sub_m.optModel, "Method", 1)
-		set_optimizer_attribute(sub_m.optModel, "Threads", 1)
-		set_optimizer_attribute(sub_m.optModel, "OptimalityTol", optTol_fl)
-		set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
+	@suppress begin
+		if sol_sym == :barrier
+			set_optimizer_attribute(sub_m.optModel, "Method", 2)
+			set_optimizer_attribute(sub_m.optModel, "Crossover", crsOver_boo ? 1 : 0)
+			set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
+			set_optimizer_attribute(sub_m.optModel, "BarConvTol", optTol_fl)
+		elseif sol_sym == :simplex
+			set_optimizer_attribute(sub_m.optModel, "Method", 1)
+			set_optimizer_attribute(sub_m.optModel, "Threads", 1)
+			set_optimizer_attribute(sub_m.optModel, "OptimalityTol", optTol_fl)
+			set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
+		end
 	end
 
 	# increase numeric focus if model did not solve
 	numFoc_int = 0
 	while true
-		set_optimizer_attribute(sub_m.optModel, "NumericFocus", numFoc_int)
-		optimize!(sub_m.optModel)
+		@suppress set_optimizer_attribute(sub_m.optModel, "NumericFocus", numFoc_int)
+		@suppress optimize!(sub_m.optModel)
 		if termination_status(sub_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3 
 			break
 		else
 			numFoc_int = numFoc_int + 1
+
 		end
 	end
 	checkIIS(sub_m)
@@ -537,7 +540,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 
 	#endregion
 
-	return resData_obj, elpSub_time, lss_fl
+	return resData_obj, elpSub_time, lss_fl, numFoc_int
 end
 
 # ! run sub-problem on worker (sub_m is a global variable at package scope)
@@ -1111,7 +1114,7 @@ function writeStLvlRes(top_m::anyModel, sub_dic::Dict{Tuple{Int64, Int64}, anyMo
 end
 
 # report on benders iteration
-function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_time::Millisecond, timeSub_dic::Dict{Tuple{Int64,Int64},Millisecond}, lss_dic::Dict{Tuple{Int64,Int64},Float64})
+function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_time::Millisecond, timeSub_dic::Dict{Tuple{Int64,Int64},Millisecond}, lss_dic::Dict{Tuple{Int64,Int64},Float64}, numFoc_dic::Dict{Tuple{Int64,Int64},Int64})
 
 	report_obj = benders_obj.report
 	report_m = report_obj.mod
@@ -1120,17 +1123,25 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 	#region # * reporting to terminal
 
 	timeTop_fl = Dates.toms(elpTop_time) / Dates.toms(Second(1))
-	timeSub_fl = (benders_obj.algOpt.dist ? maximum(collect(values(timeSub_dic))) : sum(collect(values(timeSub_dic)))) |> (ms -> Dates.toms(ms) / Dates.toms(Second(1)))
+	timeSubTot_fl = (benders_obj.algOpt.dist ? maximum(collect(values(timeSub_dic))) : sum(collect(values(timeSub_dic)))) |> (ms -> Dates.toms(ms) / Dates.toms(Second(1)))
+	timeSub_arr = round.(getindex.(sort(collect(timeSub_dic)),2) |> (ms -> Dates.toms.(ms) / Dates.toms(Second(1)) ./ 60) , sigdigits = 3)
+	numFoc_arr = getindex.(sort(collect(numFoc_dic)),2)
 
 	if benders_obj.nearOpt.cnt == 0
 		produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Lower: $(round(itr_obj.res[:lowLimCost], sigdigits = 8)), Upper: $(round(itr_obj.res[:curBest], sigdigits = 8)), Optimality gap: $(round(benders_obj.itr.gap, sigdigits = 4))", testErr = false, printErr = false)
 	else
 		produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Objective: $(benders_obj.nearOpt.setup.obj[benders_obj.nearOpt.cnt][1]), Objective value: $(round(benders_obj.itr.res[:nearObj], sigdigits = 8)), Feasibility gap: $(round(benders_obj.itr.gap, sigdigits = 4))", testErr = false, printErr = false)
 	end
-	produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Time for top: $timeTop_fl Time for sub: $timeSub_fl", testErr = false, printErr = false)
+	produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Time for top: $timeTop_fl Time for sub: $timeSubTot_fl", testErr = false, printErr = false)
 
 	if Dates.value(floor(now() - report_m.options.startTime, Dates.Minute(1))) > benders_obj.algOpt.timeLim
 		produceMessage(report_m.options, report_m.report, 1, " - Aborted due to time-limit!", testErr = false, printErr = false)
+	end
+
+	for sub in keys(numFoc_dic)
+		if numFoc_dic[sub] != 0
+			produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Numeric focus of sub-problem $sub had to be increased to $(numFoc_dic[sub]) for the iteration", testErr = false, printErr = false)
+		end
 	end
 
 	#endregion
@@ -1139,7 +1150,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 
 	# ! iteration reporting
 	etr_arr = Pair{Symbol,Any}[:i => itr_obj.cnt.i, :lowCost => itr_obj.res[:lowLimCost], :bestObj => itr_obj.res[:curBest], :gap => benders_obj.itr.gap, :curCost => itr_obj.res[:actTotCost],
-					:time_ges => Dates.value(floor(now() - report_obj.mod.options.startTime, Dates.Second(1)))/60, :time_top => timeTop_fl/60, :time_sub => timeSub_fl/60]
+					:time_ges => Dates.value(floor(now() - report_obj.mod.options.startTime, Dates.Second(1)))/60, :time_top => timeTop_fl/60, :time_subTot => timeSubTot_fl/60, :time_sub => timeSub_arr, :numFoc => numFoc_arr]
 
 	# add info about stabilization
 	if !isnothing(benders_obj.stab) 
@@ -1203,7 +1214,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 		end
 	end
 
-	# ! write  reports
+	# ! write reports
 	if itr_obj.cnt.i%benders_obj.algOpt.reportFreq == 0 
 		CSV.write(report_obj.mod.options.outDir * "/iterationBenders_$(benders_obj.info.name).csv", report_obj.itr)
 		if !isnothing(benders_obj.nearOpt.setup) CSV.write(report_obj.mod.options.outDir * "/nearOptSol_$(benders_obj.info.name).csv", report_obj.nearOpt) end
@@ -1240,8 +1251,45 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res
 			runSub(benders_obj.sub[s], copy(benders_obj.itr.best), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
 		end
 	end
+
+	# merge general results into single files
+	for res in res_ntup.general
+		# get all relevant csv files
+		mergFile_arr = sort(filter(x -> occursin("results_" * string(res), x) && occursin(benders_obj.info.name, x), readdir(benders_obj.report.mod.options.outDir)))
+
+		# read in files and merge into one
+		merged_df = CSV.read(benders_obj.report.mod.options.outDir * "/" * mergFile_arr[end], DataFrame, stringtype = String)
+		merged_df[!,:scenario] .= "none"
+
+		# add foresight column to costs if needed
+		if res == :cost && benders_obj.top.scr.frsLvl != benders_obj.top.supTs.lvl
+			merged_df[!,:timestep_foresight] .= "none"
+		end
+
+		for file in mergFile_arr[1:end-1]
+			add_df = CSV.read(benders_obj.report.mod.options.outDir * "/" * file, DataFrame, stringtype = String)
+			# filter dispatch variables
+			filter!(x -> !(x.variable in ("capaConv", "capaStIn", "capaStOut", "capaStSize", "capaExc")), add_df)
+			if isempty(add_df) continue end
+			# makes adjustments to cost results
+			if res == :cost
+				sub_tup = sort(collect(keys(benders_obj.sub)))[parse(Int,split(add_df[1,:objName],"_")[2])]
+				add_df[!,:scenario] .= benders_obj.top.sets[:scr].nodes[sub_tup[2]].val
+				if benders_obj.top.scr.frsLvl != benders_obj.top.supTs.lvl
+					add_df[!,:timestep_foresight] .= benders_obj.top.sets[:Ts].nodes[sub_tup[1]].val
+				end
+			end
+			append!(merged_df, add_df)
+		end
+
+		merged_df[!,:objName] .= benders_obj.info.name 
+
+		# write merged file and remove others
+		CSV.write(benders_obj.report.mod.options.outDir * "/" * "results_" * string(res) * "_" * benders_obj.info.name * ".csv", orderDf(merged_df))
+		rm.(benders_obj.report.mod.options.outDir .* "/" .* mergFile_arr)
+
+	end
 	
 end
-
 
 #endregion

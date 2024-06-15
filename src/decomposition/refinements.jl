@@ -75,7 +75,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		#region # * evaluate heuristic solution
 	
 		# first result for first iteration
-		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_sub = 0)
+		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_subTot = 0, time_sub = Float64[], numFoc = Int[])
 		if !isnothing(benders_obj.nearOpt.setup) firstItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			firstItr_df[!,:actMethod] .= Symbol()
@@ -87,13 +87,14 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# create dictionaries to store results
 		if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
 		time_dic = Dict{Tuple{Int64,Int64},Millisecond}()
+		numFoc_dic = Dict{Tuple{Int64,Int64},Int64}()
 		
 		# solve sub-problems
 		for (id, s) in enumerate(collect(keys(benders_obj.sub)))
 			if benders_obj.algOpt.dist # distributed case
 				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8)
 			else # non-distributed case
-				cutData_dic[s], time_dic[s], ~ = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8)
+				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8)
 			end
 		end
 		
@@ -101,7 +102,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		if benders_obj.algOpt.dist
 			wait.(collect(values(futData_dic)))
 			for s in collect(keys(benders_obj.sub))
-				cutData_dic[s], time_dic[s], ~  = fetch(futData_dic[s])
+				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = fetch(futData_dic[s])
 			end
 		end
 	
@@ -110,15 +111,18 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 
 		# analyse results
 		startSol_obj.objVal = startSol_obj.objVal + sum(map(x -> x.objVal, values(cutData_dic)))
-		timeSub_fl = Dates.toms(benders_obj.algOpt.dist ? maximum(collect(values(time_dic))) : sum(collect(values(time_dic)))) / Dates.toms(Second(1))
+		timeSubTot_fl = Dates.toms(benders_obj.algOpt.dist ? maximum(collect(values(time_dic))) : sum(collect(values(time_dic)))) / Dates.toms(Second(1))
+		timeSub_arr = round.(getindex.(sort(collect(time_dic)),2) |> (ms -> Dates.toms.(ms) / Dates.toms(Second(1)) ./ 60) , sigdigits = 3)
+		numFoc_arr = getindex.(sort(collect(numFoc_dic)),2)
 		
 		# write results for second iteration
-		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_sub = timeSub_fl)
+		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_subTot = timeSubTot_fl/60, time_sub = [timeSub_arr], numFoc = [numFoc_arr])
 		if !isnothing(benders_obj.nearOpt.setup) secItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			secItr_df[!,:actMethod] .= Symbol()
 			foreach(x -> secItr_df[!,Symbol("dynPar_",x[1])] .= 0.0, stabSetup_obj.method)
 		end
+
 		append!(benders_obj.report.itr, secItr_df)
 
 		#endregion

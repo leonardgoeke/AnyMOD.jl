@@ -121,7 +121,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
     techSym_arr = collect(keys(anyM.parts.tech))
 	allData_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], scr = Int[], Ts_frs = Int[], id = Int[], variable = Symbol[], value = Float64[])
-	if anyM.scr.frsLvl == anyM.supTs.lvl || !(length(anyM.scr.scrProb) > 1) select!(allData_df, Not([:Ts_frs])) end
+	if anyM.scr.frsLvl == anyM.supTs.lvl || !(length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0))) select!(allData_df, Not([:Ts_frs])) end
 
 	# ! get demand values
 	if :dem in keys(anyM.parts.bal.par) && (anyM.subPro != tuple(0,0) || anyM.options.createVI.bal)
@@ -150,7 +150,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 			end
 
 			# add foresight period if applies
-			if anyM.scr.frsLvl != anyM.supTs.lvl && length(anyM.scr.scrProb) > 1
+			if anyM.scr.frsLvl != anyM.supTs.lvl && (length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0)))
 				dem_df[!,:Ts_frs] = getTsFrs(dem_df[!,:Ts_dis], anyM.sets[:Ts], anyM.scr.frsLvl)
 				dem_df = flatten(dem_df,:Ts_frs)
 			end
@@ -179,7 +179,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 			end
 
 			# aggregate and add expected value in case of scenarios
-			if length(anyM.scr.scrProb) > 1
+			if length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0))
 				dem_df = addExpVal(dem_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :val) 
 			end
 			dem_df = combine(groupby(dem_df, intersect(namesSym(dem_df), [:Ts_disSup, :Ts_frs, :R_dis, :C, :scr])), :val => ( x -> sum(x) / 1000) => :value)
@@ -261,7 +261,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		end
 
 		# add foresight period if applies
-		if anyM.scr.frsLvl != anyM.supTs.lvl && length(anyM.scr.scrProb) > 1
+		if anyM.scr.frsLvl != anyM.supTs.lvl && (length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0)))
 			checkScrFrs_boo = false
 			# add dispatch timestep if non-existing (can only occur for emissionInf)
 			if !(:Ts_dis in namesSym(allVar_df))
@@ -276,7 +276,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
 		# add expected value in case of scenarios and aggregate
 		allVar_df[!,:value] .= value.(allVar_df[!,:var])
-		if :Ts_dis in namesSym(allVar_df) && length(anyM.scr.scrProb) > 1
+		if :Ts_dis in namesSym(allVar_df) && (length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0)))
 			allVar_df = vcat(addExpVal(select(filter(x -> x.scr != 0, allVar_df),Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value), select(filter(x -> x.scr == 0, allVar_df)))
 		end
 		disp_df = combine(groupby(allVar_df, intersect(intCol(allVar_df), intersect(namesSym(allVar_df),[:Ts_disSup, :Ts_frs, :R_dis, :C, :Te, :scr]))), :value => (x -> sum(x)) => :value)
@@ -313,13 +313,13 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		allExc_arr = unique(allExc_df[!,:Exc])
 	
 		# add foresight period if applies
-		if anyM.scr.frsLvl != anyM.supTs.lvl && length(anyM.scr.scrProb) > 1
+		if anyM.scr.frsLvl != anyM.supTs.lvl && (length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0)))
 			allExc_df[!,:Ts_frs] = getTsFrs(allExc_df[!,:Ts_dis], anyM.sets[:Ts], anyM.scr.frsLvl)
 			allExc_df = flatten(allExc_df,:Ts_frs)
 		end
 		
 		# get values and add expected value in case of scenarios
-		if length(anyM.scr.scrProb) > 1
+		if length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0))
 			allExc_df = addExpVal(allExc_df, anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :var)
 		end
 		
@@ -349,7 +349,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 			capaFlh_df = filter(x -> x.variable == flhCapa, allData_df)
 			
 			# expand to scenarios if sensible
-			if anyM.scr.frsLvl <= anyM.supTs.lvl && length(anyM.scr.scrProb) > 1
+			if anyM.scr.frsLvl <= anyM.supTs.lvl && (length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0)))
 				capaFlh_df[!,:scr] = map(x -> vcat([0], anyM.scr.scr[x]), capaFlh_df[!,:Ts_disSup])
 				capaFlh_df = flatten(capaFlh_df, :scr)
 			end
@@ -557,7 +557,7 @@ function reportResults(objGrp::Val{:cost}, anyM::anyModel; addObjName::Bool=true
 end
 
 # ! results for exchange
-function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=true, wrtNet::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, expVal::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
+function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=true, wrtNet::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
 	if isempty(anyM.parts.exc) error("No exchange data found") end
 
@@ -597,12 +597,14 @@ function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=
 		disp_df[!,:value] = value.(disp_df[!,:var])
 		
 		# add foresight period if applies
-		if anyM.scr.frsLvl != anyM.supTs.lvl && length(anyM.scr.scrProb) > 1
+		if anyM.scr.frsLvl != anyM.supTs.lvl && (length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0)))
 			disp_df[!,:Ts_frs] = getTsFrs(disp_df[!,:Ts_dis], anyM.sets[:Ts], anyM.scr.frsLvl)
 			disp_df = flatten(disp_df,:Ts_frs)
 		end
 
-		if expVal disp_df = addExpVal(select(disp_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value) end
+		if length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0))
+			disp_df = addExpVal(select(disp_df,Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value)
+		end
 		disp_df = combine(groupby(disp_df, [:Ts_expSup, :Ts_disSup, :R_from, :R_to, :C, :Exc, :scr]), :value => (x -> sum(x) ./ 1000) => :value)
 
 		disp_df[!,:variable] .= :exc
