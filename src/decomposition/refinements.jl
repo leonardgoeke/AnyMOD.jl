@@ -36,7 +36,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 				comVarWith_df = filter(x -> x.value != AffExpr(), comVar_df)
 				comVarWith_df[!,:value] = value.(comVarWith_df[!,:value])
 				# compute expected values for each scenario / timestep combination and use for undefiend values
-				expVarWith_df = combine(y -> (value = sum(y.value)/length(y.value),), groupby(comVarWith_df, filter(x -> x != :scr, intCol(comVarWith_df))))
+				expVarWith_df = combine(y -> (value = sum(y.value) / length(y.value),), groupby(comVarWith_df, filter(x -> x != :scr, intCol(comVarWith_df))))
 				comVarWithout_df = select(filter(x -> x.value == AffExpr(), comVar_df), Not([:value]))	
 				if isempty(comVarWithout_df)
 					comVarBoth_df = comVarWith_df
@@ -357,13 +357,12 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, t
 	expExpr_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!, [:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
 	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x], collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
-	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
+	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : select(z, [:var, :value, :scaFac]))
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
 
 	# set lower and upper bound
-	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], x.value * (1 - stab_obj.methodOpt[stab_obj.actMet].low) |> (y -> y < top_m.options.coefRng.rhs[1] / 1e2 ? 0.0 : y))), eachrow(allVar_df))
-	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], max(stab_obj.methodOpt[stab_obj.actMet].minUp/z[2], x.value * (1 + stab_obj.methodOpt[stab_obj.actMet].up)))), eachrow(allVar_df))
-
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], x.value * (1 - stab_obj.methodOpt[stab_obj.actMet].low * (x.value >= 0.0 ? 1.0 : -1.0)) |> (y -> y < top_m.options.coefRng.rhs[1] / 1e2 ? 0.0 : y))), eachrow(allVar_df))
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], x.value >= 0.0 ? max(stab_obj.methodOpt[stab_obj.actMet].minUp / z[2], x.value * (1 + stab_obj.methodOpt[stab_obj.actMet].up)) : min(x.value + stab_obj.methodOpt[stab_obj.actMet].minUp / z[2], x.value * (1 - stab_obj.methodOpt[stab_obj.actMet].up)))), eachrow(allVar_df))
 end
 
 # function for doubly stabilised bundle method
@@ -651,11 +650,27 @@ function removeStab!(benders_obj::bendersObj)
 		unregister(benders_obj.top.optModel, :r)
 	elseif stab_obj.method[stab_obj.actMet] == :box
 		stabVar_dic = matchValWithVar(stab_obj.var, stab_obj.weight, benders_obj.top)
-		for grp in (:capa, :stLvl), sys in keys(stabVar_dic[grp]), sSym in keys(stabVar_dic[grp][sys]), capaSym in keys(stabVar_dic[grp][sys][sSym])
-			relVar_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[grp][sys][sSym][capaSym][!,:var])
-			delete_lower_bound.(relVar_arr)
-			set_lower_bound.(relVar_arr, 0.0)
-			delete_upper_bound.(relVar_arr)
+		# delete limits on capacity
+		for sys in keys(stabVar_dic[:capa]), sSym in keys(stabVar_dic[:capa][sys]), capaSym in keys(stabVar_dic[:capa][sys][sSym])
+			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:capa][sys][sSym][capaSym][!,:var])
+			delete_lower_bound.(rmvLim_arr)
+			set_lower_bound.(rmvLim_arr, 0.0)
+			delete_upper_bound.(rmvLim_arr)
+		end
+
+		# delete limits on storage level
+		for sSym in keys(stabVar_dic[:stLvl])
+			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:stLvl][sSym][!,:var])
+			delete_lower_bound.(rmvLim_arr)
+			set_lower_bound.(rmvLim_arr, 0.0)
+			delete_upper_bound.(rmvLim_arr)
+		end
+
+		# delete limits on complicating limits
+		for limSym in keys(stabVar_dic[:lim])
+			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:lim][limSym][!,:var])
+			delete_lower_bound.(rmvLim_arr)
+			delete_upper_bound.(rmvLim_arr)
 		end
 	end
 end

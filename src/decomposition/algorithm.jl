@@ -383,7 +383,6 @@ function runTop(benders_obj::bendersObj)
 	end
 	benders_obj.itr.res[:lvlDual] = levelDual_fl
 
-
 	# get costs(!) of top-problem
 	benders_obj.itr.res[:topCost] = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var]))
 	benders_obj.itr.res[:estSubCost] = value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var])
