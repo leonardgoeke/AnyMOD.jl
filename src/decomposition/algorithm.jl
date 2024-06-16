@@ -1088,30 +1088,6 @@ end
 
 #region # * reporting
 
-# write storage levels for case of reduced foresight
-function writeStLvlRes(top_m::anyModel, sub_dic::Dict{Tuple{Int64, Int64}, anyModel}, sub_tup::Tuple, i::Int, stReport_df::DataFrame)
-
-	# get levels from top-problem
-	for x in filter(x -> :stLvl in keys(top_m.parts.tech[x].var), keys(top_m.parts.tech))
-		data_df = printObject(top_m.parts.tech[x].var[:stLvl], top_m, rtnDf = (:csvDf,))
-		data_df[!,:i] .= i
-		append!(stReport_df, rename(data_df, :variable => :value))
-	end
-
-	# get levels from subproblems
-	for s in collect(sub_tup)
-		for x in filter(x -> :stLvl in keys(sub_dic[s].parts.tech[x].var), keys(sub_dic[s].parts.tech))
-			data_df = printObject(sub_dic[s].parts.tech[x].var[:stLvl], sub_dic[s], rtnDf = (:csvDf,))
-			data_df[!,:i] .= i
-			append!(stReport_df, rename(data_df, :variable => :value))
-		end
-	end
-
-	CSV.write(modOpt_tup.resultDir * "/stLvl_$(replace(top_m.options.objName, "topModel" => "")).csv", stReport_df)
-
-	return stReport_df
-end
-
 # report on benders iteration
 function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_time::Millisecond, timeSub_dic::Dict{Tuple{Int64,Int64},Millisecond}, lss_dic::Dict{Tuple{Int64,Int64},Float64}, numFoc_dic::Dict{Tuple{Int64,Int64},Int64})
 
