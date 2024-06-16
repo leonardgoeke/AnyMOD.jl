@@ -786,7 +786,6 @@ end
 
 # ! computes convergence tolerance for subproblems
 function getConvTol(gapCur_fl::Float64, gapEnd_fl::Float64, conSub_tup::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}})
-
 	if conSub_tup.int == :lin
 		m = (conSub_tup.rng[1] - conSub_tup.rng[2])/(1-gapEnd_fl)
 		b = conSub_tup.rng[1] - m
@@ -799,6 +798,8 @@ function getConvTol(gapCur_fl::Float64, gapEnd_fl::Float64, conSub_tup::NamedTup
 		b = conSub_tup.rng[1]
 		m = (conSub_tup.rng[2] - b ) / log(gapEnd_fl)
 		return b + m * log(gapCur_fl)
+	elseif conSub_tup.int == :none
+		return conSub_tup.rng[2]
 	end
 end
 
