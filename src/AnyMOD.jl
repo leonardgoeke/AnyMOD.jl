@@ -39,7 +39,7 @@ module AnyMOD
     # stochastic optimization
     export algSetup, stabSetup, nearOptSetup, bendersObj, resData # objects
     export buildSub, initializeStab!, prepareMod! # low-level processing
-    export runSub, runTop, runTopWithoutStab!, checkConvergence, updateIteration!, reportBenders!, writeBendersResults!, getComVar # functions for iteration
+    export runSub, runTop, runTopWithoutStab!, checkConvergence, updateIteration!, reportBenders!, writeBendersResults!, getComVar, getConvTol # functions for iteration
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
     function __init__()
