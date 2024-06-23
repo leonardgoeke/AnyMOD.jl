@@ -679,7 +679,7 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 			if :scr in intCol(allLimit_df)
 				comLimit_df = filter(x -> x.scr == 0, allLimit_df)
 			end
-		
+
 			# covering several subproblems due to timestep resolution
 			if anyM.supTs.lvl < anyM.scr.lvl
 				if !(:Ts_dis in intCol(allLimit_df))
@@ -688,31 +688,34 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 					comLimit_df = vcat(comLimit_df, filter(x -> anyM.sets[:Ts].nodes[x.Ts_dis].lvl < anyM.scr.lvl, allLimit_df))    
 				end
 			end
-			if !isempty(comLimit_df) comLimit_df = unique(comLimit_df) end
+		
+			if !isempty(comLimit_df) 
+				comLimit_df = unique(comLimit_df) 
 			
-			# remove complicating limits from all limits (filter case that there is only single column in the dataframe)
-			allLimit_df = isempty(intCol(allLimit_df)) ? filter(x -> false, allLimit_df) : antijoin(allLimit_df, comLimit_df, on = intCol(allLimit_df))
-			if isempty(intCol(allLimit_df)) comLimit_df[!,:scr] .= 0 end
+				# remove complicating limits from all limits (filter case that there is only single column in the dataframe)
+				allLimit_df = isempty(intCol(allLimit_df)) ? filter(x -> false, allLimit_df) : antijoin(allLimit_df, comLimit_df, on = intCol(allLimit_df))
+				if isempty(intCol(allLimit_df)) comLimit_df[!,:scr] .= 0 end
 
-			# filter only upper limits (include warning)
-			nonSupLim_arr = intersect([:Fix, :Low], namesSym(comLimit_df))
-			if !isempty(nonSupLim_arr)
-				push!(anyM.report, (2, "limit", string(va), "enforced a lower or fixed limit across scenarios, this is not supported and limit is dropped"))
-			end
+				# filter only upper limits (include warning)
+				nonSupLim_arr = intersect([:Fix, :Low], namesSym(comLimit_df))
+				if !isempty(nonSupLim_arr)
+					push!(anyM.report, (2, "limit", string(va), "enforced a lower or fixed limit across scenarios, this is not supported and limit is dropped"))
+				end
 
-			if :Up in namesSym(comLimit_df)
-				select!(comLimit_df, Not(nonSupLim_arr)) 
-			else
-				continue
+				if :Up in namesSym(comLimit_df)
+					select!(comLimit_df, Not(nonSupLim_arr)) 
+				else
+					continue
+				end
+		
+				# create complicatint variable and constraint
+				lock(anyM.lock)
+				partLim.var[Symbol(va,:BendersCom)] = createVar(orderDf(select(comLimit_df, filter(x -> x != :var, namesSym(comLimit_df)))),string(va,:BendersCom), NaN, anyM.optModel, anyM.lock, anyM.sets; scaFac = anyM.options.scaFac.dispConv, lowBd = va == :emission ? NaN : 0.0)
+				unlock(anyM.lock)
+				comLimitCns_df = innerjoin(partLim.var[Symbol(va,:BendersCom)], rename(select(comLimit_df, intCol(comLimit_df,:var)), :var => :limVar), on = intCol(comLimit_df))
+				comLimitCns_df[!,:cnsExpr] = map(x -> x.var - x.limVar, eachrow(comLimitCns_df))
+				cns_dic[Symbol(va,:BendersCom)] = cnsCont(select(comLimitCns_df, intCol(comLimitCns_df,:cnsExpr)), :greater)
 			end
-	
-			# create complicatint variable and constraint
-			lock(anyM.lock)
-			partLim.var[Symbol(va,:BendersCom)] = createVar(orderDf(select(comLimit_df, filter(x -> x != :var, namesSym(comLimit_df)))),string(va,:BendersCom), NaN, anyM.optModel, anyM.lock, anyM.sets; scaFac = anyM.options.scaFac.dispConv, lowBd = va == :emission ? NaN : 0.0)
-			unlock(anyM.lock)
-			comLimitCns_df = innerjoin(partLim.var[Symbol(va,:BendersCom)], rename(select(comLimit_df, intCol(comLimit_df,:var)), :var => :limVar), on = intCol(comLimit_df))
-			comLimitCns_df[!,:cnsExpr] = map(x -> x.var - x.limVar, eachrow(comLimitCns_df))
-			cns_dic[Symbol(va,:BendersCom)] = cnsCont(select(comLimitCns_df, intCol(comLimitCns_df,:cnsExpr)), :greater)
 		end
 
 		# ! write constraint containers

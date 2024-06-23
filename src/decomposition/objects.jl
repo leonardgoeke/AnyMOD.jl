@@ -288,5 +288,3 @@ mutable struct bendersObj
 end
 
 #endregion
-
-sub_tup = ((3,2),(3,1))
