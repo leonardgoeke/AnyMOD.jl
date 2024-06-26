@@ -75,7 +75,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		#region # * evaluate heuristic solution
 	
 		# first result for first iteration
-		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_subTot = 0, time_sub = Float64[], numFoc = Int[])
+		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_subTot = 0, time_sub = Float64[], numFoc = Int[], objName = benders_obj.info.name)
 		if !isnothing(benders_obj.nearOpt.setup) firstItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			firstItr_df[!,:actMethod] .= Symbol()
@@ -116,7 +116,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		numFoc_arr = getindex.(sort(collect(numFoc_dic)),2)
 		
 		# write results for second iteration
-		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_subTot = timeSubTot_fl/60, time_sub = [timeSub_arr], numFoc = [numFoc_arr])
+		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_subTot = timeSubTot_fl/60, time_sub = [timeSub_arr], numFoc = [numFoc_arr], objName = benders_obj.info.name)
 		if !isnothing(benders_obj.nearOpt.setup) secItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			secItr_df[!,:actMethod] .= Symbol()

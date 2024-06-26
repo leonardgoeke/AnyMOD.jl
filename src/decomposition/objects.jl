@@ -166,8 +166,8 @@ mutable struct bendersObj
 		#region # * initialize reporting
 
         # dataframe for reporting during iteration
-        itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_subTot = Float64[], time_sub = Array{Float64,1}[], numFoc = Array{Int,1}[])
-        nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], variable = Symbol[], value = Float64[])
+        itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_subTot = Float64[], time_sub = Array{Float64,1}[], numFoc = Array{Int,1}[], objName = String[])
+        nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], variable = Symbol[], value = Float64[], objName = String[])
 
         # empty model just for reporting
 		report_m = @suppress anyModel(String[], inputFolder_ntup.results, objName = "decomposition" * info_ntup.name) 
@@ -176,6 +176,7 @@ mutable struct bendersObj
 		if !isempty(stabSetup_obj.method)
 			itrReport_df[!,:actMethod] = fill(Symbol(), size(itrReport_df, 1))
 			foreach(x -> itrReport_df[!,Symbol("dynPar_", x[1])] = Union{Float64,Vector{Float64}}[fill(Float64[], size(itrReport_df, 1))...], stabSetup_obj.method)
+			select!(itrReport_df, vcat(filter(x -> x != :objName, namesSym(itrReport_df)), [:objName]))
 		end
 
 		# extend reporting dataframe in case of near-optimal
@@ -209,7 +210,7 @@ mutable struct bendersObj
 				benders_obj.sub[s], complCon_dic[s] = buildSub(id, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
 			end
 		end
-		
+
 		# finish creation of top-problems
 		top_m.subPro = tuple(0, 0)
 		@suppress prepareMod!(top_m, benders_obj.algOpt.opt, benders_obj.algOpt.threads)

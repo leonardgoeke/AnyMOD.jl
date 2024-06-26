@@ -1125,7 +1125,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 
 	# ! iteration reporting
 	etr_arr = Pair{Symbol,Any}[:i => itr_obj.cnt.i, :lowCost => itr_obj.res[:lowLimCost], :bestObj => itr_obj.res[:curBest], :gap => benders_obj.itr.gap, :curCost => itr_obj.res[:actTotCost],
-					:time_ges => Dates.value(floor(now() - report_obj.mod.options.startTime, Dates.Second(1)))/60, :time_top => timeTop_fl/60, :time_subTot => timeSubTot_fl/60, :time_sub => timeSub_arr, :numFoc => numFoc_arr]
+					:time_ges => Dates.value(floor(now() - report_obj.mod.options.startTime, Dates.Second(1)))/60, :time_top => timeTop_fl/60, :time_subTot => timeSubTot_fl/60, :time_sub => timeSub_arr, :numFoc => numFoc_arr, :objName => benders_obj.info.name]
 
 	# add info about stabilization
 	if !isnothing(benders_obj.stab) 
@@ -1185,13 +1185,14 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 			
 			# add iteration counter and add
 			newRes_df[!,:i] .= itr_obj.cnt.i
+			newRes_df[!,:objName] .= benders_obj.info.name
 			append!(report_obj.nearOpt, newRes_df)
 		end
 	end
 
 	# ! write reports
 	if itr_obj.cnt.i%benders_obj.algOpt.reportFreq == 0 
-		CSV.write(report_obj.mod.options.outDir * "/iterationBenders_$(benders_obj.info.name).csv", report_obj.itr)
+		CSV.write(report_obj.mod.options.outDir * "/iterationCuttingPlane_$(benders_obj.info.name).csv", report_obj.itr)
 		if !isnothing(benders_obj.nearOpt.setup) CSV.write(report_obj.mod.options.outDir * "/nearOptSol_$(benders_obj.info.name).csv", report_obj.nearOpt) end
 	end
 
