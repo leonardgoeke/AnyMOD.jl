@@ -54,8 +54,8 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			# extend starting solution with storage levels
 			for tSym in keys(top_m.parts.tech)
 				if :stLvl in keys(top_m.parts.tech[tSym].var)
-					lvlTop_df = select(copy(top_m.parts.tech[:h2Cavern].var[:stLvl]), Not([:var]))
-					lvlHeu_df = copy(heu_m.parts.tech[:h2Cavern].var[:stLvl])
+					lvlTop_df = select(copy(top_m.parts.tech[tSym].var[:stLvl]), Not([:var]))
+					lvlHeu_df = copy(heu_m.parts.tech[tSym].var[:stLvl])
 					lvlHeu_df[!,:scr] .= 0
 					lvlHeu_df[!,:value] .= value.(lvlHeu_df[!,:var])
 					startSol_obj.stLvl[tSym] = innerjoin(lvlTop_df, select(lvlHeu_df, Not([:scr,:var])), on = filter(x -> x != :scr, intCol(lvlHeu_df)))
@@ -90,7 +90,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		numFoc_dic = Dict{Tuple{Int64,Int64},Int64}()
 		
 		# solve sub-problems
-		for (id, s) in enumerate(collect(keys(benders_obj.sub)))
+		for (id, s) in enumerate(sort(collect(keys(benders_obj.sub))))
 			if benders_obj.algOpt.dist # distributed case
 				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8)
 			else # non-distributed case
@@ -101,7 +101,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# get solutions
 		if benders_obj.algOpt.dist
 			wait.(collect(values(futData_dic)))
-			for s in collect(keys(benders_obj.sub))
+			for s in collect(sort(keys(benders_obj.sub)))
 				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = fetch(futData_dic[s])
 			end
 		end
