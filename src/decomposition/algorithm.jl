@@ -310,6 +310,7 @@ function runTop(benders_obj::bendersObj)
 
 	# solve model
 	@suppress begin
+		set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.solOpt.dnsThrs)
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
@@ -557,7 +558,7 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 	for cut in cuts_arr
 		subCut = cut[2]
 		cutExpr_arr = Array{GenericAffExpr,1}()
-		
+
 		# compute cut element for each capacity
 		for sys in (:tech, :exc)
 			part_dic = getfield(top_m.parts, sys)
@@ -566,7 +567,7 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 				push!(cutExpr_arr, getBendersCut(subCut.capa[sys][sSym][capaSym], part_dic[sSym].var[capaSym], scaCapa_fl))
 			end
 		end
-	
+
 		# compute cut element for each storage level
 		if !isempty(subCut.stLvl)
 			for sSym in keys(subCut.stLvl)
@@ -576,23 +577,23 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 				end
 			end
 		end
-	
+
 		# compute cut element for each limit
 		if !isempty(subCut.lim)
 			for limSym in keys(subCut.lim)
 				push!(cutExpr_arr, getBendersCut(subCut.lim[limSym], filter(x -> x.sub == cut[1], top_m.parts.lim.var[limSym]), top_m.options.scaFac.dispConv)) 
 			end
 		end
-	
+
 		# get cut variable and compute cut expression 
 		cut_var = filter(x -> x.Ts_dis == cut[1][1] && x.scr == cut[1][2], top_m.parts.obj.var[:cut])[1,:var]
 		cut_expr = @expression(top_m.optModel, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)))
 		
 		#region # * remove extremely small terms and limit the coefficient of extremely large terms
 		limCoef_boo = false
-	
+
 		if typeof(cut_expr) == AffExpr && !isempty(cut_expr.terms)
-	
+
 			# ! ensure cut variable complies with limits on rhs
 			cutFac_fl = abs(collect(values(cut_var.terms))[1]) # get scaling factor of cut variable
 			scaRng_tup = (top_m.options.coefRng.rhs[1] / rngVio_fl, top_m.options.coefRng.rhs[2] * rngVio_fl) ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
@@ -614,10 +615,10 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 			if maxRng_fl < facRng_fl[2]/facRng_fl[1]
 				# compute maximum and minimum factors
 				minFac_fl = facRng_fl[2]/maxRng_fl
-	
+
 				# removes small factors
 				filter!(x -> abs(x[2]) > minFac_fl, cut_expr.terms)
-	
+
 				# check if the cut also would violate range, limit coefficients in this case
 				if cutFac_fl < minFac_fl
 					limCoef_boo = true
@@ -625,10 +626,10 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 					foreach(x -> abs(cut_expr.terms[x]) > maxCoef_fl ? cut_expr.terms[x] = maxCoef_fl * sign(cut_expr.terms[x]) : nothing, collect(keys(cut_expr.terms))) # limits coefficients to maximum value
 				end
 			end
-	
+
 			# ! ensure scaling of factors does not move rhs out of range
 			scaRng_tup = (top_m.options.coefRng.rhs[1] / rngVio_fl, top_m.options.coefRng.rhs[2] * rngVio_fl) ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
-	
+
 			for x in keys(cut_expr.terms)
 				val_fl = abs(cut_expr.terms[x])
 				if top_m.options.coefRng.mat[1] / rngVio_fl / val_fl > scaRng_tup[2] # factor requires more up-scaling than possible
@@ -642,7 +643,7 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 			cutFac_fl = abs(collect(values(cut_var.terms))[1]) # get scaling factor of cut variable
 			scaRng_tup = (top_m.options.coefRng.rhs[1] / rngVio_fl, top_m.options.coefRng.rhs[2] * rngVio_fl) ./ abs(cut_expr)
 			negSign_boo = cut_expr < 0
-	
+
 			if top_m.options.coefRng.mat[1] / rngVio_fl / cutFac_fl > scaRng_tup[2] 
 				cut_expr = top_m.options.coefRng.rhs[2] * rngVio_fl / (top_m.options.coefRng.mat[1]/cutFac_fl) * (negSign_boo ? -1.0 : 1.0) # biggest rhs possible within range
 				limCoef_boo = true
@@ -659,7 +660,7 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 		end
 		
 		#endregion
-	
+
 		# add benders variable to cut and push to dataframe of all cuts
 		push!(cut_df, (i = i, Ts_dis = cut[1][1], scr = cut[1][2], limCoef = limCoef_boo, actItr = i, cnsExpr = cut_expr - cut_var))
 	end
