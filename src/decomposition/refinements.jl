@@ -58,7 +58,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 					lvlHeu_df = copy(heu_m.parts.tech[tSym].var[:stLvl])
 					lvlHeu_df[!,:scr] .= 0
 					lvlHeu_df[!,:value] .= value.(lvlHeu_df[!,:var])
-					startSol_obj.stLvl[tSym] = innerjoin(lvlTop_df, select(lvlHeu_df, Not([:scr,:var])), on = filter(x -> x != :scr, intCol(lvlHeu_df)))
+					startSol_obj.stLvl[tSym] = innerjoin(lvlTop_df, unique(select(lvlHeu_df, Not([:scr,:var]))), on = filter(x -> x != :scr, intCol(lvlHeu_df)))
 				end
 			end
 	
