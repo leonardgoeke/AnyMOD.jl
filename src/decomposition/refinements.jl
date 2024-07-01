@@ -101,7 +101,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# get solutions
 		if benders_obj.algOpt.dist
 			wait.(collect(values(futData_dic)))
-			for s in collect(sort(keys(benders_obj.sub)))
+			for s in sort(collect(keys(benders_obj.sub)))
 				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = fetch(futData_dic[s])
 			end
 		end
