@@ -187,8 +187,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
-	
-	optimize!(top_m.optModel)
+	solveModel!(top_m.optModel, 0)
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -471,7 +470,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	end
 
 	# increase numeric focus if model did not solve
-	solveModel!(sub_m.optModel, 0)
+	numFoc_int = solveModel!(sub_m.optModel, 0)
 	checkIIS(sub_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -534,7 +533,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 end
 
 # ! solves a model increasing the numeric focus from starting value to maximum in infeasible
-function solveModel!(mod_m::anyModel, numFocSt_int::Int)
+function solveModel!(mod_m::Model, numFocSt_int::Int)
 
 	numFoc_int = numFocSt_int
 	while true
@@ -547,8 +546,9 @@ function solveModel!(mod_m::anyModel, numFocSt_int::Int)
 		end
 	end
 
-end
+	return numFoc_int
 
+end
 
 # ! run sub-problem on worker (sub_m is a global variable at package scope)
 function runSub(resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, resultOpt::NamedTuple = NamedTuple())
@@ -1212,7 +1212,6 @@ end
 function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res_ntup::NamedTuple)
 
 	# reporting on iteration
-	benders_obj.report.itr[!,:case] .= benders_obj.info.name
 	CSV.write(benders_obj.report.mod.options.outDir * "/iterationCuttingPlane_$(benders_obj.info.name).csv", benders_obj.report.itr)
 
 	# reporting on near-optimal
@@ -1224,7 +1223,10 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res
 	end
 
 	# run top-problem and sub-problems with optimal values fixed and write results
-	@suppress computeFeas(benders_obj.top, benders_obj.itr.best.capa, 1e-5, cutSmall = false, resultOpt = (general = res_ntup.general, carrierTs = tuple(), storage = tuple(), duals = tuple()))
+	delete.(benders_obj.top.optModel, benders_obj.top.parts.obj.cns[:bendersCuts][!,:cns])
+	filter!(x -> false, benders_obj.top.parts.obj.cns[:bendersCuts])
+
+	computeFeas(benders_obj.top, benders_obj.itr.best.capa, 1e-5, cutSmall = false, resultOpt = (general = res_ntup.general, carrierTs = tuple(), storage = tuple(), duals = tuple()))
 
 	if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
 
@@ -1235,6 +1237,8 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res
 			runSub(benders_obj.sub[s], copy(benders_obj.itr.best), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
 		end
 	end
+
+	if benders_obj.algOpt.dist wait.(collect(values(futData_dic))) end
 
 	# merge general results into single files
 	for res in res_ntup.general
