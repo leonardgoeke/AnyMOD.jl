@@ -417,7 +417,7 @@ function createExpShareCns!(anyM::anyModel)
 			mustOut_df = select(mustOut_df, Not([:Ts_dis])) |> (w -> combine(groupby(w, intCol(w)), :val => (x -> sum(x)) => :val))
 
 			# replace dispatch with expansion regions
-			mustOut_df[!,:R_exp] = map(x -> getDescendants(x.R_dis, anyM.sets[:R], false, anyM.cInfo[x.C].rExp)[end], eachrow(mustOut_df))
+			mustOut_df[!,:R_exp] = map(x -> getDescendants(x.R_dis, anyM.sets[:R], false, anyM.cInfo[x.C].rExp) |> (y -> isempty(y) ? x.R_dis : y[end]), eachrow(mustOut_df))
 			select!(mustOut_df, Not([:R_dis]))
 
 			# compute mean of mustOut across scenarios 
@@ -425,7 +425,7 @@ function createExpShareCns!(anyM::anyModel)
 
 			# add design factor
 			desFac_df = rename(copy(anyM.parts.tech[sysSym(t, anyM.sets[:Te])].par[:desFac].data), :val => :desFac)
-			desFac_df[!,:R_exp] = map(x -> getDescendants(x.R_dis, anyM.sets[:R], false, anyM.cInfo[x.C].rExp)[end], eachrow(desFac_df))
+			desFac_df[!,:R_exp] = map(x -> getDescendants(x.R_dis, anyM.sets[:R], false, anyM.cInfo[x.C].rExp) |> (y -> isempty(y) ? x.R_dis : y[end]), eachrow(desFac_df))
 			mustOut_df =  innerjoin(select(desFac_df, Not([:R_dis])), mustOut_df, on = intCol(mustOut_df))
 			mustOut_df[!,:val] = mustOut_df[!,:val] .* mustOut_df[!,:desFac]
 
