@@ -613,8 +613,7 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 
 	# solve problem
 	set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
-	set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
-	optimize!(benders_obj.top.optModel)
+	solveModel!(benders_obj.top.optModel, 0)
 	checkIIS(benders_obj.top)
 
 	# obtain different objective values
