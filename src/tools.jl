@@ -1140,8 +1140,6 @@ function writeAllResults!(anyM::anyModel, res_ntup::NamedTuple)
 
 			reportAggDuals(cns_dic, anyM)
 		end
-
-
 	end
 end
 

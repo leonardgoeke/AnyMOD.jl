@@ -187,8 +187,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
-	
-	optimize!(top_m.optModel)
+	solveModel!(top_m.optModel, 0)
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -314,7 +313,7 @@ function runTop(benders_obj::bendersObj)
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
-		optimize!(benders_obj.top.optModel)
+		solveModel!(benders_obj.top.optModel, benders_obj.algOpt.solOpt.numFoc)
 	end	
 	
 	# handle unsolved top problem
@@ -471,17 +470,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	end
 
 	# increase numeric focus if model did not solve
-	numFoc_int = 0
-	while true
-		@suppress set_optimizer_attribute(sub_m.optModel, "NumericFocus", numFoc_int)
-		@suppress optimize!(sub_m.optModel)
-		if termination_status(sub_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3 
-			break
-		else
-			numFoc_int = numFoc_int + 1
-
-		end
-	end
+	numFoc_int = solveModel!(sub_m.optModel, 0)
 	checkIIS(sub_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -541,6 +530,24 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	#endregion
 
 	return resData_obj, elpSub_time, lss_fl, numFoc_int
+end
+
+# ! solves a model increasing the numeric focus from starting value to maximum in infeasible
+function solveModel!(mod_m::Model, numFocSt_int::Int)
+
+	numFoc_int = numFocSt_int
+	while true
+		@suppress set_optimizer_attribute(mod_m, "NumericFocus", numFoc_int)
+		@suppress optimize!(mod_m)
+		if termination_status(mod_m) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3 
+			break
+		else
+			numFoc_int = numFoc_int + 1
+		end
+	end
+
+	return numFoc_int
+
 end
 
 # ! run sub-problem on worker (sub_m is a global variable at package scope)
@@ -1205,7 +1212,6 @@ end
 function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res_ntup::NamedTuple)
 
 	# reporting on iteration
-	benders_obj.report.itr[!,:case] .= benders_obj.info.name
 	CSV.write(benders_obj.report.mod.options.outDir * "/iterationCuttingPlane_$(benders_obj.info.name).csv", benders_obj.report.itr)
 
 	# reporting on near-optimal
@@ -1217,7 +1223,10 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res
 	end
 
 	# run top-problem and sub-problems with optimal values fixed and write results
-	@suppress computeFeas(benders_obj.top, benders_obj.itr.best.capa, 1e-5, cutSmall = false, resultOpt = (general = res_ntup.general, carrierTs = tuple(), storage = tuple(), duals = tuple()))
+	delete.(benders_obj.top.optModel, benders_obj.top.parts.obj.cns[:bendersCuts][!,:cns])
+	filter!(x -> false, benders_obj.top.parts.obj.cns[:bendersCuts])
+
+	computeFeas(benders_obj.top, benders_obj.itr.best.capa, 1e-5, cutSmall = false, resultOpt = (general = res_ntup.general, carrierTs = tuple(), storage = tuple(), duals = tuple()))
 
 	if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
 
@@ -1228,6 +1237,8 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res
 			runSub(benders_obj.sub[s], copy(benders_obj.itr.best), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
 		end
 	end
+
+	if benders_obj.algOpt.dist wait.(collect(values(futData_dic))) end
 
 	# merge general results into single files
 	for res in res_ntup.general

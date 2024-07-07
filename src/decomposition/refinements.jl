@@ -101,7 +101,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# get solutions
 		if benders_obj.algOpt.dist
 			wait.(collect(values(futData_dic)))
-			for s in collect(sort(keys(benders_obj.sub)))
+			for s in sort(collect(keys(benders_obj.sub)))
 				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = fetch(futData_dic[s])
 			end
 		end
@@ -613,8 +613,7 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 
 	# solve problem
 	set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
-	set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
-	optimize!(benders_obj.top.optModel)
+	solveModel!(benders_obj.top.optModel, 0)
 	checkIIS(benders_obj.top)
 
 	# obtain different objective values
