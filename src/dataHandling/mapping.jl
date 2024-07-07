@@ -464,7 +464,7 @@ function createSysInfo!(sys::Symbol, sSym::Symbol, setData_dic::Dict, lvlScr_int
 				stCyc_int = anyM.supTs.lvl
 				push!(anyM.report, (2, "technology mapping", "storage cycling", "specific storage cycling provided for technology '$(string(sSym))' could not parsed into a integer or used keyword 'inter', value was ignored"))
 			elseif row_df[:timestep_cyclic] == "inter"
-				if !isnothing(anyM.options.forceScr) || length(anyM.sets[:scr].nodes) == 1
+				if !isnothing(anyM.options.forceScr) || length(anyM.sets[:scr].nodes) == 1 || lvlScr_int == 0
 					stCyc_int = anyM.supTs.lvl
 					push!(anyM.report, (1, "technology mapping", "storage cycling", "detected keyword 'inter' for storage cycling of technology '$(string(sSym))', but model is deterministic, storage operates as yearly storage"))
 				else
@@ -493,19 +493,17 @@ function createSysInfo!(sys::Symbol, sSym::Symbol, setData_dic::Dict, lvlScr_int
 		part.stCyc = stCyc_int
 
 		# ! check if a specific resolution is enforced for tracking the storage level
-		if stCyc_int == -1
-			stTrack_int = lvlScr_int != 0 ? lvlScr_int : anyM.supTs.lvl
-			if :timestep_tracked in namesSym(row_df) && row_df[:timestep_tracked] != ""
-				push!(anyM.report, (2, "technology mapping", "storage tracking", "specific resolution for tracking storage level provided for technology '$(string(sSym))' was overwritten by foresight level since storage operates as a stochastic inter-annual storage"))
-			end
-		elseif :timestep_tracked in namesSym(row_df) && row_df[:timestep_tracked] != ""
+		if :timestep_tracked in namesSym(row_df) && row_df[:timestep_tracked] != ""
 			stTrack_int = tryparse(Int, row_df[:timestep_tracked])
 			if isnothing(stTrack_int)
 				stTrack_int = nothing
 				push!(anyM.report, (2, "technology mapping", "storage tracking", "specific resolution for tracking storage level provided for technology '$(string(sSym))' could not parsed into a integer, value was ignored"))
 			else
-				if stTrack_int < anyM.supTs.lvl
-					push!(anyM.report, (3, "technology mapping", "storage tracking", "specific resolution for tracking storage level provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch timestep"))
+				if lvlScr_int != 0 && stTrack_int < lvlScr_int
+					push!(anyM.report, (3, "technology mapping", "storage tracking", "specific resolution for tracking storage level provided for technology '$(string(sSym))' is less detailed than the foresight level"))
+					return
+				elseif stTrack_int < anyM.supTs.lvl
+					push!(anyM.report, (3, "technology mapping", "storage tracking", "specific resolution for tracking storage level provided for technology '$(string(sSym))' is less detailed than the superordinate dispatch level"))
 					return
 				end
 			end
@@ -614,12 +612,11 @@ function createCapaRestrMap!(part::AbstractModelPart, anyM::anyModel)
 		stInVar_arr, stOutVar_arr = [intersect(x, keys(carGrp_ntup)) for x in ((:stExtIn, :stIntIn), (:stExtOut, :stIntOut))]
 		if isempty(stInVar_arr) && isempty(stOutVar_arr) continue end
 		for st in (:stIn, :stOut, :stSize)
-			if part.stCyc == -1 && st == :stSize continue end
 			stC_arr = unique(vcat(collect.([getproperty(carGrp_ntup, y)[g] for y in (st == :stSize ? union(stInVar_arr, stOutVar_arr) : (st == :stIn ? stInVar_arr : stOutVar_arr))])...))
 			if isempty(stC_arr) continue end
 			carDis_arr = map(x -> [x, anyM.cInfo[x].tsDis, anyM.cInfo[x].rDis], stC_arr)
 			restrInfo_arr = mapCapaRestr(carDis_arr, :exc, anyM, carGrp_ntup, balLvl_ntup)
-			map(x -> push!(capaDispRestr_arr, (string(st, "_", g), restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])), 1:length(restrInfo_arr))
+			map(x -> push!(capaDispRestr_arr, (string(st, part.stCyc == -1 && st == :stSize ? "Season_" : "_", g), restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])), 1:length(restrInfo_arr))
 		end
 	end
 

@@ -155,6 +155,15 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 				dem_df = flatten(dem_df,:Ts_frs)
 			end
 
+			# deal with demand values above foresight level
+			if anyM.scr.frsLvl != anyM.supTs.lvl
+				relDem_df = filter(x -> anyM.sets[:Ts].nodes[x.Ts_dis].lvl <= anyM.scr.frsLvl, dem_df)
+				relDem_df[!,:Ts_dis] = map(x -> getDescendants(x, anyM.sets[:Ts], :false, anyM.scr.frsLvl), relDem_df[!,:Ts_dis])
+				relDem_df = flatten(relDem_df,:Ts_dis)
+				relDem_df[!,:scr] = map(x -> anyM.scr.scr[x], relDem_df[!,:Ts_dis])
+				dem_df = vcat(flatten(relDem_df,:scr), filter(x -> anyM.sets[:Ts].nodes[x.Ts_dis].lvl > anyM.scr.frsLvl, dem_df))
+			end
+
 			if !(:scr in namesSym(dem_df)) # artificially add scenario dimensions, if none exist and perfect foresight
 				if length(anyM.scr.scrProb) > 1
 					dem_df[!,:scr] = map(x -> anyM.scr.frsLvl == anyM.supTs.lvl ? [0] : anyM.scr.scr[getindex(x, anyM.scr.frsLvl != anyM.supTs.lvl ? :Ts_frs : :Ts_disSup)], eachrow(dem_df))
@@ -171,7 +180,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
 			allR_arr = :R_dis in namesSym(dem_df) ? unique(dem_df[!,:R_dis]) : getfield.(getNodesLvl(anyM.sets[:R], 1), :idx)
 			allLvlR_arr = unique(dem_df[!,:lvlR])
-			r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl < x[2] ? getDescendants(x[1], anyM.sets[:R], false, x[2]) : getAncestors(x[1], anyM.sets[:R], :int, x[2])[end]) for x in Iterators.product(allR_arr, allLvlR_arr))
+			r_dic = Dict((x[1], x[2]) => (anyM.sets[:R].nodes[x[1]].lvl < x[2] ? getDescendants(x[1], anyM.sets[:R], false, x[2])[end] : getAncestors(x[1], anyM.sets[:R], :int, x[2])[end]) for x in Iterators.product(allR_arr, allLvlR_arr))
 			if :R_dis in namesSym(dem_df)
 				dem_df[!,:R_dis] = map(x -> r_dic[x.R_dis, x.lvlR], eachrow(dem_df[!,[:R_dis, :lvlR]]))
 			else
@@ -210,7 +219,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		tech_df = DataFrame(Ts_disSup = Int[], R_dis = Int[], Te = Int[], C = Int[], id = Int[], scr = Int[], variable = Symbol[], value = Float64[])
 
 		# get installed capacity values
-		for va in intersect(keys(part.var), (:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :insCapaConv, :insCapaStIn, :insCapaStOut, :insCapaStSize, :mustCapaConv, :mustCapaStOut))
+		for va in intersect(keys(part.var), (:expConv, :expStIn, :expStOut, :expStSize, :expExc, :capaConv, :capaStIn, :capaStOut,  :capaStSize, :capaStSizeSeason, :capaStSizeInter, :insCapaConv, :insCapaStIn, :insCapaStOut, :insCapaStSize, :mustCapaConv, :mustCapaStOut))
 			capa_df = copy(part.var[va])
 			if va in (:expConv, :expStIn, :expStOut, :expStSize)
 				capa_df = flatten(capa_df, :Ts_expSup)
@@ -249,7 +258,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 	end
 
 	# ! get dispatch variables
-	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :emission, :crt, :lss, :trdBuy, :trdSell, :emissionInf)
+	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :stInterIn, :stInterOut, :emission, :crt, :lss, :trdBuy, :trdSell, :emissionInf)
 
 		# get all variables, group them and get respective values
 		allVar_df = getAllVariables(va, anyM)

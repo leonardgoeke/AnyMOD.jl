@@ -750,6 +750,7 @@ function createCapaCns!(part::AbstractModelPart, sets_dic::Dict{Symbol,Tree},pre
 		if holdFixed filter!(x -> !isempty(x.cnsExpr.terms), cns_df) end # filter cases where no actual variables are compared since they were replaced with parameters
 		cns_dic[Symbol(capaVar, :_b)] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df, intCol(cns_df, :cnsExpr))), :equal)
 	end
+	
 end
 
 # ! create constraints regarding operated variables
@@ -955,7 +956,7 @@ function createCapaRestr!(part::AbstractModelPart, ts_dic::Dict{Tuple{Int64,Int6
 
 	# ! create all other capacity restrictions
 	cnstrType_dic = Dict(:exc => (dis = (:exc,), capa = :Exc), :convOut => (dis = (:gen, :stIntIn), capa = :Conv), :convIn => (dis = (:use, :stIntOut), capa = :Conv),
-							:stIn => (dis = (:stExtIn, :stIntIn), capa = :StIn), :stOut => (dis = (:stExtOut, :stIntOut), capa = :StOut), :stSize => (dis = (:stLvl,), capa = :StSize))
+							:stIn => (dis = (:stExtIn, :stIntIn), capa = :StIn), :stOut => (dis = (:stExtOut, :stIntOut), capa = :StOut), :stSize => (dis = (:stLvl,), capa = :StSize), :stSizeSeason => (dis = (:stLvl,), capa = :StSizeSeason))
 
 	capaRestr_gdf = groupby(filter(x -> x.cnstrType != "must", part.capaRestr), :cnstrType)
 
@@ -1074,7 +1075,7 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 		allVar_df = addEnergyCont(allVar_df, part, sets_dic)
 
 		# get availablity (and in case of paramter of type out also efficiency since capacities refer to input capacity) parameter and add to dispatch variable
-		ava_arr = matchSetParameter(allVar_df, part.par[Symbol(:ava, info_ntup.capa)], sets_dic, newCol = :ava)[!,:ava]
+		ava_arr = matchSetParameter(allVar_df, part.par[Symbol(:ava, info_ntup.capa == :StSizeSeason ? :StSize : info_ntup.capa)], sets_dic, newCol = :ava)[!,:ava]
 		
 		if va != :exc
 			if type_sym in (:convOut, :stOut)
