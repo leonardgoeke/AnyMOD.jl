@@ -97,10 +97,11 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 
 			# additional constraints for interannual stochastic storage 
 			if part.stCyc == -1 && (isempty(anyM.subPro) || anyM.subPro == (0,0))
-				cns_dic = controlStLvl(part, cns_dic, anyM)
+				cns_dic = enforceStDelta(part, cns_dic, anyM)
 				cns_dic = stochStRestr(part, cns_dic, anyM)
+				cns_dic = enforceStExpc(part, cns_dic, anyM)
 			end
-				
+
 			produceMessage(anyM.options, anyM.report, 3, " - Prepared capacity restrictions for technology $(tech_str)")
 		end
 
@@ -442,14 +443,13 @@ function createStBal(part::TechPart, anyM::anyModel)
 	cnsDim_arr = filter(x -> x != :Ts_disSup, intCol(cns_df))
 
 	# join variables for previous storage level
-	tsChildren_dic = Dict((x,y) => getDescendants(x, anyM.sets[:Ts], false, y) for x in getfield.(getNodesLvl(anyM.sets[:Ts], part.stCyc == -1 ? anyM.scr.frsLvl : part.stCyc), :idx), y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x], :lvl), cns_df[!,:Ts_dis])))
+	tsChildren_dic = Dict((x,y) => getDescendants(x, anyM.sets[:Ts], false, y) for x in getfield.(getNodesLvl(anyM.sets[:Ts], part.stCyc == -1 ? anyM.supTs.lvl : part.stCyc), :idx), y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x], :lvl), cns_df[!,:Ts_dis])))
 	filter!(x -> !isempty(x[2]), tsChildren_dic)
 	firstLastTs_dic::Dict{Int,Int} = Dict(minimum(tsChildren_dic[z]) => maximum(tsChildren_dic[z]) for z in keys(tsChildren_dic))
 	firstTs_arr = collect(keys(firstLastTs_dic))
 
 	cns_df[!,:Ts_disPrev] = map(x -> x in firstTs_arr ? firstLastTs_dic[x] : x - 1, cns_df[!,:Ts_dis])
 	cns_df = rename(joinMissing(cns_df, part.var[:stLvl], intCol(part.var[:stLvl]) |> (x -> Pair.(replace(x, :Ts_dis => :Ts_disPrev), x)), :left, Dict(:var => AffExpr())), :var => :stLvlPrev)
-
 
 	# filter storage variables not enforcing a balance in case of interdependent subperiods (variables only exist to enforce right value at the start of the next period, occurs if number of scenarios varies)
 	if anyM.scr.frsLvl != 0 filter!(x -> x.scr in anyM.scr.scr[getAncestors(x.Ts_dis, anyM.sets[:Ts], :int, anyM.scr.frsLvl)[end]], cns_df) end
@@ -477,13 +477,15 @@ function createStBal(part::TechPart, anyM::anyModel)
 		end
 
 		# ! join in and out dispatch variables and adds efficiency to them (hence efficiency can be specific for different carriers that are stored in and out)
-		for typ in (:in,:out)
+		relSt_tup = part.stCyc != -1 ? (:in, :out) : (:in, :out, :interIn, :interOut)
+		for typ in relSt_tup
 			typVar_df = copy(cns_df[!,cnsDim_arr])
 			# create array of all dispatch variables
-			allType_arr = intersect(keys(part.carrier), typ == :in ? (:stExtIn, :stIntIn) : (:stExtOut, :stIntOut))
-			
-			# add interannual storage variables if existing
-			if part.stCyc == -1 push!(allType_arr, typ == :in ? :stInterOut : :stInterIn) end
+			if typ in (:in, :out)
+				allType_arr = intersect(keys(part.carrier), typ == :in ? (:stExtIn, :stIntIn) : (:stExtOut, :stIntOut))
+			else
+				allType_arr = typ == :interIn ? [:stInterIn] : [:stInterOut]
+			end
 			
 			# aborts if no variables on respective side exist
 			if isempty(allType_arr)
@@ -491,16 +493,15 @@ function createStBal(part::TechPart, anyM::anyModel)
 				continue
 			end
 
-			effPar_sym = typ == :in ? :effStIn : :effStOut
 			# adds dispatch variables
 			typExpr_arr = map(allType_arr) do va
-				typVar_df = filter(x -> x.C == bal[1], part.par[effPar_sym].data) |> (x -> innerjoin(part.var[va], x; on = intCol(x)))
-				if typ == :in
-					typVar_df[!,:var] = typVar_df[!,:var] .* typVar_df[!,:val]
+				if typ in (:in, :out)
+					typVar_df = filter(x -> x.C == bal[1], part.par[typ == :in ? :effStIn : :effStOut].data) |> (x -> innerjoin(part.var[va], x; on = intCol(x)))
+					typVar_df[!,:var] =  (typ == :in ?  typVar_df[!,:var] .* typVar_df[!,:val] : typVar_df[!,:var] ./ typVar_df[!,:val]) 
+					return typVar_df[!,Not(:val)]
 				else
-					typVar_df[!,:var] = typVar_df[!,:var] ./ typVar_df[!,:val]
+					return part.var[va]
 				end
-				return typVar_df[!,Not(:val)]
 			end
 
 			# adds dispatch variable to constraint dataframe, mode dependant and non-mode dependant balances have to be aggregated separately and timesteps only need aggregration if resolution for storage level differs
@@ -574,7 +575,11 @@ function createStBal(part::TechPart, anyM::anyModel)
 		end
 
 		# ! create final equation	
-		cnsC_df[!,:cnsExpr] = @expression(anyM.optModel, cnsC_df[!,:stLvlPrev] .* cnsC_df[!,:stDis] .+ cnsC_df[!,:stInflow] .+ cnsC_df[!,:in] .- cnsC_df[!,:out] .- cnsC_df[!,:stLvl])
+		if part.stCyc != -1	
+			cnsC_df[!,:cnsExpr] = @expression(anyM.optModel, cnsC_df[!,:stLvlPrev] .* cnsC_df[!,:stDis] .+ cnsC_df[!,:stInflow] .+ cnsC_df[!,:in] .- cnsC_df[!,:out] .- cnsC_df[!,:stLvl])
+		else
+			cnsC_df[!,:cnsExpr] = @expression(anyM.optModel, cnsC_df[!,:stLvlPrev] .* cnsC_df[!,:stDis] .+ cnsC_df[!,:stInflow] .+ cnsC_df[!,:in] .- cnsC_df[!,:out] .- cnsC_df[!,:interIn] .+ cnsC_df[!,:interOut] .- cnsC_df[!,:stLvl])
+		end
 		cCns_arr[idx] = cnsC_df
 	end
 
@@ -1021,63 +1026,93 @@ function capaSizeSeasonInter(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM
 	cns_dic[:capaStSizeInter] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df, intCol(cns_df, :cnsExpr))), :greater)	
 end
 
-# ! enforce expected storage level greater than zero for stochastic interannual storage
-function controlStLvl(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyModel)
+# ! enforce storage delta as sum of in and out
+function enforceStDelta(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyModel)
 
-    # get storage levels (= delta per period) and combine with scenario probability
-    cns_df = rename(part.var[:stLvlInter], :var => :stLvl)
-    cns_df = matchSetParameter(cns_df, anyM.parts.obj.par[:scrProb], anyM.sets, newCol = :scrProb)
-    cns_df[!,:probDelta] = map(x -> x.scrProb * x.stLvl, eachrow(cns_df))
+	# get delta of storage level and aggregate by foresight period	
+	inter_in = innerjoin(rename(part.var[:stInterIn], :var => :varIn), rename(part.par[:effStInterIn].data, :val => :effIn), on = intCol(part.par[:effStInterIn].data))
+	out_in = innerjoin(rename(part.var[:stInterOut], :var => :varOut), rename(part.par[:effStInterOut].data, :val => :effOut), on = intCol(part.par[:effStInterIn].data))
+	delta_df = innerjoin(inter_in, out_in, on = intCol(part.var[:stInterIn]))
 
-    # aggregate into expression for constaint and create constraint
-    cns_df = combine(x -> (Ts_disSup = x.Ts_disSup[1], R_dis = x.R_dis[1], C = x.C[1], id = x.id[1], cnsExpr = sum(x.probDelta)), groupby(cns_df, [:Ts_disSup, :R_dis, :C, :id]))
-	cns_dic[:expecStLvl] = cnsCont(cns_df, :greater)
+	delta_df[!,:delta] = delta_df[!,:varIn] .* delta_df[!,:effIn] .- delta_df[!,:varOut] ./ delta_df[!,:effOut]
+	delta_df[!,:sca] = getEnergyFacSt(delta_df[!,:Ts_dis], delta_df[!,:Ts_disSup], false, anyM.supTs)
+	delta_df[!,:Ts_dis] = map(x -> getAncestors(x, anyM.sets[:Ts], :int, anyM.scr.frsLvl)[end],delta_df[!,:Ts_dis])
+	delta_df = combine(x -> (delta = sum(x.delta .* x.sca),), groupby(select(delta_df, Not([:varIn,:effIn,:varOut,:effOut])), intCol(delta_df)))
+
+	# join with levels and create constraint
+	cns_df = innerjoin(part.var[:stLvlInter], delta_df, on = intCol(delta_df))
+	cns_df[!,:cnsExpr] .= cns_df[!,:var] - cns_df[!,:delta]
+	cns_dic[:stBalInter] = cnsCont(select(cns_df, Not([:var,:delta])), :equal)
     
 	return cns_dic
+end
+
+# ! enforce expected value on storage delta
+function enforceStExpc(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyModel)
+
+	# ! create constraints to enforce expected storage level
+	# get storage levels (= delta per period) and combine with scenario probability
+	cns_df = rename(part.var[:stLvlInter], :var => :stLvl)
+	cns_df = matchSetParameter(cns_df, anyM.parts.obj.par[:scrProb], anyM.sets, newCol = :scrProb)
+	cns_df[!,:probDelta] = map(x -> x.scrProb * x.stLvl, eachrow(cns_df))
+
+	# aggregate into expression for constaint, add start level with share, and create constraint
+	startLvl_df = rename(matchSetParameter(part.var[:startStLvl], part.par[:expcStStartLvl], anyM.sets, newCol = :expcLvlShare), :var => :expcLvl)
+	cns_df = combine(x -> (sumProb = sum(x.probDelta),), groupby(cns_df, intCol(startLvl_df))) |> (x -> innerjoin(x, startLvl_df, on = intCol(startLvl_df)))
+	cns_df[!,:cnsExpr] = map(x -> x.sumProb - x.expcLvl * x.expcLvlShare, eachrow(cns_df))
+	cns_dic[:expcStLvl] = cnsCont(select(cns_df, Not([:sumProb, :expcLvl, :expcLvlShare])), :greater)
+
+	return cns_dic
+
 end
 
 # ! enforce restrictions on size of stochastic interannual storage
 function stochStRestr(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyModel)
 
-    # ! create variable for worst-case storage level
-    scaFac_fl = anyM.options.scaFac.dispSt
-    var_df = unique(select(part.var[:stLvlInter], Not([:scr,:var])))
-    upBound_arr = getUpBound(var_df, anyM.options.bound.disp / scaFac_fl, anyM.supTs, anyM.sets[:Ts])
-    part.var[:worstCaseStDelta] = createVar(var_df, "worstCaseStDelta", upBound_arr, anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl, lowBd = -1 * maximum(upBound_arr))
+	# ! create variable for worst-case storage level
+	scaFac_fl = anyM.options.scaFac.dispSt
+	var_df = unique(select(part.var[:stLvlInter], Not([:scr,:var])))
+	upBound_arr = getUpBound(var_df, anyM.options.bound.disp / scaFac_fl, anyM.supTs, anyM.sets[:Ts])
+	part.var[:worstCaseStDelta] = createVar(var_df, "worstCaseStDelta", upBound_arr, anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl, lowBd = -1 * maximum(upBound_arr))
+
+	# ! prepare and create variable for start storage level
+	conLvl_df = combine(x -> (delta = sum(x.var),), groupby(part.var[:worstCaseStDelta], filter(x -> x != :Ts_dis, intCol(part.var[:worstCaseStDelta]))))
+	conLvl_df = matchSetParameter(conLvl_df, part.par[:repWorstCase], anyM.sets, newCol = :repWorst)
+	part.var[:startStLvl] = createVar(orderDf(select(conLvl_df, Not([:repWorst, :delta]))), "startStLvl", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
 
     # ! create constraints to enforce worst case
     enfWorst_df = innerjoin(rename(part.var[:stLvlInter], :var => :delta), rename(part.var[:worstCaseStDelta], :var => :worst), on = intCol(part.var[:worstCaseStDelta]))
     enfWorst_df[!,:cnsExpr] = map(x -> x.delta - x.worst, eachrow(enfWorst_df))
     cns_dic[:worstCaseStDelta] = cnsCont(select(enfWorst_df, Not([:delta,:worst])), :greater)
 
-    # ! control start level
-    # prepare and create variable
-    conLvl_df = combine(x -> (delta = sum(x.var),), groupby(part.var[:worstCaseStDelta], filter(x -> x != :Ts_dis, intCol(part.var[:worstCaseStDelta]))))
-    conLvl_df = matchSetParameter(conLvl_df, part.par[:repWorstCase], anyM.sets, newCol = :repWorst)
-    part.var[:startStLvl] = createVar(orderDf(select(conLvl_df, Not([:repWorst, :delta]))), "startStLvl", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
+	# ! compute net-level for each step in worst-case
+	netLvl_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], id = Int[], var = AffExpr[])
 
-    # create constraint
+	# expand to sum worst-cases step-by-step
+	for wc in groupby(copy(part.var[:worstCaseStDelta]), filter(x -> x != :Ts_dis, intCol(part.var[:worstCaseStDelta])))
+		ts_arr = collect(wc[!,:Ts_dis])
+		wc[!,:Ts_dis] = map(x -> filter(y -> x <= y, ts_arr), wc[!,:Ts_dis])
+		wc = flatten(wc, :Ts_dis)
+		append!(netLvl_df, wc)
+	end
+	netLvl_df = combine(x -> (Ts_dis = maximum(x.Ts_dis), delta = sum(x.var),), groupby(netLvl_df, intCol(netLvl_df)))
+
+    # ! control start level
+    # create constraint regarding repetition of worst-case years
     conLvl_df = innerjoin(conLvl_df, part.var[:startStLvl], on = intCol(conLvl_df))
     conLvl_df[!,:cnsExpr] = map(x -> - x.repWorst * x.delta - x.var, eachrow(conLvl_df)) 
-    cns_dic[:startStLvl] = cnsCont(orderDf(select(conLvl_df, Not([:repWorst,:delta,:var]))), :equal)
+    cns_dic[:startStLvl] = cnsCont(orderDf(select(conLvl_df, Not([:repWorst,:delta,:var]))), :smaller)
 
-    # ! compute "net-overshoot"
-    overSh_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], id = Int[], var = AffExpr[])
-
-    # expand to sum worst-cases step-by-step
-    for wc in groupby(copy(part.var[:worstCaseStDelta]), filter(x -> x != :Ts_dis, intCol(part.var[:worstCaseStDelta])))
-        ts_arr = collect(wc[!,:Ts_dis])
-        wc[!,:Ts_dis] = map(x -> filter(y -> x <= y, ts_arr), wc[!,:Ts_dis])
-        wc = flatten(wc, :Ts_dis)
-        append!(overSh_df, wc)
-    end
-    overSh_df = combine(x -> (Ts_dis = maximum(x.Ts_dis), delta = sum(x.var),), groupby(overSh_df, intCol(overSh_df)))
+	# create constraint avoiding "undershoot" in worst-case year
+	netLvlUnder_df = innerjoin(netLvl_df, part.var[:startStLvl], on = intCol(part.var[:startStLvl]))
+	netLvlUnder_df[!,:cnsExpr] = map(x -> x.delta + x.var, eachrow(netLvlUnder_df)) 
+	cns_dic[:underStLvl] = cnsCont(select(netLvlUnder_df, Not([:delta,:var])), :greater)
 
     # create overshoot variable and create constraint
-    part.var[:overStLvl] = createVar(unique(select(overSh_df, Not([:Ts_dis,:delta]))), "overStLvl", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
-    overSh_df = innerjoin(overSh_df, part.var[:overStLvl], on = intCol(part.var[:overStLvl]))
-    overSh_df[!,:cnsExpr] = map(x -> x.delta - x.var, eachrow(overSh_df)) 
-    cns_dic[:overStLvl] = cnsCont(select(overSh_df, Not([:delta,:var])), :smaller)
+    part.var[:overStLvl] = createVar(unique(select(netLvl_df, Not([:Ts_dis,:delta]))), "overStLvl", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
+    netLvlOver_df = innerjoin(netLvl_df, part.var[:overStLvl], on = intCol(part.var[:overStLvl]))
+    netLvlOver_df[!,:cnsExpr] = map(x -> x.delta - x.var, eachrow(netLvlOver_df)) 
+    cns_dic[:overStLvl] = cnsCont(select(netLvlOver_df, Not([:delta,:var])), :smaller)
 
     # ! enforce storage size based on starting level and overshoot
     # compute lower restriction on storage size

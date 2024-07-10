@@ -155,11 +155,10 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 				dem_df = flatten(dem_df,:Ts_frs)
 			end
 
-			# deal with demand values above foresight level
+			# add scenario and dispatch timesteps in case of values above foresight level
 			if anyM.scr.frsLvl != anyM.supTs.lvl
 				relDem_df = filter(x -> anyM.sets[:Ts].nodes[x.Ts_dis].lvl <= anyM.scr.frsLvl, dem_df)
-				relDem_df[!,:Ts_dis] = map(x -> getDescendants(x, anyM.sets[:Ts], :false, anyM.scr.frsLvl), relDem_df[!,:Ts_dis])
-				relDem_df = flatten(relDem_df,:Ts_dis)
+				relDem_df[!,:Ts_dis] = relDem_df[!,:Ts_frs]
 				relDem_df[!,:scr] = map(x -> anyM.scr.scr[x], relDem_df[!,:Ts_dis])
 				dem_df = vcat(flatten(relDem_df,:scr), filter(x -> anyM.sets[:Ts].nodes[x.Ts_dis].lvl > anyM.scr.frsLvl, dem_df))
 			end
@@ -174,6 +173,10 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 			elseif !isempty(anyM.scr.scr) # filter non-relevant scenarios
 				relScr_arr = collect(keys(anyM.scr.scrProb))
 				filter!(x -> x.scr == 0 || (getindex(x, anyM.supTs.lvl < anyM.scr.lvl ? :Ts_frs : :Ts_disSup), x.scr) in relScr_arr, dem_df)
+				# adjust demand values without scenarios
+				relDem_df = filter(x -> x.scr == 0, dem_df)
+				relDem_df[!,:scr] = map(x -> anyM.scr.scr[anyM.scr.frsLvl != anyM.supTs.lvl ? x.Ts_frs : x.Ts_disSup], eachrow(relDem_df))
+				dem_df = vcat(flatten(relDem_df, :scr), filter(x -> x.scr != 0, dem_df))
 			end
 
 			dem_df[!,:val] = dem_df[!,:val]	.*  getEnergyFac(dem_df[!,:Ts_dis], anyM.supTs)
@@ -250,16 +253,27 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 	startStLvl_df = getAllVariables(:startStLvl, anyM)
 	if !isempty(startStLvl_df)
 		startStLvl_df[!,:value] = value.(startStLvl_df[!,:var])
-		startStLvl_df[!,:variable] .= :startStLvl
+		startStLvl_df[!,:variable] .= :capaStSizeInterStart
 		startStLvl_df[!,:scr] .= 0
 		# add tech to overall data frame
 		if :Ts_frs in namesSym(allData_df) startStLvl_df[!,:Ts_frs] .= 0 end
 		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), select(startStLvl_df, Not([:Ts_expSup, :M, :var]))))
 	end
 
+	# ! get delta of inter-annual storage levels
+	deltaInter_df = getAllVariables(:stLvlInter, anyM)
+	if !isempty(deltaInter_df)
+		deltaInter_df[!,:value] = value.(deltaInter_df[!,:var]) ./ 1000
+		# add expected value
+		deltaInter_df = addExpVal(select(deltaInter_df, Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value)
+		# add tech to overall data frame
+		deltaInter_df[!,:variable] .= :stInterDelta
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), select(rename(deltaInter_df, :Ts_dis => :Ts_frs), Not([:Ts_expSup, :M]))))
+	end
+	
 	# ! get dispatch variables
 	for va in (:use, :gen, :stIn, :stOut, :stExtIn, :stExtOut, :stIntIn, :stIntOut, :stInterIn, :stInterOut, :emission, :crt, :lss, :trdBuy, :trdSell, :emissionInf)
-
+		
 		# get all variables, group them and get respective values
 		allVar_df = getAllVariables(va, anyM)
 		if isempty(allVar_df) continue end
@@ -268,7 +282,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		if !(:Ts_disSup in intCol(allVar_df)) && :Ts_dis in intCol(allVar_df)
 			allVar_df[!,:Ts_disSup] = map(x -> getAncestors(x, anyM.sets[:Ts], :int, anyM.supTs.lvl)[end], allVar_df[!,:Ts_dis])
 		end
-
+		
 		# add foresight period if applies
 		if anyM.scr.frsLvl != anyM.supTs.lvl && (length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0)))
 			checkScrFrs_boo = false
@@ -278,15 +292,15 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 				allVar_df[!,:Ts_frs] .= 0;
 				checkScrFrs_boo = true
 			else
-				allVar_df[!,:Ts_frs] = getTsFrs(allVar_df[!,:Ts_dis], anyM.sets[:Ts], anyM.scr.frsLvl)
+				allVar_df[!,:Ts_frs] .= getTsFrs(allVar_df[!,:Ts_dis], anyM.sets[:Ts], anyM.scr.frsLvl) |> (y -> map(x -> allVar_df[x,:Ts_dis] == 0 ? [0] : y[x], 1:length(y)))
 				allVar_df = flatten(allVar_df, :Ts_frs)
 			end
 		end
-
+		
 		# add expected value in case of scenarios and aggregate
 		allVar_df[!,:value] .= value.(allVar_df[!,:var])
 		if :Ts_dis in namesSym(allVar_df) && (length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0)))
-			allVar_df = vcat(addExpVal(select(filter(x -> x.scr != 0, allVar_df),Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value), select(filter(x -> x.scr == 0, allVar_df)))
+			allVar_df = vcat(addExpVal(select(filter(x -> x.scr != 0, allVar_df),Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value), filter(x -> x.scr == 0, select(allVar_df, Not([:var]))))
 		end
 		disp_df = combine(groupby(allVar_df, intersect(intCol(allVar_df), intersect(namesSym(allVar_df),[:Ts_disSup, :Ts_frs, :R_dis, :C, :Te, :scr]))), :value => (x -> sum(x)) => :value)
 			
@@ -306,7 +320,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		end
 
 		# adjust sign, if enabled
-		if wrtSgn && va in (:use, :stIn, :stIntIn, :stExtIn, :crt, :trdSell) disp_df[!,:value] = disp_df[!,:value] .* -1 end
+		if wrtSgn && va in (:use, :stIn, :stIntIn, :stExtIn, :stInterOut, :crt, :trdSell) disp_df[!,:value] = disp_df[!,:value] .* -1 end
 
 		# adds region column potentially missing for paramter triggered data
 		if !(:R_dis in namesSym(disp_df)) disp_df[!,:R_dis] .= 0.0 end

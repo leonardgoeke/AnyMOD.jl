@@ -480,9 +480,11 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
 
     # efficiency parameters
     parDef_dic[:effConv]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :Te, :M, :scr), problem = :both, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :Te => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :reference, mode = (:convIn, :convOut)))
-    parDef_dic[:effStIn]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :both,  defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :id => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :C => :up), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn, :stOut, :stLvl)))
-    parDef_dic[:effStOut] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :both, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :id => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :C => :up), part = :techSt,   techPre = (preset = :carrierSt, mode = (:stIn, :stOut, :stLvl)))
-
+    parDef_dic[:effStIn]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :both, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :id => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :C => :up), part = :techSt, techPre = (preset = :carrierSt, mode = (:stIn, :stOut, :stLvl)))
+    parDef_dic[:effStOut] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :both, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :id => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :C => :up), part = :techSt, techPre = (preset = :carrierSt, mode = (:stIn, :stOut, :stLvl)))
+    parDef_dic[:effStInterIn]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id, :scr), problem = :both, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :id => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :C => :up), part = :techSt, techPre = (preset = :carrierSt, mode = (:stIn, :stOut, :stLvl)))
+    parDef_dic[:effStInterOut] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id, :scr), problem = :both, defVal = 1.0, herit = (:Ts_expSup => :up, :Ts_dis => :up, :id => :up, :R_dis => :up, :scr => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :C => :up), part = :techSt, techPre = (preset = :carrierSt, mode = (:stIn, :stOut, :stLvl)))
+    
     # energy content of carrier
     parDef_dic[:enCont]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :scr => :up, :Te => :up, :C => :up, :C => :avg_any, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techConv, techPre = (preset = :reference, mode = (:convIn, :convOut)))
 
@@ -492,9 +494,10 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     parDef_dic[:costStLvlLss] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id),           problem = :sub,  defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :avg_any, :R_dis => :sum_any, :Te => :up, :id => :up),                                             part = :cost, techPre = (preset = :carrierSt, mode = tuple()))
 
     # specific interannual-stochastic storage parameter 
-    parDef_dic[:costStStartLvl]    = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr), problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost)
-    parDef_dic[:repWorstCase]    = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr), problem = :top, defVal = 1.0,     herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt)
-
+    parDef_dic[:costStStartLvl] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr),   problem = :top, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost)
+    parDef_dic[:expcStStartLvl]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr), problem = :top, defVal = 0.0,     herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt)
+    parDef_dic[:repWorstCase]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr),   problem = :top, defVal = 1.0,     herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt)
+   
     # variable costs
     parDef_dic[:costVarUse]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost)
     parDef_dic[:costVarGen]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost)
