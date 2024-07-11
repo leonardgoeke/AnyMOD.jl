@@ -892,7 +892,9 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = fa
 
 			if roundDown != 0
 				for varSym in varSym_arr
-					capa_dic[sys][sSym][varSym][!,:value] = floor.(capa_dic[sys][sSym][varSym][!,:value], digits = roundDown)
+					if varSym in keys(capa_dic[sys][sSym])
+						capa_dic[sys][sSym][varSym][!,:value] = floor.(capa_dic[sys][sSym][varSym][!,:value], digits = roundDown)
+					end
 				end
 			end
 
