@@ -431,7 +431,10 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 		for sSym in keys(resData_obj.stLvl)
 			if sSym in keys(sub_m.parts.tech)
 				part_obj = sub_m.parts.tech[sSym]
-				resData_obj.stLvl[sSym] = limitVar!(select(resData_obj.stLvl[sSym], Not([:scr])), select(part_obj.var[:stLvl], Not([:scr])), :stLvl, part_obj, rngVio_fl, sub_m)
+				for stType in keys(resData_obj.stLvl[sSym])
+					resData_obj.stLvl[sSym][stType] = limitVar!(select(resData_obj.stLvl[sSym][stType], Not([:scr])), select(part_obj.var[stType], Not([:scr])), stType, part_obj, rngVio_fl, sub_m)
+					removeEmptyDic!(resData_obj.stLvl[sSym], stType)
+				end
 				# remove system if no storage level exists
 				removeEmptyDic!(resData_obj.stLvl, sSym)
 			end
@@ -470,8 +473,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	end
 
 	# increase numeric focus if model did not solve
-	numFoc_int = solveModel!(sub_m.optModel, 0)
-	checkIIS(sub_m)
+	numFoc_int = @suppress solveModel!(sub_m.optModel, 0)
 
 	# write results into files (only used once optimum is obtained)
 	writeAllResults!(sub_m, resultOpt)
@@ -480,49 +482,57 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 
 	#region # * extract results
 
-	# get objective value
-	scaObj_fl = sub_m.options.scaFac.obj
-	resData_obj.objVal = value(sum(sub_m.parts.obj.var[:objVar][!,:var]))
+	if termination_status(sub_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED)
+		# get objective value
+		scaObj_fl = sub_m.options.scaFac.obj
+		resData_obj.objVal = value(sum(sub_m.parts.obj.var[:objVar][!,:var]))
 
-	# get duals on capacity
-	for sys in (:tech, :exc)
-		part_dic = getfield(sub_m.parts, sys)
-		for sSym in keys(resData_obj.capa[sys])
-			for capaSym in filter(x -> occursin("capa", lowercase(string(x))), collect(keys(resData_obj.capa[sys][sSym])))
-				if Symbol(capaSym, :BendersFix) in keys(part_dic[sSym].cns)
-					scaCapa_fl = getfield(sub_m.options.scaFac, occursin("StSize", string(capaSym)) ? :capaStSize : :capa)
-					resData_obj.capa[sys][sSym][capaSym] = addDual(resData_obj.capa[sys][sSym][capaSym], part_dic[sSym].cns[Symbol(capaSym, :BendersFix)], scaObj_fl / scaCapa_fl)
-					# remove capacity if none exists (again necessary because dual can be zero)
-					removeEmptyDic!(resData_obj.capa[sys][sSym], capaSym)
+		# get duals on capacity
+		for sys in (:tech, :exc)
+			part_dic = getfield(sub_m.parts, sys)
+			for sSym in keys(resData_obj.capa[sys])
+				for capaSym in filter(x -> occursin("capa", lowercase(string(x))), collect(keys(resData_obj.capa[sys][sSym])))
+					if Symbol(capaSym, :BendersFix) in keys(part_dic[sSym].cns)
+						scaCapa_fl = getfield(sub_m.options.scaFac, occursin("StSize", string(capaSym)) ? :capaStSize : :capa)
+						resData_obj.capa[sys][sSym][capaSym] = addDual(resData_obj.capa[sys][sSym][capaSym], part_dic[sSym].cns[Symbol(capaSym, :BendersFix)], scaObj_fl / scaCapa_fl)
+						# remove capacity if none exists (again necessary because dual can be zero)
+						removeEmptyDic!(resData_obj.capa[sys][sSym], capaSym)
+					end
+				end
+				# remove system if no capacities exist (again necessary because dual can be zero)
+				removeEmptyDic!(resData_obj.capa[sys], sSym)
+			end
+		end
+
+		# get duals on storage levels
+		if !isempty(resData_obj.stLvl)
+			for sSym in keys(resData_obj.stLvl)
+				if sSym in keys(sub_m.parts.tech)
+					part_obj = sub_m.parts.tech[sSym]
+					for stType in keys(resData_obj.stLvl[sSym])
+						resData_obj.stLvl[sSym][stType] = addDual(resData_obj.stLvl[sSym][stType], part_obj.cns[Symbol(stType,:BendersFix)], scaObj_fl / sub_m.options.scaFac.dispSt)
+						removeEmptyDic!(resData_obj.stLvl[sSym], stType)
+					end
+					removeEmptyDic!(resData_obj.stLvl, sSym)
 				end
 			end
-			# remove system if no capacities exist (again necessary because dual can be zero)
-			removeEmptyDic!(resData_obj.capa[sys], sSym)
 		end
-	end
 
-	# get duals on storage levels
-	if !isempty(resData_obj.stLvl)
-		for sSym in keys(resData_obj.stLvl)
-			if sSym in keys(sub_m.parts.tech)
-				part_obj = sub_m.parts.tech[sSym]
-				resData_obj.stLvl[sSym] = addDual(resData_obj.stLvl[sSym], part_obj.cns[:stLvlBendersFix], scaObj_fl / sub_m.options.scaFac.dispSt)
-				removeEmptyDic!(resData_obj.stLvl, sSym)
+		# get duals on limits
+		if !isempty(resData_obj.lim)
+			for limSym in keys(resData_obj.lim)
+				resData_obj.lim[limSym] = addDual(resData_obj.lim[limSym], sub_m.parts.lim.cns[Symbol(limSym,:BendersFix)], scaObj_fl / sub_m.options.scaFac.dispConv)
+				removeEmptyDic!(resData_obj.lim, limSym)
 			end
 		end
-	end
 
-	# get duals on limits
-	if !isempty(resData_obj.lim)
-		for limSym in keys(resData_obj.lim)
-			resData_obj.lim[limSym] = addDual(resData_obj.lim[limSym], sub_m.parts.lim.cns[Symbol(limSym,:BendersFix)], scaObj_fl / sub_m.options.scaFac.dispConv)
-			removeEmptyDic!(resData_obj.lim, limSym)
-		end
-	end
+		# probability weighted loss-of-load
+		lssProb_df = matchSetParameter(sub_m.parts.bal.var[:lss], sub_m.parts.obj.par[:scrProb], sub_m.sets)
+		lss_fl = sum(lssProb_df[!,:val] .* value.(lssProb_df[!,:var]))
 
-	# probability weighted loss-of-load
-	lssProb_df = matchSetParameter(sub_m.parts.bal.var[:lss], sub_m.parts.obj.par[:scrProb], sub_m.sets)
-	lss_fl = sum(lssProb_df[!,:val] .* value.(lssProb_df[!,:var]))
+	else
+		lss_fl = 0.0
+	end
 	
 	# elapsed time
 	elpSub_time = now() - str_time
@@ -536,13 +546,19 @@ end
 function solveModel!(mod_m::Model, numFocSt_int::Int)
 
 	numFoc_int = numFocSt_int
+	barHom_boo = false
 	while true
-		@suppress set_optimizer_attribute(mod_m, "NumericFocus", numFoc_int)
-		@suppress optimize!(mod_m)
-		if termination_status(mod_m) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3 
+		set_optimizer_attribute(mod_m, "NumericFocus", numFoc_int)
+		set_optimizer_attribute(mod_m, "BarHomogeneous", barHom_boo ? 1 : 0)
+		optimize!(mod_m)
+		if termination_status(mod_m) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3 && barHom_boo
 			break
 		else
-			numFoc_int = numFoc_int + 1
+			if barHom_boo
+				numFoc_int = numFoc_int + 1
+			else
+				barHom_boo = true
+			end
 		end
 	end
 
@@ -580,7 +596,9 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 			for sSym in keys(subCut.stLvl)
 				if sSym in keys(top_m.parts.tech)
 					part_obj = top_m.parts.tech[sSym]
-					push!(cutExpr_arr, getBendersCut(subCut.stLvl[sSym], part_obj.var[:stLvl], top_m.options.scaFac.dispSt))
+					for stType in keys(subCut.stLvl[sSym])
+						push!(cutExpr_arr, getBendersCut(subCut.stLvl[sSym][stType], part_obj.var[stType], top_m.options.scaFac.dispSt))
+					end
 				end
 			end
 		end
@@ -686,8 +704,15 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	nameStab_dic = Dict(:lvl1 => "level bundle", :lvl2 => "level bundle", :qtr => "quadratic trust-region", :prx => "proximal bundle", :box => "box-step method")
 
 	# store information for cuts
-	benders_obj.cuts = collect(cutData_dic)
+	benders_obj.cuts = copy(collect(cutData_dic))
 
+	# filter unsolved SPs
+	infeasSub_arr = getindex.(filter(x -> x[2].objVal == Inf, benders_obj.cuts),1)
+	filter!(x -> !(x[1] in infeasSub_arr), benders_obj.cuts)
+	for sub in infeasSub_arr 
+		produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Could not solve sub-problem $sub and did not add a cut!", testErr = false, printErr = false) 
+	end
+		
 	# get sub-results
 	itr_obj.res[:actSubCost] = sum(map(x -> x.objVal, values(cutData_dic))) # objective of sub-problems
 	itr_obj.res[:actTotCost] = itr_obj.res[:topCost] + itr_obj.res[:actSubCost]
@@ -808,7 +833,7 @@ end
 #region # * data management
 
 # merge all entries of dictionary used for capacity data into one dataframe for the specified columns
-mergeVar(var_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, outCol::Array{Symbol,1}) = vcat(vcat(vcat(map(x -> var_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,outCol], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
+mergeVar(var_dic::Dict{Symbol,Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}}, outCol::Array{Symbol,1}) = vcat(vcat(vcat(map(x -> var_dic[x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,outCol], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
 
 # get dataframe with variables, values, and scaling factors for stabilization
 function getStabDf(stab_obj::stabObj, top_m::anyModel)
@@ -816,8 +841,8 @@ function getStabDf(stab_obj::stabObj, top_m::anyModel)
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(deepcopy(stab_obj.var), stab_obj.weight, top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,[:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
-	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x], collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
-	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : select(z, [:var, :value, :scaFac]))
+	allStLvl_df = vcat(vcat(map(x -> expExpr_dic[:stLvl][x] |> (u -> map(y -> u[y], collect(keys(u)))), collect(keys(expExpr_dic[:stLvl])))...)...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
+	allLim_df = vcat(map(x -> select(expExpr_dic[:lim][x], [:var, :value, :scaFac]), collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
 
 	# filter zero scaling factors
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
@@ -829,9 +854,9 @@ function getStabDf(stab_obj::stabObj, top_m::anyModel)
 end
 
 # ! matches values in dictionary with variables of provided problem
-function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, Dict{Symbol, DataFrame}}}, Dict{Symbol, DataFrame}}}, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl,:lim), NTuple{4, Float64}}, mod_m::anyModel, prsvExp::Bool=false)
+function matchValWithVar(var_dic::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl,:lim), NTuple{4, Float64}}, mod_m::anyModel, prsvExp::Bool=false)
 	
-	expExpr_dic = Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}()
+	expExpr_dic = Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}()
 	
 	# match capacity values with variables
 	expExpr_dic[:capa] = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
@@ -856,17 +881,20 @@ function matchValWithVar(var_dic::Dict{Symbol, Union{Dict{Symbol, Dict{Symbol, D
 	end
 
 	# match storage level values with variables
-	expExpr_dic[:stLvl] = Dict{Symbol,DataFrame}()
+	expExpr_dic[:stLvl] = Dict{Symbol,Dict{Symbol,DataFrame}}()
 
 	if !isempty(var_dic[:stLvl])
 		for sSym in keys(var_dic[:stLvl])
 			if sSym in keys(mod_m.parts.tech)
 				sel_arr = prsvExp ? (:Ts_exp in intCol(val_df) ? [:Ts_exp, :var, :value] : [:Ts_disSup, :var, :value]) : [:var, :value]
-				val_df = var_dic[:stLvl][sSym] 
-				val_df[!,:value] = val_df[!,:value] ./ mod_m.options.scaFac.dispSt
-				join_df = select(innerjoin(val_df, mod_m.parts.tech[sSym].var[:stLvl], on  = intCol(var_dic[:stLvl][sSym])), sel_arr)
-				join_df[!,:scaFac] .= weight_ntup.stLvl^2
-				expExpr_dic[:stLvl][sSym] = prsvExp && :Ts_exp in intCol(val_df) ? rename(join_df, :Ts_exp => :Ts_disSup) : join_df
+				expExpr_dic[:stLvl][sSym] = Dict{Symbol,DataFrame}() 
+				for stType in keys(var_dic[:stLvl][sSym])
+					val_df = var_dic[:stLvl][sSym][stType]
+					val_df[!,:value] = val_df[!,:value] ./ mod_m.options.scaFac.dispSt
+					join_df = select(innerjoin(val_df, mod_m.parts.tech[sSym].var[stType], on  = intCol(var_dic[:stLvl][sSym][stType])), sel_arr)
+					join_df[!,:scaFac] .= weight_ntup.stLvl^2
+					expExpr_dic[:stLvl][sSym][stType] = prsvExp && :Ts_exp in intCol(val_df) ? rename(join_df, :Ts_exp => :Ts_disSup) : join_df
+				end
 			end
 		end
 	end
@@ -904,7 +932,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = fa
 			# continue in case of technology without changing capacites
 			if part_dic[sSym].type == :stock &&  part_dic[sSym].decomm == :none continue end	
 
-			varSym_arr = filter(x -> any(occursin.(string.(var_arr), string(x))) && x != :stLvl, keys(part_dic[sSym].var))
+			varSym_arr = filter(x -> any(occursin.(string.(var_arr), string(x))) && !(x in (:stLvl, :stLvlInter)), keys(part_dic[sSym].var))
 
 			# get relevant capcities filtering fixed ones in case option is active
 			capa_dic[sys][sSym] = Dict{Symbol, DataFrame}()
@@ -967,15 +995,20 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = fa
 	end
 
 	# write storage levels in case of reduced foresight
-	stLvl_dic = Dict{Symbol,DataFrame}()
+	stLvl_dic = Dict{Symbol,Dict{Symbol,DataFrame}}()
 
 	if :stLvl in var_arr && in_m.options.frsLvl != 0
 		for sSym in keys(in_m.parts.tech)
-			if :stLvl in keys(in_m.parts.tech[sSym].var)
-				stLvl_dic[sSym] = getResult(copy(in_m.parts.tech[sSym].var[:stLvl]))	
-				removeEmptyDic!(stLvl_dic, sSym)
+			stLvl_dic[sSym] = Dict{Symbol,DataFrame}()
+			for stType in (:stLvl, :stLvlInter)
+				if stType in keys(in_m.parts.tech[sSym].var)
+					stLvl_dic[sSym][stType] = getResult(copy(in_m.parts.tech[sSym].var[stType]))	
+					removeEmptyDic!(stLvl_dic[sSym], stType)
+				end
 			end
+			removeEmptyDic!(stLvl_dic, sSym)
 		end
+		
 	end
 
 	comLim_dic = Dict{Symbol,DataFrame}()
@@ -1122,7 +1155,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 	end
 
 	for sub in keys(numFoc_dic)
-		if numFoc_dic[sub] != 0
+		if numFoc_dic[sub] != 0 && sub in keys(benders_obj.cuts)
 			produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Numeric focus of sub-problem $sub had to be increased to $(numFoc_dic[sub]) for the iteration", testErr = false, printErr = false)
 		end
 	end

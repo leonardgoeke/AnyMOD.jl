@@ -155,6 +155,8 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 				dem_df = flatten(dem_df,:Ts_frs)
 			end
 
+			if !isempty(anyM.subPro) filter!(x -> x.Ts_frs == anyM.subPro[1], dem_df) end
+
 			# add scenario and dispatch timesteps in case of values above foresight level
 			if anyM.scr.frsLvl != anyM.supTs.lvl
 				relDem_df = filter(x -> anyM.sets[:Ts].nodes[x.Ts_dis].lvl <= anyM.scr.frsLvl, dem_df)
@@ -564,11 +566,11 @@ function reportResults(objGrp::Val{:cost}, anyM::anyModel; addObjName::Bool=true
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allData_df, anyM, fileName = "results_costs", rtnDf = rtnOpt, filterFunc = rmvZero ? x -> abs(x.value) > 1e-5 : x -> true)
+		csvData_df = printObject(allData_df, anyM, fileName = "results_cost", rtnDf = rtnOpt, filterFunc = rmvZero ? x -> abs(x.value) > 1e-5 : x -> true)
 	end
 
 	if :raw in rtnOpt
-		CSV.write("$(anyM.options.outDir)/results_costs_$(anyM.options.outStamp).csv", allData_df)
+		CSV.write("$(anyM.options.outDir)/results_cost_$(anyM.options.outStamp).csv", allData_df)
 	end
 
 	if :rawDf in rtnOpt && :csvDf in rtnOpt

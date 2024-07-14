@@ -811,7 +811,7 @@ function distributedMapping!(anyM::anyModel, prepSys_dic::Dict{Symbol,Dict{Symbo
 			for parName in allPar_arr
 				if getfield(anyM.parts, sys)[pName].par[parName].problem == :top # completely delete parameters not relating to subproblems
 					delete!(getfield(anyM.parts, sys)[pName].par, parName)
-				elseif ((:mustOut in allPar_arr) && !(parName in (:avaConv, :avaStOut, :effConv, :effStOut, :ratioConvOutFix))) || !(:mustOut in allPar_arr) # remove unrequired data, but keep the parameter itself (parameter relevant to must-run are always kept) 
+				else # remove unrequired data 
 					parData_df = getfield(anyM.parts, sys)[pName].par[parName].data
 					rmv_arr = intersect(namesSym(parData_df), [:Ts_dis, :scr])
 					if isempty(rmv_arr)

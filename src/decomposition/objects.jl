@@ -61,7 +61,7 @@ end
 mutable struct resData
 	objVal::Float64
 	capa::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}
-	stLvl::Dict{Symbol,DataFrame}
+	stLvl::Dict{Symbol,Dict{Symbol,DataFrame}}
 	lim::Dict{Symbol,DataFrame}
 	resData() = new(Inf, Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(), Dict{Symbol,DataFrame}(), Dict{Symbol,DataFrame}())
 end
@@ -90,10 +90,10 @@ mutable struct stabObj
 	actMet::Int # index of currently active stabilization method
 	objVal::Float64 # array of objective value for current center
 	dynPar::Array{Union{Dict,Float64},1} # array of dynamic parameters for each method
-	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
+	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
 	
-	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, top_m::anyModel)
+	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, top_m::anyModel)
 		stab_obj = new()
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64,Float64,Int64}})
@@ -116,7 +116,7 @@ mutable struct stabObj
 		
 		# compute number of variables subject to stabilization
 		stabCapa_arr = vcat(vcat(vcat(map(x -> stab_obj.var[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
-		stLvl_arr = vcat(map(x -> stab_obj.var[:stLvl][x][!,:value], collect(keys(stab_obj.var[:stLvl])))...)
+		stLvl_arr = vcat(vcat(map(x -> stab_obj.var[:stLvl][x] |> (u -> map(y -> u[y][!,:value], collect(keys(u)))), collect(keys(stab_obj.var[:stLvl])))...)...)
 		lim_arr = vcat(map(x -> stab_obj.var[:lim][x][!,:value], collect(keys(stab_obj.var[:lim])))...)
 		stabExpr_arr = vcat(stabCapa_arr, stLvl_arr, lim_arr)
 

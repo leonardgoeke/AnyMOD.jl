@@ -243,7 +243,7 @@ function createCost!(partCost::OthPart, anyM::anyModel)
 	# costs of missing capacity
 
 	# obtain missing capacity variables
-	if !isempty(anyM.subPro) && anyM.subPro != (0, 0) # for sub-problems missing capacity variables only server to avoid infeasibilities with storage technologies and are stored in technology parts
+	if !isempty(anyM.subPro) && anyM.subPro != (0, 0) # for sub-problems missing capacity variables only serve to avoid infeasibilities with storage technologies and are stored in technology parts
 		missCapa_df = filter(x -> :missCapa in keys(anyM.parts.tech[x].var), collect(keys(anyM.parts.tech))) |> (z -> isempty(z) ? DataFrame() : vcat(map(y -> anyM.parts.tech[y].var[:missCapa], z)...))
 	else
 		missCapa_df = :missCapa in keys(anyM.parts.bal.var) ? anyM.parts.bal.var[:missCapa] : DataFrame()
@@ -256,7 +256,7 @@ function createCost!(partCost::OthPart, anyM::anyModel)
 		if !isempty(anyM.subPro) && anyM.subPro != (0, 0)  
 			# add scenario probability
 			allVar_df[!,:scr] .= anyM.subPro[2]
-			allVar_df[!,:missCapa] = allVar_df[!,:missCapa] .* map(x -> anyM.scr.scrProb[(x.Ts_disSup, x.scr)], eachrow(allVar_df))
+			allVar_df[!,:missCapa] = allVar_df[!,:missCapa] .* map(x -> anyM.scr.scrProb[anyM.subPro], eachrow(allVar_df))
 		end
 		# groups cost expressions, scales groups expression and creates a variables for each grouped entry
 		allVar_df = rename(combine(x -> (expr = sum(x.disFac .* x.missCapa .* x.cost),), groupby(allVar_df, [:Ts_disSup, :R_exp, :C])), :R_exp => :R_dis)

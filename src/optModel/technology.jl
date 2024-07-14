@@ -36,6 +36,9 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 			if part.type == :unrestricted
 				push!(anyM.report, (3, "must output", "", "must-run parameter for technology '$(tech_str)' ignored, because technology is unrestricted,"))
 			else
+				if !(:desFac in keys(part.par)) && !isempty(anyM.subPro) && anyM.subPro != (0,0)
+					push!(anyM.report, (2, "must output", "", "technology '$(tech_str)' has must-run, but no pre-defined design factor, also the model has reduced foresight and is created distributed, as a result, design factors only reflect operation within the foresight period"))
+				end
 				computeDesFac!(part, yTs_dic, anyM)
 				prepareMustOut!(part, modeDep_dic, cns_dic, anyM)
 			end
@@ -96,10 +99,13 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 			if anyM.options.createVI.st && (anyM.scr.frsLvl != 0 || part.stCyc == -1) && anyM.subPro == (0,0) && :stLvl in keys(part.var) cns_dic = createStVI(part, ts_dic, r_dic, cns_dic, anyM) end
 
 			# additional constraints for interannual stochastic storage 
-			if part.stCyc == -1 && (isempty(anyM.subPro) || anyM.subPro == (0,0))
-				cns_dic = enforceStDelta(part, cns_dic, anyM)
-				cns_dic = stochStRestr(part, cns_dic, anyM)
-				cns_dic = enforceStExpc(part, cns_dic, anyM)
+			if part.stCyc == -1
+				if (isempty(anyM.subPro) || anyM.subPro != (0,0)) 
+					cns_dic = enforceStDelta(part, cns_dic, anyM) 
+				elseif (isempty(anyM.subPro) || anyM.subPro == (0,0)) 
+					cns_dic = stochStRestr(part, cns_dic, anyM)
+					cns_dic = enforceStExpc(part, cns_dic, anyM)
+				end
 			end
 
 			produceMessage(anyM.options, anyM.report, 3, " - Prepared capacity restrictions for technology $(tech_str)")
@@ -219,7 +225,7 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,), :stLvlInter => (:avaStSize,))
 	hasSt_boo = :capaStSize in keys(prepTech_dic) && (!anyM.options.createVI.bal || anyM.scr.frsLvl != 0 || part.stCyc == -1)
 	dispVar_arr = collectKeys(keys(part.carrier)) |> (x -> hasSt_boo  ? [:stLvl, x...]  : x)  |> (x -> part.stCyc == -1  ? [:stLvlInter, :stInterOut, :stInterIn, x...]  : x)
-	if anyM.subPro == (0,0) && !anyM.options.createVI.bal filter!(x -> x == :stLvlInter, dispVar_arr) end # case of top problem and reduced foresight
+	if anyM.subPro == (0,0) && !anyM.options.createVI.bal filter!(x -> x in (:stLvl, :stLvlInter), dispVar_arr) end # case of top problem and reduced foresight
 	onlyGen_boo = :gen in dispVar_arr && isempty(intersect([:use, :stIntIn], dispVar_arr))
 
 	# filter map of capacity restrictions based on actually created dispatch variables
@@ -287,7 +293,7 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 		end
 	
 		# adjust table for case of reduced foresight and stochastic storage
-		if va == :stLvl && part.stCyc < anyM.scr.frsLvl && anyM.scr.frsLvl != 0 && anyM.subPro != (0,0)
+		if va == :stLvl && part.stCyc < anyM.scr.frsLvl && anyM.scr.frsLvl != 0
 		
 			# get time-steps that are at the start of a foresight period
 			frsStep_arr = [getDescendants(x, anyM.sets[:Ts], false, y) for x in getfield.(getNodesLvl(anyM.sets[:Ts], anyM.scr.frsLvl), :idx), y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x], :lvl), allVar_df[!,:Ts_dis]))]

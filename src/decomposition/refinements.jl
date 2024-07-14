@@ -53,13 +53,17 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 
 			# extend starting solution with storage levels
 			for tSym in keys(top_m.parts.tech)
-				if :stLvl in keys(top_m.parts.tech[tSym].var)
-					lvlTop_df = select(copy(top_m.parts.tech[tSym].var[:stLvl]), Not([:var]))
-					lvlHeu_df = copy(heu_m.parts.tech[tSym].var[:stLvl])
-					lvlHeu_df[!,:scr] .= 0
-					lvlHeu_df[!,:value] .= value.(lvlHeu_df[!,:var])
-					startSol_obj.stLvl[tSym] = innerjoin(lvlTop_df, unique(select(lvlHeu_df, Not([:scr,:var]))), on = filter(x -> x != :scr, intCol(lvlHeu_df)))
+				startSol_obj.stLvl[tSym] = Dict{Symbol,DataFrame}()
+				for stType in (:stLvl, :stLvlInter)
+					if stType in keys(top_m.parts.tech[tSym].var)
+						lvlTop_df = select(copy(top_m.parts.tech[tSym].var[stType]), Not([:var]))
+						lvlHeu_df = copy(heu_m.parts.tech[tSym].var[stType])
+						lvlHeu_df[!,:scr] .= 0
+						lvlHeu_df[!,:value] .= value.(lvlHeu_df[!,:var])
+						startSol_obj.stLvl[tSym][stType] = innerjoin(lvlTop_df, unique(select(lvlHeu_df, Not([:scr,:var]))), on = filter(x -> x != :scr, intCol(lvlHeu_df)))
+					end
 				end
+				removeEmptyDic!(startSol_obj.stLvl,tSym)
 			end
 	
 		else
@@ -356,7 +360,7 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, t
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!, [:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
-	allStLvl_df = vcat(map(x -> expExpr_dic[:stLvl][x], collect(keys(expExpr_dic[:stLvl])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
+	allStLvl_df = vcat(vcat(map(x -> expExpr_dic[:stLvl][x] |> (u -> map(y -> u[y], collect(keys(u)))), collect(keys(expExpr_dic[:stLvl])))...)...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
 	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : select(z, [:var, :value, :scaFac]))
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
 
@@ -542,9 +546,9 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::
 end
  
 # filter variables used for stabilization
-function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, stLvl_dic::Dict{Symbol,DataFrame}, lim_dic::Dict{Symbol,DataFrame}, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl, :lim), NTuple{4, Float64}}, top_m::anyModel)
+function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, stLvl_dic::Dict{Symbol,Dict{Symbol,DataFrame}}, lim_dic::Dict{Symbol,DataFrame}, weight_ntup::NamedTuple{(:capa,:capaStSize,:stLvl, :lim), NTuple{4, Float64}}, top_m::anyModel)
 
-	var_dic = Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}()
+	var_dic = Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}}()
 
 	# write capacity values
 	var_dic[:capa] = Dict(x => Dict{Symbol,Dict{Symbol,DataFrame}}() for x in [:tech, :exc])
@@ -581,14 +585,18 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 	end
 
 	# write storage values
-	var_dic[:stLvl] = Dict{Symbol,DataFrame}()
+	var_dic[:stLvl] = Dict{Symbol,Dict{Symbol,DataFrame}}()
 
 	if !isempty(stLvl_dic) && weight_ntup.stLvl != 0.0
 		for sSym in keys(stLvl_dic)
 			if sSym in keys(top_m.parts.tech)
 				part_obj = top_m.parts.tech[sSym]
-				var_df = stLvl_dic[sSym]
-				var_dic[:stLvl][sSym] = intCol(var_df) |> (w -> innerjoin(var_df, unique(select(filter(x -> !isempty(x.var.terms), part_obj.var[:stLvl]), w)), on = w))
+				var_dic[:stLvl][sSym] = Dict{Symbol,DataFrame}()
+				for stType in keys(stLvl_dic[sSym])
+					var_df = stLvl_dic[sSym][stType]
+					var_dic[:stLvl][sSym][stType] = intCol(var_df) |> (w -> innerjoin(var_df, unique(select(filter(x -> !isempty(x.var.terms), part_obj.var[stType]), w)), on = w))
+				end
+				removeEmptyDic!(var_dic[:stLvl], sSym)
 			end
 		end
 	end
@@ -658,8 +666,8 @@ function removeStab!(benders_obj::bendersObj)
 		end
 
 		# delete limits on storage level
-		for sSym in keys(stabVar_dic[:stLvl])
-			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:stLvl][sSym][!,:var])
+		for sSym in keys(stabVar_dic[:stLvl]), stType in keys(stabVar_dic[:stLvl])
+			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:stLvl][sSym][stType][!,:var])
 			delete_lower_bound.(rmvLim_arr)
 			set_lower_bound.(rmvLim_arr, 0.0)
 			delete_upper_bound.(rmvLim_arr)
