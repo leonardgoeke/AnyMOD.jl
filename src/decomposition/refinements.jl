@@ -562,7 +562,7 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 			varNum_dic = Dict(x => size(unique(getfield.(part_dic[sSym].var[x][!,:var], :terms)), 1) for x in collect(keys(part_dic[sSym].var))) # number of unique variables
 			trstVar_arr = map(filter(x -> occursin("capa", string(x)), collect(keys(part_dic[sSym].var)))) do x
 				expVar_sym = Symbol(replace(string(x), "capa" => "exp"))
-				return part_dic[sSym].decomm == :none && expVar_sym in keys(varNum_dic) && varNum_dic[expVar_sym] <= varNum_dic[x] ? expVar_sym : x
+				return !(x in (:capaStOut, :capaStSize, :capaStIn)) && part_dic[sSym].decomm == :none && expVar_sym in keys(varNum_dic) && varNum_dic[expVar_sym] <= varNum_dic[x] ? expVar_sym : x
 			end
 
 			# filter capacities with weight of zero
