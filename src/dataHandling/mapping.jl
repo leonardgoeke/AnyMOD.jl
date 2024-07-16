@@ -157,7 +157,7 @@ function createTimestepMapping!(anyM::anyModel)
 
 		# compute other scaling factors as sum of lower levels
 		if ts_tr.height > supTsLvl_int
-			for l in reverse(supTsLvl_int:(ts_tr.height-1))
+			for l in reverse(supTsLvl_int:(ts_tr.height - 1))
 				foreach(x -> scaSupTs_dic[x] = sum(map(y -> scaSupTs_dic[y], ts_tr.nodes[x].down)), getDescendants(sup, anyM.sets[:Ts], false, l))
 			end
 		end

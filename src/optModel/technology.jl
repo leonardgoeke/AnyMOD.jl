@@ -14,15 +14,13 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 	if part.type != :unrestricted
 		# creates capacity, expansion, and retrofitting variables
 		createExpCap!(part, prepTech_dic, anyM, ratioVar_dic)
-
+		
 		# create expansion constraints
 		if isempty(anyM.subPro) || anyM.subPro == (0,0)
 			# connect capacity and expansion variables
 			createCapaCns!(part, anyM.sets, prepTech_dic, cns_dic, anyM.optModel, anyM.options.holdFixed)
-
 			# control operated capacity variables
 			if part.decomm != :none createOprVarCns!(part, cns_dic, anyM) end
-
 			# control capacity for interannual storage
 			if :capaStSize in keys(part.var) && part.stCyc == -1 capaSizeSeasonInter(part, cns_dic, anyM) end
 		end
@@ -1020,9 +1018,6 @@ end
 
 # ! limit capacity for seasonal and inter-annual storage
 function capaSizeSeasonInter(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyModel)	
-	# create variables for seasonal and inter-annual storage size
-	part.var[:capaStSizeSeason] = createVar(select(part.var[:capaStSize], Not([:var])), "capaStSizeSeason", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
-	part.var[:capaStSizeInter] = createVar(select(part.var[:capaStSize], Not([:var])), "capaStSizeInter", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
 	
 	# limit sum of storage size to overall capacity
 	cns_df = rename(part.var[:capaStSize], :var => :capaStSize)

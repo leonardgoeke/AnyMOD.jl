@@ -233,19 +233,33 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     parDef_dic[:capaExcResi]    = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:R_from => :sum_any,  :R_to => :sum_any, :Exc => :sum_any, :Ts_disSup => :avg_any, :Ts_expSup => :sum_any, :Ts_disSup => :up), part = :exc)
     parDef_dic[:capaExcResiDir] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:R_from => :sum_any,  :R_to => :sum_any, :Exc => :sum_any, :Ts_disSup => :avg_any, :Ts_expSup => :sum_any, :Ts_disSup => :up), part = :exc)
 
-    # ! capacity ratios
+    # ! capacity and expansion ratios
 
-    parDef_dic[:stInToConvUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:stInToConvLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:stInToConvFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    # capacity
+    parDef_dic[:stInToConvCapaUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:stInToConvCapaLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:stInToConvCapaFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :both, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
 
-    parDef_dic[:stOutToStInUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:stOutToStInLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:stOutToStInFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:stOutToStInCapaUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:stOutToStInCapaLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:stOutToStInCapaFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :both, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
 
-    parDef_dic[:sizeToStOutUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:sizeToStOutLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:sizeToStOutFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:sizeToStOutCapaUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:sizeToStOutCapaLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:sizeToStOutCapaFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :both, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+
+    # expansion
+    parDef_dic[:stInToConvExpUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:stInToConvExpLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:stInToConvExpFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+
+    parDef_dic[:stOutToStInExpUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:stOutToStInExpLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:stOutToStInExpFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+
+    parDef_dic[:sizeToStOutExpUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:sizeToStOutExpLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:sizeToStOutExpFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
 
     #endregion
 

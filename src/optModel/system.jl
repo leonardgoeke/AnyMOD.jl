@@ -449,7 +449,8 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 
 							# find cases where variable of checked type is missing
 							if var in stKey_arr 
-								noVar_df = (part.type == :stock && part.decomm == :none ? [:resi,] : [:resi, :var]) |> (z -> antijoin(relSt_df, unique(vcat(map(u -> getfield(prepTech_dic[var], u) |> (k -> select(k, intCol(k, [:Ts_expSup, :Ts_disSup]))), z)...)), on = names(relSt_df)))
+								disInter_boo = part.stCyc == -1 && !isempty(anyM.subPro) && anyM.subPro != (0,0) && var == :capaStSize
+								noVar_df = (part.type == :stock && part.decomm == :none && !disInter_boo ? [:resi,] : [:resi, :var]) |> (z -> antijoin(relSt_df, unique(vcat(map(u -> getfield(prepTech_dic[var], u) |> (k -> select(k, intCol(k, [:Ts_expSup, :Ts_disSup]))), z)...)), on = names(relSt_df)))
 							else
 								noVar_df = relSt_df
 							end
@@ -540,7 +541,7 @@ function addInsCapa!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple
 		end
 	end
 
-	# add installed capacity for technologies
+	# add installed capacity for technologies (and distributed cases with inter-annual storage where capaStSize must be a variable)
 	for tSym in collect(keys(prepSys_dic[:Te]))
 		prepTech_dic = prepSys_dic[:Te][tSym]
 		if anyM.parts.tech[tSym].decomm != :none
@@ -562,6 +563,8 @@ function addInsCapa!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple
 					if prepTech_dic[cap] |> (w -> isempty(w.var) && isempty(w.resi)) delete!(prepTech_dic, cap) end
 				end
 			end
+		elseif anyM.parts.tech[tSym].stCyc == -1 && !isempty(anyM.subPro) && anyM.subPro != (0,0) && :capaStSize in keys(prepTech_dic)	
+			prepTech_dic[:capaStSize] = (var = unique(vcat(prepTech_dic[:capaStSize].var, select(prepTech_dic[:capaStSize].resi, Not([:var])))), resi = DataFrame())
 		end
 	end
 end
@@ -573,7 +576,10 @@ end
 # ! create expansion and capacity variables
 function createExpCap!(part::AbstractModelPart, prep_dic::Dict{Symbol,NamedTuple}, anyM::anyModel, ratioVar_dic::Dict{Symbol,Pair{String,String}} = Dict{Symbol,Pair{String,String}}())
 	
+	# create variables for expansion and capacity
 	for expVar in sort(collectKeys(keys(prep_dic)))
+
+		seasStSize_boo = expVar == :capaStSize && part.stCyc == -1 && !isempty(anyM.subPro) && anyM.subPro != (0,0) # only needs capacity for seasonal storage in case of inter-annual storage system and distributed creation
 		
 		exc_boo = typeof(part) <: ExcPart
 		s_sym = exc_boo ? :Exc : :Te
@@ -593,7 +599,7 @@ function createExpCap!(part::AbstractModelPart, prep_dic::Dict{Symbol,NamedTuple
 		end
 
 		# create dataframe of capacity or expansion variables by creating the required capacity variables and join them with pure residual values
-		var_df = createVar(varMap_tup.var, string(expVar), anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl)
+		var_df = createVar(varMap_tup.var, seasStSize_boo ? "capaStSizeSeason" : string(expVar), anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl)
 
 		# add columns to retrofitting variables to indicate start or target
 		if occursin("retro", string(expVar)) 
@@ -656,8 +662,15 @@ function createExpCap!(part::AbstractModelPart, prep_dic::Dict{Symbol,NamedTuple
 			var_df = vcat(allDf_arr...)
 		end
 
-		if !isempty(var_df)	part.var[expVar] = var_df end
+		if !isempty(var_df)	part.var[seasStSize_boo ? :capaStSizeSeason : expVar] = var_df end
 	end
+
+	# create variables for seasonal and inter-annual storage size
+	if isdefined(part,:stCyc) && part.stCyc == -1 && (isempty(anyM.subPro) || anyM.subPro == (0,0))
+		part.var[:capaStSizeSeason] = createVar(select(part.var[:capaStSize], Not([:var])), "capaStSizeSeason", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
+		part.var[:capaStSizeInter] = createVar(select(part.var[:capaStSize], Not([:var])), "capaStSizeInter", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
+	end
+
 end
 
 # ! connect capacity and expansion variables
@@ -778,7 +791,7 @@ function createOprVarCns!(part::AbstractModelPart, cns_dic::Dict{Symbol,cnsCont}
 		# ! create constraint to prevent re-commissioning of capacity once decommissioned
 		if part.decomm == :decomm
 			# add previous period and its capacity variable to table
-			prevTs_dic = Dict(x => anyM.supTs.step[findall(x .== anyM.supTs.step)[1]]-1 for x in anyM.supTs.step[2:end])
+			prevTs_dic = Dict(x => anyM.supTs.step[findall(x .== anyM.supTs.step)[1]] - 1 for x in anyM.supTs.step[2:end])
 			cns_df = rename(filter(r -> r.Ts_disSup != anyM.supTs.step[1], oprVar_df), :var => :oprNow)
 			cns_df[!,:Ts_disSupPrev] = map(x -> prevTs_dic[x], cns_df[!,:Ts_disSup])
 			cns_df = rename(innerjoin(cns_df, oprVar_df; on = intCol(oprVar_df, :dir) |> (x -> Pair.(replace(x, :Ts_disSup => :Ts_disSupPrev), x))), :var => :oprPrev)
@@ -974,7 +987,7 @@ function createCapaRestr!(part::AbstractModelPart, ts_dic::Dict{Tuple{Int64,Int6
 
 		# obtains corresponding capacity if any exists
 		if Symbol(:capa, info_ntup.capa) in keys(part.var)
-			capaVar_df = part.var[Symbol(:capa, info_ntup.capa)] |> (z -> type_sym in (:stIn, :stOut, :stSize) ? filter(x -> x.id == parse(Int, split(String(restrGrp.cnstrType[1]), "_")[2]), z) : z)
+			capaVar_df = part.var[Symbol(:capa, info_ntup.capa)] |> (z -> type_sym in (:stIn, :stOut, :stSize, :stSizeSeason) ? filter(x -> x.id == parse(Int, split(String(restrGrp.cnstrType[1]), "_")[2]), z) : z)
 		else
 			continue
 		end
@@ -1058,7 +1071,7 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	end
 
 	# obtain all relevant dispatch variables
-	dispVar_arr = type_sym != :exc ? (type_sym != :stSize ? intersect(collect(keys(part.var)), info_ntup.dis) : collect(info_ntup.dis)) : [:exc]
+	dispVar_arr = type_sym != :exc ? (!(type_sym in (:stSize,:stSizeSeason)) ? intersect(collect(keys(part.var)), info_ntup.dis) : collect(info_ntup.dis)) : [:exc]
 	if type_sym != :exc
 		resDis_ntup = :Ts_expSup in agg_arr ? (Ts_expSup = supTs_ntup.lvl, Ts_dis = restr.lvlTs, R_dis = restr.lvlR) : (Ts_dis = restr.lvlTs, R_dis = restr.lvlR)
 	else
@@ -1088,7 +1101,7 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 		end
 
 		# convert dispatch variables to energy units (expect for stSize since these are already provided in energy units) 
-		if type_sym != :stSize
+		if !(type_sym in (:stSize,:stSizeSeason))
 			allVar_df[!,:var]  = allVar_df[!,:var] .* getEnergyFac(allVar_df[!,:Ts_dis], supTs_ntup)
 		end
 
@@ -1109,7 +1122,7 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 	cns_df = innerjoin(capaDim_df, grpCapaVar_df, on = intCol(grpCapaVar_df))
 
 	# scale capacity to energy units as well
-	if type_sym != :stSize cns_df[!,:capa] = cns_df[!,:capa] .* getEnergyFac(cns_df[!,:Ts_dis], supTs_ntup) end
+	if !(type_sym in (:stSize,:stSizeSeason)) cns_df[!,:capa] = cns_df[!,:capa] .* getEnergyFac(cns_df[!,:Ts_dis], supTs_ntup) end
 
 	return cns_df
 end
@@ -1125,9 +1138,10 @@ function createRatioCns!(part::AbstractModelPart, cns_dic::Dict{Symbol,cnsCont},
 	ratioLim_arr = map(x -> map(k -> Symbol(k[1]) => Symbol(k[2][1]), filter(z -> length(z[2]) == 2, map(y -> y => split(x, y), ["Up", "Low", "Fix"])))[1], par_arr)
 	parToLim_dic = Dict(y => unique(getindex.(filter(z -> z[2] == y, ratioLim_arr), 1)) for y in unique(getindex.(ratioLim_arr, 2)))
 
-	ratioVar_dic = Dict(:stInToConv => ((:capaConv, :capaStIn), (:expConv, :expStIn)), :stOutToStIn => ((:capaStIn, :capaStOut), (:expStIn, :expStOut)),
-												:sizeToStOut => ((:capaStOut, :capaStSize), (:expStIn, :expStSize)), :flhConv => ((:capaConv, :convIn), ), :flhStIn => ((:capaStIn, :stIn), ), :flhExc => ((:capaExc, :exc), ),
-																				:flhStOut => ((:capaStOut, :stOut), ), :cycStIn => ((:capaStSize, :stIn), ), :cycStOut => ((:capaStSize, :stOut),))
+	ratioVar_dic = Dict(:stInToConvCapa => ((:capaConv, :capaStIn), ), :stOutToStInCapa => ((:capaStIn, :capaStOut), ), :sizeToStOutCapa => ((:capaStOut, :capaStSize), ), 
+							:stInToConvExp => ((:expConv, :expStIn), ), :stOutToStInExp => ((:expStIn, :expStOut), ), :sizeToStOutExp => ((:expStIn, :expStSize), ), 	
+								:flhConv => ((:capaConv, :convIn), ), :flhStIn => ((:capaStIn, :stIn), ), :flhExc => ((:capaExc, :exc), ), :flhStOut => ((:capaStOut, :stOut), ), 
+									:cycStIn => ((:capaStSize, :stIn), ), :cycStOut => ((:capaStSize, :stOut),))
 
 	va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :convIn => (:use, :stIntOut), :convOut => (:gen, :stIntIn))
 
@@ -1204,16 +1218,10 @@ function createRatioCns!(part::AbstractModelPart, cns_dic::Dict{Symbol,cnsCont},
 	# loops over all other parameters (ratios on storage capacity/expansion, flh, cycling)
 	for par in filter(x -> !occursin("ratio", string(x)), collectKeys(keys(parToLim_dic)))
 
-		capaRatio_boo = par in (:stInToConv, :stOutToStIn, :sizeToStOut)
+		capaRatio_boo = par in (:stInToConvCapa, :stOutToStInCapa, :sizeToStOutCapa, :stInToConvExp, :stOutToStInExp, :sizeToStOutExp)
 
 		# controls variables ratio is applied
-		if capaRatio_boo && (part.type == :stock || (!isempty(anyM.subPro) && anyM.subPro != (0,0))) # removes expansion for stock technologies or for subproblem
-			limVa_arr = (ratioVar_dic[par][1],)
-		elseif capaRatio_boo && part.decomm == :none # removes capacity in case without decomm
-			limVa_arr = (ratioVar_dic[par][2],)
-		else
-			limVa_arr = ratioVar_dic[par]
-		end
+		limVa_arr = ratioVar_dic[par]
 
 		# loops over variables limits are enforced on
 		for limVa in limVa_arr, lim in parToLim_dic[par]
@@ -1276,8 +1284,7 @@ function createRatioCns!(part::AbstractModelPart, cns_dic::Dict{Symbol,cnsCont},
 
 			if isempty(cns_df) continue end
 
-			va_str = capaRatio_boo ? (string(limVa[1])[1:4] == "capa" ? "capa" : "exp") : ""
-			cns_dic[Symbol(par,lim,makeUp(va_str))] = cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]), signLim_dic[lim])
+			cns_dic[Symbol(par,lim)] = cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]), signLim_dic[lim])
 		end
 	end
 

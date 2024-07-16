@@ -231,6 +231,7 @@ mutable struct bendersObj
         #endregion
 
 		#region # * write complicating constraints into top problem
+		
 		relVar_arr::Vector{Symbol} = unique(vcat(filter(x -> !isempty(x), map(x -> collect(keys(complCon_dic[x])), collect(keys(complCon_dic))))...))
 		# loop over types of complicating variables
 		if !isempty(relVar_arr)

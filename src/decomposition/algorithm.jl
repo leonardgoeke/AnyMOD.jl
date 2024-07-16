@@ -175,7 +175,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	end
 	
 	# get sum of absolute values 
-	absVar_arr = [:CapaConv, :CapaExc, :CapaStOut, :CapaStIn, :CapaStSize, :ExpConv, :ExpExc, :ExpStOut, :ExpStIn, :ExpStSize]
+	absVar_arr = [:CapaConv, :CapaExc, :CapaStOut, :CapaStIn, :CapaStSize, :CapaStSize, :ExpConv, :ExpExc, :ExpStOut, :ExpStIn, :ExpStSize]
 	absVal_expr = sum(map(x -> sum(getAllVariables(Symbol(:abs, x), top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])), vcat(absVar_arr, Symbol.(:Must, absVar_arr))))
 	# get sum of missing capacities and apply high weight 
 	missCapa_expr = :missCapa in keys(top_m.parts.bal.var) ? sum(top_m.parts.bal.var[:missCapa][!,:var] ./ top_m.options.scaFac.insCapa .* 10) : AffExpr()
@@ -432,7 +432,8 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 			if sSym in keys(sub_m.parts.tech)
 				part_obj = sub_m.parts.tech[sSym]
 				for stType in keys(resData_obj.stLvl[sSym])
-					resData_obj.stLvl[sSym][stType] = limitVar!(select(resData_obj.stLvl[sSym][stType], Not([:scr])), select(part_obj.var[stType], Not([:scr])), stType, part_obj, rngVio_fl, sub_m)
+					fix_df = select(filter(x -> stType == :stLvl ? true : x.scr == sub_m.subPro[2], resData_obj.stLvl[sSym][stType]), Not([:scr]))
+					resData_obj.stLvl[sSym][stType] = limitVar!(fix_df, select(part_obj.var[stType], Not([:scr])), stType, part_obj, rngVio_fl, sub_m)
 					removeEmptyDic!(resData_obj.stLvl[sSym], stType)
 				end
 				# remove system if no storage level exists
@@ -924,9 +925,9 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = fa
 		for sSym in filter(x -> part_dic[x].type in (:stock, :mature, :emerging), keys(part_dic))
 			
 			# continue in case of technology without changing capacites
-			if part_dic[sSym].type == :stock &&  part_dic[sSym].decomm == :none continue end	
+			if part_dic[sSym].type == :stock && part_dic[sSym].decomm == :none && !(:capaStSizeSeason in keys(part_dic[sSym].var)) continue end	
 
-			varSym_arr = filter(x -> any(occursin.(string.(var_arr), string(x))) && !(x in (:stLvl, :stLvlInter)), keys(part_dic[sSym].var))
+			varSym_arr = filter(x -> any(occursin.(string.(var_arr), string(x))) && !(x in (:stLvl, :stLvlInter, :capaStSizeInter)), keys(part_dic[sSym].var))
 
 			# get relevant capcities filtering fixed ones in case option is active
 			capa_dic[sys][sSym] = Dict{Symbol, DataFrame}()
@@ -1055,7 +1056,7 @@ function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part
 
 	# extract actual variable
 	fix_df[!,:var] = map(x -> collect(keys(x.var.terms))[1], eachrow(fix_df))
-
+	
 	# find cases where capa cannot be set to zero, because it is linked to a non-zero mustCapa
 	if occursin("capa", string(var_sym)) && Symbol(replace(string(var_sym), "capa" => "mustCapa"), "BendersFix") in keys(part_obj.cns)
 		nonZero_df = part_obj.cns[Symbol(replace(string(var_sym), "capa" => "mustCapa"), "BendersFix")]
@@ -1088,6 +1089,8 @@ function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part
 	
 	part_obj.cns[Symbol(var_sym, cns_sym)] = select(fix_df, Not([:var, :value, :rhs, :setZero]))
 
+
+	
 	# correct value_df to values actually enforced
 	value_df = innerjoin(select(value_df, Not([:value])), select(fix_df, Not([:var, :value, :cns, :setZero])), on = intCol(value_df, :dir))
 	value_df[!,:value] .=  value_df[!,:rhs] ./ value_df[!,:fac] .* getfield(fix_m.options.scaFac, scaFac_sym)
@@ -1111,7 +1114,7 @@ end
 
 # ! removes cases where storage variables are fixed by a ratio (e.g. storage energy capacity fixed by e/p ratio) 
 function removeFixStorage(stVar_sym::Symbol, stVar_df::DataFrame, part_obj::TechPart)
-	fixPar_dic = Dict(:expStSize => :sizeToStOutFixExp, :expStIn => :stInToConvFixExp, :expStOut => :stOutToStInFixExp, :capaStSize => :sizeToStOutFixCapa, :capaStIn => :stInToConvFixCapa, :capaStOut => :stOutToStInFixCapa)
+	fixPar_dic = Dict(:expStSize => :sizeToStOutExpFix, :expStIn => :stInToConvExpFix, :expStOut => :stOutToStInExpFix, :capaStSize => :sizeToStOutCapaFix, :capaStIn => :stInToConvCapaFix, :capaStOut => :stOutToStInCapaFix)
 	if stVar_sym in [:expStSize, :expStIn, :expStOut, :capaStSize, :capaStIn, :capaStOut] && fixPar_dic[stVar_sym] in collect(keys(part_obj.cns))
 		fixCns_df = select(part_obj.cns[fixPar_dic[stVar_sym]], Not([:cns]))
 		stVar_df = stVar_df |> (x -> antijoin(x, fixCns_df, on = intersect(intCol(x), intCol(fixCns_df))))
