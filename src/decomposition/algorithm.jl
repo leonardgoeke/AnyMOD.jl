@@ -550,7 +550,7 @@ function solveModel!(mod_m::Model, numFocSt_int::Int)
 	while true
 		set_optimizer_attribute(mod_m, "NumericFocus", numFoc_int)
 		optimize!(mod_m)
-		if termination_status(mod_m) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3 && barHom_boo
+		if termination_status(mod_m) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3
 			break
 		else
 			numFoc_int = numFoc_int + 1
