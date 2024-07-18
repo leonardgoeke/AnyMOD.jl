@@ -100,7 +100,9 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 			if part.stCyc == -1
 				if (isempty(anyM.subPro) || anyM.subPro != (0,0)) 
 					cns_dic = enforceStDelta(part, cns_dic, anyM) 
-				elseif (isempty(anyM.subPro) || anyM.subPro == (0,0)) 
+				end
+
+				if (isempty(anyM.subPro) || anyM.subPro == (0,0)) 
 					cns_dic = stochStRestr(part, cns_dic, anyM)
 					cns_dic = enforceStExpc(part, cns_dic, anyM)
 				end
@@ -1043,7 +1045,7 @@ function capaSizeSeasonInter(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM
 	cns_df = innerjoin(cns_df, rename(part.var[:capaStSizeSeason], :var => :capaStSizeSeason), on = intCol(cns_df))
 	cns_df = innerjoin(cns_df, rename(part.var[:capaStSizeInter], :var => :capaStSizeInter), on = intCol(cns_df))
 	cns_df[!,:cnsExpr] = cns_df[!,:capaStSize] .- cns_df[!,:capaStSizeSeason] .- cns_df[!,:capaStSizeInter]
-	cns_dic[:capaStSizeInter] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df, intCol(cns_df, :cnsExpr))), :greater)	
+	cns_dic[:capaStSizeInter] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df, intCol(cns_df, :cnsExpr))), :equal)	
 end
 
 # ! enforce storage delta as sum of in and out
