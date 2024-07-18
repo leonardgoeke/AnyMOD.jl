@@ -175,7 +175,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	end
 	
 	# get sum of absolute values 
-	absVar_arr = [:CapaConv, :CapaExc, :CapaStOut, :CapaStIn, :CapaStSize, :CapaStSize, :ExpConv, :ExpExc, :ExpStOut, :ExpStIn, :ExpStSize]
+	absVar_arr = [:CapaConv, :CapaExc, :CapaStOut, :CapaStIn, :CapaStSize, :ExpConv, :ExpExc, :ExpStOut, :ExpStIn, :ExpStSize]
 	absVal_expr = sum(map(x -> sum(getAllVariables(Symbol(:abs, x), top_m) |> (w -> isempty(w) ? [AffExpr()] : w[!,:var] .* w[!,:weight])), vcat(absVar_arr, Symbol.(:Must, absVar_arr))))
 	# get sum of missing capacities and apply high weight 
 	missCapa_expr = :missCapa in keys(top_m.parts.bal.var) ? sum(top_m.parts.bal.var[:missCapa][!,:var] ./ top_m.options.scaFac.insCapa .* 10) : AffExpr()
@@ -366,7 +366,7 @@ function runTop(benders_obj::bendersObj)
 	#region # * write results
 
 	# write technology capacites and level of capacity balance to benders object
-	resData_obj.capa, resData_obj.stLvl, resData_obj.lim = writeResult(benders_obj.top, [:capa, :mustCapa, :stLvl, :lim]; rmvFix = true)
+	resData_obj.capa, resData_obj.stLvl, resData_obj.lim = writeResult(benders_obj.top, [:capa, :mustCapa, :stLvl, :lim]; rmvFix = true, fltSt = false)
 	stabVar_obj.capa, stabVar_obj.stLvl, stabVar_obj.lim = writeResult(benders_obj.top, [:capa, :exp, :stLvl, :lim]; rmvFix = true)
 
 	# record level dual

@@ -12,7 +12,7 @@ function createExc!(eInt::Int, part::ExcPart, prepExc_dic::Dict{Symbol, NamedTup
 		# create expansion constraints
 		if isempty(anyM.subPro) || anyM.subPro == (0, 0)
 			# connect capacity and expansion variables
-			createCapaCns!(part, anyM.sets, prepExc_dic, cns_dic, anyM.optModel, anyM.options.holdFixed, excDir_arr)
+			createCapaCns!(part, anyM.sets, cns_dic, anyM.optModel, anyM.options.holdFixed, length(anyM.supTs.steps) > 1, excDir_arr)
 
 			# control operated capacity variables
 			if part.decomm != :none

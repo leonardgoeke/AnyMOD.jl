@@ -18,7 +18,7 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 		# create expansion constraints
 		if isempty(anyM.subPro) || anyM.subPro == (0,0)
 			# connect capacity and expansion variables
-			createCapaCns!(part, anyM.sets, prepTech_dic, cns_dic, anyM.optModel, anyM.options.holdFixed)
+			createCapaCns!(part, anyM.sets, cns_dic, anyM.optModel, anyM.options.holdFixed)
 			# control operated capacity variables
 			if part.decomm != :none createOprVarCns!(part, cns_dic, anyM) end
 			# control capacity for interannual storage
@@ -208,6 +208,18 @@ function addResidualCapaTe!(prepTech_dic::Dict{Symbol,NamedTuple}, part::TechPar
 		# tries to obtain residual capacities and adds them to preparation dictionary
 		capaResi_df = orderDf(checkResiCapa(Symbol(:capa, resi), potCapa_df, part, anyM))
 
+		# avoid to create actual variable for storage size, in case of subproblem does not require it since resolution corresponds to foresight level
+		if !isempty(anyM.subPro) && anyM.subPro != (0,0) && resi == :StSize && :stExtOut in keys(part.carrier) && Symbol(:capa, resi) in keys(prepTech_dic)
+			# types of storage
+			relSt_arr = intersect(keys(part.carrier),[:stExtIn,:stExtOut,:stIntIn,:stIntOut])
+			# filter cases where no variable is needed and create a residual value for zero instead
+			setResi_df = filter(x -> !all(map(y -> anyM.cInfo[y].tsDis > anyM.scr.frsLvl, union(map(y -> getfield(part.carrier, y)[x.id], relSt_arr)...))), prepTech_dic[Symbol(:capa, resi)].var)
+			setResi_df[!,:var] .= AffExpr()
+			capaResi_df = unique(vcat(capaResi_df,setResi_df))
+			prepTech_dic[Symbol(:capa, resi)] = (var = antijoin(prepTech_dic[Symbol(:capa, resi)].var, capaResi_df, on = intCol(capaResi_df)), resi = prepTech_dic[Symbol(:capa, resi)].resi)
+		end
+
+		# create dataframe of capacity or expansion variables by creating the required capacity variables and join them with pure residual values
 		if !isempty(capaResi_df)
 			mergePrepDic!(Symbol(:capa, resi), prepTech_dic, capaResi_df)
 		end
@@ -551,7 +563,7 @@ function createStBal(part::TechPart, anyM::anyModel)
 			# add times-steps at start of foresight period, if option is set
 			if anyM.options.dbInf
 				startTs_df = combine(x -> (Ts_dis = minimum(x.Ts_dis),), groupby(cnsC_df, filter(x -> !(x in (:Ts_dis, :Ts_disPrev)), intCol(cnsC_df))))
-				endTs_df = vcat(startTs_df, endTs_df)
+				endTs_df = unique(vcat(startTs_df, endTs_df))
 			end
 			
 			matchTs_df = select(matchSetParameter(endTs_df, anyM.parts.cost.par[:costStLvlLss], anyM.sets), Not([:val]))
@@ -576,6 +588,13 @@ function createStBal(part::TechPart, anyM::anyModel)
 					select!(cnsC_df, Not([:infeas]))
 				end
 			end
+		end
+
+		# remove storage size variable in case of distributed problem with limited foresight
+		if !isempty(anyM.subPro) && anyM.subPro != (0,0) && size(cnsC_df, 1) == 1
+			lock(anyM.lock)
+			delete!(part.var, :capaStSize)
+			unlock(anyM.lock)
 		end
 
 		# ! create final equation	

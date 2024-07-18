@@ -545,14 +545,16 @@ function addInsCapa!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple
 	for tSym in collect(keys(prepSys_dic[:Te]))
 		prepTech_dic = prepSys_dic[:Te][tSym]
 		if anyM.parts.tech[tSym].decomm != :none
-			for capTy in intersect(keys(prepTech_dic), (:capaConv, :capaStIn, :capaStOut, :capaStSize, :capaExc))
-				if isempty(prepTech_dic[capTy].resi) continue end 
+			for capTy in intersect(keys(prepTech_dic), (:capaConv, :capaStIn, :capaStOut, :capaStSize, :capaExc))	
+				if isempty(prepTech_dic[capTy].resi) && length(anyM.supTs.step) == 1 continue end 
 				unfix_df = prepTech_dic[capTy].resi
 				# re-define capacity variables as installed variables
 				prepTech_dic[Symbol(:ins, makeUp(capTy))] =  (var = prepTech_dic[capTy].var, resi = unfix_df)
-				# determines where variables for installed capacity are necessary
-				newResi_df = antijoin(prepTech_dic[capTy].resi, unfix_df, on = intCol(unfix_df))
-				prepTech_dic[capTy] =  (var = unfix_df |> (x -> isempty(x) ? prepTech_dic[capTy].var : unique(vcat(prepTech_dic[capTy].var, select(x, Not([:var]))))), resi = newResi_df)
+				if !isempty(unfix_df)
+					# determines where variables for installed capacity are necessary
+					newResi_df = antijoin(prepTech_dic[capTy].resi, unfix_df, on = intCol(unfix_df))
+					prepTech_dic[capTy] =  (var = unfix_df |> (x -> isempty(x) ? prepTech_dic[capTy].var : unique(vcat(prepTech_dic[capTy].var, select(x, Not([:var]))))), resi = newResi_df)
+				end
 				# rename entry for grouped capacities just to be consistent
 				if Symbol(:grp, makeUp(capTy)) in keys(prepTech_dic)
 					prepTech_dic[Symbol(:grpIns, makeUp(capTy))] = prepTech_dic[Symbol(:grp, makeUp(capTy))]
@@ -674,9 +676,19 @@ function createExpCap!(part::AbstractModelPart, prep_dic::Dict{Symbol,NamedTuple
 end
 
 # ! connect capacity and expansion variables
-function createCapaCns!(part::AbstractModelPart, sets_dic::Dict{Symbol,Tree},prep_dic::Dict{Symbol,NamedTuple}, cns_dic::Dict{Symbol,cnsCont}, optModel::Model, holdFixed::Bool, excDir_arr::Array = Int[])
+function createCapaCns!(part::AbstractModelPart, sets_dic::Dict{Symbol,Tree}, cns_dic::Dict{Symbol,cnsCont}, optModel::Model, holdFixed::Bool, excDir_arr::Array = Int[])
 	# create capacity constraint for installed capacities	
-	for capaVar in filter(x -> occursin(part.decomm == :none ? "capa" : "insCapa", string(x)), keys(part.var))
+	for capaVar in filter(x -> any(occursin.(["capa", "insCapa"], string(x))), keys(part.var))
+
+		# skip capacity variable, if also installed capacity exists
+		isDecomm_boo = false
+		if Symbol(replace(string(capaVar), "capa" => "insCapa")) in keys(part.var) 
+			if occursin("capa", string(capaVar))
+				isDecomm_boo = true
+			else
+				continue
+			end
+		end
 
         index_arr = intCol(part.var[capaVar])
 		join_arr = part.type != :mature ? index_arr : filter(x -> x != :Ts_expSup, collect(index_arr))
@@ -685,9 +697,9 @@ function createCapaCns!(part::AbstractModelPart, sets_dic::Dict{Symbol,Tree},pre
 		sys_int = sysInt(Symbol(part.name[end]), sets_dic[exc_boo ? :Exc : :Te])
 
         # joins corresponding capacity, retrofitting and expansion variables together
-		expVar_sym, retroVar_sym = [Symbol(replace(string(capaVar), (part.decomm == :none ? "capa" : "insCapa") => x)) for x in ["exp", "retro"]]
+		expVar_sym, retroVar_sym = [Symbol(replace(string(capaVar), (isDecomm_boo ? "insCapa" : "capa") => x)) for x in ["exp", "retro"]]    
 		exp_boo, retro_boo = [expVar_sym in keys(part.var), retroVar_sym in keys(part.var) && sys_int in part.var[retroVar_sym][!, exc_boo ? :Exc_j : :Te_j]]
-
+	
 		# gets capacity variables
 		cns_df = rename(part.var[capaVar], :var => :capa)
 
@@ -763,7 +775,6 @@ function createCapaCns!(part::AbstractModelPart, sets_dic::Dict{Symbol,Tree},pre
 		if holdFixed filter!(x -> !isempty(x.cnsExpr.terms), cns_df) end # filter cases where no actual variables are compared since they were replaced with parameters
 		cns_dic[Symbol(capaVar, :_b)] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df, intCol(cns_df, :cnsExpr))), :equal)
 	end
-	
 end
 
 # ! create constraints regarding operated variables

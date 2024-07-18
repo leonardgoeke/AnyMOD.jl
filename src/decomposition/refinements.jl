@@ -18,7 +18,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# ! get starting solution with heuristic solve or generic
 		if stabSetup_obj.ini.setup != :none
 			produceMessage(report_m.options, report_m.report, 1, " - Started heuristic pre-solve for starting solution", testErr = false, printErr = false)
-			heu_m, startSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = true);
+			heu_m, startSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = false);
 			lowBd_fl = 0.0
 
 			top_m = benders_obj.top
@@ -70,7 +70,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			@suppress optimize!(benders_obj.top.optModel)
 			startSol_obj = resData()
 			startSol_obj.objVal = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
-			startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim  = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :mustExp, :stLvl, :lim])
+			startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim  = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :mustExp, :stLvl, :lim], fltSt = false)
 			lowBd_fl = startSol_obj.objVal
 		end
 	

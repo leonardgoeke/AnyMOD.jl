@@ -238,15 +238,15 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     # capacity
     parDef_dic[:stInToConvCapaUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
     parDef_dic[:stInToConvCapaLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:stInToConvCapaFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :both, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:stInToConvCapaFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
 
     parDef_dic[:stOutToStInCapaUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
     parDef_dic[:stOutToStInCapaLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:stOutToStInCapaFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :both, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:stOutToStInCapaFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
 
     parDef_dic[:sizeToStOutCapaUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
     parDef_dic[:sizeToStOutCapaLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
-    parDef_dic[:sizeToStOutCapaFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :both, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
+    parDef_dic[:sizeToStOutCapaFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
 
     # expansion
     parDef_dic[:stInToConvExpUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top,  defVal = nothing, herit = (:Te => :up, :Ts_exp => :up, :R_exp => :up), part = :techSt)
