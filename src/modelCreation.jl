@@ -47,7 +47,8 @@ function createOptModel!(anyM::anyModel)
 
     # creates dictionary that assigns combination of superordinate dispatch timestep and dispatch level to dispatch timesteps
 	allTrackStDis_arr = anyM.parts.tech |> (z -> filter(y -> !isnothing(y), map(x -> z[x].stTrack, collect(keys(anyM.parts.tech)))))
-    allLvlTsDis_arr = convert(Vector{Int64}, unique(vcat(getfield.(values(anyM.cInfo), :tsDis), allTrackStDis_arr)))
+	allLvlTsDis_arr = convert(Vector{Int64}, unique(vcat(getfield.(values(anyM.cInfo), :tsDis), allTrackStDis_arr)))
+	if any(map(x -> anyM.parts.tech[x].stCyc == -1, collect(keys(anyM.parts.tech)))) push!(allLvlTsDis_arr, anyM.scr.frsLvl) end
 	ts_dic = Dict((x[1], x[2]) => anyM.sets[:Ts].nodes[x[1]].lvl == x[2] ? [x[1]] : getDescendants(x[1], anyM.sets[:Ts], false, x[2]) for x in Iterators.product(anyM.supTs.step, allLvlTsDis_arr))
 	foreach(x -> ts_dic[(x, anyM.supTs.lvl)] = [x], anyM.supTs.step)
 	
