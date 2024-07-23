@@ -99,8 +99,10 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 			# additional constraints for interannual stochastic storage 
 			if part.stCyc == -1
 				if (isempty(anyM.subPro) || anyM.subPro != (0,0)) 
-					cns_dic = enforceStDelta(part, cns_dic, anyM) 
-				elseif (isempty(anyM.subPro) || anyM.subPro == (0,0)) 
+					cns_dic = enforceStDelta(part, cns_dic, anyM)
+				end
+
+				if (isempty(anyM.subPro) || anyM.subPro == (0,0)) 
 					cns_dic = stochStRestr(part, cns_dic, anyM)
 					cns_dic = enforceStExpc(part, cns_dic, anyM)
 				end
