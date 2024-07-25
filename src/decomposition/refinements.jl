@@ -236,8 +236,6 @@ function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, t
 	
 	# compute possible range of scaling factors with rhs still in range
 	scaRng_tup = top_m.options.coefRng.rhs ./ abs((abs_fl * stab_obj.dynPar[stab_obj.actMet])^2 - sum(allVar_df[!,:scaFac].^2 .* allVar_df[!,:value].^2))
-	println(stab_obj.dynPar[stab_obj.actMet])
-
 
 	# get scaled l2-norm expression for complicating variables
 	capaSum_expr, allVar_df, scaEq_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
