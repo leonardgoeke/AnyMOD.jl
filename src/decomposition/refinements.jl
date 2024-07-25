@@ -197,7 +197,7 @@ function computeDynPar(meth_arr::Array{Symbol, 1}, methOpt_arr::Array{NamedTuple
 				error("lambda for level bundle must be strictly between 0 and 1")
 			end
 		elseif meth_arr[m] == :lvl2
-			dynPar = Dict(:yps => (1-methOpt_arr[m].lam)*(upBd_fl-lowBd_fl)/ top_m.options.scaFac.obj, :my => 0.0)
+			dynPar = Dict(:yps => (1 - methOpt_arr[m].lam) * (upBd_fl - lowBd_fl) / top_m.options.scaFac.obj, :my => 0.0)
 			if methOpt_arr[m].lam >= 1 || methOpt_arr[m].lam <= 0 
 				error("lambda for level bundle must be strictly between 0 and 1")
 			end
@@ -206,7 +206,7 @@ function computeDynPar(meth_arr::Array{Symbol, 1}, methOpt_arr::Array{NamedTuple
 		elseif meth_arr[m] == :box
 			dynPar = 0.0 # dummy value since boxstep implementation does not have a dynamic parameter
 		elseif meth_arr[m] == :dsb
-			dynPar = Dict(:yps=>(1-methOpt_arr[m].lam)*(upBd_fl-lowBd_fl)/top_m.options.scaFac.obj,
+			dynPar = Dict(:yps=>(1  -methOpt_arr[m].lam) * (upBd_fl - lowBd_fl) / top_m.options.scaFac.obj,
 			:prx => methOpt_arr[m].start, :my => 1.0)
 		else
 			error("unknown stabilization method provided, method must either be 'prx', 'lvl', 'qtr', or 'box'")
@@ -222,39 +222,50 @@ centerStab!(method::Symbol, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyMod
 # function for quadratic trust region
 function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
 	
-	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj, top_m)
-
+	
 	# sets values of variables that will violate range to zero
-	minFac_fl = (2*maximum(abs.(allVar_df[!,:value]) .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
-
+	minFac_fl = (2 * maximum(abs.(allVar_df[!,:value]) .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] * rngVio_fl / top_m.options.coefRng.mat[1])
+	allVar_df[!,:refValue] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
+	
 	# absolute value for rhs of equation
-	abs_fl = sum(allVar_df[!,:value] .* sqrt.(allVar_df[!,:scaFac]) ) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
+	abs_fl = sum(allVar_df[!,:refValue] .* allVar_df[!,:scaFac]) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
 	
 	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ abs((abs_fl * stab_obj.dynPar[stab_obj.actMet])^2 - sum(allVar_df[!,:scaFac] .* allVar_df[!,:value].^2))
+	scaRng_tup = top_m.options.coefRng.rhs ./ abs((abs_fl * stab_obj.dynPar[stab_obj.actMet])^2 - sum(allVar_df[!,:scaFac].^2 .* allVar_df[!,:value].^2))
+	println(stab_obj.dynPar[stab_obj.actMet])
 
-	# get scaled l2-norm expression for capacities
-	capaSum_expr, scaEq_fl = computeL2Norm(allVar_df, stab_obj, scaRng_tup, top_m)
 
-	# skips creation of trust-region, if rhs would substanitally violate rhs range
-	rhs_fl = ((abs_fl * stab_obj.dynPar[stab_obj.actMet])^2 - capaSum_expr.aff.constant)  * scaEq_fl
- 
-	# create final constraint
-	if top_m.options.coefRng.rhs[1] / rngVio_fl < abs(rhs_fl) && top_m.options.coefRng.rhs[2] * rngVio_fl > abs(rhs_fl)
-		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= (abs_fl * stab_obj.dynPar[stab_obj.actMet])^2  * scaEq_fl)
+	# get scaled l2-norm expression for complicating variables
+	capaSum_expr, allVar_df, scaEq_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
+	
+	# adjust the radius, if rounding would move current best outside of trust-region
+	adRad_boo = false
+	if sqrt(sum((allVar_df[!,:value] .- allVar_df[!,:refValue]).^2) * 1.1) < abs_fl
+		rad2_fl = (abs_fl * stab_obj.dynPar[stab_obj.actMet])^ 2
 	else
-		if top_m.options.coefRng.rhs[2] * rngVio_fl < abs(rhs_fl)
-			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[2]* rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
-		else 
-			stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[1]* rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
-		end
-		produceMessage(report_m.options, report_m.report, 1, " - Adjusted radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
+		rad2_fl = sum((allVar_df[!,:value] .- allVar_df[!,:refValue]).^2) * 1.1
+		adRad_boo = true
+		produceMessage(report_m.options, report_m.report, 1, " - Extended radius of stabilization to ensure current best in trust-region after rounding capacities", testErr = false, printErr = false)
 	end
+
+	# adjusts creation of trust-region, if rhs would substanitally violate rhs range
+	rhs_fl = (rad2_fl - capaSum_expr.aff.constant)  * scaEq_fl
+	
+	# create final constraint
+	if top_m.options.coefRng.rhs[1] / rngVio_fl > abs(rhs_fl)
+		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[1]* rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
+		produceMessage(report_m.options, report_m.report, 1, " - Increased radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
+	elseif top_m.options.coefRng.rhs[2] * rngVio_fl > abs(rhs_fl) || adRad_boo
+		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= rad2_fl  * scaEq_fl)
+	else
+		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[2]* rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
+		produceMessage(report_m.options, report_m.report, 1, " - Reduced radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
+	end
+
 end
 
 # function for proximal bundle method
@@ -277,7 +288,7 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, rn
 	scaRng_tup = top_m.options.coefRng.rhs ./ (sum(allVar_df[!,:value] .^ 2) |> (x -> x == 0.0 ? 1.0 : x))
 
 	# get scaled l2-norm expression for capacities
-	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df, stab_obj, scaRng_tup, top_m)
+	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
 
 	# current range of factors and value of constant
 	fac_arr = abs.(vcat(collect(values(capaSum_expr.aff.terms)), collect(values(capaSum_expr.terms)))) |> (x -> scaFac_fl .* (minimum(x), maximum(x)))	
@@ -318,7 +329,7 @@ function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, 
 	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
 
 	# get scaled l2-norm expression for capacities
-	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df, stab_obj, scaRng_tup, top_m)
+	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
 
 	# adjust objective function and level set
 	@objective(top_m.optModel, Min, 0.5 * capaSum_expr  * scaFac_fl)
@@ -341,7 +352,7 @@ function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, 
 	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
 
 	# get scaled l2-norm expression for capacities
-	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df, stab_obj, scaRng_tup, top_m)
+	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
 
 	# compute level set constraint
 	ell_fl = stab_obj.objVal/ top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps] 
@@ -386,7 +397,7 @@ function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, t
 	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
 
 	# get scaled l2-norm expression for capacities
-	capaSum_expr, scaFac_fl = computeL2Norm(allVar_df, stab_obj, scaRng_tup, top_m)
+	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
 
 	# compute level set constraint
 	ell_fl = stab_obj.objVal/ top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
@@ -402,22 +413,23 @@ function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, t
 end
 
 # compute scaled l2 norm
-function computeL2Norm(allVar_df::DataFrame, stab_obj::stabObj, scaRng_tup::Tuple, top_m::anyModel)
+function computeL2Norm(allVar_df::DataFrame, scaRng_tup::Tuple, top_m::anyModel)
 
 	# set values of variable to zero or biggest value possible without scaling violating rhs range
+
 	for x in eachrow(allVar_df)	
 		if top_m.options.coefRng.mat[1] / (abs(x.value) * x.scaFac * 2) > scaRng_tup[2] # factor requires more up-scaling than possible
-			x[:value] = 0 # set value to zero
+			x[:refValue] = 0 # set value to zero
 		elseif top_m.options.coefRng.mat[2] / (abs(x.value) * x.scaFac * 2) < scaRng_tup[1] # factor requires more down-scaling than possible
-			x[:value] = top_m.options.coefRng.mat[2] / (scaRng_tup[1] * 2) # set to biggest value possible within range
+			x[:refValue] = top_m.options.coefRng.mat[2] / (scaRng_tup[1] * 2) # set to biggest value possible within range
 		end
 	end
 
 	# computes left hand side expression and scaling factor
-	capaSum_expr = sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> x.scaFac * (z^2 - 2 * x.value * z + x.value^2)), eachrow(allVar_df)))
-	scaEq_fl = top_m.options.coefRng.mat[1]/minimum(abs.(vcat(collect(values(capaSum_expr.terms)), collect(values(capaSum_expr.aff.terms))) |> (z -> isempty(z) ? [1.0] : z)))
+	capaSum_expr = sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> x.scaFac * (z^2 - 2 * x.refValue * z + x.refValue^2)), eachrow(allVar_df)))
+	scaEq_fl = top_m.options.coefRng.mat[1] / minimum(abs.(vcat(collect(values(capaSum_expr.terms)), collect(values(capaSum_expr.aff.terms))) |> (z -> isempty(z) ? [1.0] : z)))
 
-	return capaSum_expr, scaEq_fl
+	return capaSum_expr, allVar_df, scaEq_fl
 end
 
 # write function to compute poorman's Hessian auxilary scalar for prx_2
@@ -485,7 +497,7 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::
 			stab_obj.dynPar[x_int] = max(opt_tup.low, stab_obj.dynPar[x_int] / opt_tup.fac)
 			produceMessage(report_ntup.mod.options, report_ntup.mod.report, 1, " - Reduced quadratic trust-region!", testErr = false, printErr = false)	
 		# extend radius if algorithm "got stuck", applies same criterium as switching entire method
-		elseif nearOpt_boo && !isempty(stab_obj.ruleSw) && cnt_obj.i > stab_obj.ruleSw.itr && checkSwitch(stab_obj, cnt_obj, report_ntup.itr) && false
+		elseif checkSwitch(stab_obj, cnt_obj, report_ntup.itr)
 			stab_obj.dynPar[x_int] = max(opt_tup.low, stab_obj.dynPar[x_int] * opt_tup.fac)
 			produceMessage(report_ntup.mod.options, report_ntup.mod.report, 1, " - Extended quadratic trust-region!", testErr = false, printErr = false)
 		end
@@ -635,8 +647,8 @@ end
 
 # check if switching criterium is met
 function checkSwitch(stab_obj::stabObj, cnt_obj::countItr, itr_df::DataFrame)
-	min_boo = itr_df[cnt_obj.i - stab_obj.ruleSw.itr, :actMethod] == stab_obj.method[stab_obj.actMet] # check if method as been used for the minimum number of iterations 
-	pro_boo = itr_df[(cnt_obj.i - min(cnt_obj.i, stab_obj.ruleSw.itrAvg) + 1):end, :gap] |> (x -> (x[1]/x[end])^(1/(length(x) -1)) - 1 < stab_obj.ruleSw.avgImp) # check if progress in last iterations is below threshold
+	min_boo = itr_df[max(1,cnt_obj.i - stab_obj.ruleSw.itr), :actMethod] == stab_obj.method[stab_obj.actMet] && itr_df[max(1,cnt_obj.i - stab_obj.ruleSw.itr), :dynPar_qtr] == stab_obj.dynPar[stab_obj.actMet]  # check if method as been used for the minimum number of iterations 
+	pro_boo = itr_df[(cnt_obj.i - min(cnt_obj.i, stab_obj.ruleSw.itrAvg) + 1):end, :gap] |> (x -> (x[1] / x[end])^(1 / (length(x) -1)) - 1 < stab_obj.ruleSw.avgImp) # check if progress in last iterations is below threshold
 	return min_boo && pro_boo
 end
 

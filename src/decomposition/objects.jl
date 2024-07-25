@@ -28,7 +28,7 @@ struct stabSetup
 	switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} # rule to switch between different methods
 	weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} # weight of variables in stabilization
 	
-	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_ntup::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 6, avgImp = 0.2, itrAvg = 4), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1.0, capaStSize = 1e-1, stLvl = 1e-2, lim = 1e-2))
+	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_ntup::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 15, avgImp = 0.01, itrAvg = 10), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
 		return new(method_tup, srsThr_fl, ini_ntup, switch, weight)
 	end
 end
