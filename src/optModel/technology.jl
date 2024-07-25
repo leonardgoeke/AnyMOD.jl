@@ -99,7 +99,7 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 			# additional constraints for interannual stochastic storage 
 			if part.stCyc == -1
 				if (isempty(anyM.subPro) || anyM.subPro != (0,0)) 
-					cns_dic = enforceStDelta(part, cns_dic, anyM) 
+					cns_dic = enforceStDelta(part, cns_dic, anyM)
 				end
 
 				if (isempty(anyM.subPro) || anyM.subPro == (0,0)) 
@@ -209,17 +209,6 @@ function addResidualCapaTe!(prepTech_dic::Dict{Symbol,NamedTuple}, part::TechPar
 
 		# tries to obtain residual capacities and adds them to preparation dictionary
 		capaResi_df = orderDf(checkResiCapa(Symbol(:capa, resi), potCapa_df, part, anyM))
-
-		# avoid to create actual variable for storage size, in case of subproblem does not require it since resolution corresponds to foresight level
-		if !isempty(anyM.subPro) && anyM.subPro != (0,0) && resi == :StSize && :stExtOut in keys(part.carrier) && Symbol(:capa, resi) in keys(prepTech_dic)
-			# types of storage
-			relSt_arr = intersect(keys(part.carrier),[:stExtIn,:stExtOut,:stIntIn,:stIntOut])
-			# filter cases where no variable is needed and create a residual value for zero instead
-			setResi_df = filter(x -> !all(map(y -> anyM.cInfo[y].tsDis > anyM.scr.frsLvl, union(map(y -> getfield(part.carrier, y)[x.id], relSt_arr)...))), prepTech_dic[Symbol(:capa, resi)].var)
-			setResi_df[!,:var] .= AffExpr()
-			capaResi_df = unique(vcat(capaResi_df,setResi_df))
-			prepTech_dic[Symbol(:capa, resi)] = (var = antijoin(prepTech_dic[Symbol(:capa, resi)].var, capaResi_df, on = intCol(capaResi_df)), resi = prepTech_dic[Symbol(:capa, resi)].resi)
-		end
 
 		# create dataframe of capacity or expansion variables by creating the required capacity variables and join them with pure residual values
 		if !isempty(capaResi_df)
@@ -590,13 +579,6 @@ function createStBal(part::TechPart, anyM::anyModel)
 					select!(cnsC_df, Not([:infeas]))
 				end
 			end
-		end
-
-		# remove storage size variable in case of distributed problem with limited foresight
-		if !isempty(anyM.subPro) && anyM.subPro != (0,0) && size(cnsC_df, 1) == 1
-			lock(anyM.lock)
-			delete!(part.var, :capaStSize)
-			unlock(anyM.lock)
 		end
 
 		# ! create final equation	

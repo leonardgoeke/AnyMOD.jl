@@ -668,7 +668,7 @@ function createExpCap!(part::AbstractModelPart, prep_dic::Dict{Symbol,NamedTuple
 	end
 
 	# create variables for seasonal and inter-annual storage size
-	if isdefined(part,:stCyc) && part.stCyc == -1 && (isempty(anyM.subPro) || anyM.subPro == (0,0))
+	if isdefined(part,:stCyc) && part.stCyc == -1 && (isempty(anyM.subPro) || anyM.subPro == (0,0)) && :capaStSize in keys(part.var)
 		part.var[:capaStSizeSeason] = createVar(select(part.var[:capaStSize], Not([:var])), "capaStSizeSeason", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
 		part.var[:capaStSizeInter] = createVar(select(part.var[:capaStSize], Not([:var])), "capaStSizeInter", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
 	end
@@ -676,7 +676,7 @@ function createExpCap!(part::AbstractModelPart, prep_dic::Dict{Symbol,NamedTuple
 end
 
 # ! connect capacity and expansion variables
-function createCapaCns!(part::AbstractModelPart, sets_dic::Dict{Symbol,Tree}, cns_dic::Dict{Symbol,cnsCont}, optModel::Model, holdFixed::Bool, excDir_arr::Array = Int[])
+function createCapaCns!(part::AbstractModelPart, sets_dic::Dict{Symbol,Tree}, cns_dic::Dict{Symbol,cnsCont}, optModel::Model, holdFixed::Bool, excDir_arr::Array{Int64,1} = Int[])
 	# create capacity constraint for installed capacities	
 	for capaVar in filter(x -> any(occursin.(["capa", "insCapa"], string(x))), keys(part.var))
 
