@@ -1027,7 +1027,7 @@ function capaSizeSeasonInter(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM
 	cns_df = innerjoin(cns_df, rename(part.var[:capaStSizeSeason], :var => :capaStSizeSeason), on = intCol(cns_df))
 	cns_df = innerjoin(cns_df, rename(part.var[:capaStSizeInter], :var => :capaStSizeInter), on = intCol(cns_df))
 	cns_df[!,:cnsExpr] = cns_df[!,:capaStSize] .- cns_df[!,:capaStSizeSeason] .- cns_df[!,:capaStSizeInter]
-	cns_dic[:capaStSizeInter] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df, intCol(cns_df, :cnsExpr))), :greater)	
+	cns_dic[:capaStSizeInter] = cnsCont(filter(x -> x.cnsExpr != AffExpr(), select(cns_df, intCol(cns_df, :cnsExpr))), :equal)	
 end
 
 # ! enforce storage delta as sum of in and out

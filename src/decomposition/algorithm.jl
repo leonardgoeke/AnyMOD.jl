@@ -307,14 +307,12 @@ function runTop(benders_obj::bendersObj)
 	resData_obj = resData()
 	stabVar_obj = resData()
 
-	# solve model
-	@suppress begin
-		set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.solOpt.dnsThrs)
-		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
-		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
-		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
-		solveModel!(benders_obj.top.optModel, benders_obj.algOpt.solOpt.numFoc)
-	end	
+	# solve model 
+	set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.solOpt.dnsThrs)
+	set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
+	set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
+	set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
+	solveModel!(benders_obj.top.optModel, benders_obj.algOpt.solOpt.numFoc)
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -592,7 +590,12 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 				if sSym in keys(top_m.parts.tech)
 					part_obj = top_m.parts.tech[sSym]
 					for stType in keys(subCut.stLvl[sSym])
-						push!(cutExpr_arr, getBendersCut(subCut.stLvl[sSym][stType], part_obj.var[stType], top_m.options.scaFac.dispSt))
+						if stType == :stLvlInter
+							var_df = filter(x -> x.scr == cut[1][2], part_obj.var[stType])
+						else
+							var_df = part_obj.var[stType]
+						end
+						push!(cutExpr_arr, getBendersCut(subCut.stLvl[sSym][stType], var_df, top_m.options.scaFac.dispSt))
 					end
 				end
 			end
@@ -843,7 +846,7 @@ function getStabDf(stab_obj::stabObj, top_m::anyModel)
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
 	
 	# normalize scaling factors
-	allVar_df[!,:scaFac] .= allVar_df[!,:scaFac] ./ minimum(allVar_df[!,:scaFac])
+	allVar_df[!,:scaFac] .= allVar_df[!,:scaFac] ./ maximum(allVar_df[!,:scaFac])
 
 	return allVar_df
 end
