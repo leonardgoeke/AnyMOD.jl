@@ -197,7 +197,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 end
 
 # ! find fixed variables and write to file
-function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, feasFix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, temp_dir::String, res_m::anyModel; skipMustSt::Bool =false)
+function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, feasFix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, temp_dir::String, res_m::anyModel; skipMustSt::Bool = false)
 	rm(temp_dir; force = true, recursive = true)
 	mkdir(temp_dir) # create directory for fixing files
 	parFix_dic = defineParameter(res_m.options, res_m.report) # stores parameter info for fixing
@@ -205,7 +205,7 @@ function writeFixToFiles(fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}
 	# loop over variables
 	for sys in (:tech, :exc), sSym in keys(fix_dic[sys])
 		hasMust_boo = sys == :tech && isdefined(res_m.parts.tech[sSym], :capaRestr) ? "must" in res_m.parts.tech[sSym].capaRestr[!,:cnstrType] : false
-		for varSym in filter(x -> !skipMustSt || !hasMust_boo || x in (:capaConv, :expConv), keys(fix_dic[sys][sSym]))
+		for varSym in filter(x -> (!skipMustSt || !hasMust_boo || x in (:capaConv, :expConv)) && !(x in (:capaStSizeSeason,:capaStInter)), keys(fix_dic[sys][sSym]))
 
 			fix_df = feasFix_dic[sys][sSym][varSym] |> (w -> innerjoin(w, select(fix_dic[sys][sSym][varSym], Not([:value])), on = intersect(intCol(w, :dir), intCol(fix_dic[sys][sSym][varSym], :dir))))
 			if isempty(fix_df) continue end
