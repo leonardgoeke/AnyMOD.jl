@@ -342,7 +342,7 @@ function runTop(benders_obj::bendersObj)
 		# near-optimal can be infeasible with trust-region since near-optimum constraint cannot be fulfilled
 		if stab_obj.method[stab_obj.actMet] == :qtr && is_valid(benders_obj.top.optModel, stab_obj.cns)
 			# extend trust-region until problem is feasible
-			while !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+			while !(termination_status(benders_obj.top.optModel) == MOI.OPTIMAL)
 				# delte old trust-region
 				delete(benders_obj.top.optModel, stab_obj.cns)
 				# double radius of trust-region and enforce again
