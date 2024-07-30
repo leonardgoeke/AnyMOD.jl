@@ -584,7 +584,7 @@ end
 # ! results for exchange
 function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=true, wrtNet::Bool = true, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,), rmvZero::Bool = true, addRep::Tuple{Vararg{Symbol,N} where N} = ())
 	allData_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], R_from = Int[], R_to = Int[], C = Int[], Exc = Int[], scr = Int[], dir = Int[], variable = Symbol[], value = Float64[])
-	if isempty(anyM.parts.exc) error("No exchange data found") end
+	if isempty(anyM.parts.exc) @warn("No exchange data found") end
 
     # ! expansion variables
 	exp_df = getAllVariables(:expExc, anyM)
@@ -1067,7 +1067,7 @@ function reportAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}}, anyM::anyModel)
 
     # assigns variables to scaling factors for correting duals for scaling later
     scaFac_dic = Dict(:stExtIn => :dispSt, :stExtOut => :dispSt, :stIntIn => :dispSt, :stIntOut => :dispSt, :stLvl => :dispSt, :exc => :dispExc, :gen => :dispConv, :use => :dispConv, :trdBuy => :dispTrd, :trdSell => :dispTrd, :crt => :dispTrd , :lss => :dispTrd,
-                    :capaExc => :capa, :capaConv => :capa, :capaStIn => :capa, :capaStOut => :capa, :capaStSize => :capaStSize)
+                    :capaExc => :capa, :capaConv => :capa, :capaStIn => :capa, :capaStOut => :capa, :capaStSize => :capaStSize, :stInterOut => :dispSt, :stInterIn => :dispSt)
 
     # fill dataframe with relevant duals
     dual_df = DataFrame(Ts_disSup = Int[], Ts_dis = Int[], scr = Int[], bal = Symbol[], cat = Symbol[], value = Float64[])
@@ -1089,7 +1089,7 @@ function reportAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}}, anyM::anyModel)
                 firstVar_str = filter(y -> y != "", vcat(map(x -> split.(x, "-"), split(constraint_string(MIME("text/plain"), z), "+"))...))[1]
                 firstFac_fl = tryparse(Float64, split(firstVar_str, " ")[1]) |> (x -> isnothing(x) ? 1.0 : x)
                 firstVar_sym = Symbol(split(firstFac_fl == 1.0 ? split(firstVar_str, " ")[1] : split(firstVar_str, " ")[2], "[")[1])
-                return getfield(anyM.options.scaFac, scaFac_dic[firstVar_sym])/firstFac_fl
+                return getfield(anyM.options.scaFac, scaFac_dic[firstVar_sym]) / firstFac_fl
             end
             
             # get dual and aggregate

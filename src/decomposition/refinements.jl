@@ -22,6 +22,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			lowBd_fl = 0.0
 
 			top_m = benders_obj.top
+
 			# extend starting solution with complicating limits
 			for var in filter(x -> occursin("BendersCom", string(x)), keys(top_m.parts.lim.var))
 				# get relevant variables from heuristic model
@@ -48,7 +49,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 				# remove timestep and scenario info again and add to starting solution
 				comVarBoth_df = vcat(comVarWith_df, comVarWithout_df)
 				relCol_arr = filter(x -> !(x in (:Ts_dis, :scr)), intCol(comVarBoth_df, :sub))
-				startSol_obj.lim[var] = innerjoin(select(copy(top_m.parts.lim.var[var]), Not([:var])), select(comVarBoth_df, vcat(relCol_arr,[:value])), on = relCol_arr)
+				startSol_obj.lim[var] = joinMissing(select(copy(top_m.parts.lim.var[var]), Not([:var])), select(comVarBoth_df, vcat(relCol_arr,[:value])), relCol_arr, :left, Dict(:value => 0.0))
 			end
 
 			# extend starting solution with storage levels
@@ -57,15 +58,21 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 				for stType in (:stLvl, :stLvlInter)
 					if stType in keys(top_m.parts.tech[tSym].var)
 						lvlTop_df = select(copy(top_m.parts.tech[tSym].var[stType]), Not([:var]))
-						lvlHeu_df = copy(heu_m.parts.tech[tSym].var[stType])
-						lvlHeu_df[!,:scr] .= 0
-						lvlHeu_df[!,:value] .= value.(lvlHeu_df[!,:var])
-						startSol_obj.stLvl[tSym][stType] = innerjoin(lvlTop_df, unique(select(lvlHeu_df, Not([:scr,:var]))), on = filter(x -> x != :scr, intCol(lvlHeu_df)))
+						if stType in keys(heu_m.parts.tech[tSym].var)
+							lvlHeu_df = copy(heu_m.parts.tech[tSym].var[stType])
+							lvlHeu_df[!,:scr] .= 0
+							lvlHeu_df[!,:value] .= value.(lvlHeu_df[!,:var])
+							select!(lvlHeu_df, Not([:scr,:var]))
+						else
+							lvlHeu_df = copy(lvlTop_df)
+							lvlHeu_df[!,:value] .= 0.0
+							select!(lvlHeu_df, Not([:scr]))
+						end
+						startSol_obj.stLvl[tSym][stType] = joinMissing(lvlTop_df, unique(lvlHeu_df), filter(x -> !(x in (:scr, :value)), intCol(lvlHeu_df)), :left, Dict(:value => 0.0))
 					end
 				end
 				removeEmptyDic!(startSol_obj.stLvl,tSym)
 			end
-	
 		else
 			@suppress optimize!(benders_obj.top.optModel)
 			startSol_obj = resData()

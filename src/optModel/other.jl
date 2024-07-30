@@ -822,7 +822,7 @@ end
 function scaleRng(expr_arr::Array{AffExpr,1}, rng_arr::Array, rng_tup::Tuple{Float64,Float64}, rhs_boo::Bool)
 	scaRel_arr = rhs_boo ? union(findall(rng_arr .< rng_tup[1]), findall(rng_arr .> rng_tup[2])) : union(findall(getindex.(rng_arr, 1) .< rng_tup[1]), findall(getindex.(rng_arr, 2) .> rng_tup[2]))
 	if !isempty(scaRel_arr)
-		expr_arr[scaRel_arr] = map(x -> x[1] < rng_tup[1] ? rng_tup[1]/x[1] : rng_tup[2]/x[rhs_boo ? 1 : 2], rng_arr[scaRel_arr]).* expr_arr[scaRel_arr]
+		expr_arr[scaRel_arr] = map(x -> x[1] < rng_tup[1] ? rng_tup[1] / x[1] : rng_tup[2] / x[rhs_boo ? 1 : 2], rng_arr[scaRel_arr]).* expr_arr[scaRel_arr]
 	end
 	return expr_arr
 end
