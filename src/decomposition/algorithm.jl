@@ -651,7 +651,7 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 			# ! adjust small rhs based on range of updated factors
 			reqScaRhs_tup = top_m.options.coefRng.rhs ./ abs(cut_expr.constant) # range of scaling required to move rhs in range
 			upFacRng_tup = abs.(collect(values(cut_expr.terms))) |> (w -> (min(minimum(w), cutFac_fl), max(maximum(w), cutFac_fl))) 
-			posScaFac_tup = (top_m.options.coefRng.mat[1] / upFacRng_tup[1], top_m.options.coefRng.mat[2] / upFacRng_tup[2] * rngVio_fl) # possible range of scaling factors without moving factors out of range
+			posScaFac_tup = (top_m.options.coefRng.mat[1] / upFacRng_tup[1], top_m.options.coefRng.mat[2] / upFacRng_tup[2]) # possible range of scaling factors without moving factors out of range
 			
 			if reqScaRhs_tup[2] > posScaFac_tup[2] # factor requires more up-scaling than possible
 				if abs(cut_expr.constant) < abs(cut_expr.constant - top_m.options.coefRng.rhs[1] / posScaFac_tup[2]) # setting to zero creates smaller error than smallest value in range
