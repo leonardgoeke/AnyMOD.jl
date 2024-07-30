@@ -664,6 +664,15 @@ function createStVI(part::TechPart, ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,
 					
 					# filter redundant constraints 
 					cns_df = combine(x -> fltRedIn(x), groupby(cns_df, filter(x -> x != :scr, intCol(cns_df))))
+	
+					# add interannual storage if existing
+					if :stLvlInter in keys(part.var)
+						stLvlInter_df = copy(part.var[:stLvlInter])
+						cns_df[!,:Ts_dis] .= map(x -> getAncestors(x, anyM.sets[:Ts], :int, anyM.scr.frsLvl)[end], cns_df[!,:Ts_dis])
+						cns_df = innerjoin(cns_df, stLvlInter_df, on = intCol(stLvlInter_df))
+						cns_df[!,:stLvlPrev] =  cns_df[!,:stLvlPrev] .- cns_df[!,:var]
+						select!(cns_df, Not(:var))
+					end
 						
 					# create constraint expression
 					expr_arr = map(x -> getEnergyFacFrs(x.Ts_dis, anyM) |> (y -> x.stLvlCur - x.stLvlPrev - x.capa * x.avaEff * y - x.inf * y), eachrow(cns_df))
@@ -700,11 +709,19 @@ function createStVI(part::TechPart, ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,
 					
 					# filter redundant constraints
 					cns_df = combine(x -> fltRedOut(x), groupby(cns_df, filter(x -> x != :scr, intCol(cns_df))))
-
+	
+					if :stLvlInter in keys(part.var)
+						stLvlInter_df = copy(part.var[:stLvlInter])
+						cns_df[!,:Ts_dis] .= map(x -> getAncestors(x, anyM.sets[:Ts], :int, anyM.scr.frsLvl)[end], cns_df[!,:Ts_dis])
+						cns_df = innerjoin(cns_df, stLvlInter_df, on = intCol(stLvlInter_df))
+						cns_df[!,:stLvlPrev] =  cns_df[!,:stLvlPrev] .+ cns_df[!,:var]
+						select!(cns_df, Not(:var))
+					end
+	
 					# create constraint expression
 					expr_arr = map(x -> getEnergyFacFrs(x.Ts_dis, anyM) |> (y -> x.stLvlPrev - x.stLvlCur + x.inf * y - (x.capa * x.ava + x.maxStDis) * y), eachrow(cns_df))
 				end
-
+	
 				cns_df[!,:cnsExpr] = @expression(anyM.optModel, expr_arr)
 				cns_dic[Symbol(:stLvlMax,t)] = cnsCont(orderDf(cns_df[!,[cnsDim_arr...,:cnsExpr]]), :smaller)
 			end
