@@ -224,10 +224,10 @@ function computeDynPar(meth_arr::Array{Symbol, 1}, methOpt_arr::Array{NamedTuple
 end
 
 # function to update the center of stabilization method
-centerStab!(method::Symbol, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel) = centerStab!(Val{method}(), stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+centerStab!(method::Symbol, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel; forceRad::Bool = false) = centerStab!(Val{method}(), stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 
 # function for quadratic trust region
-function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
@@ -242,7 +242,7 @@ function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, t
 	abs_fl = sum(allVar_df[!,:refValue] .* allVar_df[!,:scaFac]) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
 	
 	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ abs((abs_fl * stab_obj.dynPar[stab_obj.actMet])^2 - sum(allVar_df[!,:scaFac].^2 .* allVar_df[!,:value].^2))
+	scaRng_tup = top_m.options.coefRng.rhs ./ abs(stab_obj.dynPar[stab_obj.actMet] * abs_fl^2 - sum(allVar_df[!,:scaFac].^2 .* allVar_df[!,:value].^2))
 
 	# get scaled l2-norm expression for complicating variables
 	capaSum_expr, allVar_df, scaEq_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
@@ -250,7 +250,7 @@ function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, t
 	# adjust the radius, if rounding would move current best outside of trust-region
 	adRad_boo = false
 	if sqrt(sum((allVar_df[!,:value] .- allVar_df[!,:refValue]).^2) * 1.1) < abs_fl
-		rad2_fl = (abs_fl * stab_obj.dynPar[stab_obj.actMet])^ 2
+		rad2_fl = stab_obj.dynPar[stab_obj.actMet] * abs_fl^2
 	else
 		rad2_fl = sum((allVar_df[!,:value] .- allVar_df[!,:refValue]).^2) * 1.1
 		adRad_boo = true
@@ -259,14 +259,14 @@ function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, t
 
 	# adjusts creation of trust-region, if rhs would substanitally violate rhs range
 	rhs_fl = (rad2_fl - capaSum_expr.aff.constant)  * scaEq_fl
-	
+	println(forceRad)
 	# create final constraint
 	if top_m.options.coefRng.rhs[1] / rngVio_fl > abs(rhs_fl)
 		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[1]* rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
 		produceMessage(report_m.options, report_m.report, 1, " - Increased radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
 	elseif top_m.options.coefRng.rhs[2] * rngVio_fl > abs(rhs_fl) || adRad_boo
 		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= rad2_fl  * scaEq_fl)
-	else
+	elseif !forceRad
 		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[2]* rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
 		produceMessage(report_m.options, report_m.report, 1, " - Reduced radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
 	end
@@ -274,7 +274,7 @@ function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, t
 end
 
 # function for proximal bundle method
-function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
@@ -318,7 +318,7 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, rn
 end
 
 # functions for level bundle methods
-function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
@@ -341,7 +341,7 @@ function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, 
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet])
 end
 
-function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
@@ -368,7 +368,7 @@ function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, 
 end
 
 # function for box step method
-function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
@@ -386,7 +386,7 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, t
 end
 
 # function for doubly stabilised bundle method
-function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel)
+function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 1)

@@ -341,16 +341,20 @@ function runTop(benders_obj::bendersObj)
 
 		# near-optimal can be infeasible with trust-region since near-optimum constraint cannot be fulfilled
 		if stab_obj.method[stab_obj.actMet] == :qtr && is_valid(benders_obj.top.optModel, stab_obj.cns)
-			# extend trust-region until problem is feasible
-			while !(termination_status(benders_obj.top.optModel) == MOI.OPTIMAL)
+
+			mustCapaErr_boo = checkMustCapaError(benders_obj.top)
+			 
+			# extend trust-region until problem is feasible or has mustCapa error
+			while mustCapaErr_boo || !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 				# delte old trust-region
 				delete(benders_obj.top.optModel, stab_obj.cns)
 				# double radius of trust-region and enforce again
 				stab_obj.dynPar[stab_obj.actMet] = max(stab_obj.methodOpt[stab_obj.actMet].low, stab_obj.dynPar[stab_obj.actMet] * stab_obj.methodOpt[stab_obj.actMet].fac)
-				centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, benders_obj.report.mod)
+				centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, benders_obj.report.mod; forceRad = true)
 				# solve again
 				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Extended quadratic trust-region to solve top-problem", testErr = false, printErr = false)
 				optimize!(benders_obj.top.optModel)
+				mustCapaErr_boo = checkMustCapaError(benders_obj.top)
 			end
 		end
 
@@ -1132,6 +1136,26 @@ function removeFixStorage(stVar_sym::Symbol, stVar_df::DataFrame, part_obj::Tech
 		stVar_df = stVar_df |> (x -> antijoin(x, fixCns_df, on = intersect(intCol(x), intCol(fixCns_df))))
 	end
 	return stVar_df
+end
+
+# ! detect if anywhere mustCapaConv exceed capaConv (can occur with stabilization although constraint explicitly forbids it, will cause infeas SP)
+function checkMustCapaError(top_m::anyModel)
+
+	# get results
+	checkData_obj = resData()
+	checkData_obj.capa, ~, ~ = writeResult(top_m, [:capa, :mustCapa]; rmvFix = true, fltSt = false)
+
+	# check for error
+	for sSym in keys(checkData_obj.capa[:tech])
+		if :capaConv in keys(checkData_obj.capa[:tech][sSym]) && :mustCapaConv in keys(checkData_obj.capa[:tech][sSym])
+			joinCapa_df = checkData_obj.capa[:tech][sSym][:capaConv] |> (x -> innerjoin(rename(x, :value => :capaValue), checkData_obj.capa[:tech][sSym][:mustCapaConv], on = intCol(x), makeunique = true))
+			if any(joinCapa_df[!,:capaValue] .< joinCapa_df[!,:value])
+				return true
+			end
+		end
+	end
+
+	return false
 end
 
 #endregion
