@@ -343,6 +343,7 @@ function runTop(benders_obj::bendersObj)
 		if stab_obj.method[stab_obj.actMet] == :qtr && is_valid(benders_obj.top.optModel, stab_obj.cns)
 
 			topSolved_boo = checkTopStatus(benders_obj.top)
+			i = 0
 			 
 			# extend trust-region until problem is feasible or has mustCapa error
 			while !topSolved_boo
@@ -355,6 +356,8 @@ function runTop(benders_obj::bendersObj)
 				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Extended quadratic trust-region to solve top-problem", testErr = false, printErr = false)
 				optimize!(benders_obj.top.optModel)
 				topSolved_boo = checkTopStatus(benders_obj.top)
+				i = i + 1
+				if i > 10 break end
 			end
 		end
 
