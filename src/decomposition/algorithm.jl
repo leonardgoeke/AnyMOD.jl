@@ -312,7 +312,7 @@ function runTop(benders_obj::bendersObj)
 	set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
 	set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
 	set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
-	solveModel!(benders_obj.top.optModel, benders_obj.algOpt.solOpt.numFoc)
+	@suppress solveModel!(benders_obj.top.optModel, benders_obj.algOpt.solOpt.numFoc)
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -354,10 +354,10 @@ function runTop(benders_obj::bendersObj)
 				centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, benders_obj.report.mod; forceRad = true)
 				# solve again
 				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Extended quadratic trust-region to solve top-problem", testErr = false, printErr = false)
-				optimize!(benders_obj.top.optModel)
+				@suppress optimize!(benders_obj.top.optModel)
 				topSolved_boo = checkTopStatus(benders_obj.top)
 				i = i + 1
-				if i > 10 break end
+				if i > 10 error() end
 			end
 		end
 
