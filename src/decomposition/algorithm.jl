@@ -343,7 +343,7 @@ function runTop(benders_obj::bendersObj)
 		if stab_obj.method[stab_obj.actMet] == :qtr && is_valid(benders_obj.top.optModel, stab_obj.cns)
 
 			topSolved_boo = checkTopStatus(benders_obj.top)
-			i = 0
+			termCnt_int = 0
 			 
 			# extend trust-region until problem is feasible or has mustCapa error
 			while !topSolved_boo
@@ -356,8 +356,13 @@ function runTop(benders_obj::bendersObj)
 				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Extended quadratic trust-region to solve top-problem", testErr = false, printErr = false)
 				@suppress optimize!(benders_obj.top.optModel)
 				topSolved_boo = checkTopStatus(benders_obj.top)
-				i = i + 1
-				if i > 10 error() end
+				# stop extension after five tries and reset radius
+				termCnt_int = termCnt_int + 1
+				if termCnt_int > 5
+					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Stopped extension of radius to solve top-problem after five tries", testErr = false, printErr = false)
+					stab_obj.dynPar[stab_obj.actMet] = stab_obj.methodOpt[stab_obj.actMet].start
+					break 
+				end
 			end
 		end
 
@@ -1153,11 +1158,7 @@ function checkTopStatus(top_m::anyModel)
 		for sSym in keys(checkData_obj.capa[:tech])
 			if :capaConv in keys(checkData_obj.capa[:tech][sSym]) && :mustCapaConv in keys(checkData_obj.capa[:tech][sSym])
 				joinCapa_df = checkData_obj.capa[:tech][sSym][:capaConv] |> (x -> innerjoin(rename(x, :value => :capaValue), checkData_obj.capa[:tech][sSym][:mustCapaConv], on = intCol(x), makeunique = true))
-				if any(joinCapa_df[!,:capaValue] .< joinCapa_df[!,:value])
-					println(sSym)
-					println(joinCapa_df)
-					println(joinCapa_df[!,:capaValue])
-					println(joinCapa_df[!,:value])
+				if any((joinCapa_df[!,:capaValue] .+ 1e-6) .< joinCapa_df[!,:value])
 					return false
 				end
 			end

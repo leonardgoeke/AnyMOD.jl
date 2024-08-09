@@ -890,8 +890,8 @@ function computeDesFac!(part::TechPart, yTs_dic::Dict{Int64,Int64}, anyM::anyMod
 
 	# check for pre-defined capacity factors and use them instead of computed values
 	if :desFac in keys(part.par)
-		preDefFac_df = matchSetParameter(select(allFac_df,Not([:desFac])),part.par[:desFac],anyM.sets, newCol = :desFac)
-		allFac_df = vcat(antijoin(allFac_df,preDefFac_df,on = intCol(allFac_df)),preDefFac_df)
+		preDefFac_df = matchSetParameter(select(allFac_df,Not([:desFac])), part.par[:desFac], anyM.sets, newCol = :desFac)
+		allFac_df = vcat(antijoin(allFac_df,preDefFac_df,on = intCol(allFac_df)), preDefFac_df)
 	end
 
 	# add computed factors to parameter data
