@@ -1156,6 +1156,8 @@ function checkTopStatus(top_m::anyModel)
 				if any(joinCapa_df[!,:capaValue] .< joinCapa_df[!,:value])
 					println(sSym)
 					println(joinCapa_df)
+					println(joinCapa_df[!,:capaValue])
+					println(joinCapa_df[!,:value])
 					return false
 				end
 			end
