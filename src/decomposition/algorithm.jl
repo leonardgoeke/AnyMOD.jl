@@ -477,7 +477,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	end
 
 	# increase numeric focus if model did not solve
-	numFoc_int = solveModel!(sub_m.optModel, 0)
+	numFoc_int = @suppress solveModel!(sub_m.optModel, 0)
 
 	# write results into files (only used once optimum is obtained)
 	writeAllResults!(sub_m, resultOpt)
@@ -1151,6 +1151,8 @@ function checkTopStatus(top_m::anyModel)
 			if :capaConv in keys(checkData_obj.capa[:tech][sSym]) && :mustCapaConv in keys(checkData_obj.capa[:tech][sSym])
 				joinCapa_df = checkData_obj.capa[:tech][sSym][:capaConv] |> (x -> innerjoin(rename(x, :value => :capaValue), checkData_obj.capa[:tech][sSym][:mustCapaConv], on = intCol(x), makeunique = true))
 				if any(joinCapa_df[!,:capaValue] .< joinCapa_df[!,:value])
+					println(sSym)
+					println(joinCapa_df)
 					return false
 				end
 			end
