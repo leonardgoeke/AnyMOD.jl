@@ -187,7 +187,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
-	solveModel!(top_m, 0)
+	solveModel!(top_m, 0, false)
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -312,7 +312,7 @@ function runTop(benders_obj::bendersObj)
 	set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
 	set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
 	set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
-	solveModel!(benders_obj.top, benders_obj.algOpt.solOpt.numFoc)
+	solveModel!(benders_obj.top, benders_obj.algOpt.solOpt.numFoc, false)
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
