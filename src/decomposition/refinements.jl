@@ -326,11 +326,14 @@ function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, 
 	allVar_df = getStabDf(stab_obj, top_m)
 
 	# sets values of variables that will violate range to zero
-	minFac_fl = (2 * maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> 2 * abs(x.value) < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
-
+	minFac_fl = (2 * maximum(abs.(allVar_df[!,:value]) .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] * rngVio_fl / top_m.options.coefRng.mat[1])
+	allVar_df[!,:refValue] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
+	
+	# absolute value for rhs of equation
+	abs_fl = sum(allVar_df[!,:refValue] .* allVar_df[!,:scaFac]) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
+	
 	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
+	scaRng_tup = top_m.options.coefRng.rhs ./ abs(stab_obj.dynPar[stab_obj.actMet] * abs_fl^2 - sum(allVar_df[!,:scaFac].^2 .* allVar_df[!,:value].^2))
 
 	# get scaled l2-norm expression for capacities
 	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
@@ -349,11 +352,14 @@ function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, 
 	allVar_df = getStabDf(stab_obj, top_m)
 
 	# sets values of variables that will violate range to zero
-	minFac_fl = (2 * maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> 2 * abs(x.value) < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
-
+	minFac_fl = (2 * maximum(abs.(allVar_df[!,:value]) .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] * rngVio_fl / top_m.options.coefRng.mat[1])
+	allVar_df[!,:refValue] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
+	
+	# absolute value for rhs of equation
+	abs_fl = sum(allVar_df[!,:refValue] .* allVar_df[!,:scaFac]) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
+	
 	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
+	scaRng_tup = top_m.options.coefRng.rhs ./ abs(stab_obj.dynPar[stab_obj.actMet] * abs_fl^2 - sum(allVar_df[!,:scaFac].^2 .* allVar_df[!,:value].^2))
 
 	# get scaled l2-norm expression for capacities
 	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
@@ -682,7 +688,7 @@ function removeStab!(benders_obj::bendersObj)
 		end
 
 		# delete limits on storage level
-		for sSym in keys(stabVar_dic[:stLvl]), stType in keys(stabVar_dic[:stLvl])
+		for sSym in keys(stabVar_dic[:stLvl]), stType in keys(stabVar_dic[:stLvl][sSym])
 			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:stLvl][sSym][stType][!,:var])
 			delete_lower_bound.(rmvLim_arr)
 			set_lower_bound.(rmvLim_arr, 0.0)
