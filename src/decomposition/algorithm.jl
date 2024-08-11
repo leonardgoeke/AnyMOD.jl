@@ -187,7 +187,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
-	solveModel!(top_m.optModel, 0)
+	solveModel!(top_m, 0)
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -312,7 +312,7 @@ function runTop(benders_obj::bendersObj)
 	set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
 	set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
 	set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
-	solveModel!(benders_obj.top.optModel, benders_obj.algOpt.solOpt.numFoc)
+	solveModel!(benders_obj.top, benders_obj.algOpt.solOpt.numFoc)
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -485,7 +485,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	end
 
 	# increase numeric focus if model did not solve
-	numFoc_int = solveModel!(sub_m.optModel, 0)
+	numFoc_int = solveModel!(sub_m, 0)
 
 	# write results into files (only used once optimum is obtained)
 	writeAllResults!(sub_m, resultOpt)
@@ -555,13 +555,13 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 end
 
 # ! solves a model increasing the numeric focus from starting value to maximum in infeasible
-function solveModel!(mod_m::Model, numFocSt_int::Int, checkInfeas_boo::Bool = true)	
+function solveModel!(mod_m::anyModel, numFocSt_int::Int, checkInfeas_boo::Bool = true)	
 
 	numFoc_int = numFocSt_int
 	while true
-		set_optimizer_attribute(mod_m, "NumericFocus", numFoc_int)
-		@suppress optimize!(mod_m)
-		if termination_status(mod_m) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3
+		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_int)
+		@suppress optimize!(mod_m.optModel)
+		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3
 			if checkInfeas_boo printIIS(mod_m) end
 			break
 		else
