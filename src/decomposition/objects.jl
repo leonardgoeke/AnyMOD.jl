@@ -201,13 +201,15 @@ mutable struct bendersObj
 		
 		complCon_dic = Dict{Tuple{Int,Int},Dict{Symbol,DataFrame}}()
 		
+
 		for (id, s) in enumerate(sub_tup)
+			subStr_tup = (top_m.sets[:Ts].nodes[s[1]].val, top_m.sets[:scr].nodes[s[2]].val)
 			if benders_obj.algOpt.dist # distributed case
 				benders_obj.sub[s] = @spawnat id + 1 begin
-					global sub_m, comVar_dic = buildSub(myid() - 1, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
+					global sub_m, comVar_dic = buildSub(myid() - 1, subStr_tup, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
 				end
 			else # non-distributed case
-				benders_obj.sub[s], complCon_dic[s] = buildSub(id, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
+				benders_obj.sub[s], complCon_dic[s] = buildSub(id, subStr_tup, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
 			end
 		end
 
