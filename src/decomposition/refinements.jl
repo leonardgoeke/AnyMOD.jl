@@ -259,7 +259,6 @@ function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, t
 
 	# adjusts creation of trust-region, if rhs would substanitally violate rhs range
 	rhs_fl = (rad2_fl - capaSum_expr.aff.constant)  * scaEq_fl
-	println(forceRad)
 	# create final constraint
 	if top_m.options.coefRng.rhs[1] / rngVio_fl > abs(rhs_fl)
 		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[1]* rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
