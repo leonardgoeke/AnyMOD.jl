@@ -258,7 +258,7 @@ end
 #region # * basic benders algorithm
 
 # build sub-problems
-function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Array{Array{String,1},1}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
+function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
 	# filter relevant input folders
 	relIn_arr = filter(x -> (occursin("ini",x) ? occursin(subStr_tup[1],x) : true) && (occursin("scr",x) ? occursin(subStr_tup[2],x) : true), inputFolder_ntup.in)
 	# create sub-problems
