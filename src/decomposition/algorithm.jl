@@ -312,7 +312,7 @@ function runTop(benders_obj::bendersObj)
 	set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
 	set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
 	set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
-	@suppress solveModel!(benders_obj.top.optModel, benders_obj.algOpt.solOpt.numFoc)
+	solveModel!(benders_obj.top.optModel, benders_obj.algOpt.solOpt.numFoc)
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -485,7 +485,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	end
 
 	# increase numeric focus if model did not solve
-	numFoc_int = @suppress solveModel!(sub_m.optModel, 0)
+	numFoc_int = solveModel!(sub_m.optModel, 0)
 
 	# write results into files (only used once optimum is obtained)
 	writeAllResults!(sub_m, resultOpt)
@@ -555,13 +555,14 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 end
 
 # ! solves a model increasing the numeric focus from starting value to maximum in infeasible
-function solveModel!(mod_m::Model, numFocSt_int::Int)
+function solveModel!(mod_m::Model, numFocSt_int::Int, checkInfeas_boo::Bool = true)	
 
 	numFoc_int = numFocSt_int
 	while true
 		set_optimizer_attribute(mod_m, "NumericFocus", numFoc_int)
-		optimize!(mod_m)
+		@suppress optimize!(mod_m)
 		if termination_status(mod_m) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3
+			if checkInfeas_boo printIIS(mod_m) end
 			break
 		else
 			numFoc_int = numFoc_int + 1
