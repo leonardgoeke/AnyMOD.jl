@@ -80,6 +80,9 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim  = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :mustExp, :stLvl, :lim], fltSt = false)
 			lowBd_fl = startSol_obj.objVal
 		end
+
+		# correct capacities, if mustCapa exceeds capa
+		startSol_obj = correctMustCapa(startSol_obj)
 	
 		#endregion
 	
@@ -642,7 +645,7 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 	removeStab!(benders_obj)
 
 	# solve problem
-	set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
+	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
 	solveModel!(benders_obj.top, 0, false)
 	checkIIS(benders_obj.top)
 

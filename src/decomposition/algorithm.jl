@@ -309,11 +309,13 @@ function runTop(benders_obj::bendersObj)
 	resData_obj = resData()
 	stabVar_obj = resData()
 
-	# solve model 
-	set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.solOpt.dnsThrs)
-	set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
-	set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
-	set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
+	# solve model
+	@suppress begin 
+		set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.solOpt.dnsThrs)
+		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
+		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
+		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
+	end
 	solveModel!(benders_obj.top, benders_obj.algOpt.solOpt.numFoc, false)
 	
 	# handle unsolved top problem
@@ -381,6 +383,8 @@ function runTop(benders_obj::bendersObj)
 	# write technology capacites and level of capacity balance to benders object
 	resData_obj.capa, resData_obj.stLvl, resData_obj.lim = writeResult(benders_obj.top, [:capa, :mustCapa, :stLvl, :lim]; rmvFix = true, fltSt = false)
 	stabVar_obj.capa, stabVar_obj.stLvl, stabVar_obj.lim = writeResult(benders_obj.top, [:capa, :exp, :stLvl, :lim]; rmvFix = true)
+
+	resData_obj = correctMustCapa(resData_obj)
 
 	# record level dual
 	if !isnothing(stab_obj)
@@ -561,8 +565,10 @@ function solveModel!(mod_m::anyModel, numFocSt_int::Int, checkInfeas_boo::Bool =
 
 	numFoc_int = numFocSt_int
 	while true
-		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_int)
-		@suppress optimize!(mod_m.optModel)
+		@suppress begin
+			set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_int)
+			optimize!(mod_m.optModel)
+		end
 		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3
 			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 				printIIS(mod_m) 
@@ -1163,8 +1169,8 @@ function checkTopStatus(top_m::anyModel)
 		for sSym in keys(checkData_obj.capa[:tech])
 			if :capaConv in keys(checkData_obj.capa[:tech][sSym]) && :mustCapaConv in keys(checkData_obj.capa[:tech][sSym])
 				joinCapa_df = checkData_obj.capa[:tech][sSym][:capaConv] |> (x -> innerjoin(rename(x, :value => :capaValue), checkData_obj.capa[:tech][sSym][:mustCapaConv], on = intCol(x), makeunique = true))
-				if any((joinCapa_df[!,:capaValue] .+ 1e-6) .< joinCapa_df[!,:value])
-					return false
+				if any((joinCapa_df[!,:capaValue] .+ 1e-5) .< joinCapa_df[!,:value])
+					return false					
 				end
 			end
 		end
@@ -1172,6 +1178,21 @@ function checkTopStatus(top_m::anyModel)
 	else
 		return false
 	end
+
+end
+
+# ! enforces capacities that are at least as high as must-run capacities
+function correctMustCapa(resData_obj::resData)
+
+	for sSym in keys(resData_obj.capa[:tech])
+		if :capaConv in keys(resData_obj.capa[:tech][sSym]) && :mustCapaConv in keys(resData_obj.capa[:tech][sSym])
+			joinCapa_df = resData_obj.capa[:tech][sSym][:capaConv] |> (x -> innerjoin(rename(x, :value => :capaValue), resData_obj.capa[:tech][sSym][:mustCapaConv], on = intCol(x), makeunique = true))
+			joinCapa_df[!,:capaValue] = map(x -> x.capaValue < x.value ? x.value : x.capaValue, eachrow(joinCapa_df))
+			resData_obj.capa[:tech][sSym][:capaConv] = rename(select(joinCapa_df, Not([:value])), :capaValue => :value)
+		end
+	end
+
+	return resData_obj
 
 end
 
