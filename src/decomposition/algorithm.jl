@@ -487,7 +487,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	end
 
 	# increase numeric focus if model did not solve
-	numFoc_int = solveModel!(sub_m, 0)
+	numFoc_int = solveModel!(sub_m, 0, false)
 
 	# write results into files (only used once optimum is obtained)
 	writeAllResults!(sub_m, resultOpt)
