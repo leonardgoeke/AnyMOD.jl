@@ -177,7 +177,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 				filter!(x -> x.scr == 0 || (getindex(x, anyM.supTs.lvl < anyM.scr.lvl ? :Ts_frs : :Ts_disSup), x.scr) in relScr_arr, dem_df)
 				# adjust demand values without scenarios
 				relDem_df = filter(x -> x.scr == 0, dem_df)
-				relDem_df[!,:scr] = map(x -> anyM.scr.scr[anyM.scr.frsLvl != anyM.supTs.lvl ? x.Ts_frs : x.Ts_disSup], eachrow(relDem_df))
+				relDem_df[!,:scr] = map(x -> anyM.scr.scr[anyM.scr.frsLvl >= anyM.supTs.lvl ? x.Ts_frs : x.Ts_disSup], eachrow(relDem_df))
 				dem_df = vcat(flatten(relDem_df, :scr), filter(x -> x.scr != 0, dem_df))
 			end
 

@@ -263,7 +263,6 @@ mutable struct bendersObj
 				allCompl_df = unique(select(allCompl_df, Not([:sub])))
 				allCompl_df[!,:var] = aggDivVar(topVar_df, allCompl_df, tuple(intCol(allCompl_df)...), top_m.sets)
 
-
 				cns_dic = Dict{Symbol,cnsCont}()
 				cns_dic = createLimitCont(allCompl_df, compl, cns_dic, top_m)
 				

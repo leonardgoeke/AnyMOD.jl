@@ -6,13 +6,12 @@
 function heuristicSolve(modOpt_tup::NamedTuple, t_int::Int, opt_obj::DataType; rtrnMod::Bool=true, solDet::Bool=false, fltSt::Bool=true)
 
 	# create and solve model
-	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, repTsLvl = modOpt_tup.repTsLvl, frsLvl = modOpt_tup.frsLvl, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), forceScr = solDet ? Symbol() : nothing)
+	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, repTsLvl = modOpt_tup.repTsLvl, frsLvl = 0, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), forceScr = solDet ? Symbol() : nothing)
 	
 	prepareMod!(heu_m, opt_obj, t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
 	set_optimizer_attribute(heu_m.optModel, "Crossover", 0)
 	optimize!(heu_m.optModel)
-	checkIIS(heu_m)
 
 	# write results to benders object
 	heuData_obj = resData()
@@ -118,7 +117,7 @@ function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,
 	topFeas_m = computeFeas(topFeas_m, fix_dic, zeroThrs_fl, cutSmall = true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m, [:exp, :mustExp, :capa, :mustCapa], fltSt = false, roundDown = roundDown)
+    return writeResult(topFeas_m, [:exp, :mustExp, :capa, :mustCapa, :stLvl, :lim], fltSt = false, roundDown = roundDown), value(topFeas_m.parts.obj.var[:objVar][1,:var])
 end
 
 # ! runs top problem again with optimal results
@@ -311,8 +310,10 @@ function runTop(benders_obj::bendersObj)
 
 	# solve model
 	@suppress begin 
-		set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.solOpt.dnsThrs)
-		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
+		if benders_obj.algOpt.solOpt.dnsThrs != 0 && benders_obj.algOpt.solOpt.dnsThrs != 0.0
+			set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.solOpt.dnsThrs)
+		end
+		set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
 	end
@@ -352,7 +353,7 @@ function runTop(benders_obj::bendersObj)
 			# extend trust-region until problem is feasible or has mustCapa error
 			while !topSolved_boo
 				# delte old trust-region
-				delete(benders_obj.top.optModel, stab_obj.cns)
+				if is_valid(benders_obj.top.optModel, stab_obj.cns) delete(benders_obj.top.optModel, stab_obj.cns) end
 				# double radius of trust-region and enforce again
 				stab_obj.dynPar[stab_obj.actMet] = max(stab_obj.methodOpt[stab_obj.actMet].low, stab_obj.dynPar[stab_obj.actMet] * stab_obj.methodOpt[stab_obj.actMet].fac)
 				centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, benders_obj.report.mod; forceRad = true)
@@ -362,9 +363,11 @@ function runTop(benders_obj::bendersObj)
 				topSolved_boo = checkTopStatus(benders_obj.top)
 				# stop extension after five tries and reset radius
 				termCnt_int = termCnt_int + 1
-				if termCnt_int > 5
-					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Stopped extension of radius to solve top-problem after five tries", testErr = false, printErr = false)
+				if termCnt_int > 2
+					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Stopped extension of radius to solve top-problem after three tries", testErr = false, printErr = false)
 					stab_obj.dynPar[stab_obj.actMet] = stab_obj.methodOpt[stab_obj.actMet].start
+					if is_valid(benders_obj.top.optModel, stab_obj.cns) delete(benders_obj.top.optModel, stab_obj.cns) end
+					@suppress optimize!(benders_obj.top.optModel)
 					break 
 				end
 			end
@@ -781,7 +784,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		foreach(x -> adjustDynPar!(x, benders_obj.stab, benders_obj.top, itr_obj.res, itr_obj.cnt, srsStep_boo, prx2Aux_fl, benders_obj.nearOpt.cnt != 0, benders_obj.report), 1:length(stab_obj.method))
 
 		# update center of stabilisation
-		if srsStep_boo
+		if srsStep_boo # update everything in case of serios step
 			stab_obj.var = filterStabVar(stabVar_obj.capa, stabVar_obj.stLvl, stabVar_obj.lim, stab_obj.weight, benders_obj.top)
 			stab_obj.objVal = best_obj.objVal
 			produceMessage(report_m.options, report_m.report, 1, " - Updated reference point for stabilization!", testErr = false, printErr = false)

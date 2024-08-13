@@ -18,12 +18,14 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# ! get starting solution with heuristic solve or generic
 		if stabSetup_obj.ini.setup != :none
 			produceMessage(report_m.options, report_m.report, 1, " - Started heuristic pre-solve for starting solution", testErr = false, printErr = false)
-			heu_m, startSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = false);
+			# get heuristic solution and get a close feasible solution
+			heu_m, heuSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = false);
+			
 			lowBd_fl = 0.0
-
 			top_m = benders_obj.top
 
-			# extend starting solution with complicating limits
+			#=
+			# extend heuristic solution with complicating limits
 			for var in filter(x -> occursin("BendersCom", string(x)), keys(top_m.parts.lim.var))
 				# get relevant variables from heuristic model
 				heuVar_df = getAllVariables(:emission, heu_m)
@@ -49,12 +51,12 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 				# remove timestep and scenario info again and add to starting solution
 				comVarBoth_df = vcat(comVarWith_df, comVarWithout_df)
 				relCol_arr = filter(x -> !(x in (:Ts_dis, :scr)), intCol(comVarBoth_df, :sub))
-				startSol_obj.lim[var] = joinMissing(select(copy(top_m.parts.lim.var[var]), Not([:var])), select(comVarBoth_df, vcat(relCol_arr,[:value])), relCol_arr, :left, Dict(:value => 0.0))
+				heuSol_obj.lim[var] = joinMissing(select(copy(top_m.parts.lim.var[var]), Not([:var])), select(comVarBoth_df, vcat(relCol_arr,[:value])), relCol_arr, :left, Dict(:value => 0.0))
 			end
 
-			# extend starting solution with storage levels
+			# extend heuristic solution with storage levels
 			for tSym in keys(top_m.parts.tech)
-				startSol_obj.stLvl[tSym] = Dict{Symbol,DataFrame}()
+				heuSol_obj.stLvl[tSym] = Dict{Symbol,DataFrame}()
 				for stType in (:stLvl, :stLvlInter)
 					if stType in keys(top_m.parts.tech[tSym].var)
 						lvlTop_df = select(copy(top_m.parts.tech[tSym].var[stType]), Not([:var]))
@@ -68,11 +70,15 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 							lvlHeu_df[!,:value] .= 0.0
 							select!(lvlHeu_df, Not([:scr]))
 						end
-						startSol_obj.stLvl[tSym][stType] = joinMissing(lvlTop_df, unique(lvlHeu_df), filter(x -> !(x in (:scr, :value)), intCol(lvlHeu_df)), :left, Dict(:value => 0.0))
+						heuSol_obj.stLvl[tSym][stType] = joinMissing(lvlTop_df, unique(lvlHeu_df), filter(x -> !(x in (:scr, :value)), intCol(lvlHeu_df)), :left, Dict(:value => 0.0))
 					end
 				end
-				removeEmptyDic!(startSol_obj.stLvl,tSym)
+				removeEmptyDic!(heuSol_obj.stLvl,tSym)
 			end
+			=#
+			startSol_obj = resData()
+			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim), startSol_obj.objVal  = @suppress getFeasResult(heuOpt_ntup, heuSol_obj.capa, Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(), benders_obj.algOpt.threads, 0.001, benders_obj.algOpt.opt)
+	
 		else
 			@suppress optimize!(benders_obj.top.optModel)
 			startSol_obj = resData()
@@ -388,9 +394,13 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, t
 	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : select(z, [:var, :value, :scaFac]))
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
 
+	# compute upper and lower bounds
+	allVar_df[!,:lower] = map(x -> x.value * (1 - stab_obj.methodOpt[stab_obj.actMet].low * (x.value >= 0.0 ? 1.0 : -1.0)) |> (y -> abs(y) < top_m.options.coefRng.rhs[1] / 1e2 ? 0.0 : y), eachrow(allVar_df))
+	allVar_df[!,:upper] = map(x -> collect(x.var.terms)[1] |> (z -> x.value >= 0.0 ? max(stab_obj.methodOpt[stab_obj.actMet].minUp / z[2], x.value * (1 + stab_obj.methodOpt[stab_obj.actMet].up)) : min(x.value + stab_obj.methodOpt[stab_obj.actMet].minUp / z[2], x.value * (1 - stab_obj.methodOpt[stab_obj.actMet].up))), eachrow(allVar_df))
+
 	# set lower and upper bound
-	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], x.value * (1 - stab_obj.methodOpt[stab_obj.actMet].low * (x.value >= 0.0 ? 1.0 : -1.0)) |> (y -> y < top_m.options.coefRng.rhs[1] / 1e2 ? 0.0 : y))), eachrow(allVar_df))
-	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], x.value >= 0.0 ? max(stab_obj.methodOpt[stab_obj.actMet].minUp / z[2], x.value * (1 + stab_obj.methodOpt[stab_obj.actMet].up)) : min(x.value + stab_obj.methodOpt[stab_obj.actMet].minUp / z[2], x.value * (1 - stab_obj.methodOpt[stab_obj.actMet].up)))), eachrow(allVar_df))
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], x.lower)), eachrow(allVar_df))
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], max(x.lower + stab_obj.methodOpt[stab_obj.actMet].minUp, x.upper))), eachrow(allVar_df))
 end
 
 # function for doubly stabilised bundle method
@@ -691,18 +701,18 @@ function removeStab!(benders_obj::bendersObj)
 		end
 
 		# delete limits on storage level
-		for sSym in keys(stabVar_dic[:stLvl]), stType in keys(stabVar_dic[:stLvl][sSym])
-			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:stLvl][sSym][stType][!,:var])
-			delete_lower_bound.(rmvLim_arr)
-			set_lower_bound.(rmvLim_arr, 0.0)
-			delete_upper_bound.(rmvLim_arr)
-		end
+			for sSym in keys(stabVar_dic[:stLvl]), stType in keys(stabVar_dic[:stLvl][sSym])
+				rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:stLvl][sSym][stType][!,:var])
+				delete_lower_bound.(rmvLim_arr)
+				set_lower_bound.(rmvLim_arr, 0.0)
+				delete_upper_bound.(rmvLim_arr)
+			end
 
-		# delete limits on complicating limits
-		for limSym in keys(stabVar_dic[:lim])
-			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:lim][limSym][!,:var])
-			delete_lower_bound.(rmvLim_arr)
-			delete_upper_bound.(rmvLim_arr)
+			# delete limits on complicating limits
+			for limSym in keys(stabVar_dic[:lim])
+				rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:lim][limSym][!,:var])
+				delete_lower_bound.(rmvLim_arr)
+				delete_upper_bound.(rmvLim_arr)
 		end
 	end
 end
