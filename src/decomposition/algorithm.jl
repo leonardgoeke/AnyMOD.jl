@@ -117,7 +117,7 @@ function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,
 	topFeas_m = computeFeas(topFeas_m, fix_dic, zeroThrs_fl, cutSmall = true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m, [:exp, :mustExp, :capa, :mustCapa, :stLvl, :lim], fltSt = false, roundDown = roundDown), value(topFeas_m.parts.obj.var[:objVar][1,:var])
+    return writeResult(benders_obj.top, [:capa, :exp, :stLvl, :lim]; rmvFix = true), value(topFeas_m.parts.obj.var[:objVar][1,:var])
 end
 
 # ! runs top problem again with optimal results
@@ -335,7 +335,7 @@ function runTop(benders_obj::bendersObj)
 		while stab_obj.method[stab_obj.actMet] == :lvl1 && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
             stab_obj.dynPar[stab_obj.actMet] = (opt_tup.lam * stab_obj.dynPar[stab_obj.actMet] * 1000  + (1 - opt_tup.lam) * stab_obj.objVal) / benders_obj.top.options.scaFac.obj
             set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], stab_obj.dynPar[stab_obj.actMet])
-            optimize!(benders_obj.top.optModel)
+            @suppress optimize!(benders_obj.top.optModel)
         end
 
 		# if no solution and proximal bundle stabilization, remove penalty term temporarily
@@ -1012,7 +1012,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = fa
 				end
 			end
 
-			# removes redundant varibles for undirected exchange capacity
+			# removes redundant variables for undirected exchange capacity
 			if sys == :exc && !part_dic[sSym].dir && :capaExc in keys(capa_dic[sys][sSym])
 				filter!(x -> x.R_from < x.R_to, capa_dic[sys][sSym][:capaExc])
 			end
