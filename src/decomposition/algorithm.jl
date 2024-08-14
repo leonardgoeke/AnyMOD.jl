@@ -322,7 +322,7 @@ function runTop(benders_obj::bendersObj)
 	if !isnothing(stab_obj)
 		opt_tup = stab_obj.methodOpt[stab_obj.actMet]
 		# if infeasible and level bundle stabilization, increase level until feasible
-		while stab_obj.method[stab_obj.actMet] in (:lvl2, :dsb) && termination_status(benders_obj.top.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED)
+		while stab_obj.method[stab_obj.actMet] in (:lvl2, :dsb) && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 			produceMessage(report_m.options, report_m.report, 1, " - Empty level set", testErr = false, printErr = false)
 			lowBd_fl = stab_obj.objVal / benders_obj.top.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
 			stab_obj.dynPar[stab_obj.actMet][:yps] = (1 - opt_tup.lam) * (stab_obj.objVal - lowBd_fl*benders_obj.top.options.scaFac.obj) / benders_obj.top.options.scaFac.obj
@@ -331,7 +331,7 @@ function runTop(benders_obj::bendersObj)
 			@suppress optimize!(benders_obj.top.optModel)
         end
 
-		while stab_obj.method[stab_obj.actMet] == :lvl1 && termination_status(benders_obj.top.optModel) in (MOI.INFEASIBLE, MOI.INFEASIBLE_OR_UNBOUNDED) 
+		while stab_obj.method[stab_obj.actMet] == :lvl1 && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
             stab_obj.dynPar[stab_obj.actMet] = (opt_tup.lam * stab_obj.dynPar[stab_obj.actMet] * 1000  + (1 - opt_tup.lam) * stab_obj.objVal) / benders_obj.top.options.scaFac.obj
             set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], stab_obj.dynPar[stab_obj.actMet])
             optimize!(benders_obj.top.optModel)
