@@ -117,7 +117,7 @@ function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,
 	topFeas_m = computeFeas(topFeas_m, fix_dic, zeroThrs_fl, cutSmall = true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(benders_obj.top, [:capa, :exp, :stLvl, :lim]; rmvFix = true), value(topFeas_m.parts.obj.var[:objVar][1,:var])
+    return writeResult(topFeas_m, [:capa, :exp, :stLvl, :lim]; rmvFix = true), value(topFeas_m.parts.obj.var[:objVar][1,:var])
 end
 
 # ! runs top problem again with optimal results
