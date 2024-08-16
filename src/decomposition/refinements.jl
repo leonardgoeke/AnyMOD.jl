@@ -2,7 +2,7 @@
 #region # * stabilization
 
 # initialize stabilization when creating benders object, returns the stabilization object
-function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, scale_dic::Dict{Symbol,NamedTuple}, runSubDist::Function)
+function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, scale_dic::Dict{Symbol,NamedTuple}, complCns_dic::Dict{Tuple{Int64, Int64}, Dict{Symbol, DataFrame}}, relVar_arr::Vector{Symbol}, runSubDist::Function)
 
 	report_m = benders_obj.report.mod
 
@@ -24,60 +24,8 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			lowBd_fl = 0.0
 			top_m = benders_obj.top
 
-			#=
-			# extend heuristic solution with complicating limits
-			for var in filter(x -> occursin("BendersCom", string(x)), keys(top_m.parts.lim.var))
-				# get relevant variables from heuristic model
-				heuVar_df = getAllVariables(:emission, heu_m)
-				# get relevant complicating variables
-				comVar_df = copy(select(top_m.parts.lim.var[var], Not([:var])))
-				comVar_df[!,:Ts_dis] = getindex.(comVar_df[!,:sub], 1)
-				comVar_df[!,:scr] = getindex.(comVar_df[!,:sub], 2)
-				# check where values are defined
-				comVar_df[!,:value] = aggDivVar(heuVar_df, comVar_df, tuple(intersect(intCol(comVar_df), intCol(heuVar_df))...), top_m.sets)
-				# compute value for cases where complicating variabels were found in heuristic problem  
-				comVarWith_df = filter(x -> x.value != AffExpr(), comVar_df)
-				comVarWith_df[!,:value] = value.(comVarWith_df[!,:value])
-				# compute expected values for each scenario / timestep combination and use for undefiend values
-				expVarWith_df = combine(y -> (value = sum(y.value) / length(y.value),), groupby(comVarWith_df, filter(x -> x != :scr, intCol(comVarWith_df))))
-				comVarWithout_df = select(filter(x -> x.value == AffExpr(), comVar_df), Not([:value]))	
-				if isempty(comVarWithout_df)
-					comVarBoth_df = comVarWith_df
-					comVarWithout_df[!,:value] .= Float64[]
-				else
-					comVarWithout_df = innerjoin(comVarWithout_df, expVarWith_df, on = filter(x -> x != :scr, intersect(intCol(expVarWith_df), intCol(comVar_df))))
-					comVarBoth_df = vcat(comVarWith_df, comVarWithout_df)
-				end
-				# remove timestep and scenario info again and add to starting solution
-				comVarBoth_df = vcat(comVarWith_df, comVarWithout_df)
-				relCol_arr = filter(x -> !(x in (:Ts_dis, :scr)), intCol(comVarBoth_df, :sub))
-				heuSol_obj.lim[var] = joinMissing(select(copy(top_m.parts.lim.var[var]), Not([:var])), select(comVarBoth_df, vcat(relCol_arr,[:value])), relCol_arr, :left, Dict(:value => 0.0))
-			end
-
-			# extend heuristic solution with storage levels
-			for tSym in keys(top_m.parts.tech)
-				heuSol_obj.stLvl[tSym] = Dict{Symbol,DataFrame}()
-				for stType in (:stLvl, :stLvlInter)
-					if stType in keys(top_m.parts.tech[tSym].var)
-						lvlTop_df = select(copy(top_m.parts.tech[tSym].var[stType]), Not([:var]))
-						if stType in keys(heu_m.parts.tech[tSym].var)
-							lvlHeu_df = copy(heu_m.parts.tech[tSym].var[stType])
-							lvlHeu_df[!,:scr] .= 0
-							lvlHeu_df[!,:value] .= value.(lvlHeu_df[!,:var])
-							select!(lvlHeu_df, Not([:scr,:var]))
-						else
-							lvlHeu_df = copy(lvlTop_df)
-							lvlHeu_df[!,:value] .= 0.0
-							select!(lvlHeu_df, Not([:scr]))
-						end
-						heuSol_obj.stLvl[tSym][stType] = joinMissing(lvlTop_df, unique(lvlHeu_df), filter(x -> !(x in (:scr, :value)), intCol(lvlHeu_df)), :left, Dict(:value => 0.0))
-					end
-				end
-				removeEmptyDic!(heuSol_obj.stLvl,tSym)
-			end
-			=#
 			startSol_obj = resData()
-			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim), startSol_obj.objVal  = @suppress getFeasResult(heuOpt_ntup, heuSol_obj.capa, Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(), benders_obj.algOpt.threads, 0.001, benders_obj.algOpt.opt)
+			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim), startSol_obj.objVal  = @suppress getFeasResult(heuOpt_ntup, heuSol_obj.capa, Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(), benders_obj.algOpt.threads, 0.001, benders_obj.algOpt.opt, useVI = benders_obj.algOpt.useVI, complCns = complCns_dic, relVar = relVar_arr)
 	
 		else
 			@suppress optimize!(benders_obj.top.optModel)
@@ -655,7 +603,8 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 	removeStab!(benders_obj)
 
 	# solve problem
-	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
+	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
+	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
 	solveModel!(benders_obj.top, 0, false)
 	checkIIS(benders_obj.top)
 
@@ -663,7 +612,7 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 	benders_obj.itr.res[:topCostNoStab] = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
 	benders_obj.itr.res[:estTotCostNoStab] = benders_obj.itr.res[:topCostNoStab] + value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
 	benders_obj.itr.res[:lowLimCost] = benders_obj.itr.res[:estTotCostNoStab]
-
+	
 	if benders_obj.nearOpt.cnt != 0 benders_obj.itr.res[:nearObjNoStab] = objective_value(benders_obj.top.optModel) end
 
 end
@@ -682,7 +631,7 @@ function removeStab!(benders_obj::bendersObj)
 		delete(benders_obj.top.optModel, stab_obj.cns) # remove trust-region
 	elseif stab_obj.method[stab_obj.actMet] in (:prx1, :prx2)
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1]) # remove penalty form objective
-	elseif stab_obj.method[stab_obj.actMet] in (:lvl1, :lvl2)
+	elseif stab_obj.method[stab_obj.actMet] in (:lvl1, :lvl2) && has_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 		delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 	elseif stab_obj.method[stab_obj.actMet] == :dsb

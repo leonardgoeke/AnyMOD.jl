@@ -199,7 +199,7 @@ mutable struct bendersObj
 		produceMessage(report_m.options, report_m.report, 1, " - Started creation of sub-problems", testErr = false, printErr = false)
 		benders_obj.sub = Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}()
 		
-		complCon_dic = Dict{Tuple{Int,Int},Dict{Symbol,DataFrame}}()
+		complCns_dic = Dict{Tuple{Int,Int},Dict{Symbol,DataFrame}}()
 		
 
 		for (id, s) in enumerate(sub_tup)
@@ -209,7 +209,7 @@ mutable struct bendersObj
 					global sub_m, comVar_dic = buildSub(myid() - 1, subStr_tup, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
 				end
 			else # non-distributed case
-				benders_obj.sub[s], complCon_dic[s] = buildSub(id, subStr_tup, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
+				benders_obj.sub[s], complCns_dic[s] = buildSub(id, subStr_tup, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
 			end
 		end
 
@@ -226,7 +226,7 @@ mutable struct bendersObj
 			# wait for construction of sub-problems
 			wait.(collect(values(benders_obj.sub)))
 			# get information on complicating variable
-			foreach(x -> complCon_dic[x[2]] = fetch(getComVarDist(1 + x[1])), enumerate(sub_tup))
+			foreach(x -> complCns_dic[x[2]] = fetch(getComVarDist(1 + x[1])), enumerate(sub_tup))
 		end
 
 		produceMessage(report_m.options, report_m.report, 1, " - Finished creation of top-problem and sub-problems", testErr = false, printErr = false)
@@ -234,42 +234,10 @@ mutable struct bendersObj
 
 		#region # * write complicating constraints into top problem
 		
-		relVar_arr::Vector{Symbol} = unique(vcat(filter(x -> !isempty(x), map(x -> collect(keys(complCon_dic[x])), collect(keys(complCon_dic))))...))
+		relVar_arr::Vector{Symbol} = unique(vcat(filter(x -> !isempty(x), map(x -> collect(keys(complCns_dic[x])), collect(keys(complCns_dic))))...))
 		# loop over types of complicating variables
 		if !isempty(relVar_arr)
-			for compl in relVar_arr
-				allCompl_df = DataFrame()
-				# loop over subproblems to get data
-				for s in keys(complCon_dic)
-					# get complicating variable and add subproblem info
-					addCompl_df = copy(complCon_dic[s][compl])
-					addCompl_df[!,:sub] .= fill(s, size(addCompl_df,1))
-					# join to overall dataframe
-					if isempty(allCompl_df)
-						allCompl_df = addCompl_df
-					else
-						miss_arr = [intCol(allCompl_df), intCol(addCompl_df)] |> (y -> union(setdiff(y[1], y[2]), setdiff(y[2], y[1])))
-						join_arr = intersect(namesSym(allCompl_df), namesSym(addCompl_df))
-						allCompl_df = joinMissing(allCompl_df, addCompl_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr), Dict(:Up => nothing, :Low => nothing, :Fix => nothing, :UpDir => nothing, :LowDir => nothing, :FixDir=> nothing)))
-					end
-				end
-				# create complicating variables for benders
-				top_m = benders_obj.top
-				top_m.parts.lim.var[compl] = createVar(select(allCompl_df, intCol(allCompl_df, :sub)), string(compl), NaN, top_m.optModel, top_m.lock, top_m.sets; scaFac = benders_obj.top.options.scaFac.dispConv, lowBd = compl == :emissionBendersCom ? NaN : 0.0)
-				
-				# create constraints using complicating variables
-				topVar_df = copy(top_m.parts.lim.var[compl])
-				topVar_df[!,:var] = map(x -> x.var * ((!(:scr in keys(x)) || x.scr == 0) ? top_m.scr.scrProb[x.sub] : 1.0), eachrow(topVar_df))
-				allCompl_df = unique(select(allCompl_df, Not([:sub])))
-				allCompl_df[!,:var] = aggDivVar(topVar_df, allCompl_df, tuple(intCol(allCompl_df)...), top_m.sets)
-
-				cns_dic = Dict{Symbol,cnsCont}()
-				cns_dic = createLimitCont(allCompl_df, compl, cns_dic, top_m)
-				
-				for cnsSym in keys(cns_dic)
-					top_m.parts.lim.cns[cnsSym] = createCns(cns_dic[cnsSym], top_m.optModel, top_m.options.holdFixed)
-				end
-			end
+			addComplCns!(benders_obj.top, relVar_arr, complCns_dic)
 			push!(top_m.report, (2, "limit", "", "enforced at least one limit across scenarios which creates a complicating constraint, Benders can not converge in case of overlapping complicating constraints (e.g., a national and system-wide emission limit)"))
 			errorTest(unique(top_m.report), top_m.options, write = true)
 			produceMessage(report_m.options, report_m.report, 1, " - Added complicating constraints to top-problem", testErr = false, printErr = false)
@@ -279,7 +247,7 @@ mutable struct bendersObj
 
 		#region # * initialize stabilization
 
-		benders_obj.stab, curBest_obj = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
+		benders_obj.stab, curBest_obj = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, complCns_dic, relVar_arr, runSubDist)
 		benders_obj.itr = itrStatus(curBest_obj, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0), 1.0, Dict{Symbol,Float64}())
 		benders_obj.itr.res[:curBest] = curBest_obj.objVal
 
@@ -291,3 +259,4 @@ mutable struct bendersObj
 end
 
 #endregion
+

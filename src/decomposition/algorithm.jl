@@ -102,13 +102,14 @@ function evaluateHeu(heu_m::anyModel, heuSca_obj::resData, heuCom_obj::resData, 
 end
 
 # ! returns a feasible solution as close as possible to the input dictionary
-function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, t_int::Int, zeroThrs_fl::Float64, opt_obj::DataType; rngVio_fl::Float64 = 1e0, roundDown::Int = 0)
+function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, t_int::Int, zeroThrs_fl::Float64, opt_obj::DataType; rngVio_fl::Float64 = 1e0, useVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}} = (bal = false, st = false), complCns = Dict{Tuple{Int64, Int64}, Dict{Symbol, DataFrame}}(), relVar = Vector{Symbol}())
 
 	# create top-problem
-	topFeas_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, reportLvl = 1, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), holdFixed = true)
+	topFeas_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, frsLvl = modOpt_tup.frsLvl, supTsLvl = modOpt_tup.supTsLvl,  repTsLvl = modOpt_tup.repTsLvl, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, createVI = useVI, checkRng = (print = true, all = false), holdFixed = true)
 
 	topFeas_m.subPro = tuple(0, 0)
 	prepareMod!(topFeas_m, opt_obj, t_int)
+    if !isempty(relVar) addComplCns!(topFeas_m, relVar, complCns) end
 
 	# add limits to problem
 	if !isempty(lim_dic) addLinearTrust!(topFeas_m, lim_dic, rngVio_fl) end
@@ -313,7 +314,7 @@ function runTop(benders_obj::bendersObj)
 		if benders_obj.algOpt.solOpt.dnsThrs != 0 && benders_obj.algOpt.solOpt.dnsThrs != 0.0
 			set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.solOpt.dnsThrs)
 		end
-		set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
+		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
 	end
@@ -333,9 +334,14 @@ function runTop(benders_obj::bendersObj)
         end
 
 		while stab_obj.method[stab_obj.actMet] == :lvl1 && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
-            stab_obj.dynPar[stab_obj.actMet] = (opt_tup.lam * stab_obj.dynPar[stab_obj.actMet] * 1000  + (1 - opt_tup.lam) * stab_obj.objVal) / benders_obj.top.options.scaFac.obj
+			stab_obj.dynPar[stab_obj.actMet] = opt_tup.lam * stab_obj.dynPar[stab_obj.actMet]  + (1 - opt_tup.lam) * stab_obj.objVal / benders_obj.top.options.scaFac.obj
             set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], stab_obj.dynPar[stab_obj.actMet])
-            @suppress optimize!(benders_obj.top.optModel)
+            # remove stabilization if difference below optimality threshold
+			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  stab_obj.dynPar[stab_obj.actMet] - 1 < benders_obj.algOpt.gap
+				@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
+				delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
+			end
+			@suppress optimize!(benders_obj.top.optModel)
         end
 
 		# if no solution and proximal bundle stabilization, remove penalty term temporarily
@@ -1197,6 +1203,43 @@ function correctMustCapa(resData_obj::resData)
 
 	return resData_obj
 
+end
+
+# ! adds complicating constraints to a top-problem
+function addComplCns!(top_m::anyModel, relVar_arr::Vector{Symbol}, complCns_dic::Dict{Tuple{Int,Int},Dict{Symbol,DataFrame}})
+	
+	for compl in relVar_arr
+		allCompl_df = DataFrame()
+		# loop over subproblems to get data
+		for s in keys(complCns_dic)
+			# get complicating variable and add subproblem info
+			addCompl_df = copy(complCns_dic[s][compl])
+			addCompl_df[!,:sub] .= fill(s, size(addCompl_df,1))
+			# join to overall dataframe
+			if isempty(allCompl_df)
+				allCompl_df = addCompl_df
+			else
+				miss_arr = [intCol(allCompl_df), intCol(addCompl_df)] |> (y -> union(setdiff(y[1], y[2]), setdiff(y[2], y[1])))
+				join_arr = intersect(namesSym(allCompl_df), namesSym(addCompl_df))
+				allCompl_df = joinMissing(allCompl_df, addCompl_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr), Dict(:Up => nothing, :Low => nothing, :Fix => nothing, :UpDir => nothing, :LowDir => nothing, :FixDir=> nothing)))
+			end
+		end
+		# create complicating variables for benders
+		top_m.parts.lim.var[compl] = createVar(select(allCompl_df, intCol(allCompl_df, :sub)), string(compl), NaN, top_m.optModel, top_m.lock, top_m.sets; scaFac = top_m.options.scaFac.dispConv, lowBd = compl == :emissionBendersCom ? NaN : 0.0)
+		
+		# create constraints using complicating variables
+		topVar_df = copy(top_m.parts.lim.var[compl])
+		topVar_df[!,:var] = map(x -> x.var * ((!(:scr in keys(x)) || x.scr == 0) ? top_m.scr.scrProb[x.sub] : 1.0), eachrow(topVar_df))
+		allCompl_df = unique(select(allCompl_df, Not([:sub])))
+		allCompl_df[!,:var] = aggDivVar(topVar_df, allCompl_df, tuple(intCol(allCompl_df)...), top_m.sets)
+
+		cns_dic = Dict{Symbol,cnsCont}()
+		cns_dic = createLimitCont(allCompl_df, compl, cns_dic, top_m)
+		
+		for cnsSym in keys(cns_dic)
+			top_m.parts.lim.cns[cnsSym] = createCns(cns_dic[cnsSym], top_m.optModel, top_m.options.holdFixed)
+		end
+	end
 end
 
 #endregion
