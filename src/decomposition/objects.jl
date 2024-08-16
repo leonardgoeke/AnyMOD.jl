@@ -133,7 +133,7 @@ mutable struct countItr
 end
 
 mutable struct itrStatus
-	best::resData
+	best::NamedTuple{(:var,:res),Tuple{resData,Dict{Symbol,DataFrame}}}
 	cnt::countItr
 	gap::Float64
 	res::Dict{Symbol,Float64} # store different results here
@@ -149,10 +149,10 @@ mutable struct bendersObj
 	stab::Union{Nothing,stabObj}
     algOpt::algSetup
 	nearOpt::nearOptObj
-	info::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}
-	report::NamedTuple{(:itr,:nearOpt,:mod),Tuple{DataFrame,DataFrame,anyModel}}
+	info::NamedTuple{(:name,:frsLvl,:supTsLvl,:repTsLvl,:shortExp), Tuple{String, Int64, Int64, Int64, Int64}}
+	report::NamedTuple{(:itr,:nearOpt,:res,:mod),Tuple{DataFrame,DataFrame,NamedTuple,anyModel}}
 	
-	function bendersObj(info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, getComVarDist::Function, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
+	function bendersObj(info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, getComVarDist::Function, resInfo::NamedTuple, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
 
         #region # * checks and initialization
 
@@ -182,7 +182,7 @@ mutable struct bendersObj
 		# extend reporting dataframe in case of near-optimal
 		if !isnothing(nearOptSetup_obj) itrReport_df[!,:objective] = fill("", size(itrReport_df, 1)) end
 
-		benders_obj.report = (itr = itrReport_df, nearOpt = nearOpt_df, mod = report_m)
+		benders_obj.report = (itr = itrReport_df, nearOpt = nearOpt_df, res = resInfo, mod = report_m)
 
 		#endregion
 
@@ -247,9 +247,9 @@ mutable struct bendersObj
 
 		#region # * initialize stabilization
 
-		benders_obj.stab, curBest_obj = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, complCns_dic, relVar_arr, runSubDist)
-		benders_obj.itr = itrStatus(curBest_obj, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0), 1.0, Dict{Symbol,Float64}())
-		benders_obj.itr.res[:curBest] = curBest_obj.objVal
+		benders_obj.stab, curBest_tup = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, complCns_dic, relVar_arr, runSubDist)
+		benders_obj.itr = itrStatus(curBest_tup, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0), 1.0, Dict{Symbol,Float64}())
+		benders_obj.itr.res[:curBest] = curBest_tup.var.objVal
 
 		#endregion
 

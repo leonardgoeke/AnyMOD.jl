@@ -25,14 +25,15 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			top_m = benders_obj.top
 
 			startSol_obj = resData()
-			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim), startSol_obj.objVal  = @suppress getFeasResult(heuOpt_ntup, heuSol_obj.capa, Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(), benders_obj.algOpt.threads, 0.001, benders_obj.algOpt.opt, useVI = benders_obj.algOpt.useVI, complCns = complCns_dic, relVar = relVar_arr)
-	
+			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim), startSol_obj.objVal, startRes_dic  = @suppress getFeasResult(heuOpt_ntup, heuSol_obj.capa, Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(), benders_obj.algOpt.threads, 0.001, benders_obj.algOpt.opt, useVI = benders_obj.algOpt.useVI, complCns = complCns_dic, relVar = relVar_arr, resTup = benders_obj.report.res.general)
 		else
 			@suppress optimize!(benders_obj.top.optModel)
 			startSol_obj = resData()
 			startSol_obj.objVal = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 			startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim  = writeResult(benders_obj.top, [:capa, :exp, :stLvl, :lim]; rmvFix = true)
 			lowBd_fl = startSol_obj.objVal
+
+			startRes_dic = Dict(x => reportResults(x, benders_obj.top, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
 		end
 
 		# correct capacities, if mustCapa exceeds capa
@@ -93,6 +94,8 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 
 		append!(benders_obj.report.itr, secItr_df)
 
+		startSol_tup = (var = startSol_obj, res = startRes_dic)
+
 		#endregion
 
 		#region # * initialize stabilization 
@@ -107,9 +110,10 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		stab_obj = nothing
 		startSol_obj = resData()
 		benders_obj.cuts = Array{Pair{Tuple{Int,Int},Union{resData}},1}()
+		startSol_tup = (var = startSol_obj, res = Dict{Symbol,DataFrame}())
 	end
 
-	return stab_obj, startSol_obj
+	return stab_obj, startSol_tup
 	
 end
 
@@ -132,8 +136,8 @@ function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_
 			error("options provided for level bundle do not match the defined option 'lam'")
 		elseif key == :lvl2 && !isempty(setdiff(keys(val), (:lam, :myMax)))
 			error("options provided for level bundle do not match the defined options 'lam', 'myMax'")
-		elseif key == :box && !isempty(setdiff(keys(val), (:low, :up, :minUp)))
-			error("options provided for trust-region do not match the defined options 'low', 'up', and 'minUp'")
+		elseif key == :box && !isempty(setdiff(keys(val), (:low, :up, :minDelta)))
+			error("options provided for trust-region do not match the defined options 'low', 'up', and 'minDelta'")
 		elseif key == :dsb && !isempty(setdiff(keys(val), (:start, :min, :lam, :myMax)))
 			error("options provided for doubly stabilised bundle do not match the defined options 'start', 'min', 'lam', 'myMax'")
 		end
@@ -338,17 +342,41 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, t
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!, [:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
-	allStLvl_df = vcat(vcat(map(x -> expExpr_dic[:stLvl][x] |> (u -> map(y -> u[y], collect(keys(u)))), collect(keys(expExpr_dic[:stLvl])))...)...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : z)
-	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[] ) : select(z, [:var, :value, :scaFac]))
+	allCapa_df[!,:negPos] .= false
+
+	allStLvl_df = vcat(vcat(map(x -> expExpr_dic[:stLvl][x] |> (u -> map(y -> u[y], collect(keys(u)))), collect(keys(expExpr_dic[:stLvl])))...)...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[], negPos = Bool[]) : z)
+	allStLvl_df[!,:negPos] .= occursin.("stLvlInter", string.(allStLvl_df[!,:var]))
+
+	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[], negPos = Bool[]) : select(z, [:var, :value, :scaFac]))
+	allLim_df[!,:negPos] .= true
+
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
 
-	# compute upper and lower bounds
-	allVar_df[!,:lower] = map(x -> x.value * (1 - stab_obj.methodOpt[stab_obj.actMet].low * (x.value >= 0.0 ? 1.0 : -1.0)) |> (y -> abs(y) < top_m.options.coefRng.rhs[1] / 1e2 ? 0.0 : y), eachrow(allVar_df))
-	allVar_df[!,:upper] = map(x -> collect(x.var.terms)[1] |> (z -> x.value >= 0.0 ? max(stab_obj.methodOpt[stab_obj.actMet].minUp / z[2], x.value * (1 + stab_obj.methodOpt[stab_obj.actMet].up)) : min(x.value + stab_obj.methodOpt[stab_obj.actMet].minUp / z[2], x.value * (1 - stab_obj.methodOpt[stab_obj.actMet].up))), eachrow(allVar_df))
-
 	# set lower and upper bound
-	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], x.lower)), eachrow(allVar_df))
-	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], max(x.lower + stab_obj.methodOpt[stab_obj.actMet].minUp, x.upper))), eachrow(allVar_df))
+	minDelta_fl = stab_obj.methodOpt[stab_obj.actMet].minDelta
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], getLowerBound(x.value, minDelta_fl, x.negPos, stab_obj.methodOpt[stab_obj.actMet].low, top_m.options.coefRng.rhs[1]))), eachrow(allVar_df))
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], getUpperBound(x.value, minDelta_fl, stab_obj.methodOpt[stab_obj.actMet].up))), eachrow(allVar_df)) 
+end
+
+# ! get lower bound for boxstep
+function getLowerBound(value_fl::Float64, minDelta_fl::Float64, negPos_boo::Bool, perLow_fl::Float64, lowerRng_fl::Float64)
+    # get lower bound based on percentage
+    corMin_fl = value_fl * (1 - perLow_fl * (value_fl >= 0.0 ? 1.0 : -1.0))
+    # correct for minimum delta respecting potential lower bound of zero
+    if negPos_boo && corMin_fl > -minDelta_fl corMin_fl = - minDelta_fl end 
+    # correct to avoid range violation
+    if abs(corMin_fl) < lowerRng_fl corMin_fl = 0.0 end
+    return corMin_fl
+end
+
+# ! get upper bound for boxstep
+function getUpperBound(value_fl::Float64, minDelta_fl::Float64, perUp_fl::Float64)
+    # get upper bound based on percentage
+    rel_fl = value_fl * (1 + perUp_fl * (value_fl >= 0.0 ? 1.0 : -1.0))
+    # correct for minimum delta respecting potential
+    corMax_fl = max(minDelta_fl, rel_fl)
+    return corMax_fl
+
 end
 
 # function for doubly stabilised bundle method
@@ -459,7 +487,7 @@ function computePrx2Aux(cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, 
 end
 
 # update dynamic parameter of stabilization method
-function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::Dict{Symbol,Float64}, cnt_obj::countItr, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, report_ntup::NamedTuple{(:itr,:nearOpt,:mod),Tuple{DataFrame,DataFrame,anyModel}})
+function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::Dict{Symbol,Float64}, cnt_obj::countItr, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, report_ntup::NamedTuple{(:itr,:nearOpt,:res,:mod),Tuple{DataFrame,DataFrame,NamedTuple,anyModel}})
 
 	opt_tup = stab_obj.methodOpt[x_int]
 	if stab_obj.method[x_int] == :qtr # adjust radius of quadratic trust-region
@@ -619,7 +647,7 @@ end
 
 # check if switching criterium is met
 function checkSwitch(stab_obj::stabObj, cnt_obj::countItr, itr_df::DataFrame)
-	min_boo = itr_df[max(1,cnt_obj.i - stab_obj.ruleSw.itr), :actMethod] == stab_obj.method[stab_obj.actMet] && itr_df[max(1,cnt_obj.i - stab_obj.ruleSw.itr), :dynPar_qtr] == stab_obj.dynPar[stab_obj.actMet]  # check if method as been used for the minimum number of iterations 
+	min_boo = itr_df[max(1,cnt_obj.i - stab_obj.ruleSw.itr), :actMethod] == stab_obj.method[stab_obj.actMet] # check if method as been used for the minimum number of iterations 
 	pro_boo = itr_df[(cnt_obj.i - min(cnt_obj.i, stab_obj.ruleSw.itrAvg) + 1):end, :gap] |> (x -> (x[1] / x[end])^(1 / (length(x) -1)) - 1 < stab_obj.ruleSw.avgImp) # check if progress in last iterations is below threshold
 	return min_boo && pro_boo
 end

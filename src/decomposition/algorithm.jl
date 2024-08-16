@@ -102,7 +102,7 @@ function evaluateHeu(heu_m::anyModel, heuSca_obj::resData, heuCom_obj::resData, 
 end
 
 # ! returns a feasible solution as close as possible to the input dictionary
-function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, t_int::Int, zeroThrs_fl::Float64, opt_obj::DataType; rngVio_fl::Float64 = 1e0, useVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}} = (bal = false, st = false), complCns = Dict{Tuple{Int64, Int64}, Dict{Symbol, DataFrame}}(), relVar = Vector{Symbol}())
+function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, lim_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}, t_int::Int, zeroThrs_fl::Float64, opt_obj::DataType; rngVio_fl::Float64 = 1e0, useVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}} = (bal = false, st = false), complCns = Dict{Tuple{Int64, Int64}, Dict{Symbol, DataFrame}}(), relVar = Vector{Symbol}(), resTup::Tuple = tuple())
 
 	# create top-problem
 	topFeas_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "feasModel" * modOpt_tup.suffix, frsLvl = modOpt_tup.frsLvl, supTsLvl = modOpt_tup.supTsLvl,  repTsLvl = modOpt_tup.repTsLvl, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, createVI = useVI, checkRng = (print = true, all = false), holdFixed = true)
@@ -118,7 +118,7 @@ function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,
 	topFeas_m = computeFeas(topFeas_m, fix_dic, zeroThrs_fl, cutSmall = true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
-    return writeResult(topFeas_m, [:capa, :exp, :stLvl, :lim]; rmvFix = true), value(topFeas_m.parts.obj.var[:objVar][1,:var])
+    return writeResult(topFeas_m, [:capa, :exp, :stLvl, :lim]; rmvFix = true), value(topFeas_m.parts.obj.var[:objVar][1,:var]), Dict(x => reportResults(x, topFeas_m, rtnOpt = (:csvDf,)) for x in resTup)
 end
 
 # ! runs top problem again with optimal results
@@ -742,7 +742,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 
 	itr_obj = benders_obj.itr
 	best_obj = itr_obj.best
-	nameStab_dic = Dict(:lvl1 => "level bundle", :lvl2 => "level bundle", :qtr => "quadratic trust-region", :prx => "proximal bundle", :box => "box-step method")
+	nameStab_dic = Dict(:lvl1 => "level bundle", :lvl2 => "level bundle", :qtr => "quadratic trust-region", :prx => "proximal bundle", :box => "box-step")
 
 	# store information for cuts
 	benders_obj.cuts = copy(collect(cutData_dic))
@@ -762,10 +762,11 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	itr_obj.gap = benders_obj.nearOpt.cnt == 0 ? (1 - itr_obj.res[:lowLimCost] / itr_obj.res[:curBest]) : abs((itr_obj.res[:actSubCost] - itr_obj.res[:estSubCost]) / itr_obj.res[:optCost])
 
 	# update current best
-	if benders_obj.nearOpt.cnt == 0 ? (itr_obj.res[:actTotCost] < best_obj.objVal) : (itr_obj.res[:nearObj] <= best_obj.objVal && itr_obj.gap <= benders_obj.algOpt.gap)
-		best_obj.objVal = benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:actTotCost] : itr_obj.res[:nearObj]
-		best_obj.capa, best_obj.stLvl, best_obj.lim = map(x -> getfield(resData_obj,x), [:capa, :stLvl, :lim])	
-		itr_obj.res[:curBest] = best_obj.objVal
+	if benders_obj.nearOpt.cnt == 0 ? (itr_obj.res[:actTotCost] < best_obj.var.objVal) : (itr_obj.res[:nearObj] <= best_obj.var.objVal && itr_obj.gap <= benders_obj.algOpt.gap)
+		best_obj.var.objVal = benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:actTotCost] : itr_obj.res[:nearObj]
+		best_obj.var.capa, best_obj.var.stLvl, best_obj.var.lim = map(x -> getfield(resData_obj,x), [:capa, :stLvl, :lim])
+		@suppress foreach(x -> best_obj.res[x] = reportResults(x, benders_obj.top, rtnOpt = (:csvDf,)), benders_obj.report.res.general)
+		itr_obj.res[:curBest] = best_obj.var.objVal
 	end
 
 	# adapt center and parameter for stabilization
@@ -774,10 +775,10 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		report_m = benders_obj.report.mod
 		
 		# determine if serious step 
-		expStep_fl = best_obj.objVal - (benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:estTotCost] : 0.0) # expected step size
+		expStep_fl = best_obj.var.objVal - (benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:estTotCost] : 0.0) # expected step size
 		srsStep_boo = false
 
-		if best_obj.objVal < stab_obj.objVal - stab_obj.srsThr * expStep_fl
+		if best_obj.var.objVal < stab_obj.objVal - stab_obj.srsThr * expStep_fl
 			srsStep_boo = true
 		end
 
@@ -792,11 +793,11 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		# update center of stabilisation
 		if srsStep_boo # update everything in case of serios step
 			stab_obj.var = filterStabVar(stabVar_obj.capa, stabVar_obj.stLvl, stabVar_obj.lim, stab_obj.weight, benders_obj.top)
-			stab_obj.objVal = best_obj.objVal
+			stab_obj.objVal = best_obj.var.objVal
 			produceMessage(report_m.options, report_m.report, 1, " - Updated reference point for stabilization!", testErr = false, printErr = false)
 		end
 
-		# switch quadratic stabilization method
+		# switch stabilization method
 		if !isnothing(benders_obj.stab)
 			stab_obj = benders_obj.stab
 			# switch stabilization method
@@ -1361,6 +1362,7 @@ end
 # write results for overall algorithm
 function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res_ntup::NamedTuple)
 
+	res_ntup = benders_obj.report.res
 	# reporting on iteration
 	CSV.write(benders_obj.report.mod.options.outDir * "/iterationCuttingPlane_$(benders_obj.info.name).csv", benders_obj.report.itr)
 
@@ -1373,18 +1375,17 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res
 	end
 
 	# run top-problem and sub-problems with optimal values fixed and write results
-	delete.(benders_obj.top.optModel, benders_obj.top.parts.obj.cns[:bendersCuts][!,:cns])
-	filter!(x -> false, benders_obj.top.parts.obj.cns[:bendersCuts])
-
-	computeFeas(benders_obj.top, benders_obj.itr.best.capa, 1e-5, expExist = false, cutSmall = false, resultOpt = (general = res_ntup.general, carrierTs = tuple(), storage = tuple(), duals = tuple()))
+	foreach(x -> CSV.write("$(benders_obj.top.options.outDir)/results_" * string(x) * "_$(benders_obj.top.options.outStamp).csv", benders_obj.itr.best.res[x]), keys(benders_obj.itr.best.res))
 
 	if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
 
-	for (id,s) in enumerate(collect(keys(benders_obj.sub)))
-		if benders_obj.algOpt.dist # distributed case
-			futData_dic[s] = runSubDist(id + 1, copy(benders_obj.itr.best), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
-		else # non-distributed case
-			runSub(benders_obj.sub[s], copy(benders_obj.itr.best), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
+	@suppress begin
+		for (id,s) in enumerate(collect(keys(benders_obj.sub)))
+			if benders_obj.algOpt.dist # distributed case
+				futData_dic[s] = runSubDist(id + 1, copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
+			else # non-distributed case
+				runSub(benders_obj.sub[s], copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
+			end
 		end
 	end
 
