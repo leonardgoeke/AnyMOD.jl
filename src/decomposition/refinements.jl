@@ -341,21 +341,29 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, t
 
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
+	
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!, [:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
 	allCapa_df[!,:negPos] .= false
+	allCapa_df[!,:scalBox] .= 1.0
 
-	allStLvl_df = vcat(vcat(map(x -> expExpr_dic[:stLvl][x] |> (u -> map(y -> u[y], collect(keys(u)))), collect(keys(expExpr_dic[:stLvl])))...)...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[], negPos = Bool[]) : z)
+	empty_df = DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[], negPos = Bool[])
+
+	allStLvl_df = vcat(vcat(map(x -> expExpr_dic[:stLvl][x] |> (u -> map(y -> u[y], collect(keys(u)))), collect(keys(expExpr_dic[:stLvl])))...)...) |> (z -> isempty(z) ? empty_df : z)
 	allStLvl_df[!,:negPos] .= occursin.("stLvlInter", string.(allStLvl_df[!,:var]))
+	allStLvl_df[!,:scalBox] .= 10.0
 
-	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[], negPos = Bool[]) : select(z, [:var, :value, :scaFac]))
+	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? empty_df : select(z, [:var, :value, :scaFac]))
 	allLim_df[!,:negPos] .= true
+	allLim_df[!,:scalBox] .= 10.0
 
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
 
+
 	# set lower and upper bound
 	minDelta_fl = stab_obj.methodOpt[stab_obj.actMet].minDelta
-	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], getLowerBound(x.value, minDelta_fl, x.negPos, stab_obj.methodOpt[stab_obj.actMet].low, top_m.options.coefRng.rhs[1]))), eachrow(allVar_df))
-	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], getUpperBound(x.value, minDelta_fl, stab_obj.methodOpt[stab_obj.actMet].up))), eachrow(allVar_df)) 
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], getLowerBound(x.value, minDelta_fl * x.scalBox, x.negPos, stab_obj.methodOpt[stab_obj.actMet].low * x.scalBox, top_m.options.coefRng.rhs[1]))), eachrow(allVar_df))
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], getUpperBound(x.value, minDelta_fl * x.scalBox, stab_obj.methodOpt[stab_obj.actMet].up * x.scalBox))), eachrow(allVar_df))
+
 end
 
 # ! get lower bound for boxstep
@@ -676,17 +684,17 @@ function removeStab!(benders_obj::bendersObj)
 			set_lower_bound.(rmvLim_arr, 0.0)
 			delete_upper_bound.(rmvLim_arr)
 		end
-
+		
 		# delete limits on storage level
-			for sSym in keys(stabVar_dic[:stLvl]), stType in keys(stabVar_dic[:stLvl][sSym])
+		for sSym in keys(stabVar_dic[:stLvl]), stType in keys(stabVar_dic[:stLvl][sSym])
 				rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:stLvl][sSym][stType][!,:var])
 				delete_lower_bound.(rmvLim_arr)
-				set_lower_bound.(rmvLim_arr, 0.0)
+				if stType != :stLvlInter set_lower_bound.(rmvLim_arr, 0.0) end
 				delete_upper_bound.(rmvLim_arr)
-			end
-
-			# delete limits on complicating limits
-			for limSym in keys(stabVar_dic[:lim])
+		end
+		
+		# delete limits on complicating limits
+		for limSym in keys(stabVar_dic[:lim])
 				rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:lim][limSym][!,:var])
 				delete_lower_bound.(rmvLim_arr)
 				delete_upper_bound.(rmvLim_arr)

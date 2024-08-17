@@ -260,7 +260,7 @@ end
 # build sub-problems
 function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
 	# filter relevant input folders
-	relIn_arr = filter(x -> (occursin("ini",x) ? occursin(subStr_tup[1],x) : true) && (occursin("scr",x) ? occursin(subStr_tup[2],x) : true), inputFolder_ntup.in)
+	relIn_arr = filter(x -> (occursin("ini",x) && genSetup_ntup.frsLvl != 0 ? occursin(subStr_tup[1],x) : true) && (occursin("scr",x) ? occursin(subStr_tup[2],x) : true), inputFolder_ntup.in)
 	# create sub-problems
 	sub_m = anyModel(relIn_arr, inputFolder_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, repTsLvl = genSetup_ntup.repTsLvl, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.solOpt.dbInf, reportLvl = 1)
 	sub_m.subPro = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)])...)[id]
@@ -581,6 +581,9 @@ function solveModel!(mod_m::anyModel, numFocSt_int::Int, checkInfeas_boo::Bool =
 		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3
 			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 				printIIS(mod_m) 
+			elseif !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+				set_optimizer_attribute(mod_m.optModel, "Method", 0)
+				optimize!(mod_m.optModel)
 			end
 			break
 		else
@@ -950,12 +953,11 @@ function matchValWithVar(var_dic::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{
 			val_df[!,:value] = val_df[!,:value] ./ mod_m.options.scaFac.dispConv
 			
 			join_df = orderDf(select(innerjoin(val_df, mod_m.parts.lim.var[limSym], on  = intCol(var_dic[:lim][limSym], :sub)), vcat(intCol(val_df),[:var, :value])))
-			join_df[!,:scaFac] .= weight_ntup.lim^2
+			join_df[!,:scaFac] .= weight_ntup.lim^2	
 			
 			expExpr_dic[:lim][limSym] = join_df
 		end
 	end
-
 
 	return expExpr_dic
 end
