@@ -315,7 +315,7 @@ function runTop(benders_obj::bendersObj)
 			set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.solOpt.dnsThrs)
 		end
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
-		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
+		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.solOpt.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
 	end
 	solveModel!(benders_obj.top, benders_obj.algOpt.solOpt.numFoc, false)

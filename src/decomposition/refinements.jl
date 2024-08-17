@@ -640,7 +640,7 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 
 	# solve problem
 	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
-	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
+	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.solOpt.crs ? 1 : 0)
 	solveModel!(benders_obj.top, 0, false)
 	checkIIS(benders_obj.top)
 
