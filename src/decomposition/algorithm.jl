@@ -367,14 +367,16 @@ function runTop(benders_obj::bendersObj)
 				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Extended quadratic trust-region to solve top-problem", testErr = false, printErr = false)
 				@suppress optimize!(benders_obj.top.optModel)
 				topSolved_boo = checkTopStatus(benders_obj.top)
-				# stop extension after five tries and reset radius
+				
 				termCnt_int = termCnt_int + 1
-				if termCnt_int > 2
+				if termCnt_int > 2 # stop extension after three tries and use solution without any stabilization instead
 					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Stopped extension of radius to solve top-problem after three tries", testErr = false, printErr = false)
 					stab_obj.dynPar[stab_obj.actMet] = stab_obj.methodOpt[stab_obj.actMet].start
 					if is_valid(benders_obj.top.optModel, stab_obj.cns) delete(benders_obj.top.optModel, stab_obj.cns) end
 					@suppress optimize!(benders_obj.top.optModel)
 					break 
+				elseif topSolved_boo # reset radius after frequent extension
+					stab_obj.dynPar[stab_obj.actMet] = stab_obj.methodOpt[stab_obj.actMet].start
 				end
 			end
 		end
@@ -600,8 +602,6 @@ function runSub(resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTo
 	return runSub(sub_m, resData_obj, rngVio_fl, sol_sym, optTol_fl, crsOver_boo, resultOpt)
 end
 
-getComVar() = comVar_dic
-
 # ! add all cuts from input dictionary to top problem
 function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, i::Int)
 	
@@ -688,7 +688,7 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 			upFacRng_tup = abs.(collect(values(cut_expr.terms))) |> (w -> (min(minimum(w), cutFac_fl), max(maximum(w), cutFac_fl))) 
 			posScaFac_tup = (top_m.options.coefRng.mat[1] / upFacRng_tup[1], top_m.options.coefRng.mat[2] / upFacRng_tup[2]) # possible range of scaling factors without moving factors out of range
 			
-			if reqScaRhs_tup[2] > posScaFac_tup[2] # factor requires more up-scaling than possible
+			if reqScaRhs_tup[1] > posScaFac_tup[2] # factor requires more up-scaling than possible
 				if abs(cut_expr.constant) < abs(cut_expr.constant - top_m.options.coefRng.rhs[1] / posScaFac_tup[2]) # setting to zero creates smaller error than smallest value in range
 					cut_expr.constant = 0.0
 				else
@@ -728,7 +728,6 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 				limCoef_boo = true
 			end
 		end
-		
 		#endregion
 
 		# add benders variable to cut and push to dataframe of all cuts
