@@ -602,6 +602,9 @@ function runSub(resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTo
 	return runSub(sub_m, resData_obj, rngVio_fl, sol_sym, optTol_fl, crsOver_boo, resultOpt)
 end
 
+getComVar() = comVar_dic
+
+
 # ! add all cuts from input dictionary to top problem
 function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, i::Int)
 	
