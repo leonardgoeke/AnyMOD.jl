@@ -262,10 +262,14 @@ function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::Nam
 	# filter relevant input folders
 	relIn_arr = filter(x -> (occursin("ini",x) && genSetup_ntup.frsLvl != 0 ? occursin(subStr_tup[1],x) : true) && (occursin("scr",x) ? occursin(subStr_tup[2],x) : true), inputFolder_ntup.in)
 	# create sub-problems
-	sub_m = anyModel(relIn_arr, inputFolder_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, repTsLvl = genSetup_ntup.repTsLvl, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.solOpt.dbInf, reportLvl = 1)
+	sub_m = anyModel(relIn_arr, inputFolder_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, repTsLvl = genSetup_ntup.repTsLvl, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.sub.dbInf, reportLvl = 1)
 	sub_m.subPro = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)])...)[id]
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.threads)
+	
+	# set options
 	set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
+	if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.timeLim * 60) end # in seconds
+
 
 	# collect complicating constraints
 	comVar_dic = Dict{Symbol,DataFrame}()
@@ -311,14 +315,14 @@ function runTop(benders_obj::bendersObj)
 
 	# solve model
 	@suppress begin 
-		if benders_obj.algOpt.solOpt.dnsThrs != 0 && benders_obj.algOpt.solOpt.dnsThrs != 0.0
-			set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.solOpt.dnsThrs)
+		if benders_obj.algOpt.top.dnsThrs != 0 && benders_obj.algOpt.top.dnsThrs != 0.0
+			set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.top.dnsThrs)
 		end
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
-		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.solOpt.crs ? 1 : 0)
-		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.solOpt.numFoc)
+		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
+		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc)
 	end
-	solveModel!(benders_obj.top, benders_obj.algOpt.solOpt.numFoc, false)
+	solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc, false)
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)

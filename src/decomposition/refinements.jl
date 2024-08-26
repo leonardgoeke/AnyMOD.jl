@@ -61,9 +61,9 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# solve sub-problems
 		for (id, s) in enumerate(sort(collect(keys(benders_obj.sub))))
 			if benders_obj.algOpt.dist # distributed case
-				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8)
+				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
 			else # non-distributed case
-				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8)
+				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
 			end
 		end
 		
@@ -423,7 +423,6 @@ end
 function computeL2Norm(allVar_df::DataFrame, scaRng_tup::Tuple, top_m::anyModel)
 
 	# set values of variable to zero or biggest value possible without scaling violating rhs range
-
 	for x in eachrow(allVar_df)	
 		if top_m.options.coefRng.mat[1] / (abs(x.value) * x.scaFac * 2) > scaRng_tup[2] # factor requires more up-scaling than possible
 			x[:refValue] = 0 # set value to zero
@@ -640,7 +639,7 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 
 	# solve problem
 	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
-	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.solOpt.crs ? 1 : 0)
+	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 	solveModel!(benders_obj.top, 0, false)
 	checkIIS(benders_obj.top)
 
@@ -812,7 +811,7 @@ function deleteCuts!(benders_obj::bendersObj)
 end
 
 # ! computes convergence tolerance for subproblems
-function getConvTol(gapCur_fl::Float64, gapEnd_fl::Float64, conSub_tup::NamedTuple{(:rng, :int, :crs), Tuple{Vector{Float64}, Symbol, Bool}})
+function getConvTol(gapCur_fl::Float64, gapEnd_fl::Float64, conSub_tup::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool}})
 	if conSub_tup.int == :lin
 		m = (conSub_tup.rng[1] - conSub_tup.rng[2])/(1-gapEnd_fl)
 		b = conSub_tup.rng[1] - m
