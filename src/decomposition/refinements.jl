@@ -136,8 +136,8 @@ function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_
 			error("options provided for level bundle do not match the defined option 'lam'")
 		elseif key == :lvl2 && !isempty(setdiff(keys(val), (:lam, :myMax)))
 			error("options provided for level bundle do not match the defined options 'lam', 'myMax'")
-		elseif key == :box && !isempty(setdiff(keys(val), (:low, :up, :minDelta)))
-			error("options provided for trust-region do not match the defined options 'low', 'up', and 'minDelta'")
+		elseif key == :box && !isempty(setdiff(keys(val), (:low, :up, :minDelta, :thr, :fac, :scaLvl, :scaLim)))
+			error("options provided for trust-region do not match the defined options 'low', 'up', 'minDelta', 'thr', 'fac', 'scaLvl', and 'scaLim'")
 		elseif key == :dsb && !isempty(setdiff(keys(val), (:start, :min, :lam, :myMax)))
 			error("options provided for doubly stabilised bundle do not match the defined options 'start', 'min', 'lam', 'myMax'")
 		end
@@ -172,7 +172,7 @@ function computeDynPar(meth_arr::Array{Symbol, 1}, methOpt_arr::Array{NamedTuple
 		elseif meth_arr[m] == :qtr
 			dynPar = methOpt_arr[m].start # starting value for radius
 		elseif meth_arr[m] == :box
-			dynPar = 0.0 # dummy value since boxstep implementation does not have a dynamic parameter
+			dynPar = 1.0
 		elseif meth_arr[m] == :dsb
 			dynPar = Dict(:yps=>(1  -methOpt_arr[m].lam) * (upBd_fl - lowBd_fl) / top_m.options.scaFac.obj,
 			:prx => methOpt_arr[m].start, :my => 1.0)
@@ -344,17 +344,17 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, t
 	
 	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!, [:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
 	allCapa_df[!,:negPos] .= false
-	allCapa_df[!,:scalBox] .= 1.0
+	allCapa_df[!,:scalBox] .= 1.0 * stab_obj.dynPar[stab_obj.actMet]
 
 	empty_df = DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[], negPos = Bool[])
 
 	allStLvl_df = vcat(vcat(map(x -> expExpr_dic[:stLvl][x] |> (u -> map(y -> u[y], collect(keys(u)))), collect(keys(expExpr_dic[:stLvl])))...)...) |> (z -> isempty(z) ? empty_df : z)
 	allStLvl_df[!,:negPos] .= occursin.("stLvlInter", string.(allStLvl_df[!,:var]))
-	allStLvl_df[!,:scalBox] .= 10.0
+	allStLvl_df[!,:scalBox] .=  stab_obj.methodOpt[stab_obj.actMet].scaLvl * stab_obj.dynPar[stab_obj.actMet]
 
 	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? empty_df : select(z, [:var, :value, :scaFac]))
 	allLim_df[!,:negPos] .= true
-	allLim_df[!,:scalBox] .= 10.0
+	allLim_df[!,:scalBox] .= stab_obj.methodOpt[stab_obj.actMet].scaLim * stab_obj.dynPar[stab_obj.actMet]
 
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
 
@@ -494,34 +494,36 @@ function computePrx2Aux(cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, 
 end
 
 # update dynamic parameter of stabilization method
-function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::Dict{Symbol,Float64}, cnt_obj::countItr, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, report_ntup::NamedTuple{(:itr,:nearOpt,:res,:mod),Tuple{DataFrame,DataFrame,NamedTuple,anyModel}})
+function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::itrStatus, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, report_ntup::NamedTuple{(:itr,:nearOpt,:res,:mod),Tuple{DataFrame,DataFrame,NamedTuple,anyModel}})
 
 	opt_tup = stab_obj.methodOpt[x_int]
 	if stab_obj.method[x_int] == :qtr # adjust radius of quadratic trust-region
 		# reduce radius when trust-region is not binding
-		if (nearOpt_boo ? abs(1 - res_dic[:nearObjNoStab] / res_dic[:nearObj]) < opt_tup.thr : abs(1 - res_dic[:estTotCostNoStab] / res_dic[:estTotCost]) < opt_tup.thr) && stab_obj.dynPar[x_int] > opt_tup.low
+		if (nearOpt_boo ? abs(1 - itr_obj.res[:nearObjNoStab] / itr_obj.res[:nearObj]) < opt_tup.thr : abs(1 - itr_obj.res[:estTotCostNoStab] / itr_obj.res[:estTotCost]) < opt_tup.thr) && stab_obj.dynPar[x_int] > opt_tup.low
 			stab_obj.dynPar[x_int] = max(opt_tup.low, stab_obj.dynPar[x_int] / opt_tup.fac)
+			stab_obj.lastSw = itr_obj.cnt.i
 			produceMessage(report_ntup.mod.options, report_ntup.mod.report, 1, " - Reduced quadratic trust-region!", testErr = false, printErr = false)	
 		# extend radius if algorithm "got stuck", applies same criterium as switching entire method
-		elseif checkSwitch(stab_obj, cnt_obj, report_ntup.itr)
+		elseif checkSwitch(stab_obj, itr_obj.cnt, report_ntup.itr)
+			stab_obj.lastSw = itr_obj.cnt.i
 			stab_obj.dynPar[x_int] = max(opt_tup.low, stab_obj.dynPar[x_int] * opt_tup.fac)
 			produceMessage(report_ntup.mod.options, report_ntup.mod.report, 1, " - Extended quadratic trust-region!", testErr = false, printErr = false)
 		end
 	elseif stab_obj.method[x_int] in (:prx1, :prx2) # adjust penalty term of proximal term, implementation according to doi.org/10.1007/s10107-015-0873-6, section 5.1.2
 		# compute τ_aux
-		aux_fl = stab_obj.method[x_int] == :prx1 ? (stab_obj.objVal - res_dic[:actTotCost])/(stab_obj.objVal - res_dic[:estTotCost]) : prx2Aux_fl 
+		aux_fl = stab_obj.method[x_int] == :prx1 ? (stab_obj.objVal - itr_obj.res[:actTotCost])/(stab_obj.objVal - itr_obj.res[:estTotCost]) : prx2Aux_fl 
 		# We introduce a safeguard ensuring that :prx is only updated if the numerator of the aux term is positive (see https://doi.org/10.1007/978-3-030-34910-3 Chapter 3 for a discussion)
 		stab_obj.dynPar[x_int][:prxAux] = stab_obj.method[x_int] == :prx1 ? 2 * stab_obj.dynPar[x_int][:prx] * (1+aux_fl) : stab_obj.dynPar[x_int][:prx]*(1+max(aux_fl/1e3, 0))
 		# check if serious step
 		if srsStep_boo
 			# adjust τ_aux, if last 5 steps have been serious
-			if cnt_obj.srs > 5
+			if itr_obj.cnt.srs > 5
 				stab_obj.dynPar[x_int][:prxAux] = opt_tup.a * stab_obj.dynPar[x_int][:prxAux]
 			end
 			# update proximal term
 			stab_obj.dynPar[x_int][:prx] = min(stab_obj.dynPar[x_int][:prxAux], 10 * stab_obj.dynPar[x_int][:prx])
 		else # if null-step
-			if cnt_obj.null > 10
+			if itr_obj.cnt.null > 10
 				stab_obj.dynPar[x_int][:prx] = (opt_tup.a) * stab_obj.dynPar[x_int][:prx]
 			end
 			stab_obj.dynPar[x_int][:prx] = min(stab_obj.dynPar[x_int][:prx], max(stab_obj.dynPar[x_int][:prxAux], stab_obj.dynPar[x_int][:prx]/opt_tup.a, opt_tup.min))
@@ -533,23 +535,23 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::
 			end
 		end
 	elseif stab_obj.method[x_int] == :lvl1 # adjust level
-		stab_obj.dynPar[x_int] = (opt_tup.lam * res_dic[:estTotCostNoStab]  + (1 - opt_tup.lam) * res_dic[:curBest]) / top_m.options.scaFac.obj
+		stab_obj.dynPar[x_int] = (opt_tup.lam * itr_obj.res[:estTotCostNoStab]  + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
 	elseif stab_obj.method[x_int] == :lvl2 # adjust level, implementation according to doi.org/10.1007/s10107-015-0873-6 
-		stab_obj.dynPar[x_int][:my] = 1 - res_dic[:lvlDual]
+		stab_obj.dynPar[x_int][:my] = 1 - itr_obj.res[:lvlDual]
 		if srsStep_boo
-			stab_obj.dynPar[x_int][:yps] = min(stab_obj.dynPar[x_int][:yps], (1-opt_tup.lam)*(res_dic[:curBest] - res_dic[:estTotCostNoStab]) / top_m.options.scaFac.obj)
+			stab_obj.dynPar[x_int][:yps] = min(stab_obj.dynPar[x_int][:yps], (1-opt_tup.lam)*(itr_obj.res[:curBest] - itr_obj.res[:estTotCostNoStab]) / top_m.options.scaFac.obj)
 		else
 			if stab_obj.dynPar[x_int][:my] > opt_tup.myMax 
 				stab_obj.dynPar[x_int][:yps] = opt_tup.lam*stab_obj.dynPar[x_int][:yps]
 			end
 		end
 	elseif stab_obj.method[x_int] == :dsb # adjust doubly stabilised method, implementation according to doi.org/10.1007/s10107-015-0873-6
-		stab_obj.dynPar[x_int][:my] = min(1 - res_dic[:lvlDual], opt_tup.myMax + 1.0)
+		stab_obj.dynPar[x_int][:my] = min(1 - itr_obj.res[:lvlDual], opt_tup.myMax + 1.0)
 		if srsStep_boo
 			stab_obj.dynPar[x_int][:prx] = (stab_obj.dynPar[x_int][:my])*stab_obj.dynPar[x_int][:prx] # added a fixed scaler for the dual variable to avoid extremely large values for prx
-			stab_obj.dynPar[x_int][:yps] = min(stab_obj.dynPar[x_int][:yps], (1 - opt_tup.lam)*(res_dic[:curBest]- res_dic[:estTotCostNoStab]) / top_m.options.scaFac.obj)
+			stab_obj.dynPar[x_int][:yps] = min(stab_obj.dynPar[x_int][:yps], (1 - opt_tup.lam)*(itr_obj.res[:curBest]- itr_obj.res[:estTotCostNoStab]) / top_m.options.scaFac.obj)
 		else
-			newPrx_fl = stab_obj.dynPar[x_int][:prx] * (stab_obj.dynPar[x_int][:yps] / ((res_dic[:curBest] - res_dic[:estTotCostNoStab]) / top_m.options.scaFac.obj))
+			newPrx_fl = stab_obj.dynPar[x_int][:prx] * (stab_obj.dynPar[x_int][:yps] / ((itr_obj.res[:curBest] - itr_obj.res[:estTotCostNoStab]) / top_m.options.scaFac.obj))
 			stab_obj.dynPar[x_int][:prx] = max(opt_tup.min, newPrx_fl)
 			if stab_obj.dynPar[x_int][:my] > opt_tup.myMax 
 				stab_obj.dynPar[x_int][:yps] = opt_tup.lam*stab_obj.dynPar[x_int][:yps]
@@ -558,6 +560,17 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, res_dic::
 		# reset prx parameter if it becomes too large
 		if stab_obj.dynPar[x_int][:prx] > 1e6
 			stab_obj.dynPar[x_int][:prx] = opt_tup.start
+		end
+
+	elseif stab_obj.method[x_int] == :box && itr_obj.gap < 0.9
+		if abs(1 - itr_obj.res[:estTotCostNoStab] / itr_obj.res[:estTotCost]) <  opt_tup.thr
+			stab_obj.dynPar[stab_obj.actMet] = stab_obj.dynPar[stab_obj.actMet] / opt_tup.fac
+			stab_obj.lastSw = itr_obj.cnt.i
+			produceMessage(report_ntup.mod.options, report_ntup.mod.report, 1, " - Reduced boxstep trust-region!", testErr = false, printErr = false)
+		elseif checkSwitch(stab_obj, itr_obj.cnt, report_ntup.itr)
+			stab_obj.dynPar[stab_obj.actMet] = stab_obj.dynPar[stab_obj.actMet] * opt_tup.fac
+			stab_obj.lastSw = itr_obj.cnt.i
+			produceMessage(report_ntup.mod.options, report_ntup.mod.report, 1, " - Extended boxstep trust-region!", testErr = false, printErr = false)
 		end
 	end
 
@@ -654,8 +667,10 @@ end
 
 # check if switching criterium is met
 function checkSwitch(stab_obj::stabObj, cnt_obj::countItr, itr_df::DataFrame)
-	min_boo = itr_df[max(1,cnt_obj.i - stab_obj.ruleSw.itr), :actMethod] == stab_obj.method[stab_obj.actMet] # check if method as been used for the minimum number of iterations 
+	# check if criterium is met
+	min_boo = stab_obj.lastSw + stab_obj.ruleSw.itr < cnt_obj.i
 	pro_boo = itr_df[(cnt_obj.i - min(cnt_obj.i, stab_obj.ruleSw.itrAvg) + 1):end, :gap] |> (x -> (x[1] / x[end])^(1 / (length(x) -1)) - 1 < stab_obj.ruleSw.avgImp) # check if progress in last iterations is below threshold
+	# save info on last switch
 	return min_boo && pro_boo
 end
 
@@ -676,6 +691,7 @@ function removeStab!(benders_obj::bendersObj)
 		unregister(benders_obj.top.optModel, :r)
 	elseif stab_obj.method[stab_obj.actMet] == :box
 		stabVar_dic = matchValWithVar(stab_obj.var, stab_obj.weight, benders_obj.top)
+	
 		# delete limits on capacity
 		for sys in keys(stabVar_dic[:capa]), sSym in keys(stabVar_dic[:capa][sys]), capaSym in keys(stabVar_dic[:capa][sys][sSym])
 			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:capa][sys][sSym][capaSym][!,:var])
@@ -686,18 +702,19 @@ function removeStab!(benders_obj::bendersObj)
 		
 		# delete limits on storage level
 		for sSym in keys(stabVar_dic[:stLvl]), stType in keys(stabVar_dic[:stLvl][sSym])
-				rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:stLvl][sSym][stType][!,:var])
-				delete_lower_bound.(rmvLim_arr)
-				if stType != :stLvlInter set_lower_bound.(rmvLim_arr, 0.0) end
-				delete_upper_bound.(rmvLim_arr)
+			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:stLvl][sSym][stType][!,:var])
+			delete_lower_bound.(rmvLim_arr)
+			if stType != :stLvlInter set_lower_bound.(rmvLim_arr, 0.0) end
+			delete_upper_bound.(rmvLim_arr)
 		end
 		
 		# delete limits on complicating limits
 		for limSym in keys(stabVar_dic[:lim])
-				rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:lim][limSym][!,:var])
-				delete_lower_bound.(rmvLim_arr)
-				delete_upper_bound.(rmvLim_arr)
+			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:lim][limSym][!,:var])
+			delete_lower_bound.(rmvLim_arr)
+			delete_upper_bound.(rmvLim_arr)
 		end
+	
 	end
 end
 

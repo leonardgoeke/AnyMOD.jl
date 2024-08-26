@@ -797,7 +797,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 
 		# adjust dynamic parameters of stabilization
 		prx2Aux_fl = stab_obj.method[stab_obj.actMet] == :prx2 ? computePrx2Aux(benders_obj.cuts, benders_obj.prevCuts) : nothing
-		foreach(x -> adjustDynPar!(x, benders_obj.stab, benders_obj.top, itr_obj.res, itr_obj.cnt, srsStep_boo, prx2Aux_fl, benders_obj.nearOpt.cnt != 0, benders_obj.report), 1:length(stab_obj.method))
+		foreach(x -> adjustDynPar!(x, benders_obj.stab, benders_obj.top, itr_obj, srsStep_boo, prx2Aux_fl, benders_obj.nearOpt.cnt != 0, benders_obj.report), 1:length(stab_obj.method))
 
 		# update center of stabilisation
 		if srsStep_boo # update everything in case of serios step

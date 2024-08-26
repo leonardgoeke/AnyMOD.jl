@@ -28,7 +28,7 @@ struct stabSetup
 	switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} # rule to switch between different methods
 	weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} # weight of variables in stabilization
 	
-	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_ntup::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 15, avgImp = 0.01, itrAvg = 10), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
+	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_ntup::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 10, avgImp = 1e-5, itrAvg = 5), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
 		return new(method_tup, srsThr_fl, ini_ntup, switch, weight)
 	end
 end
@@ -89,6 +89,7 @@ mutable struct stabObj
 	weight::NamedTuple{(:capa,:capaStSize,:stLvl, :lim), NTuple{4, Float64}} # weight of variables in stabilization
 	actMet::Int # index of currently active stabilization method
 	objVal::Float64 # array of objective value for current center
+	lastSw::Int # iteration of last switch
 	dynPar::Array{Union{Dict,Float64},1} # array of dynamic parameters for each method
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
@@ -111,6 +112,7 @@ mutable struct stabObj
 		stab_obj.ruleSw = ruleSw_ntup
 		stab_obj.weight = weight_ntup
 		stab_obj.actMet = 1
+		stab_obj.lastSw = 0
 		stab_obj.objVal = resData_obj.objVal
 		stab_obj.var = filterStabVar(resData_obj.capa, resData_obj.stLvl, resData_obj.lim, weight_ntup, top_m)
 		
