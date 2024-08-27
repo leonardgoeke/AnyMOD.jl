@@ -268,7 +268,7 @@ function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::Nam
 	
 	# set options
 	set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
-	if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.timeLim * 60) end # in seconds
+	if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.sub.timeLim * 60) end # in seconds
 
 
 	# collect complicating constraints
