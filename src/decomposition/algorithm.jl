@@ -584,10 +584,10 @@ function solveModel!(mod_m::anyModel, numFocSt_int::Int, checkInfeas_boo::Bool =
 			set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_int)
 			optimize!(mod_m.optModel)
 		end
-		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) || numFoc_int == 3
-			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == 3
+			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT))
 				printIIS(mod_m) 
-			elseif !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+			elseif !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT))
 				set_optimizer_attribute(mod_m.optModel, "Method", 0)
 				optimize!(mod_m.optModel)
 			end
