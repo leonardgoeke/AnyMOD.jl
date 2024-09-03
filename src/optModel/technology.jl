@@ -274,7 +274,7 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 				return
 			end
 			basis_df[!,:lvlTs] .= part.stTrack
-		elseif va == :stLvlInter
+		elseif va in (:stLvlInter, :stInterIn, :stInterOut)
 			basis_df[!,:lvlTs] .= anyM.scr.frsLvl
 		end
 		
@@ -282,7 +282,12 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 		basis_df[!,:lvlR] = map(x -> cToLvl_dic[x][2], basis_df[!,:C])
 		defScr_arr = va == :stLvl && anyM.scr.frsLvl != 0 && !isempty(anyM.subPro) && anyM.scr.frsLvl > part.stCyc ? [anyM.subPro[2]] : Int[] 
 		allVar_df = orderDf(expandExpToDisp(basis_df, ts_dic, r_dic, anyM.sets[:Ts], anyM.scr, true, defScr_arr))
-	
+
+		# replace foresight level with last dispatch timestep
+		if va in (:stInterIn, :stInterOut)
+			allVar_df[!,:Ts_dis] .= map(x -> maximum(getDescendants(x.Ts_dis, anyM.sets[:Ts], false, cToLvl_dic[x.C][1])), eachrow(allVar_df))
+		end
+		
 		# add mode dependencies
 		if !(va in (:stLvlInter, :stInterIn, :stInterOut))
 			modeDep_df = copy(modeDep_dic[va])
