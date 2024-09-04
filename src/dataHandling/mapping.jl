@@ -662,18 +662,14 @@ function createScenarioMapping!(lvl_int::Int, anyM::anyModel)
 
 		# assigns probabilities defined as parameters
 		if :scrProb in collectKeys(keys(anyM.parts.obj.par))
-			propPar_df = matchSetParameter(prop_df, anyM.parts.obj.par[:scrProb], anyM.sets)
+			prop_df = matchSetParameter(prop_df, anyM.parts.obj.par[:scrProb], anyM.sets)
 		else
 			propPar_df = filter(x -> false, prop_df)
 			propPar_df[!,:val] = Float64[]
+			# compute default values in other cases
+			prop_df = antijoin(prop_df, propPar_df, on = [:scr, :Ts_dis])
+			prop_df[!,:val] .= 1/length(allScr_arr)
 		end
-
-		# compute default values in other cases
-		propDef_df = antijoin(prop_df, propPar_df, on = [:scr, :Ts_dis])
-		propDef_df[!,:val] .= 1/length(allScr_arr)
-
-		# merges collected data
-		prop_df = vcat(propPar_df, propDef_df)
 
 		# controls sum of probabilities
 		control_df = combine(groupby(prop_df, [:Ts_dis]), :val => (x -> sum(x)) => :val)
