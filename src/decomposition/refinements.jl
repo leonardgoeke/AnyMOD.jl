@@ -247,7 +247,7 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, rn
 
 	# sets values of variables that will violate range to zero
 	minFac_fl = (2 * maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
+	allVar_df[!,:refValue] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
 
 	# compute possible range of scaling factors with rhs still in range
 	scaRng_tup = top_m.options.coefRng.rhs ./ (sum(allVar_df[!,:value] .^ 2) |> (x -> x == 0.0 ? 1.0 : x))
