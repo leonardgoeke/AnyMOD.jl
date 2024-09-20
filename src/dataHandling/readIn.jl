@@ -147,7 +147,7 @@ function convertReadIn(readIn_df::DataFrame, fileName_str::String, set_arr::Arra
 		# only use value for one scenario		
 		sort!(readIn_df, [:scenario])
 		readIn_df = combine(x -> x[1,:], groupby(readIn_df, relCol_arr))
-		push!(report, (2, "parameter read-in", "definition", "scenario column provided in '$(fileName_str)', but scenarios were not defined in a set file, only used values for smallest scenario"))
+		push!(report, (2, "parameter read-in", "definition", "scenario column provided in '$(fileName_str)', but scenarios were not defined in a set file"))
 	end
 
 	setNames_arr = filterSetColumns(readIn_df, set_arr)

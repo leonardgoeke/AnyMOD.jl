@@ -158,7 +158,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 			if !isempty(anyM.subPro) filter!(x -> x.Ts_frs == anyM.subPro[1], dem_df) end
 
 			# add scenario and dispatch timesteps in case of values above foresight level
-			if anyM.scr.frsLvl != anyM.supTs.lvl
+			if anyM.scr.frsLvl != anyM.supTs.lvl && :Ts_frs in namesSym(dem_df)
 				relDem_df = filter(x -> anyM.sets[:Ts].nodes[x.Ts_dis].lvl <= anyM.scr.frsLvl, dem_df)
 				relDem_df[!,:Ts_dis] = relDem_df[!,:Ts_frs]
 				relDem_df[!,:scr] = map(x -> anyM.scr.scr[x], relDem_df[!,:Ts_dis])
