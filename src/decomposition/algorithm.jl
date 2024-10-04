@@ -350,7 +350,7 @@ function runTop(benders_obj::bendersObj)
 			set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
 			
             # remove stabilization if difference below optimality threshold
-			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap
+			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap && stab_obj.method[stab_obj.actMet] == :lvl1
 				@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 				delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 			end

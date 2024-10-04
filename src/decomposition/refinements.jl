@@ -373,8 +373,9 @@ function getLowerBound(value_fl::Float64, minDelta_fl::Float64, negPos_boo::Bool
     # get lower bound based on percentage
     corMin_fl = value_fl * (1 - perLow_fl * (value_fl >= 0.0 ? 1.0 : -1.0))
     # correct for minimum delta respecting potential lower bound of zero
-    if negPos_boo && corMin_fl > -minDelta_fl corMin_fl = - minDelta_fl end 
-    # correct to avoid range violation
+	if value_fl - minDelta_fl < corMin_fl corMin_fl = value_fl - minDelta_fl end
+	if !negPos_boo corMin_fl = max(corMin_fl, 0.0) end
+	# correct to avoid range violation
     if abs(corMin_fl) < lowerRng_fl corMin_fl = 0.0 end
     return corMin_fl
 end
@@ -384,9 +385,8 @@ function getUpperBound(value_fl::Float64, minDelta_fl::Float64, perUp_fl::Float6
     # get upper bound based on percentage
     rel_fl = value_fl * (1 + perUp_fl * (value_fl >= 0.0 ? 1.0 : -1.0))
     # correct for minimum delta respecting potential
-    corMax_fl = max(minDelta_fl, rel_fl)
+    corMax_fl = max(value_fl + minDelta_fl, rel_fl)
     return corMax_fl
-
 end
 
 # function for level paired with quadratic trust region 
@@ -744,7 +744,6 @@ function removeStab!(benders_obj::bendersObj)
 		if has_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 			delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 		end
-		
 		delete(benders_obj.top.optModel, stab_obj.cns) # remove trust-region
 	elseif stab_obj.method[stab_obj.actMet] == :dsb
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
