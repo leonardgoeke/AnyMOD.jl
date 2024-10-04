@@ -708,7 +708,7 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 	# solve problem
 	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
 	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
-	solveModel!(benders_obj.top, 0, false)
+	solveModel!(benders_obj.top, [0,3], false)
 	checkIIS(benders_obj.top)
 
 	# obtain different objective values
@@ -741,7 +741,10 @@ function removeStab!(benders_obj::bendersObj)
 		delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 	elseif stab_obj.method[stab_obj.actMet] == :qtrLvl
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
-		delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
+		if has_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
+			delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
+		end
+		
 		delete(benders_obj.top.optModel, stab_obj.cns) # remove trust-region
 	elseif stab_obj.method[stab_obj.actMet] == :dsb
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])

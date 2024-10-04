@@ -187,7 +187,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
-	solveModel!(top_m, 0, false)
+	solveModel!(top_m, [0,3], false)
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -320,7 +320,7 @@ function runTop(benders_obj::bendersObj)
 		end
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
-		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc)
+		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
 	end
 	solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc, false)
 	
@@ -515,7 +515,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	end
 
 	# increase numeric focus if model did not solve
-	numFoc_int = solveModel!(sub_m, 0, false)
+	numFoc_int = solveModel!(sub_m, [0,3], false)
 
 	# write results into files (only used once optimum is obtained)
 	writeAllResults!(sub_m, resultOpt)
@@ -585,18 +585,18 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 end
 
 # ! solves a model increasing the numeric focus from starting value to maximum in infeasible
-function solveModel!(mod_m::anyModel, numFocSt_int::Int, checkInfeas_boo::Bool = true)	
+function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo::Bool = true)	
 
-	numFoc_int = numFocSt_int
+	numFoc_int = numFoc_arr[1]
 	while true
 		@suppress begin
 			set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_int)
 			optimize!(mod_m.optModel)
 		end
-		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == 3
-			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT))
+		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == numFoc_arr[2]
+			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
 				printIIS(mod_m) 
-			elseif !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT))
+			elseif !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) && numFoc_arr[1] != numFoc_arr[2] # try to solve again with any method, if increase of numeric focus did not help
 				set_optimizer_attribute(mod_m.optModel, "Method", 0)
 				optimize!(mod_m.optModel)
 			end

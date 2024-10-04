@@ -13,9 +13,9 @@ mutable struct algSetup
 	opt::DataType
 	rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}} # acceptable violation of target range for stabilization, cut, and fix of variables
 	sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool}} # range and interpolation method for convergence criteria of subproblems, use of crossover for sub-problems when using barrier
-	top::NamedTuple{(:numFoc, :dnsThrs, :crs), Tuple{Int64, Int64, Bool}} # infeasible variable at start of foresight period, numeric focus for top-problem, factor by which quadratic trust-region is allowed to violate paramete range
+	top::NamedTuple{(:numFoc, :dnsThrs, :crs), Tuple{Array{Int64, 1}, Int64, Bool}} # infeasible variable at start of foresight period, numeric focus for top-problem, factor by which quadratic trust-region is allowed to violate paramete range
 
-	function algSetup(gap_fl::Float64, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, threads_int::Int, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false, meth = :barrier, timeLim = 0.0, dbInf = true), top::NamedTuple{(:numFoc, :dnsThrs, :crs),Tuple{Int64,Int64,Bool}} = (numFoc = 3, dnsThrs = 200, crs = true))
+	function algSetup(gap_fl::Float64, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, threads_int::Int, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false, meth = :barrier, timeLim = 0.0, dbInf = true), top::NamedTuple{(:numFoc, :dnsThrs, :crs),Tuple{Array{Int64, 1},Int64,Bool}} = (numFoc = [1,3], dnsThrs = 200, crs = true))
 		return new(gap_fl, delCut_int, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, threads_int, opt_type, rngVio, sub, top)
 	end
 end
