@@ -173,9 +173,10 @@ function computeDynPar(meth_arr::Array{Symbol, 1}, methOpt_arr::Array{NamedTuple
 			dynPar = methOpt_arr[m].start # starting value for radius
 		elseif meth_arr[m] == :box
 			dynPar = 1.0
+		elseif meth_arr[m] == :qtrLvl
+			dynPar = Dict(:lvl  => (methOpt_arr[m].lam * lowBd_fl  + (1 - methOpt_arr[m].lam) * upBd_fl) / top_m.options.scaFac.obj, :qtr => methOpt_arr[m].startRad)
 		elseif meth_arr[m] == :dsb
-			dynPar = Dict(:yps=>(1  -methOpt_arr[m].lam) * (upBd_fl - lowBd_fl) / top_m.options.scaFac.obj,
-			:prx => methOpt_arr[m].start, :my => 1.0)
+			dynPar = Dict(:yps=>(1  -methOpt_arr[m].lam) * (upBd_fl - lowBd_fl) / top_m.options.scaFac.obj, :prx => methOpt_arr[m].start, :my => 1.0)
 		else
 			error("unknown stabilization method provided, method must either be 'prx', 'lvl', 'qtr', or 'box'")
 		end
@@ -302,6 +303,7 @@ function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, 
 	# adjust objective function and level set
 	@objective(top_m.optModel, Min, 0.5 * capaSum_expr  * scaFac_fl)
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet])
+	
 end
 
 function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
@@ -385,6 +387,56 @@ function getUpperBound(value_fl::Float64, minDelta_fl::Float64, perUp_fl::Float6
     corMax_fl = max(minDelta_fl, rel_fl)
     return corMax_fl
 
+end
+
+# function for level paired with quadratic trust region 
+function centerStab!(method::Val{:qtrLvl}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
+	
+	# set dual option according to demands of methos 
+	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+
+	# match values with variables in model
+	allVar_df = getStabDf(stab_obj, top_m)
+
+	# sets values of variables that will violate range to zero
+	minFac_fl = (2 * maximum(abs.(allVar_df[!,:value]) .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] * rngVio_fl / top_m.options.coefRng.mat[1])
+	allVar_df[!,:refValue] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
+	
+	# absolute value for rhs of equation
+	abs_fl = sum(allVar_df[!,:refValue] .* allVar_df[!,:scaFac]) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
+	
+	# compute possible range of scaling factors with rhs still in range
+	scaRng_tup = top_m.options.coefRng.rhs ./ abs(stab_obj.dynPar[stab_obj.actMet][:qtr] * abs_fl^2 - sum(allVar_df[!,:scaFac].^2 .* allVar_df[!,:value].^2))
+
+	# get scaled l2-norm expression for capacities
+	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
+
+	# adjust the radius of trust-region, if rounding would move current best outside of trust-region
+	adRad_boo = false
+	if sqrt(sum((allVar_df[!,:value] .- allVar_df[!,:refValue]).^2) * 1.1) < abs_fl
+		rad2_fl = stab_obj.dynPar[stab_obj.actMet][:qtr] * abs_fl^2
+	else
+		rad2_fl = sum((allVar_df[!,:value] .- allVar_df[!,:refValue]).^2) * 1.1
+		adRad_boo = true
+		produceMessage(report_m.options, report_m.report, 1, " - Extended radius of stabilization to ensure current best in trust-region after rounding capacities", testErr = false, printErr = false)
+	end
+
+	# adjusts creation of trust-region, if rhs would substanitally violate rhs range
+	rhs_fl = (rad2_fl - capaSum_expr.aff.constant)  * scaFac_fl
+	# create final constraint
+	if top_m.options.coefRng.rhs[1] / rngVio_fl > abs(rhs_fl)
+		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaFac_fl <= top_m.options.coefRng.rhs[1]* rngVio_fl + capaSum_expr.aff.constant * scaFac_fl)
+		produceMessage(report_m.options, report_m.report, 1, " - Increased radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
+	elseif top_m.options.coefRng.rhs[2] * rngVio_fl > abs(rhs_fl) || adRad_boo
+		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaFac_fl <= rad2_fl  * scaFac_fl)
+	elseif !forceRad
+		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaFac_fl <= top_m.options.coefRng.rhs[2]* rngVio_fl + capaSum_expr.aff.constant * scaFac_fl)
+		produceMessage(report_m.options, report_m.report, 1, " - Reduced radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
+	end
+
+	# adjust objective function and level set
+	@objective(top_m.optModel, Min, 0.0)
+	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet][:lvl])
 end
 
 # function for doubly stabilised bundle method
@@ -494,7 +546,7 @@ function computePrx2Aux(cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, 
 end
 
 # update dynamic parameter of stabilization method
-function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::itrStatus, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, report_ntup::NamedTuple{(:itr,:nearOpt,:res,:mod),Tuple{DataFrame,DataFrame,NamedTuple,anyModel}})
+function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::itrStatus, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, tarGap_fl::Float64, report_ntup::NamedTuple{(:itr,:nearOpt,:res,:mod),Tuple{DataFrame,DataFrame,NamedTuple,anyModel}})
 
 	opt_tup = stab_obj.methodOpt[x_int]
 	if stab_obj.method[x_int] == :qtr # adjust radius of quadratic trust-region
@@ -545,6 +597,10 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::
 				stab_obj.dynPar[x_int][:yps] = opt_tup.lam*stab_obj.dynPar[x_int][:yps]
 			end
 		end
+	elseif stab_obj.method[x_int] == :qtrLvl
+		stab_obj.dynPar[x_int][:lvl] = (opt_tup.lam * itr_obj.res[:estTotCostNoStab]  + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
+		stab_obj.dynPar[x_int][:qtr] = getConvTol(itr_obj.gap, tarGap_fl, [opt_tup.startRad, opt_tup.endRad], Symbol(opt_tup.inter))
+		println(stab_obj.dynPar[x_int][:qtr])
 	elseif stab_obj.method[x_int] == :dsb # adjust doubly stabilised method, implementation according to doi.org/10.1007/s10107-015-0873-6
 		stab_obj.dynPar[x_int][:my] = min(1 - itr_obj.res[:lvlDual], opt_tup.myMax + 1.0)
 		if srsStep_boo
@@ -684,6 +740,10 @@ function removeStab!(benders_obj::bendersObj)
 	elseif stab_obj.method[stab_obj.actMet] in (:lvl1, :lvl2) && has_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 		delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
+	elseif stab_obj.method[stab_obj.actMet] == :qtrLvl
+		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
+		delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
+		delete(benders_obj.top.optModel, stab_obj.cns) # remove trust-region
 	elseif stab_obj.method[stab_obj.actMet] == :dsb
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 		delete(benders_obj.top.optModel, stab_obj.cns)
@@ -827,22 +887,23 @@ function deleteCuts!(benders_obj::bendersObj)
 	end
 end
 
-# ! computes convergence tolerance for subproblems
-function getConvTol(gapCur_fl::Float64, gapEnd_fl::Float64, conSub_tup::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool}})
-	if conSub_tup.int == :lin
-		m = (conSub_tup.rng[1] - conSub_tup.rng[2])/(1-gapEnd_fl)
-		b = conSub_tup.rng[1] - m
+# ! interpolate value based on current gap (used for convergence tolerance of subproblems or radius in qtrLvl stabilization)
+function getConvTol(gapCur_fl::Float64, gapEnd_fl::Float64, rng_arr::Array{Float64, 1}, int_sym::Symbol)
+
+	if int_sym == :lin
+		m = (rng_arr[1] -rng_arr[2])/(1-gapEnd_fl)
+		b =rng_arr[1] - m
 		return b + m * gapCur_fl
-	elseif conSub_tup.int == :exp
-		m = log(conSub_tup.rng[1]/conSub_tup.rng[2])/(1-gapEnd_fl)
-		b = log(conSub_tup.rng[1]) - m
+	elseif int_sym == :exp
+		m = log(rng_arr[1]/rng_arr[2])/(1-gapEnd_fl)
+		b = log(rng_arr[1]) - m
 		return exp(b + m * gapCur_fl)
-	elseif conSub_tup.int == :log
-		b = conSub_tup.rng[1]
-		m = (conSub_tup.rng[2] - b ) / log(gapEnd_fl)
+	elseif int_sym == :log
+		b =rng_arr[1]
+		m = (rng_arr[2] - b ) / log(gapEnd_fl)
 		return b + m * log(gapCur_fl)
-	elseif conSub_tup.int == :none
-		return conSub_tup.rng[2]
+	elseif int_sym == :none
+		return rng_arr[2]
 	end
 end
 

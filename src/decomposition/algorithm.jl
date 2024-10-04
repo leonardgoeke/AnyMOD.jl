@@ -337,11 +337,20 @@ function runTop(benders_obj::bendersObj)
 			@suppress optimize!(benders_obj.top.optModel)
         end
 
-		while stab_obj.method[stab_obj.actMet] == :lvl1 && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
-			stab_obj.dynPar[stab_obj.actMet] = opt_tup.lam * stab_obj.dynPar[stab_obj.actMet]  + (1 - opt_tup.lam) * stab_obj.objVal / benders_obj.top.options.scaFac.obj
-            set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], stab_obj.dynPar[stab_obj.actMet])
+		while stab_obj.method[stab_obj.actMet] in (:lvl1, :qtrLvl) && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+			println(stab_obj.dynPar[stab_obj.actMet])
+			
+			# increase upper bound
+			lvl_fl = stab_obj.method[stab_obj.actMet] == :lvl1 ? stab_obj.dynPar[stab_obj.actMet] : stab_obj.dynPar[stab_obj.actMet][:lvl]
+			if stab_obj.method[stab_obj.actMet] == :lvl1
+				stab_obj.dynPar[stab_obj.actMet] = opt_tup.lam * lvl_fl + (1 - opt_tup.lam) * stab_obj.objVal / benders_obj.top.options.scaFac.obj
+			else
+				stab_obj.dynPar[stab_obj.actMet][:lvl] = opt_tup.lam * lvl_fl + (1 - opt_tup.lam) * stab_obj.objVal / benders_obj.top.options.scaFac.obj
+			end
+			set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
+			
             # remove stabilization if difference below optimality threshold
-			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  stab_obj.dynPar[stab_obj.actMet] - 1 < benders_obj.algOpt.gap
+			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap
 				@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 				delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 			end
@@ -797,7 +806,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 
 		# adjust dynamic parameters of stabilization
 		prx2Aux_fl = stab_obj.method[stab_obj.actMet] == :prx2 ? computePrx2Aux(benders_obj.cuts, benders_obj.prevCuts) : nothing
-		foreach(x -> adjustDynPar!(x, benders_obj.stab, benders_obj.top, itr_obj, srsStep_boo, prx2Aux_fl, benders_obj.nearOpt.cnt != 0, benders_obj.report), 1:length(stab_obj.method))
+		foreach(x -> adjustDynPar!(x, benders_obj.stab, benders_obj.top, itr_obj, srsStep_boo, prx2Aux_fl, benders_obj.nearOpt.cnt != 0, benders_obj.algOpt.gap, benders_obj.report), 1:length(stab_obj.method))
 
 		# update center of stabilisation
 		if srsStep_boo # update everything in case of serios step
