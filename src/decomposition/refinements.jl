@@ -303,7 +303,7 @@ function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, 
 	# adjust objective function and level set
 	@objective(top_m.optModel, Min, 0.5 * capaSum_expr  * scaFac_fl)
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet])
-	
+
 end
 
 function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
@@ -600,7 +600,6 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::
 	elseif stab_obj.method[x_int] == :qtrLvl
 		stab_obj.dynPar[x_int][:lvl] = (opt_tup.lam * itr_obj.res[:estTotCostNoStab]  + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
 		stab_obj.dynPar[x_int][:qtr] = getConvTol(itr_obj.gap, tarGap_fl, [opt_tup.startRad, opt_tup.endRad], Symbol(opt_tup.inter))
-		println(stab_obj.dynPar[x_int][:qtr])
 	elseif stab_obj.method[x_int] == :dsb # adjust doubly stabilised method, implementation according to doi.org/10.1007/s10107-015-0873-6
 		stab_obj.dynPar[x_int][:my] = min(1 - itr_obj.res[:lvlDual], opt_tup.myMax + 1.0)
 		if srsStep_boo
