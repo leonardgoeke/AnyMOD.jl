@@ -6,7 +6,8 @@
 function heuristicSolve(modOpt_tup::NamedTuple, t_int::Int, opt_obj::DataType; rtrnMod::Bool=true, solDet::Bool=false, fltSt::Bool=true)
 
 	# create and solve model
-	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, repTsLvl = modOpt_tup.repTsLvl, frsLvl = 0, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), forceScr = solDet ? Symbol() : nothing)
+	frsLvl_int = solDet ? 0 : modOpt_tup.frsLvl
+	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, repTsLvl = modOpt_tup.repTsLvl, frsLvl = frsLvl_int, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), forceScr = solDet ? Symbol() : nothing)
 	
 	prepareMod!(heu_m, opt_obj, t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
@@ -338,7 +339,6 @@ function runTop(benders_obj::bendersObj)
         end
 
 		while stab_obj.method[stab_obj.actMet] in (:lvl1, :qtrLvl) && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
-			println(stab_obj.dynPar[stab_obj.actMet])
 			
 			# increase upper bound
 			lvl_fl = stab_obj.method[stab_obj.actMet] == :lvl1 ? stab_obj.dynPar[stab_obj.actMet] : stab_obj.dynPar[stab_obj.actMet][:lvl]
@@ -616,7 +616,6 @@ function runSub(resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTo
 end
 
 getComVar() = comVar_dic
-
 
 # ! add all cuts from input dictionary to top problem
 function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, i::Int)
