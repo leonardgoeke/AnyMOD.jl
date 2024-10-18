@@ -1486,25 +1486,25 @@ Plots the Sankey diagram for energy flows in a model.
 # ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
 function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region, :timestep, :scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false, wrtVal::Bool = true, digVal::Int = 1, sgnVal::String = ";")
 
-    flowGrap_obj = anyM.graInfo.graph
+	flowGrap_obj = anyM.graInfo.graph
 
-    #region # * initialize data
-
-    if !isempty(setdiff(dropDown, [:region, :timestep, :scenario]))
-    error("dropDown only accepts array :region and :timestep as content")
-    end
-
+	#region # * initialize data
+	
+	if !isempty(setdiff(dropDown, [:region, :timestep, :scenario]))
+	error("dropDown only accepts array :region and :timestep as content")
+	end
+	
 	# get mappings to create buttons of dropdown menue
 	drop_dic = Dict(:region => :R_dis, :timestep => :Ts_disSup, :scenario => :scr)
 	dropDim_arr = collect(map(x -> drop_dic[x], dropDown))
-
+	
 	if isempty(dataIn)
 		# get summarised data and filter dispatch variables
 		data_df = select(reportResults(:summary, anyM; rtnOpt = (:rawDf,)), Not([:objName]))
 		filter!(x -> x.variable in (:demand, :gen, :use, :stExtIn, :stExtOut, :trdBuy, :trdSell, :demand, :import, :export, :lss, :crt), data_df)
 		data_df[!,:variable] = map(x -> x in (:stExtIn, :stExtOut) ? Symbol(replace(string(x), "Ext" => "")) : x, data_df[!,:variable])
-
-
+	
+	
 		# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
 		c_dic, r_dic = [anyM.sets[x].nodes for x in [:C, :R]]
 		if :scr in namesSym(data_df)
@@ -1524,7 +1524,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		data_df[!,:variable] = Symbol.(data_df[!,:variable]) 
 		rename!(data_df, [:timestep_superordinate_dispatch => :Ts_disSup, :region_dispatch => :R_dis, :technology => :Te, :carrier => :C])
 	end
-
+	
 	if savaData 
 		printObject(data_df, anyM, wrtGap = true, fileName = "sankeyData$(name == "" ? "" : "_" * name)")
 	end
@@ -1541,15 +1541,16 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 			data_df = vcat(joinedExc_df, filter(x -> !(x.variable in (:export, :import)), data_df))
 		end
 	end
-
-    # filter non relevant entries
-    filter!(x -> abs(x.value) > minVal, data_df)
-    filter!(filterFunc, data_df)
-
+	
+	# filter non relevant entries
+	filter!(x -> abs(x.value) > minVal, data_df)
+	filter!(filterFunc, data_df)
+	if !(:scenario in dropDown) && :scr in intCol(data_df) filter!(x -> x.scr == 0, data_df) end
+	
 	#endregion
 	
 	#region # * filter flows according to provided yaml file
-
+	
 	if !isempty(ymlFilter)
 		graph_dic = YAML.load_file(ymlFilter)
 		# filters entries that aggregates several sub-categories
@@ -1572,7 +1573,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 				error("technology " * y * " not defined!")
 			end
 		end
-
+	
 		filter!(x -> x.C in c_arr && (x.Te == 0 || x.Te in te_arr), data_df)
 		# perform aggregation
 		for u in (:Te, :C)
@@ -1581,11 +1582,11 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 			data_df = combine(groupby(data_df, intCol(data_df, :variable)), :value => (x -> sum(x)) => :value)
 		end
 	end
-
+	
 	#endregion
 	
 	#region # * prepare labels and colors
-
+	
 	# create dictionaries for nodes that are neither technology nor carrier
 	oth_df = unique(filter(x -> x.Te == 0, data_df)[!,[:variable, :C]])
 	if netExc && !(:region in dropDown)
@@ -1593,39 +1594,39 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	end	
 	othNode_dic = maximum(values(flowGrap_obj.nodeTe)) |> (z -> Dict((x[2].C, x[2].variable) => x[1] + z for x in enumerate(eachrow(oth_df))))
 	othNodeId_dic = collect(othNode_dic) |> (z -> Dict(Pair.(getindex.(z, 2), getindex.(z, 1))))
-
-    # prepare name and color assignment
-    names_dic = isempty(ymlFilter) ? anyM.graInfo.names : Dict(x["name"] => x["label"] for x in collect(graph_dic["vertices"])) |> (z -> merge(z, filter(x -> !(x[1] in keys(z)), anyM.graInfo.names)))
-    revName_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z, 2), getindex.(z, 1))))
-
+	
+	# prepare name and color assignment
+	names_dic = isempty(ymlFilter) ? anyM.graInfo.names : Dict(x["name"] => x["label"] for x in collect(graph_dic["vertices"])) |> (z -> merge(z, filter(x -> !(x[1] in keys(z)), anyM.graInfo.names)))
+	revName_dic = collect(names_dic) |> (z -> Dict(Pair.(getindex.(z, 2), getindex.(z, 1))))
+	
 	# use color from yaml, if any are provided
 	if !isempty(ymlFilter)
 		col_dic = Dict(x["name"] => tuple(x["color"]...) for x in graph_dic["vertices"])
 	else
 		col_dic = anyM.graInfo.colors
 	end
-
-    sortTe_arr = getindex.(sort(collect(flowGrap_obj.nodeTe), by = x -> x[2]), 1)
-    cColor_dic = Dict(x => anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85, 0.85, 0.85)) for x in sort(collect(keys(flowGrap_obj.nodeC))))
-
-    # create array of node labels
-    cLabel_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z), sort(collect(keys(flowGrap_obj.nodeC))))
-    teLabel_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z), sortTe_arr)
-    othLabel_arr = map(x -> names_dic[String(othNodeId_dic[x][2])], sort(collect(keys(othNodeId_dic))))
-    nodeLabelAll_arr = vcat(cLabel_arr, teLabel_arr, othLabel_arr)
-    revNodelLabel_arr = map(x -> revName_dic[x], nodeLabelAll_arr)
-
-    # create array of node colors
-    cColor_arr = map(x -> cColor_dic[x], sort(collect(keys(flowGrap_obj.nodeC))))
-    teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(col_dic) && useTeColor ? col_dic[z] : (0.85, 0.85, 0.85)), sortTe_arr)
-    othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85, 0.85, 0.85)), sort(collect(keys(othNodeId_dic))))
-    nodeColor_arr = vcat(map(x -> replace.(string.("rgb", string.(map(z -> z .* 255.0, x))), " " => ""), [cColor_arr, teColor_arr, othColor_arr])...)
+	
+	sortTe_arr = getindex.(sort(collect(flowGrap_obj.nodeTe), by = x -> x[2]), 1)
+	cColor_dic = Dict(x => anyM.sets[:C].nodes[x].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85, 0.85, 0.85)) for x in sort(collect(keys(flowGrap_obj.nodeC))))
+	
+	# create array of node labels
+	cLabel_arr = map(x -> anyM.sets[:C].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z), sort(collect(keys(flowGrap_obj.nodeC))))
+	teLabel_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(names_dic) ? names_dic[z] : z), sortTe_arr)
+	othLabel_arr = map(x -> names_dic[String(othNodeId_dic[x][2])], sort(collect(keys(othNodeId_dic))))
+	nodeLabelAll_arr = vcat(cLabel_arr, teLabel_arr, othLabel_arr)
+	revNodelLabel_arr = map(x -> revName_dic[x], nodeLabelAll_arr)
+	
+	# create array of node colors
+	cColor_arr = map(x -> cColor_dic[x], sort(collect(keys(flowGrap_obj.nodeC))))
+	teColor_arr = map(x -> anyM.sets[:Te].nodes[x].val |> (z -> z in keys(col_dic) && useTeColor ? col_dic[z] : (0.85, 0.85, 0.85)), sortTe_arr)
+	othColor_arr = map(x -> anyM.sets[:C].nodes[othNodeId_dic[x][1]].val |> (z -> z in keys(col_dic) ? col_dic[z] : (0.85, 0.85, 0.85)), sort(collect(keys(othNodeId_dic))))
+	nodeColor_arr = vcat(map(x -> replace.(string.("rgb", string.(map(z -> z .* 255.0, x))), " " => ""), [cColor_arr, teColor_arr, othColor_arr])...)
 	dropData_arr = PlotlyBase.PlotlyAttribute{Dict{Symbol, Any}}[]
-
+	
 	if ymlFilter != "" && "removeSankey" in keys(graph_dic)
 		rmvNode = map(x -> collect(x)[1] |> (z -> string(z[1], "; ", z[2])), collect(graph_dic["removeSankey"])) |> (u ->  isempty(rmvNode) ? tuple(u...) : tuple(u..., rmvNode...))
 	end
-
+	
 	# ! loop over potential buttons in dropdown menue
 	for drop in eachrow(unique(data_df[!, intersect(namesSym(data_df), dropDim_arr)]))
 	
@@ -1638,11 +1639,11 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 			filter!(x -> d == :region ? x.R_dis in subR_arr : (d == :timestep ? x.Ts_disSup == drop.Ts_disSup : length(anyM.sets[:scr].nodes) == 1 || x.scr == drop.scr), dropData_df)
 		end
 		
-		if netExc
+		if netExc 
 			allExc_df = filter(x -> x.variable in (:netImport, :netExport), dropData_df)
 			if !isempty(allExc_df)
 				allExc_df[!,:value] = map(x -> x.variable == :netExport ? x.value * -1 : x.value, eachrow(allExc_df))
-				aggExc_df = combine(groupby(allExc_df, [:Ts_disSup, :Te, :C]), :value => (x -> sum(x)) => :value)
+				aggExc_df = combine(groupby(allExc_df, intersect(intCol(allExc_df),[:Ts_disSup, :Ts_frs, :Te, :C])), :value => (x -> sum(x)) => :value)
 				aggExc_df[!,:variable] = map(x -> x.value > 0.0 ? :netImport : :netExport, eachrow(aggExc_df))
 				# renames net-export into losses in case regions does not appear in drop dropDown
 				if !(:region in dropDown)
@@ -1709,7 +1710,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 			allFl = filter(y -> y[1:2] == fl[1:2], flow_arr)
 			return (allFl[1][1], allFl[1][2], sum(getindex.(allFl, 3)))
 		end
-
+	
 		# removes nodes accoring function input provided
 		for rmv in rmvNode
 			# splits remove expression by semicolon and searches for first part
@@ -1717,24 +1718,24 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 			relNodes_arr = findall(nodeLabel_arr .== rmvStr_arr[1])
 			if isempty(relNodes_arr) relNodes_arr = findall(revNodelLabel_arr .== rmvStr_arr[1]) end
 			if isempty(relNodes_arr) continue end
-
+	
 			if length(rmvStr_arr) == 2 # if rmv contains two strings seperated by a semicolon, the second one should relate to a carrier, carrier is searched for and all related flows are removed
 				relC_arr = findall(nodeLabel_arr .== rmvStr_arr[2])
 				if isempty(relNodes_arr) relC_arr = findall(revNodelLabel_arr .== rmvStr_arr[2]) end
-
+	
 				if isempty(relC_arr)
 					continue
 				else
 					c_int = relC_arr[1]
 				end
-
+	
 				filter!(x -> !((x[1] in relNodes_arr || x[2] in relNodes_arr) && (x[1] == c_int || x[2] == c_int)), flow_arr)
 				elseif length(rmvStr_arr) > 2
 				error("one remove string contained more then one semicolon, this is not supported")
 				else # if rmv only contains one string, only nodes where in- and outgoing flow are equal or only one of both exists
 				out_tup = filter(x -> x[1] == relNodes_arr[1], flow_arr)
 				in_tup = filter(x -> x[2] == relNodes_arr[1], flow_arr)
-
+	
 				if length(out_tup) == 1 && length(in_tup) == 1 && out_tup[1][3] == in_tup[1][3] # in- and outgoing are the same
 					filter!(x -> !(x in (out_tup[1], in_tup[1])), flow_arr)
 					push!(flow_arr, (in_tup[1][1], out_tup[1][2], in_tup[1][3]))
@@ -1755,8 +1756,8 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
 			(z -> replace(string("rgba", string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...))), " " => "")), flow_arr)
 		link_obj = attr(source = getindex.(flow_arr, 1) .- 1, target = getindex.(flow_arr, 2) .- 1, value = getindex.(flow_arr, 3), color = linkColor_arr)
-
-
+	
+	
 		# compute values for each node to written to graph
 		if wrtVal
 			for x in 1:length(nodeLabel_arr)
@@ -1791,7 +1792,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	layout_obj = Layout(;updatemenus = [menues_obj], font_size = 32, font_family = "Arial")
 	
 	savefig(plot(data_obj, layout_obj), "$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown), "_"))$(name == "" ? "" : "_" * name)_$(anyM.options.outStamp).html")
-    
+	
 	#endregion
 
 end

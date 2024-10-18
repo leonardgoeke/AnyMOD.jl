@@ -668,6 +668,7 @@ function createStVI(part::TechPart, ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,
 					cns_df = innerjoin(cns_df, allAvaEff_df, on = intCol(allAvaEff_df))
 					
 					# filter redundant constraints 
+					if isempty(cns_df) continue end
 					cns_df = combine(x -> fltRedIn(x), groupby(cns_df, filter(x -> x != :scr, intCol(cns_df))))
 	
 					# add interannual storage if existing
@@ -713,6 +714,7 @@ function createStVI(part::TechPart, ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,
 					end
 					
 					# filter redundant constraints
+					if isempty(cns_df) continue end
 					cns_df = combine(x -> fltRedOut(x), groupby(cns_df, filter(x -> x != :scr, intCol(cns_df))))
 	
 					if :stLvlInter in keys(part.var)
@@ -738,7 +740,7 @@ function createStVI(part::TechPart, ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,
 end
 
 # filter redundant constraints for valid inequalities on storage (see function above)
-function fltRedIn(in_dfr::SubDataFrame)
+function fltRedIn(in_dfr::Union{DataFrame,SubDataFrame})
 	# in case input capacity does not exist or maximum input is the same in both scenarios, only keep case with smaller inflows
 	if all(in_dfr.capa .== AffExpr()) || length(unique(in_dfr.avaEff)) == 1
 		relIdx_int = minimum(in_dfr.inf) |> (z -> findall(in_dfr.inf .== z)[1])
@@ -749,7 +751,7 @@ function fltRedIn(in_dfr::SubDataFrame)
 	return in_dfr[relIdx_int,:]
 end
 
-function fltRedOut(in_dfr::SubDataFrame)
+function fltRedOut(in_dfr::Union{DataFrame,SubDataFrame})
 	
 	# checks which parameters have multiple unique values (if only one parameter has multiple unique values, some constraints can be filtered)
 	avaUni_boo = !(all(in_dfr.capa .== AffExpr()) || length(unique(in_dfr.ava)) == 1)

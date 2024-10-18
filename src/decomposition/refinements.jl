@@ -16,16 +16,36 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		heuOpt_ntup = (inputDir = inputFolder_ntup.heu, resultDir = inputFolder_ntup.results, suffix = info_ntup.name, supTsLvl = info_ntup.supTsLvl, repTsLvl = info_ntup.repTsLvl, frsLvl = info_ntup.frsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facHeu])
 		
 		# ! get starting solution with heuristic solve or generic
-		if stabSetup_obj.ini.setup != :none
+		if stabSetup_obj.ini != :none
+			
 			produceMessage(report_m.options, report_m.report, 1, " - Started heuristic pre-solve for starting solution", testErr = false, printErr = false)
 			# get heuristic solution and get a close feasible solution
-			heu_m, heuSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = stabSetup_obj.ini.det, fltSt = false);
-			
-			lowBd_fl = 0.0
+			heu_m, heuSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = true, fltSt = false);
 			top_m = benders_obj.top
-
 			startSol_obj = resData()
-			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim), startSol_obj.objVal, startRes_dic  = @suppress getFeasResult(heuOpt_ntup, heuSol_obj.capa, Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(), benders_obj.algOpt.threads, 0.001, benders_obj.algOpt.opt, useVI = benders_obj.algOpt.useVI, complCns = complCns_dic, relVar = relVar_arr, resTup = benders_obj.report.res.general)
+			lowBd_fl = 0.0
+				
+			top_m = computeFeas(top_m, heuSol_obj.capa, 0.001, cutSmall = true);
+		
+			# write results for heuristic solution
+			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim) = writeResult(top_m, [:capa, :exp, :stLvl, :lim]; rmvFix = true)
+			startSol_obj.objVal = value(top_m.parts.obj.var[:objVar][1,:var])
+			startRes_dic = Dict(x => reportResults(x, top_m, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
+
+			# remove fixing constraints again
+			for tSym in keys(top_m.parts.tech)
+				for c in filter(x -> any(occursin.(["absUp","absLow","cutSmall"], string(x))), collect(keys(top_m.parts.tech[tSym].cns)))
+					delete.(top_m.optModel, top_m.parts.tech[tSym].cns[c][!,:cns])
+					delete!(top_m.parts.tech[tSym].cns, c)
+				end
+			end
+			
+			for excSym in keys(top_m.parts.exc)
+				for c in filter(x -> any(occursin.(["absUp","absLow","cutSmall"], string(x))), collect(keys(top_m.parts.exc[excSym].cns)))
+					delete.(top_m.optModel, top_m.parts.exc[excSym].cns[c][!,:cns])
+					delete!(top_m.parts.exc[excSym].cns, c)
+				end
+			end	
 		else
 			@suppress optimize!(benders_obj.top.optModel)
 			startSol_obj = resData()
@@ -64,6 +84,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
 			else # non-distributed case
 				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
+				printIIS(benders_obj.sub[s])
 			end
 		end
 		
@@ -148,7 +169,6 @@ function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_
 	# method specific adjustments (e.g. starting value for dynamic parameter, new variables for objective function)
 	dynPar_arr = computeDynPar(meth_arr, methOpt_arr, lowBd_fl, upBd_fl, top_m)
 
-	
 	return meth_arr, methOpt_arr, dynPar_arr
 end
 
@@ -220,15 +240,15 @@ function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, t
 	end
 
 	# adjusts creation of trust-region, if rhs would substanitally violate rhs range
-	rhs_fl = (rad2_fl - capaSum_expr.aff.constant)  * scaEq_fl
+	rhs_fl = (rad2_fl - capaSum_expr.aff.constant) * scaEq_fl
 	# create final constraint
 	if top_m.options.coefRng.rhs[1] / rngVio_fl > abs(rhs_fl)
-		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[1]* rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
+		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[1] * rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
 		produceMessage(report_m.options, report_m.report, 1, " - Increased radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
 	elseif top_m.options.coefRng.rhs[2] * rngVio_fl > abs(rhs_fl) || adRad_boo
-		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= rad2_fl  * scaEq_fl)
+		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= rad2_fl * scaEq_fl)
 	elseif !forceRad
-		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[2]* rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
+		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaEq_fl <= top_m.options.coefRng.rhs[2] * rngVio_fl + capaSum_expr.aff.constant * scaEq_fl)
 		produceMessage(report_m.options, report_m.report, 1, " - Reduced radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
 	end
 
@@ -373,8 +393,9 @@ function getLowerBound(value_fl::Float64, minDelta_fl::Float64, negPos_boo::Bool
     # get lower bound based on percentage
     corMin_fl = value_fl * (1 - perLow_fl * (value_fl >= 0.0 ? 1.0 : -1.0))
     # correct for minimum delta respecting potential lower bound of zero
-    if negPos_boo && corMin_fl > -minDelta_fl corMin_fl = - minDelta_fl end 
-    # correct to avoid range violation
+	if value_fl - minDelta_fl < corMin_fl corMin_fl = value_fl - minDelta_fl end
+	if !negPos_boo corMin_fl = max(corMin_fl, 0.0) end
+	# correct to avoid range violation
     if abs(corMin_fl) < lowerRng_fl corMin_fl = 0.0 end
     return corMin_fl
 end
@@ -384,9 +405,8 @@ function getUpperBound(value_fl::Float64, minDelta_fl::Float64, perUp_fl::Float6
     # get upper bound based on percentage
     rel_fl = value_fl * (1 + perUp_fl * (value_fl >= 0.0 ? 1.0 : -1.0))
     # correct for minimum delta respecting potential
-    corMax_fl = max(minDelta_fl, rel_fl)
+    corMax_fl = max(value_fl + minDelta_fl, rel_fl)
     return corMax_fl
-
 end
 
 # function for level paired with quadratic trust region 
@@ -675,11 +695,12 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 
 	if !isempty(stLvl_dic) && weight_ntup.stLvl != 0.0
 		for sSym in keys(stLvl_dic)
-			if sSym in keys(top_m.parts.tech)
+			if sSym in keys(top_m.parts.tech) 
 				part_obj = top_m.parts.tech[sSym]
 				var_dic[:stLvl][sSym] = Dict{Symbol,DataFrame}()
-				for stType in keys(stLvl_dic[sSym])
+				for stType in intersect(keys(part_obj.var), keys(stLvl_dic[sSym]))
 					var_df = stLvl_dic[sSym][stType]
+
 					var_dic[:stLvl][sSym][stType] = intCol(var_df) |> (w -> innerjoin(var_df, unique(select(filter(x -> !isempty(x.var.terms), part_obj.var[stType]), w)), on = w))
 				end
 				removeEmptyDic!(var_dic[:stLvl], sSym)
@@ -744,7 +765,6 @@ function removeStab!(benders_obj::bendersObj)
 		if has_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 			delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 		end
-		
 		delete(benders_obj.top.optModel, stab_obj.cns) # remove trust-region
 	elseif stab_obj.method[stab_obj.actMet] == :dsb
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])

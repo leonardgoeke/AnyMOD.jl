@@ -24,12 +24,12 @@ end
 struct stabSetup
 	method::Tuple # method(s) for stabilization
 	srsThr::Float64 # threshold for serious step
-	ini::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}} # rule for stabilization (:none will skip stabilization)
+	ini::Symbol # rule for stabilization (:none will skip stabilization)
 	switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} # rule to switch between different methods
 	weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} # weight of variables in stabilization
 	
-	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_ntup::NamedTuple{(:setup, :det), Tuple{Symbol, Bool}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 10, avgImp = 1e-5, itrAvg = 5), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
-		return new(method_tup, srsThr_fl, ini_ntup, switch, weight)
+	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_sym::Symbol, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 10, avgImp = 1e-5, itrAvg = 5), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
+		return new(method_tup, srsThr_fl, ini_sym, switch, weight)
 	end
 end
 
@@ -106,7 +106,7 @@ mutable struct stabObj
 		end
 
 		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup, lowBd_fl, resData_obj.objVal, top_m)
-		
+
 		# set other fields
 		stab_obj.srsThr = srsThr_fl
 		stab_obj.ruleSw = ruleSw_ntup
