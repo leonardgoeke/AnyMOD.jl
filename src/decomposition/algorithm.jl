@@ -589,11 +589,11 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 
 	numFoc_int = numFoc_arr[1]
 	while true
-		@suppress begin
+		begin
 			set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_int)
 			optimize!(mod_m.optModel)
 		end
-		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == numFoc_arr[2]
+		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == numFoc_arr[end]
 			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
 				printIIS(mod_m) 
 			elseif !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) && numFoc_arr[1] != numFoc_arr[2] # try to solve again with any method, if increase of numeric focus did not help
