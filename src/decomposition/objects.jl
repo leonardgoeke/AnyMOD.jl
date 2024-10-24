@@ -21,7 +21,7 @@ mutable struct algSetup
 end
 
 # setup for stabilization
-struct stabSetup
+mutable struct stabSetup
 	method::Tuple # method(s) for stabilization
 	srsThr::Float64 # threshold for serious step
 	ini::Symbol # rule for stabilization (:none will skip stabilization)
@@ -147,6 +147,7 @@ mutable struct bendersObj
 	sub::Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}
 	cuts::Array{Pair{Tuple{Int,Int},Union{resData}},1}
 	prevCuts::Array{Pair{Tuple{Int,Int},Union{resData}},1}
+	complVar::Dict{Tuple{Int,Int},Dict{Symbol,DataFrame}}
 	itr::itrStatus
 	stab::Union{Nothing,stabObj}
     algOpt::algSetup
@@ -162,35 +163,17 @@ mutable struct bendersObj
 		benders_obj.info = info_ntup
         benders_obj.algOpt = algSetup_obj
 		benders_obj.nearOpt = nearOptObj(0, nearOptSetup_obj)
+
+		# initialize reporting
+		initializeReporting!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, resInfo)
+
 	
-		#endregion
-
-		#region # * initialize reporting
-
-        # dataframe for reporting during iteration
-        itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_subTot = Float64[], time_sub = Array{Float64,1}[], numFoc = Array{Int,1}[], objName = String[])
-        nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], variable = Symbol[], value = Float64[], objName = String[])
-
-        # empty model just for reporting
-		report_m = @suppress anyModel(String[], inputFolder_ntup.results, objName = "decomposition" * info_ntup.name) 
-
-		# add column for active stabilization method
-		if !isempty(stabSetup_obj.method)
-			itrReport_df[!,:actMethod] = fill(Symbol(), size(itrReport_df, 1))
-			foreach(x -> itrReport_df[!,Symbol("dynPar_", x[1])] = Union{Float64,Vector{Float64}}[fill(Float64[], size(itrReport_df, 1))...], stabSetup_obj.method)
-			select!(itrReport_df, vcat(filter(x -> x != :objName, namesSym(itrReport_df)), [:objName]))
-		end
-
-		# extend reporting dataframe in case of near-optimal
-		if !isnothing(nearOptSetup_obj) itrReport_df[!,:objective] = fill("", size(itrReport_df, 1)) end
-
-		benders_obj.report = (itr = itrReport_df, nearOpt = nearOpt_df, res = resInfo, mod = report_m)
-
 		#endregion
 
         #region # * create top- and sub-problems
 
 		# start creating top-problem and extract info on sub-problem structure
+		report_m = benders_obj.report.mod
 		produceMessage(report_m.options, report_m.report, 1, " - Started creation of top-problem", testErr = false, printErr = false)
 
 		top_m = anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel_" * info_ntup.name, frsLvl = info_ntup.frsLvl, supTsLvl = info_ntup.supTsLvl, repTsLvl = info_ntup.repTsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, createVI = algSetup_obj.useVI)
@@ -202,8 +185,6 @@ mutable struct bendersObj
 		benders_obj.sub = Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}()
 		
 		complCns_dic = Dict{Tuple{Int,Int},Dict{Symbol,DataFrame}}()
-		
-
 		for (id, s) in enumerate(sub_tup)
 			subStr_tup = (top_m.sets[:Ts].nodes[s[1]].val, top_m.sets[:scr].nodes[s[2]].val)
 			if benders_obj.algOpt.dist # distributed case
@@ -214,6 +195,7 @@ mutable struct bendersObj
 				benders_obj.sub[s], complCns_dic[s] = buildSub(id, subStr_tup, info_ntup, inputFolder_ntup, scale_dic, algSetup_obj)
 			end
 		end
+		benders_obj.complVar = complCns_dic
 
 		# finish creation of top-problems
 		top_m.subPro = tuple(0, 0)
@@ -234,26 +216,11 @@ mutable struct bendersObj
 		produceMessage(report_m.options, report_m.report, 1, " - Finished creation of top-problem and sub-problems", testErr = false, printErr = false)
         #endregion
 
-		#region # * write complicating constraints into top problem
+		# write complicating constraints into top problem
+		writeComplCons!(benders_obj)
 		
-		relVar_arr::Vector{Symbol} = unique(vcat(filter(x -> !isempty(x), map(x -> collect(keys(complCns_dic[x])), collect(keys(complCns_dic))))...))
-		# loop over types of complicating variables
-		if !isempty(relVar_arr)
-			addComplCns!(benders_obj.top, relVar_arr, complCns_dic)
-			push!(top_m.report, (2, "limit", "", "enforced at least one limit across scenarios which creates a complicating constraint, Benders can not converge in case of overlapping complicating constraints (e.g., a national and system-wide emission limit)"))
-			errorTest(unique(top_m.report), top_m.options, write = true)
-			produceMessage(report_m.options, report_m.report, 1, " - Added complicating constraints to top-problem", testErr = false, printErr = false)
-		end
-
-		#endregion
-
-		#region # * initialize stabilization
-
-		benders_obj.stab, curBest_tup = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, complCns_dic, relVar_arr, runSubDist)
-		benders_obj.itr = itrStatus(curBest_tup, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0), 1.0, Dict{Symbol,Float64}())
-		benders_obj.itr.res[:curBest] = curBest_tup.var.objVal
-
-		#endregion
+		# initialize stabilization
+		prepareStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
 
 		return benders_obj
 	end

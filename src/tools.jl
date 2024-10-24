@@ -54,15 +54,18 @@ function printObject(print_df::DataFrame, anyM::anyModel; fileName::String = "",
 end
 
 # ! converts input dataframe to a parameter input file
-function writeParameterFile!(in_m::anyModel, para_df::DataFrame, par_sym::Symbol, parDef_tup::NamedTuple, file::String)
+function writeParameterFile!(in_m::anyModel, para_df::DataFrame, par_sym::Symbol, parDef_tup::NamedTuple, file::String; scrAll::Bool = false)	
 
 	# define dictionary matching long and short set names
-	set_dic = Dict(:Ts => :timestep, :R => :region, :C => :carrier, :Te => :technology, :Exc => :exchange, :scr => :scenario, :id => :id)
+	set_dic = Dict(:Ts => :timestep, :R => :region, :C => :carrier, :Te => :technology, :Exc => :exchange, :M => :mode, :scr => :scenario, :id => :id)
 	# initialize matrix with parameter name and values
 	wrtPara_arr = Array{Any, 2}(undef, size(para_df, 1)+1, 2)
 	wrtPara_arr[1,1:2] = ["parameter", "value"]
 	wrtPara_arr[2:end,1] .= string(par_sym)
 	wrtPara_arr[2:end,2] = para_df[!,:value]
+
+	# select columns without any data
+	select!(para_df, filter(x -> unique(para_df[!,x]) != [0.0], namesSym(para_df)))
 	
 	# add specification to parameter name in case of directed exchange data
 	if :dir in namesSym(para_df) wrtPara_arr[findall(para_df[!,:dir]) .+ 1, 1] .= string(par_sym, :Dir) end
@@ -76,6 +79,7 @@ function writeParameterFile!(in_m::anyModel, para_df::DataFrame, par_sym::Symbol
 		# adds new columns for set to array
 		wrtPara_arr = hcat(wrtPara_arr, permutedims(hcat(vcat([map(x -> string(set_dic[set_sym], "_", x), 1:colNum_int)], strExt_arr)...)))
 	end
+
 	# correct order and remove columns filled with empty strings
 	wrtPara_arr = hcat(wrtPara_arr[:,3:size(wrtPara_arr, 2)], wrtPara_arr[:,1:2])
 	# write to csv input file

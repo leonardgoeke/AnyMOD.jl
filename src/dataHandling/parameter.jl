@@ -312,6 +312,10 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     parDef_dic[:stInLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = ofHeritSt_tup, part = :lim)
     parDef_dic[:stInFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :sub, defVal = nothing, herit = upHerit_tup,   part = :lim)
 
+    parDef_dic[:stLvlUp]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :both, defVal = nothing, herit = upHeritSt_tup, part = :lim)
+    parDef_dic[:stLvlLow] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :both, defVal = nothing, herit = ofHeritSt_tup, part = :lim)
+    parDef_dic[:stLvlFix] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :both, defVal = nothing, herit = upHerit_tup,   part = :lim)
+
     # ! limits on other dispatch variables
 
     parDef_dic[:excUp]   =  (dim = (:Ts_dis, :Ts_expSup, :R_from, :R_to, :C, :Exc, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :C => :sum_full, :Exc => :sum_full, :scr => :up), part = :lim)
