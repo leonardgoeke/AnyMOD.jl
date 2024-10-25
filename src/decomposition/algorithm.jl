@@ -910,11 +910,13 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		acc_fl = getConvTol(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.sub.rng, benders_obj.algOpt.sub.int)
 	
 		if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
-		for (id,s) in enumerate(sort(collect(keys(benders_obj.sub))))
-			if benders_obj.algOpt.dist # distributed case
-				futData_dic[s] = runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
-			else # non-distributed case
-				cutData_dic[s], timeSub_dic[s], lss_dic[s], numFoc_dic[s] = runSub(benders_obj.sub[s], copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
+		@suppress begin
+			for (id,s) in enumerate(sort(collect(keys(benders_obj.sub))))
+				if benders_obj.algOpt.dist # distributed case
+					futData_dic[s] = runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
+				else # non-distributed case
+					cutData_dic[s], timeSub_dic[s], lss_dic[s], numFoc_dic[s] = runSub(benders_obj.sub[s], copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
+				end
 			end
 		end
 	
