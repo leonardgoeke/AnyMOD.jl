@@ -587,9 +587,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 end
 
 # ! solves a model increasing the numeric focus from starting value to maximum in infeasible
-function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo::Bool = true)	
-
-	println("threads:", get_optimizer_attribute(mod_m.optModel, "Threads"))
+function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo::Bool = true)
 
 	numFoc_int = numFoc_arr[1]
 	while true
