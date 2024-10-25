@@ -144,7 +144,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 				abs_df[!,:weight] .= 1.0
 				# create variable for absolute value and connect with rest of dataframe again
 				scaFac_fl = getfield(top_m.options.scaFac, occursin("exp", lowercase(string(varSym))) ? :insCapa : (occursin("StSize", string(varSym)) ? :capaStSize : :capa))
-				part.var[Symbol(:abs, makeUp(varSym))] = createVar(select(abs_df, Not([:var, :value])), string(:abs, makeUp(varSym)), top_m.options.bound.capa, top_m.optModel, top_m.lock, top_m.sets, scaFac =scaFac_fl)
+				part.var[Symbol(:abs, makeUp(varSym))] = createVar(select(abs_df, Not([:var, :value])), string(:abs, makeUp(varSym)), top_m.options.bound.capa, top_m.optModel, top_m.lock, top_m.sets, scaFac = scaFac_fl)
 				abs_df[!,:varAbs] .= part.var[Symbol(:abs, makeUp(varSym))][!,:var] 
 				# create constraints for absolute value
 				abs_df[!,:absLow] = map(x -> x.varAbs - scaFac_fl * collect(keys(x.var.terms))[1] + x.value, eachrow(abs_df))
@@ -170,6 +170,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 					scaleCnsExpr!(cutSmallNonZero_df, top_m.options.coefRng, top_m.options.checkRng)
 					part.cns[Symbol(:cutSmallZero, makeUp(varSym))] = createCns(cnsCont(cutSmallZero_df, :smaller), top_m.optModel, false)
 					part.cns[Symbol(:cutSmallNonZero, makeUp(varSym))] = createCns(cnsCont(cutSmallNonZero_df, :greater), top_m.optModel, false)
+					part.var[Symbol(:cutSmall, makeUp(varSym))] = select(cutSmall_df, intCol(cutSmall_df, :var))
 				end
 			end
 		end
@@ -268,9 +269,10 @@ function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::Nam
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.threads)
 	
 	# set options
-	println("thread number:", algOpt_obj.threads)
-	set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
-	if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.sub.timeLim * 60) end # in seconds
+	@suppress begin
+		set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
+		if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.sub.timeLim * 60) end # in seconds
+	end
 
 
 	# collect complicating constraints
