@@ -268,6 +268,7 @@ function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::Nam
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.threads)
 	
 	# set options
+	println("thread number:", algOpt_obj.threads)
 	set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
 	if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.sub.timeLim * 60) end # in seconds
 
@@ -508,7 +509,6 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 			set_optimizer_attribute(sub_m.optModel, "BarConvTol", optTol_fl)
 		elseif sol_sym == :simplex
 			set_optimizer_attribute(sub_m.optModel, "Method", 1)
-			set_optimizer_attribute(sub_m.optModel, "Threads", 1)
 			set_optimizer_attribute(sub_m.optModel, "OptimalityTol", optTol_fl)
 			set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
 		end
@@ -587,12 +587,12 @@ end
 # ! solves a model increasing the numeric focus from starting value to maximum in infeasible
 function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo::Bool = true)	
 
+	println("threads:", get_optimizer_attribute(mod_m.optModel, "Threads"))
+
 	numFoc_int = numFoc_arr[1]
 	while true
-		begin
-			set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_int)
-			optimize!(mod_m.optModel)
-		end
+		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_int)
+		optimize!(mod_m.optModel)
 		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == numFoc_arr[end]
 			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
 				printIIS(mod_m) 
