@@ -616,6 +616,8 @@ function runSub(resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTo
 end
 
 getComVar() = comVar_dic
+getSubString(res_sym::Symbol) = getSubStringWorker(res_sym::Symbol) 
+getSubStringWorker(res_sym::Symbol) = "$(sub_m.options.outDir)/results_" * string(res_sym) * "_$(sub_m.options.outStamp).csv"
 
 # ! add all cuts from input dictionary to top problem
 function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, i::Int)
@@ -885,6 +887,191 @@ function checkConvergence(benders_obj::bendersObj, lss_dic::Dict{Tuple{Int64,Int
 	end
 
 	return rtn_boo
+end
+
+# ! run iteration
+function runIteration!(benders_obj::bendersObj, runSubDist::Function)
+
+	while true
+
+		produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Started iteration $(benders_obj.itr.cnt.i)", testErr = false, printErr = false)
+	
+		#region # * solve top-problem and (start) sub-problems
+		str_time = now()
+		resData_obj, stabVar_obj = runTop(benders_obj);   
+		elpTop_time = now() - str_time
+	
+		# start solving sub-problems
+		cutData_dic = Dict{Tuple{Int64,Int64},resData}()
+		timeSub_dic = Dict{Tuple{Int64,Int64},Millisecond}()
+		lss_dic = Dict{Tuple{Int64,Int64},Float64}()
+		numFoc_dic = Dict{Tuple{Int64,Int64},Int64}()
+	
+		acc_fl = getConvTol(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.sub.rng, benders_obj.algOpt.sub.int)
+	
+		if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
+		for (id,s) in enumerate(sort(collect(keys(benders_obj.sub))))
+			if benders_obj.algOpt.dist # distributed case
+				futData_dic[s] = runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
+			else # non-distributed case
+				cutData_dic[s], timeSub_dic[s], lss_dic[s], numFoc_dic[s] = runSub(benders_obj.sub[s], copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
+			end
+		end
+	
+		# top-problem without stabilization
+		if !isnothing(benders_obj.stab) runTopWithoutStab!(benders_obj, stabVar_obj) end
+	
+		# get results of sub-problems
+		if benders_obj.algOpt.dist
+			wait.(collect(values(futData_dic)))
+			for s in sort(collect(keys(benders_obj.sub)))
+				cutData_dic[s], timeSub_dic[s], lss_dic[s], numFoc_dic[s] = fetch(futData_dic[s])
+			end
+		end
+		
+		#endregion
+	
+		#region # * analyse results and update refinements
+	
+		# update results and stabilization
+		updateIteration!(benders_obj, cutData_dic, resData_obj, stabVar_obj)
+		# report on iteration
+		reportBenders!(benders_obj, resData_obj, elpTop_time, timeSub_dic, lss_dic, numFoc_dic)
+	
+		# check convergence and finish
+		rtn_boo = checkConvergence(benders_obj, lss_dic)
+		
+		#endregion
+		
+		benders_obj.itr.cnt.i = benders_obj.itr.cnt.i + 1
+		if rtn_boo break end
+		
+	end
+
+end
+
+# ! prepare stabilization
+function prepareStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, scale_dic::Dict{Symbol, NamedTuple}, runSubDist::Function)
+	
+	relVar_arr = benders_obj.complVar |> (z -> unique(vcat(filter(x -> !isempty(x), map(x -> collect(keys(z[x])), collect(keys(z))))...)))
+
+	benders_obj.stab, curBest_tup = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, benders_obj.complVar, relVar_arr, runSubDist)
+	benders_obj.itr = itrStatus(curBest_tup, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0), 1.0, Dict{Symbol,Float64}())
+	benders_obj.itr.res[:curBest] = curBest_tup.var.objVal
+end
+
+# ! write complicating constraints into top problem
+function writeComplCons!(benders_obj::bendersObj)
+
+	top_m = benders_obj.top
+	report_m = benders_obj.report.mod
+	complCns_dic = benders_obj.complVar
+	relVar_arr = unique(vcat(filter(x -> !isempty(x), map(x -> collect(keys(complCns_dic[x])), collect(keys(complCns_dic))))...))
+
+	# loop over types of complicating variables
+	if !isempty(relVar_arr)
+		addComplCns!(benders_obj.top, relVar_arr, complCns_dic)
+		push!(top_m.report, (2, "limit", "", "enforced at least one limit across scenarios which creates a complicating constraint, Benders can not converge in case of overlapping complicating constraints (e.g., a national and system-wide emission limit)"))
+		errorTest(unique(top_m.report), top_m.options, write = true)
+		produceMessage(report_m.options, report_m.report, 1, " - Added complicating constraints to top-problem", testErr = false, printErr = false)
+	end
+
+end
+
+# ! initialize reporting objects
+function initializeReporting!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, resInfo::NamedTuple)
+
+	# dataframe for reporting during iteration
+	itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_subTot = Float64[], time_sub = Array{Float64,1}[], numFoc = Array{Int,1}[], objName = String[])
+	nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], variable = Symbol[], value = Float64[], objName = String[])
+
+	# empty model just for reporting
+	report_m = @suppress anyModel(String[], inputFolder_ntup.results, objName = "decomposition" * info_ntup.name) 
+
+	# add column for active stabilization method
+	if !isempty(stabSetup_obj.method)
+		itrReport_df[!,:actMethod] = fill(Symbol(), size(itrReport_df, 1))
+		foreach(x -> itrReport_df[!,Symbol("dynPar_", x[1])] = Union{Float64,Vector{Float64}}[fill(Float64[], size(itrReport_df, 1))...], stabSetup_obj.method)
+		select!(itrReport_df, vcat(filter(x -> x != :objName, namesSym(itrReport_df)), [:objName]))
+	end
+
+	# extend reporting dataframe in case of near-optimal
+	if !isnothing(benders_obj.nearOpt.setup) itrReport_df[!,:objective] = fill("", size(itrReport_df, 1)) end
+
+	benders_obj.report = (itr = itrReport_df, nearOpt = nearOpt_df, res = resInfo, mod = report_m)
+
+end
+
+#endregion
+
+#region # * preparation and execution of monte-carlo analysis for dispatch
+
+# ! write files for fixing capacities and storage levels
+function writeVariableFix!(benders_obj::bendersObj, outDir_str::String)
+
+	# create directory
+	if isdir(outDir_str) rm(outDir_str; recursive = true) end
+	mkdir(outDir_str)
+		
+	top_m = benders_obj.top
+	parDef_dic = defineParameter(top_m.options, top_m.report)
+	
+	# write capacity values
+	for sys in (:tech, :exc)
+		for sSym in keys(benders_obj.itr.best.var.capa[sys])
+			for capaSym in filter(x -> !occursin("Season", string(x)), keys(benders_obj.itr.best.var.capa[sys][sSym]))
+				if capaSym != :mustCapaConv
+					# add residual capacities since not accounted for in variable
+					var_df = benders_obj.itr.best.var.capa[sys][sSym][capaSym] |> (x -> copy(innerjoin(x, select(getfield(top_m.parts, sys)[sSym].var[capaSym], vcat(intCol(x),[:var])), on = intCol(x))))
+					var_df[!,:value] = var_df[!,:value] .+ map(x -> x.constant, var_df[!,:var])
+					select!(var_df, Not([:var]))
+				else
+					var_df = copy(benders_obj.itr.best.var.capa[sys][sSym][capaSym])
+				end
+				# write parameter fle
+				par_sym = Symbol(capaSym,"Fix")
+				writeParameterFile!(top_m, var_df, par_sym, parDef_dic[par_sym], outDir_str * "par_" * string(sSym,"_",capaSym))
+			end
+		end
+	end
+	
+	# write storage levels
+	for sSym in keys(benders_obj.itr.best.var.stLvl)
+		writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sSym][:stLvl], :stLvlFix, parDef_dic[:stLvlFix], outDir_str * "par_" * string(sSym,"_stLvl"))
+	end
+
+end
+
+# ! create top-problem with fixed capacities to compute duals for monte carlo analysis
+function editTopForDuals!(benders_obj::bendersObj, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, stabSetup_obj::stabSetup, scale_dic::Dict{Symbol, NamedTuple}, algSetup_obj::algSetup, outDir_str::String, runSubDist::Function)
+
+	benders_obj.info = (name = benders_obj.info.name * "_Dual", frsLvl = benders_obj.info.frsLvl, supTsLvl = benders_obj.info.supTsLvl, repTsLvl = benders_obj.info.repTsLvl, shortExp = benders_obj.info.shortExp)
+
+	# create new top-problem
+	topDual_m = anyModel(vcat(inputFolder_ntup.in, [outDir_str]), inputFolder_ntup.results, holdFixed = true, objName = "topModelDuals_" * info_ntup.name, frsLvl = info_ntup.frsLvl, supTsLvl = info_ntup.supTsLvl, repTsLvl = info_ntup.repTsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, createVI = algSetup_obj.useVI);
+	topDual_m.subPro = tuple(0, 0)
+
+	prepareMod!(topDual_m, benders_obj.algOpt.opt, benders_obj.algOpt.threads)
+	sub_tup = collect(keys(benders_obj.sub))
+
+	# create separate variables for costs of subproblems
+	topDual_m.parts.obj.var[:cut] = map(y -> map(x -> y == 1 ? sub_tup[x][1] : sub_tup[x][2], 1:length(sub_tup)), 1:2) |> (z -> createVar(DataFrame(Ts_dis = z[1], scr = z[2]), "subCut", NaN, topDual_m.optModel, topDual_m.lock, topDual_m.sets, scaFac = 1e2))
+	push!(topDual_m.parts.obj.cns[:objEqn], (name = :aggCut, cns = @constraint(topDual_m.optModel, sum(topDual_m.parts.obj.var[:cut][!,:var]) == filter(x -> x.name == :benders, topDual_m.parts.obj.var[:objVar])[1,:var])))
+
+	benders_obj.top = topDual_m;
+	benders_obj.cuts = Array{Pair{Tuple{Int,Int},Union{resData}},1}()
+
+	stabSetup_obj.ini = :none
+
+	# initialize reporting
+	initializeReporting!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, benders_obj.report.res)
+
+	# write complicating constraints into top problem
+	writeComplCons!(benders_obj)
+
+	# prepare stabilization
+	prepareStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
+
 end
 
 #endregion
@@ -1376,12 +1563,12 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 end
 
 # write results for overall algorithm
-function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res_ntup::NamedTuple)
+function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, getSubStringDist::Function, res_ntup::NamedTuple)
 
 	res_ntup = benders_obj.report.res
 	# reporting on iteration
 	CSV.write(benders_obj.report.mod.options.outDir * "/iterationCuttingPlane_$(benders_obj.info.name).csv", benders_obj.report.itr)
-
+	
 	# reporting on near-optimal
 	if !isnothing(benders_obj.nearOpt.setup)
 		# get pareto-efficient near-optimal solutions
@@ -1389,12 +1576,12 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res
 		# write result file
 		CSV.write(benders_obj.report.mod.options.outDir * "/nearOptSol_$(benders_obj.info.name).csv", benders_obj.report.nearOpt)
 	end
-
+	
 	# run top-problem and sub-problems with optimal values fixed and write results
 	foreach(x -> CSV.write("$(benders_obj.top.options.outDir)/results_" * string(x) * "_$(benders_obj.top.options.outStamp).csv", benders_obj.itr.best.res[x]), keys(benders_obj.itr.best.res))
-
+	
 	if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
-
+	
 	@suppress begin
 		for (id,s) in enumerate(collect(keys(benders_obj.sub)))
 			if benders_obj.algOpt.dist # distributed case
@@ -1404,25 +1591,31 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res
 			end
 		end
 	end
-
+	
 	if benders_obj.algOpt.dist wait.(collect(values(futData_dic))) end
-
+	
 	# merge general results into single files
 	for res in res_ntup.general
+	
 		# get all relevant csv files
-		mergFile_arr = sort(filter(x -> occursin("results_" * string(res), x) && occursin(benders_obj.info.name, x), readdir(benders_obj.report.mod.options.outDir)))
-
+		mergFile_arr = ["$(benders_obj.top.options.outDir)/results_" * string(res) * "_$(benders_obj.top.options.outStamp).csv"]
+		if benders_obj.algOpt.dist # get name for sub-problems from workers
+			append!(mergFile_arr, map(x -> fetch(getSubStringDist(x + 1, res)), 1:length(benders_obj.sub)))
+		else # get name directly
+			append!(mergFile_arr, map(s -> benders_obj.sub[s] |> (z -> "$(z.options.outDir)/results_" * string(res) * "_$(z.options.outStamp).csv"), collect(keys(benders_obj.sub))))
+		end
+	
 		# read in files and merge into one
-		merged_df = CSV.read(benders_obj.report.mod.options.outDir * "/" * mergFile_arr[end], DataFrame, stringtype = String)
+		merged_df = CSV.read(mergFile_arr[1], DataFrame, stringtype = String)
 		merged_df[!,:scenario] .= "none"
-
+	
 		# add foresight column to costs if needed
 		if res == :cost && benders_obj.top.scr.frsLvl != benders_obj.top.supTs.lvl
 			merged_df[!,:timestep_foresight] .= "none"
 		end
-
-		for file in mergFile_arr[1:end-1]
-			add_df = CSV.read(benders_obj.report.mod.options.outDir * "/" * file, DataFrame, stringtype = String)
+	
+		for file in mergFile_arr[2:end]
+			add_df = CSV.read(file, DataFrame, stringtype = String)
 			# filter dispatch variables
 			filter!(x -> !(x.variable in ("capaConv", "capaStIn", "capaStOut", "capaStSize", "capaExc")), add_df)
 			if isempty(add_df) continue end
@@ -1436,13 +1629,13 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, res
 			end
 			append!(merged_df, add_df)
 		end
-
+	
 		merged_df[!,:objName] .= benders_obj.info.name 
-
+	
 		# write merged file and remove others
 		CSV.write(benders_obj.report.mod.options.outDir * "/" * "results_" * string(res) * "_" * benders_obj.info.name * ".csv", orderDf(merged_df))
-		rm.(benders_obj.report.mod.options.outDir .* "/" .* mergFile_arr)
-
+		rm.(mergFile_arr)
+	
 	end
 	
 end

@@ -477,10 +477,9 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 	allKeys_arr = collect(keys(varToPar_dic))
 
 	@threads for va in allKeys_arr 
-
 		# obtain all variables relevant for limits
 		allVar_df = getAllVariables(va, anyM)
-
+		
 		# filter cases without actual variables
 		if anyM.options.holdFixed filter!(x -> !isempty(x.var.terms), allVar_df) end
 
@@ -493,20 +492,19 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 		end
 
 		allLimit_df = DataFrame(var = AffExpr[])
-
+		
 		# ! loop over respective type of limits to obtain data
 		for lim in varToPar_dic[va]
 			if !(Symbol(va, lim) in keys(partLim.par)) continue end
 			
 			for stochLim in (false, true)
 				par_obj = copy(partLim.par[Symbol(va, lim)])
-				
 				# for stochLim = true, limits are enforced on the expected value across scenarios
 				stochVar_boo = !any(occursin.(["capa","Capa","exp","Exp","retro"],string(va)))
 				if stochLim 
 					if length(anyM.scr.scrProb) > 1 && stochVar_boo 
 						if :scr in namesSym(par_obj.data) par_obj.data = filter(x -> x.scr == 0, par_obj.data) end # filter relevant parameters
-						allRelVar_df = rename(computeExpVal(rename(allVar_df,:var => :agg), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl), :agg => :var) # transfer variables to expected values
+						allRelVar_df = vcat(filter(x -> x.scr == 0, allVar_df), rename(computeExpVal(rename(filter(x -> x.scr != 0, allVar_df),:var => :agg), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl), :agg => :var))
 					else
 						continue
 					end
@@ -524,9 +522,9 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 				if occursin("exc", lowercase(string(va))) && !occursin("Dir", string(lim)) && :R_from in namesSym(par_obj.data) && :R_to in namesSym(par_obj.data)
 					par_obj.data = vcat(par_obj.data, rename(par_obj.data, :R_from => :R_to, :R_to => :R_from))
 				end
-	
+				
 				limit_df = matchLimitParameter(allRelVar_df, par_obj, anyM)
-	
+				
 				# merge limit constraint to other limits for the same variables
 				limit_df = rename(limit_df, :val => lim)
 				join_arr = intersect(namesSym(allLimit_df), namesSym(limit_df))
@@ -535,6 +533,7 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 			end
 		end
 	
+		
 		# hold cases where undirected capacity is fixed for later error checking
 		if va == :capaExc && :FixDir in namesSym(allLimit_df)
 			allLimit_df[!,:dirFix] .= map(x -> isnothing(x), allLimit_df[!,:FixDir])
@@ -665,7 +664,7 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 		end
 
 		# ! check for suspicious entries for dispatch variables that are constrained summed over several scenarios
-		if va in (:use, :gen, :stExtOut, :stExtIn, :stIntOut, :stIntIn, :convOut, :convIn, :stOut, :stIn, :exc, :useExc, :crt, :lss, :trdBuy, :trdSell, :emission) && !isempty(anyM.scr.scr) && !(:scr in namesSym(allLimit_df))
+		if va in (:use, :gen, :stExtOut, :stExtIn, :stIntOut, :stIntIn, :convOut, :convIn, :stOut, :stIn, :stLvl, :exc, :useExc, :crt, :lss, :trdBuy, :trdSell, :emission) && !isempty(anyM.scr.scr) && !(:scr in namesSym(allLimit_df))
 			push!(anyM.report, (2, "limit", string(va), "enforced limit for sum of variables across all scenarios, to prevent this add a scenario column to the input file"))
 		end
 
