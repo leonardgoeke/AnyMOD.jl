@@ -32,11 +32,18 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			startSol_obj.objVal = value(top_m.parts.obj.var[:objVar][1,:var])
 			startRes_dic = Dict(x => reportResults(x, top_m, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
 
-			# remove fixing constraints again
+			# remove fixing constraints and variables again
 			for tSym in keys(top_m.parts.tech)
+				# constraint deletion
 				for c in filter(x -> any(occursin.(["absUp","absLow","cutSmall"], string(x))), collect(keys(top_m.parts.tech[tSym].cns)))
 					delete.(top_m.optModel, top_m.parts.tech[tSym].cns[c][!,:cns])
 					delete!(top_m.parts.tech[tSym].cns, c)
+				end
+				# variable deletion
+				for v in filter(x -> any(occursin.(["cutSmall","abs"], string(x))), collect(keys(top_m.parts.tech[tSym].var)))
+					foreach(x -> delete(top_m.optModel, collect(keys(x.terms))[1]), top_m.parts.tech[tSym].var[v][!,:var])
+					foreach(x -> unregister(top_m.optModel, Symbol(collect(keys(x.terms))[1])), top_m.parts.tech[tSym].var[v][!,:var])
+					delete!(top_m.parts.tech[tSym].var, v)
 				end
 			end
 			
@@ -44,6 +51,12 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 				for c in filter(x -> any(occursin.(["absUp","absLow","cutSmall"], string(x))), collect(keys(top_m.parts.exc[excSym].cns)))
 					delete.(top_m.optModel, top_m.parts.exc[excSym].cns[c][!,:cns])
 					delete!(top_m.parts.exc[excSym].cns, c)
+				end
+				# variable deletion
+				for v in filter(x -> any(occursin.(["cutSmall","abs"], string(x))), collect(keys(top_m.parts.exc[excSym].var)))
+					foreach(x -> delete(top_m.optModel, collect(keys(x.terms))[1]), top_m.parts.exc[excSym].var[v][!,:var])
+					foreach(x -> unregister(top_m.optModel, Symbol(collect(keys(x.terms))[1])), top_m.parts.exc[excSym].var[v][!,:var])
+					delete!(top_m.parts.exc[excSym].var, v)
 				end
 			end	
 		else
