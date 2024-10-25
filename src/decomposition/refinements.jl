@@ -39,10 +39,8 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 					delete.(top_m.optModel, top_m.parts.tech[tSym].cns[c][!,:cns])
 					delete!(top_m.parts.tech[tSym].cns, c)
 				end
-				println(tSym)
 				# variable deletion
 				for v in filter(x -> any(occursin.(["cutSmall","abs"], string(x))), collect(keys(top_m.parts.tech[tSym].var)))
-					println(v)
 					foreach(x -> delete(top_m.optModel, collect(keys(x.terms))[1]), top_m.parts.tech[tSym].var[v][!,:var])
 					foreach(x -> unregister(top_m.optModel, Symbol(collect(keys(x.terms))[1])), top_m.parts.tech[tSym].var[v][!,:var])
 					delete!(top_m.parts.tech[tSym].var, v)
@@ -56,7 +54,6 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 				end
 				# variable deletion
 				for v in filter(x -> any(occursin.(["cutSmall","abs"], string(x))), collect(keys(top_m.parts.exc[excSym].var)))
-					println(v)
 					foreach(x -> delete(top_m.optModel, collect(keys(x.terms))[1]), top_m.parts.exc[excSym].var[v][!,:var])
 					foreach(x -> unregister(top_m.optModel, Symbol(collect(keys(x.terms))[1])), top_m.parts.exc[excSym].var[v][!,:var])
 					delete!(top_m.parts.exc[excSym].var, v)
