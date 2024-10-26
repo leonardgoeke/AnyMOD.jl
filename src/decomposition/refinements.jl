@@ -744,7 +744,7 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 	@suppress begin
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
 		# solve only to optimality for fully accurate lower bound when close to optimum
-		if benders_obj.itr.gap < 0.1
+		if benders_obj.itr.gap < 0.5
 			set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 1)
 			set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", 1e-6)
 		else
@@ -755,6 +755,9 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 	end
 	solveModel!(benders_obj.top, [0, 2, 3], false)
 	checkIIS(benders_obj.top)
+
+	# delete cuts that not were binding for the defined number of iterations
+	deleteCuts!(benders_obj, true)
 
 	# obtain different objective values
 	benders_obj.itr.res[:topCostNoStab] = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
@@ -918,7 +921,7 @@ end
 #region # * other refinements
 
 # ! delete cuts that have not been binding for a while
-function deleteCuts!(benders_obj::bendersObj)
+function deleteCuts!(benders_obj::bendersObj, actDel_boo::Bool)
 	
 	top_m = benders_obj.top
 	# numer of iterations after which unused cuts are delted
@@ -927,9 +930,12 @@ function deleteCuts!(benders_obj::bendersObj)
 	if delCut_int < Inf
 		# tracking latest binding iteration for cuts
 		top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> abs(value(x.cns) / normalized_rhs(x.cns) - 1) < 1e-3 ? benders_obj.itr.cnt.i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
+		
 		# delete cuts that were not binding long enough
-		delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < benders_obj.itr.cnt.i, top_m.parts.obj.cns[:bendersCuts])[!,:cns])
-		filter!(x -> (x.actItr + delCut_int > benders_obj.itr.cnt.i), top_m.parts.obj.cns[:bendersCuts])
+		if actDel_boo
+			delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < benders_obj.itr.cnt.i, top_m.parts.obj.cns[:bendersCuts])[!,:cns])
+			filter!(x -> (x.actItr + delCut_int > benders_obj.itr.cnt.i), top_m.parts.obj.cns[:bendersCuts])
+		end
 	end
 end
 

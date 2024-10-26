@@ -403,7 +403,7 @@ function runTop(benders_obj::bendersObj)
 	checkIIS(benders_obj.top)
 
 	# delete cuts that not were binding for the defined number of iterations
-	deleteCuts!(benders_obj)
+	deleteCuts!(benders_obj, isnothing(stab_obj))
 
 	#endregion
 
