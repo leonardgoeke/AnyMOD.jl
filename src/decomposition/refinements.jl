@@ -741,9 +741,19 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 	removeStab!(benders_obj)
 
 	# solve problem
-	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
-	@suppress set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 1)
-	solveModel!(benders_obj.top, [0,3], false)
+	@suppress begin
+		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
+		# solve only to optimality for fully accurate lower bound when close to optimum
+		if benders_obj.itr.gap < 0.1
+			set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 1)
+			set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", 1e-6)
+		else
+			set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
+			set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", benders_obj.algOpt.top.feasTol)
+		end
+
+	end
+	solveModel!(benders_obj.top, [0, 2, 3], false)
 	checkIIS(benders_obj.top)
 
 	# obtain different objective values
