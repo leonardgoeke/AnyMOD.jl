@@ -944,7 +944,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 	
 		# check convergence and finish
 		rtn_boo = checkConvergence(benders_obj, lss_dic)
-		
+		printObject(benders_obj.top.parts.obj.cns[:bendersCuts], benders_obj.top)
 		#endregion
 		
 		benders_obj.itr.cnt.i = benders_obj.itr.cnt.i + 1
