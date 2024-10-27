@@ -350,12 +350,14 @@ function runTop(benders_obj::bendersObj)
 			if stab_obj.method[stab_obj.actMet] == :lvl1
 				stab_obj.dynPar[stab_obj.actMet] = opt_tup.lam * lvl_fl + (1 - opt_tup.lam) * stab_obj.objVal / benders_obj.top.options.scaFac.obj
 			else
+				println("Increase level and re-run to be feasible")
 				stab_obj.dynPar[stab_obj.actMet][:lvl] = opt_tup.lam * lvl_fl + (1 - opt_tup.lam) * stab_obj.objVal / benders_obj.top.options.scaFac.obj
 			end
 			set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
 			
             # remove stabilization if difference below optimality threshold
 			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap && stab_obj.method[stab_obj.actMet] == :lvl1
+				prinlnt("Remove level constraint to be feasible")
 				@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 				delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 			end
@@ -600,12 +602,13 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 				printIIS(mod_m) 
 			elseif !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) && numFoc_arr[1] != numFoc_arr[2] # try to solve again with any method, if increase of numeric focus did not help
 				set_optimizer_attribute(mod_m.optModel, "Method", 0)
-				optimize!(mod_m.optModel)
+				@suppress optimize!(mod_m.optModel)
 			end
 			break
 		else
 			numFoc_int = numFoc_int + 1
 		end
+		println("Rerun with numeric focus: ", numFoc_int)
 	end
 
 	return numFoc_int
@@ -899,6 +902,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Started iteration $(benders_obj.itr.cnt.i)", testErr = false, printErr = false)
 	
 		#region # * solve top-problem and (start) sub-problems
+		println("solve top with stabilization")
 		str_time = now()
 		resData_obj, stabVar_obj = runTop(benders_obj);   
 		elpTop_time = now() - str_time
@@ -923,6 +927,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		end
 	
 		# top-problem without stabilization
+		println("solve top without stabilization")
 		if !isnothing(benders_obj.stab) runTopWithoutStab!(benders_obj, stabVar_obj) end
 	
 		# get results of sub-problems
