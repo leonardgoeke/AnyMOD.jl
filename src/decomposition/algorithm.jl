@@ -596,7 +596,7 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 	numFoc_int = numFoc_arr[1]
 	while true
 		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_int)
-		optimize!(mod_m.optModel)
+		@suppress optimize!(mod_m.optModel)
 		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == numFoc_arr[end]
 			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
 				printIIS(mod_m) 
@@ -928,7 +928,10 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 	
 		# top-problem without stabilization
 		println("solve top without stabilization")
+		str22_time = now()
 		if !isnothing(benders_obj.stab) runTopWithoutStab!(benders_obj, stabVar_obj) end
+		elpTop22_time = now() - str22_time
+		println(elpTop22_time)
 	
 		# get results of sub-problems
 		if benders_obj.algOpt.dist

@@ -756,13 +756,13 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 	solveModel!(benders_obj.top, [0, 2, 3], false)
 	checkIIS(benders_obj.top)
 
-	# delete cuts that not were binding for the defined number of iterations
-	deleteCuts!(benders_obj, true)
-
 	# obtain different objective values
 	benders_obj.itr.res[:topCostNoStab] = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
 	benders_obj.itr.res[:estTotCostNoStab] = benders_obj.itr.res[:topCostNoStab] + value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
 	benders_obj.itr.res[:lowLimCost] = benders_obj.itr.res[:estTotCostNoStab]
+
+	# delete cuts that not were binding for the defined number of iterations
+	deleteCuts!(benders_obj, true)
 	
 	if benders_obj.nearOpt.cnt != 0 benders_obj.itr.res[:nearObjNoStab] = objective_value(benders_obj.top.optModel) end
 
