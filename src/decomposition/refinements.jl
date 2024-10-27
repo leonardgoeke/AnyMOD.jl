@@ -933,7 +933,7 @@ function deleteCuts!(benders_obj::bendersObj, actDel_boo::Bool)
 		
 		# delete cuts that were not binding long enough
 		if actDel_boo
-			delete.(top_m.optModel, filter(x -> x.actItr + delCut_int < benders_obj.itr.cnt.i, top_m.parts.obj.cns[:bendersCuts])[!,:cns])
+			delete.(top_m.optModel, filter(x -> x.actItr + delCut_int <= benders_obj.itr.cnt.i, top_m.parts.obj.cns[:bendersCuts])[!,:cns])
 			filter!(x -> (x.actItr + delCut_int > benders_obj.itr.cnt.i), top_m.parts.obj.cns[:bendersCuts])
 		end
 	end
