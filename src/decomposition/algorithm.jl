@@ -404,9 +404,6 @@ function runTop(benders_obj::bendersObj)
 	end
 	checkIIS(benders_obj.top)
 
-	# delete cuts that not were binding for the defined number of iterations
-	deleteCuts!(benders_obj, isnothing(stab_obj))
-
 	#endregion
 
 	#region # * write results
@@ -442,6 +439,9 @@ function runTop(benders_obj::bendersObj)
 		benders_obj.itr.res[:nearObj] = objective_value(benders_obj.top.optModel) 
 		if !isnothing(benders_obj.stab) benders_obj.itr.res[:thrStab] = 1 - normalized_rhs(benders_obj.stab.cns) / value(benders_obj.stab.cns) end
 	end
+
+	# track cuts there wer not binding for a certain number of iterations
+	trackCuts(benders_obj)
 	
 	#endregion
 
@@ -952,8 +952,12 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 	
 		# check convergence and finish
 		rtn_boo = checkConvergence(benders_obj, lss_dic)
-		printObject(benders_obj.top.parts.obj.cns[:bendersCuts], benders_obj.top)
+
+		# delete cuts that not were binding for the defined number of iterations
+		deleteCuts!(benders_obj)
+
 		#endregion
+
 		
 		benders_obj.itr.cnt.i = benders_obj.itr.cnt.i + 1
 		if rtn_boo break end

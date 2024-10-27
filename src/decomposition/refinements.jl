@@ -756,16 +756,16 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 	solveModel!(benders_obj.top, [0, 2, 3], false)
 	checkIIS(benders_obj.top)
 
+	# track cuts there wer not binding for a certain number of iterations
+	trackCuts(benders_obj)
+
 	# obtain different objective values
 	benders_obj.itr.res[:topCostNoStab] = value(sum(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
 	benders_obj.itr.res[:estTotCostNoStab] = benders_obj.itr.res[:topCostNoStab] + value(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
 	benders_obj.itr.res[:lowLimCost] = benders_obj.itr.res[:estTotCostNoStab]
-
-	# delete cuts that not were binding for the defined number of iterations
-	deleteCuts!(benders_obj, true)
 	
 	if benders_obj.nearOpt.cnt != 0 benders_obj.itr.res[:nearObjNoStab] = objective_value(benders_obj.top.optModel) end
-
+	
 end
 
 # check if switching criterium is met
@@ -920,22 +920,29 @@ end
 
 #region # * other refinements
 
-# ! delete cuts that have not been binding for a while
-function deleteCuts!(benders_obj::bendersObj, actDel_boo::Bool)
+# ! track and delete cuts that were not binding for a certain number of iterations
+function deleteCuts!(benders_obj::bendersObj)
 	
 	top_m = benders_obj.top
 	# numer of iterations after which unused cuts are delted
 	delCut_int = benders_obj.nearOpt.cnt == 0 ? benders_obj.algOpt.delCut : benders_obj.nearOpt.setup.delCut
 	
+	# tracking latest binding iteration for cuts
 	if delCut_int < Inf
-		# tracking latest binding iteration for cuts
+		delete.(top_m.optModel, filter(x -> x.actItr + delCut_int <= benders_obj.itr.cnt.i, top_m.parts.obj.cns[:bendersCuts])[!,:cns])
+		filter!(x -> (x.actItr + delCut_int > benders_obj.itr.cnt.i), top_m.parts.obj.cns[:bendersCuts])
+	end
+end
+
+function trackCuts(benders_obj::bendersObj)
+	
+	top_m = benders_obj.top
+	# numer of iterations after which unused cuts are delted
+	delCut_int = benders_obj.nearOpt.cnt == 0 ? benders_obj.algOpt.delCut : benders_obj.nearOpt.setup.delCut
+	
+	# delete cuts that were not binding long enough
+	if delCut_int < Inf
 		top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> abs(value(x.cns) / normalized_rhs(x.cns) - 1) < 1e-3 ? benders_obj.itr.cnt.i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
-		
-		# delete cuts that were not binding long enough
-		if actDel_boo
-			delete.(top_m.optModel, filter(x -> x.actItr + delCut_int <= benders_obj.itr.cnt.i, top_m.parts.obj.cns[:bendersCuts])[!,:cns])
-			filter!(x -> (x.actItr + delCut_int > benders_obj.itr.cnt.i), top_m.parts.obj.cns[:bendersCuts])
-		end
 	end
 end
 
