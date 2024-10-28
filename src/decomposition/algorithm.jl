@@ -596,7 +596,7 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 	numFoc_int = 1
 	while true
 		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_arr[numFoc_int])
-		@suppress optimize!(mod_m.optModel)
+		optimize!(mod_m.optModel)
 		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == length(numFoc_arr)
 			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
 				printIIS(mod_m) 
@@ -901,7 +901,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		#region # * solve top-problem and (start) sub-problems
 		println("solve top with stabilization")
 		str_time = now()
-		resData_obj, stabVar_obj = runTop(benders_obj);   
+		resData_obj, stabVar_obj = @suppress runTop(benders_obj);   
 		elpTop_time = now() - str_time
 	
 		# start solving sub-problems
@@ -916,7 +916,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		@suppress begin
 			for (id,s) in enumerate(sort(collect(keys(benders_obj.sub))))
 				if benders_obj.algOpt.dist # distributed case
-					futData_dic[s] = runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
+					futData_dic[s] = @suppress runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
 				else # non-distributed case
 					cutData_dic[s], timeSub_dic[s], lss_dic[s], numFoc_dic[s] = runSub(benders_obj.sub[s], copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
 				end
