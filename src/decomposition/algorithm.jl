@@ -593,22 +593,19 @@ end
 # ! solves a model increasing the numeric focus from starting value to maximum in infeasible
 function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo::Bool = true)
 
-	numFoc_int = numFoc_arr[1]
+	numFoc_int = 1
 	while true
-		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_int)
+		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_arr[numFoc_int])
 		@suppress optimize!(mod_m.optModel)
-		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == numFoc_arr[end]
+		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == length(numFoc_arr)
 			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
 				printIIS(mod_m) 
-			elseif !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) && numFoc_arr[1] != numFoc_arr[2] # try to solve again with any method, if increase of numeric focus did not help
-				set_optimizer_attribute(mod_m.optModel, "Method", 0)
-				@suppress optimize!(mod_m.optModel)
 			end
 			break
 		else
 			numFoc_int = numFoc_int + 1
 		end
-		println("Rerun with numeric focus: ", numFoc_int)
+		println("Rerun with numeric focus: ", numFoc_arr[numFoc_int])
 	end
 
 	return numFoc_int
