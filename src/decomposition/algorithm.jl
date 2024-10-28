@@ -608,7 +608,7 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 		println("Rerun with numeric focus: ", numFoc_arr[numFoc_int])
 	end
 
-	return numFoc_int
+	return numFoc_arr[numFoc_int]
 
 end
 
