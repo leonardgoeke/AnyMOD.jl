@@ -1473,7 +1473,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 
 	timeTop_fl = Dates.toms(elpTop_time) / Dates.toms(Second(1))
 	timeSubTot_fl = (benders_obj.algOpt.dist ? maximum(collect(values(timeSub_dic))) : sum(collect(values(timeSub_dic)))) |> (ms -> Dates.toms(ms) / Dates.toms(Second(1)))
-	timeWaitNoStab_fl = max(0, Dates.toms(elpNoStab_time) / Dates.toms(Second(1))) |> (x -> (benders_obj.algOpt.dist ? x - timeSubTot_fl : x))
+	timeWaitNoStab_fl = Dates.toms(elpNoStab_time) / Dates.toms(Second(1)) |> (x -> (benders_obj.algOpt.dist ? max(0, x - timeSubTot_fl) : x))
 	timeSub_arr = round.(getindex.(sort(collect(timeSub_dic)),2) |> (ms -> Dates.toms.(ms) / Dates.toms(Second(1)) ./ 60) , sigdigits = 3)
 	numFoc_arr = getindex.(sort(collect(numFoc_dic)),2)
 
