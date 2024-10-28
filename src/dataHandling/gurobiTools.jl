@@ -17,7 +17,7 @@ function printIIS(anyM::anyModel)
         # prints constraints within iis
         if !isempty(allConstr_arr)
             println("$(length(allConstr_arr)) of IIS in $(cns[1]) constraints.")
-            colSet_dic = Dict(x => Symbol(split(string(x), "_")[1]) for x in intCol(cns[2]))
+            colSet_dic = Dict(x => Symbol(split(string(x), "_")[1]) for x in filter(x -> !(x in (:actItr,:limCoef)), intCol(cns[2])))
             for iisConstr in allConstr_arr
                 row = cns[2][iisConstr,:]
                 dimStr_arr = map(x -> row[x] == 0 ?  "" : x == :id ? string(row[x]) : string(x, ": ", join(getUniName(row[x], anyM.sets[colSet_dic[x]]), " < ")), collect(keys(colSet_dic)))
