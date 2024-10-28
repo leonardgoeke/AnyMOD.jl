@@ -356,7 +356,7 @@ function runTop(benders_obj::bendersObj)
 			set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
 			
             # remove stabilization if difference below optimality threshold
-			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap && stab_obj.method[stab_obj.actMet] == :lvl1
+			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap && stab_obj.method[stab_obj.actMet] in (:lvl1, :qtrLvl)
 				prinlnt("Remove level constraint to be feasible")
 				@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 				delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
@@ -925,10 +925,9 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 	
 		# top-problem without stabilization
 		println("solve top without stabilization")
-		str22_time = now()
+		strNoStab_time = now()
 		if !isnothing(benders_obj.stab) runTopWithoutStab!(benders_obj, stabVar_obj) end
-		elpTop22_time = now() - str22_time
-		println(elpTop22_time)
+		elpNoStab_time = now() - strNoStab_time
 	
 		# get results of sub-problems
 		if benders_obj.algOpt.dist
@@ -945,7 +944,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		# update results and stabilization
 		updateIteration!(benders_obj, cutData_dic, resData_obj, stabVar_obj)
 		# report on iteration
-		reportBenders!(benders_obj, resData_obj, elpTop_time, timeSub_dic, lss_dic, numFoc_dic)
+		reportBenders!(benders_obj, resData_obj, elpTop_time, elpNoStab_time, timeSub_dic, lss_dic, numFoc_dic)
 	
 		# check convergence and finish
 		rtn_boo = checkConvergence(benders_obj, lss_dic)
@@ -995,7 +994,7 @@ end
 function initializeReporting!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, resInfo::NamedTuple)
 
 	# dataframe for reporting during iteration
-	itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_subTot = Float64[], time_sub = Array{Float64,1}[], numFoc = Array{Int,1}[], objName = String[])
+	itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_waitNoStab = Float64[], time_subTot = Float64[], time_sub = Array{Float64,1}[], numFoc = Array{Int,1}[], objName = String[])
 	nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], variable = Symbol[], value = Float64[], objName = String[])
 
 	# empty model just for reporting
@@ -1464,7 +1463,7 @@ end
 #region # * reporting
 
 # report on benders iteration
-function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_time::Millisecond, timeSub_dic::Dict{Tuple{Int64,Int64},Millisecond}, lss_dic::Dict{Tuple{Int64,Int64},Float64}, numFoc_dic::Dict{Tuple{Int64,Int64},Int64})
+function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_time::Millisecond, elpNoStab_time::Millisecond, timeSub_dic::Dict{Tuple{Int64,Int64},Millisecond}, lss_dic::Dict{Tuple{Int64,Int64},Float64}, numFoc_dic::Dict{Tuple{Int64,Int64},Int64})
 
 	report_obj = benders_obj.report
 	report_m = report_obj.mod
@@ -1474,6 +1473,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 
 	timeTop_fl = Dates.toms(elpTop_time) / Dates.toms(Second(1))
 	timeSubTot_fl = (benders_obj.algOpt.dist ? maximum(collect(values(timeSub_dic))) : sum(collect(values(timeSub_dic)))) |> (ms -> Dates.toms(ms) / Dates.toms(Second(1)))
+	timeWaitNoStab_fl = max(0, Dates.toms(elpNoStab_time) / Dates.toms(Second(1))) |> (x -> (benders_obj.algOpt.dist ? x - timeSubTot_fl : x))
 	timeSub_arr = round.(getindex.(sort(collect(timeSub_dic)),2) |> (ms -> Dates.toms.(ms) / Dates.toms(Second(1)) ./ 60) , sigdigits = 3)
 	numFoc_arr = getindex.(sort(collect(numFoc_dic)),2)
 
@@ -1482,7 +1482,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 	else
 		produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Objective: $(benders_obj.nearOpt.setup.obj[benders_obj.nearOpt.cnt][1]), Objective value: $(round(benders_obj.itr.res[:nearObj], sigdigits = 8)), Feasibility gap: $(round(benders_obj.itr.gap, sigdigits = 4))", testErr = false, printErr = false)
 	end
-	produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Time for top: $timeTop_fl Time for sub: $timeSubTot_fl", testErr = false, printErr = false)
+	produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Time for top: $timeTop_fl, Time for sub: $timeSubTot_fl, Waiting for top without stabilisation: $timeWaitNoStab_fl", testErr = false, printErr = false)
 
 	if Dates.value(floor(now() - report_m.options.startTime, Dates.Minute(1))) > benders_obj.algOpt.timeLim
 		produceMessage(report_m.options, report_m.report, 1, " - Aborted due to time-limit!", testErr = false, printErr = false)
@@ -1500,7 +1500,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 
 	# ! iteration reporting
 	etr_arr = Pair{Symbol,Any}[:i => itr_obj.cnt.i, :lowCost => itr_obj.res[:lowLimCost], :bestObj => itr_obj.res[:curBest], :gap => benders_obj.itr.gap, :curCost => itr_obj.res[:actTotCost],
-					:time_ges => Dates.value(floor(now() - report_obj.mod.options.startTime, Dates.Second(1)))/60, :time_top => timeTop_fl/60, :time_subTot => timeSubTot_fl/60, :time_sub => timeSub_arr, :numFoc => numFoc_arr, :objName => benders_obj.info.name]
+					:time_ges => Dates.value(floor(now() - report_obj.mod.options.startTime, Dates.Second(1)))/60, :time_top => timeTop_fl/60, :time_waitNoStab => timeWaitNoStab_fl/60, :time_subTot => timeSubTot_fl/60, :time_sub => timeSub_arr, :numFoc => numFoc_arr, :objName => benders_obj.info.name]
 
 	# add info about stabilization
 	if !isnothing(benders_obj.stab) 
