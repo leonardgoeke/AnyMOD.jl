@@ -357,7 +357,7 @@ function runTop(benders_obj::bendersObj)
 			
             # remove stabilization if difference below optimality threshold
 			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap && stab_obj.method[stab_obj.actMet] in (:lvl1, :qtrLvl)
-				prinlnt("Remove level constraint to be feasible")
+				println("Remove level constraint to be feasible")
 				@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 				delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 			end
@@ -602,6 +602,7 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 				printIIS(mod_m) 
 			end
 			break
+			println("finished")
 		else
 			numFoc_int = numFoc_int + 1
 		end
