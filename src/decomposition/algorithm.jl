@@ -357,7 +357,7 @@ function runTop(benders_obj::bendersObj)
 			
             # remove stabilization if difference below optimality threshold
 			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap && stab_obj.method[stab_obj.actMet] in (:lvl1, :qtrLvl)
-				prinlnt("Remove level constraint to be feasible")
+				println("Remove level constraint to be feasible")
 				@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 				delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 			end
@@ -596,7 +596,7 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 	numFoc_int = 1
 	while true
 		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_arr[numFoc_int])
-		@suppress optimize!(mod_m.optModel)
+		optimize!(mod_m.optModel)
 		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == length(numFoc_arr)
 			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
 				printIIS(mod_m) 
@@ -608,7 +608,7 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 		println("Rerun with numeric focus: ", numFoc_arr[numFoc_int])
 	end
 
-	return numFoc_int
+	return numFoc_arr[numFoc_int]
 
 end
 
@@ -916,7 +916,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		@suppress begin
 			for (id,s) in enumerate(sort(collect(keys(benders_obj.sub))))
 				if benders_obj.algOpt.dist # distributed case
-					futData_dic[s] = runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
+					futData_dic[s] = @suppress runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
 				else # non-distributed case
 					cutData_dic[s], timeSub_dic[s], lss_dic[s], numFoc_dic[s] = runSub(benders_obj.sub[s], copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
 				end
@@ -1516,7 +1516,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 
 	timeTop_fl = Dates.toms(elpTop_time) / Dates.toms(Second(1))
 	timeSubTot_fl = (benders_obj.algOpt.dist ? maximum(collect(values(timeSub_dic))) : sum(collect(values(timeSub_dic)))) |> (ms -> Dates.toms(ms) / Dates.toms(Second(1)))
-	timeWaitNoStab_fl = max(0, Dates.toms(elpNoStab_time) / Dates.toms(Second(1))) |> (x -> (benders_obj.algOpt.dist ? x - timeSubTot_fl : x))
+	timeWaitNoStab_fl = Dates.toms(elpNoStab_time) / Dates.toms(Second(1)) |> (x -> (benders_obj.algOpt.dist ? max(0, x - timeSubTot_fl) : x))
 	timeSub_arr = round.(getindex.(sort(collect(timeSub_dic)),2) |> (ms -> Dates.toms.(ms) / Dates.toms(Second(1)) ./ 60) , sigdigits = 3)
 	numFoc_arr = getindex.(sort(collect(numFoc_dic)),2)
 

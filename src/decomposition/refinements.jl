@@ -742,7 +742,7 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 
 	# solve problem
 	@suppress begin
-		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
+		set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
 		# solve only to optimality for fully accurate lower bound when close to optimum
 		if benders_obj.itr.gap < 0.5
 			set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 1)
@@ -753,7 +753,7 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 		end
 
 	end
-	solveModel!(benders_obj.top, [0, 2, 3], false)
+	solveModel!(benders_obj.top, [0, 2, 3], true)
 	checkIIS(benders_obj.top)
 
 	# track cuts there wer not binding for a certain number of iterations
