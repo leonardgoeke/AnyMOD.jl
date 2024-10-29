@@ -602,7 +602,6 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 				printIIS(mod_m) 
 			end
 			break
-			println("finished")
 		else
 			numFoc_int = numFoc_int + 1
 		end
@@ -902,7 +901,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		#region # * solve top-problem and (start) sub-problems
 		println("solve top with stabilization")
 		str_time = now()
-		resData_obj, stabVar_obj = @suppress runTop(benders_obj);   
+		resData_obj, stabVar_obj = runTop(benders_obj);   
 		elpTop_time = now() - str_time
 	
 		# start solving sub-problems
