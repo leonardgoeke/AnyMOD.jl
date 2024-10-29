@@ -733,7 +733,7 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 end
 
 # ! create container for expression with limiting constraints
-function createLimitCont(allLimit_df::DataFrame, va::Symbol, cns_dic::Dict{Symbol,cnsCont} ,anyM::anyModel)
+function createLimitCont(allLimit_df::DataFrame, va::Symbol, cns_dic::Dict{Symbol,cnsCont}, anyM::anyModel; scalEq_boo::Bool = true)
 	
 	limitCol_arr = intersect(namesSym(allLimit_df), (:Fix, :Up, :Low))
 	signLim_dic= Dict(:Up => :smaller, :Low => :greater, :Fix => :equal, :UpDir => :smaller, :LowDir => :greater, :FixDir => :equal)
@@ -749,8 +749,7 @@ function createLimitCont(allLimit_df::DataFrame, va::Symbol, cns_dic::Dict{Symbo
 		# prepare, scale and save constraints to dictionary
 		relLim_df[!,:cnsExpr] = map(x -> x.var - x.Lim, eachrow(relLim_df))
 		relLim_df = orderDf(relLim_df[!,[intCol(relLim_df)..., :cnsExpr]])
-
-		scaleCnsExpr!(relLim_df, anyM.options.coefRng, anyM.options.checkRng)
+		if scalEq_boo scaleCnsExpr!(relLim_df, anyM.options.coefRng, anyM.options.checkRng) end
 		cns_dic[Symbol(va,lim)] = cnsCont(relLim_df, signLim_dic[lim])
 
 		produceMessage(anyM.options, anyM.report, 3, " - Created constraints for $(lim in (:Up, :UpDir) ? "upper" : (lim in (:Low, :LowDir) ? "lower" : "fixed")) limit of variable $va")

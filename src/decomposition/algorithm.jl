@@ -1022,13 +1022,14 @@ end
 function writeVariableFix!(benders_obj::bendersObj, outDir_str::String)
 
 	# create directory
-	if isdir(outDir_str) rm(outDir_str; recursive = true) end
-	mkdir(outDir_str)
+	restDir!(outDir_str)
 		
 	top_m = benders_obj.top
 	parDef_dic = defineParameter(top_m.options, top_m.report)
 	
 	# write capacity values
+	capaDir_str = outDir_str * "capacityFixes/" 
+	restDir!(capaDir_str)
 	for sys in (:tech, :exc)
 		for sSym in keys(benders_obj.itr.best.var.capa[sys])
 			for capaSym in filter(x -> !occursin("Season", string(x)), keys(benders_obj.itr.best.var.capa[sys][sSym]))
@@ -1042,14 +1043,18 @@ function writeVariableFix!(benders_obj::bendersObj, outDir_str::String)
 				end
 				# write parameter fle
 				par_sym = Symbol(capaSym,"Fix")
-				writeParameterFile!(top_m, var_df, par_sym, parDef_dic[par_sym], outDir_str * "par_" * string(sSym,"_",capaSym))
+				writeParameterFile!(top_m, var_df, par_sym, parDef_dic[par_sym], capaDir_str * "par_" * string(sSym,"_",capaSym))
 			end
 		end
 	end
 	
 	# write storage levels
+	stDir_arr = outDir_str .* ["storageFixes/", "storageFixesInter/"]	
+	restDir!.(stDir_arr)
+	
 	for sSym in keys(benders_obj.itr.best.var.stLvl)
-		writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sSym][:stLvl], :stLvlFix, parDef_dic[:stLvlFix], outDir_str * "par_" * string(sSym,"_stLvl"))
+		dir_str = top_m.parts.tech[sSym].stCyc != -1 ? stDir_arr[1] : stDir_arr[2]
+		writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sSym][:stLvl], :stLvlFix, parDef_dic[:stLvlFix], dir_str * "par_" * string(sSym,"_stLvl"))
 	end
 
 end
@@ -1083,6 +1088,44 @@ function editTopForDuals!(benders_obj::bendersObj, inputFolder_ntup::NamedTuple{
 
 	# prepare stabilization
 	prepareStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
+
+end
+
+# ! write dual values on storage and limits for montecarlo
+function writeDualVariable!(benders_obj, outDir_str)
+
+	# prepare object
+	top_m = benders_obj.top
+	parDef_dic = defineParameter(top_m.options, top_m.report)
+
+	# prepare model
+	removeStab!(benders_obj)
+	optimize!(top_m.optModel)
+
+	# prepare directory
+	dualDir_str = outDir_str * "dualValues/"
+	restDir!(dualDir_str)
+
+	# write dual variables on limits
+	for lim in filter(x ->  occursin("Benders", string(x)), keys(top_m.parts.lim.cns))
+		if lim == :emissionBendersComUp
+			cns_df = copy(top_m.parts.lim.cns[lim])
+			cns_df[!,:value] = dual.(cns_df[!,:cns]) .* (-1) .* top_m.options.scaFac.obj
+		else
+			error("Extracting of dual for Monte Carlo simulation only supported for emission constraints so far.")
+		end
+		writeParameterFile!(top_m, select(cns_df, Not([:cns])), :emissionPrc, parDef_dic[:emissionPrc], dualDir_str * "par_" * string(lim))
+	end
+
+	# write dual and reference level for inter storage
+	for sSym in filter(x -> top_m.parts.tech[x].stCyc == -1, collect(keys(benders_obj.itr.best.var.stLvl)))	
+		# write dual on storage level
+		cns_df = copy(top_m.parts.tech[sSym].cns[:expcStLvl])
+		cns_df[!,:value] = dual.(cns_df[!,:cns]) .* top_m.options.scaFac.obj
+		writeParameterFile!(top_m, select(cns_df, Not([:cns])), :costStLvlRefMonte, parDef_dic[:costStLvlRefMonte], dualDir_str * "par_" * string(sSym,"_stLvlCost"))
+		# write reference storage level
+		writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sSym][:stLvl], :stLvlRefMonte, parDef_dic[:stLvlRefMonte], dualDir_str * "par_" * string(sSym,"_stLvlRef"))
+	end
 
 end
 
@@ -1450,7 +1493,7 @@ function addComplCns!(top_m::anyModel, relVar_arr::Vector{Symbol}, complCns_dic:
 		allCompl_df[!,:var] = aggDivVar(topVar_df, allCompl_df, tuple(intCol(allCompl_df)...), top_m.sets)
 
 		cns_dic = Dict{Symbol,cnsCont}()
-		cns_dic = createLimitCont(allCompl_df, compl, cns_dic, top_m)
+		cns_dic = createLimitCont(allCompl_df, compl, cns_dic, top_m, scalEq_boo = false)
 		
 		for cnsSym in keys(cns_dic)
 			top_m.parts.lim.cns[cnsSym] = createCns(cns_dic[cnsSym], top_m.optModel, top_m.options.holdFixed)
