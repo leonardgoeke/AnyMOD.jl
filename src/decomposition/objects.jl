@@ -25,11 +25,12 @@ mutable struct stabSetup
 	method::Tuple # method(s) for stabilization
 	srsThr::Float64 # threshold for serious step
 	ini::Symbol # rule for stabilization (:none will skip stabilization)
+	solveNoStab::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}} 
 	switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} # rule to switch between different methods
 	weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} # weight of variables in stabilization
 	
-	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_sym::Symbol, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 10, avgImp = 1e-5, itrAvg = 5), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
-		return new(method_tup, srsThr_fl, ini_sym, switch, weight)
+	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_sym::Symbol, solveNoStab::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 10, avgImp = 1e-5, itrAvg = 5), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
+		return new(method_tup, srsThr_fl, ini_sym, solveNoStab, switch, weight)
 	end
 end
 
@@ -84,6 +85,7 @@ end
 mutable struct stabObj
 	method::Array{Symbol,1} # array of method names used for stabilization
 	methodOpt::Array{NamedTuple,1} # array of options for adjustment of stabilization parameters
+	solveNoStab::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}} 
 	srsThr::Float64 # threshold for serious step
 	ruleSw::Union{NamedTuple{(), Tuple{}}, NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}}} # rule for switching between stabilization methods
 	weight::NamedTuple{(:capa,:capaStSize,:stLvl, :lim), NTuple{4, Float64}} # weight of variables in stabilization
@@ -94,7 +96,7 @@ mutable struct stabObj
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
 	
-	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, top_m::anyModel)
+	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, solveNoStab_ntup::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}},  top_m::anyModel)
 		stab_obj = new()
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64,Float64,Int64}})
@@ -106,6 +108,7 @@ mutable struct stabObj
 		end
 
 		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup, lowBd_fl, resData_obj.objVal, top_m)
+		stab_obj.solveNoStab = solveNoStab_ntup 
 
 		# set other fields
 		stab_obj.srsThr = srsThr_fl
@@ -131,6 +134,7 @@ end
 mutable struct countItr
 	i::Int
 	srs::Int
+	nextNoStab::Int
 	null::Int
 end
 
@@ -167,7 +171,6 @@ mutable struct bendersObj
 		# initialize reporting
 		initializeReporting!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, resInfo)
 
-	
 		#endregion
 
         #region # * create top- and sub-problems

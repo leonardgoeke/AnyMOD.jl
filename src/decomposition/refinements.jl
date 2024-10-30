@@ -135,7 +135,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 
 		#region # * initialize stabilization 
 
-		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.srsThr, stabSetup_obj.switch, stabSetup_obj.weight, startSol_obj, lowBd_fl, benders_obj.top);
+		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.srsThr, stabSetup_obj.switch, stabSetup_obj.weight, startSol_obj, lowBd_fl, stabSetup_obj.solveNoStab, benders_obj.top);
 		centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, report_m);
 
 		#endregion
@@ -632,8 +632,11 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::
 			end
 		end
 	elseif stab_obj.method[x_int] == :qtrLvl
-		stab_obj.dynPar[x_int][:lvl] = (opt_tup.lam * itr_obj.res[:estTotCostNoStab]  + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
-		stab_obj.dynPar[x_int][:qtr] = getConvTol(itr_obj.gap, tarGap_fl, [opt_tup.startRad, opt_tup.endRad], Symbol(opt_tup.inter))
+		# avoid decreasing the level parameter at non serious step to prevent infeasible top problem
+		low_fl = srsStep_boo ? itr_obj.res[:estTotCostNoStab] : max(itr_obj.res[:estTotCostNoStab], stab_obj.dynPar[stab_obj.actMet][:lvl]) 
+		# enforce parameter
+		stab_obj.dynPar[x_int][:lvl] = (opt_tup.lam * low_fl + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
+		stab_obj.dynPar[x_int][:qtr] = interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.startRad, opt_tup.endRad], Symbol(opt_tup.inter))
 	elseif stab_obj.method[x_int] == :dsb # adjust doubly stabilised method, implementation according to doi.org/10.1007/s10107-015-0873-6
 		stab_obj.dynPar[x_int][:my] = min(1 - itr_obj.res[:lvlDual], opt_tup.myMax + 1.0)
 		if srsStep_boo
@@ -789,10 +792,14 @@ function removeStab!(benders_obj::bendersObj)
 		delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 	elseif stab_obj.method[stab_obj.actMet] == :qtrLvl
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
+		# remove level bound
 		if has_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 			delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 		end
-		delete(benders_obj.top.optModel, stab_obj.cns) # remove trust-region
+		# remove trust-region
+		if is_valid(benders_obj.top.optModel, stab_obj.cns) 
+			delete(benders_obj.top.optModel, stab_obj.cns) 
+		end
 	elseif stab_obj.method[stab_obj.actMet] == :dsb
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 		delete(benders_obj.top.optModel, stab_obj.cns)
@@ -946,8 +953,8 @@ function trackCuts(benders_obj::bendersObj)
 	end
 end
 
-# ! interpolate value based on current gap (used for convergence tolerance of subproblems or radius in qtrLvl stabilization)
-function getConvTol(gapCur_fl::Float64, gapEnd_fl::Float64, rng_arr::Array{Float64, 1}, int_sym::Symbol)
+# ! interpolate iteration parameter based on current gap (used for convergence tolerance of subproblems or radius in qtrLvl stabilization)
+function interItrPar(gapCur_fl::Float64, gapEnd_fl::Float64, rng_arr::Union{Array{Float64, 1}, Array{Int, 1}}, int_sym::Symbol)
 
 	if int_sym == :lin
 		m = (rng_arr[1] -rng_arr[2])/(1-gapEnd_fl)

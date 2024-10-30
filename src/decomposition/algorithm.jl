@@ -328,7 +328,7 @@ function runTop(benders_obj::bendersObj)
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
 	end
-	solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc, false)
+	@suppress solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[1:1], false)
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -343,25 +343,59 @@ function runTop(benders_obj::bendersObj)
 			@suppress optimize!(benders_obj.top.optModel)
         end
 
-		while stab_obj.method[stab_obj.actMet] in (:lvl1, :qtrLvl) && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+		while stab_obj.method[stab_obj.actMet] == :lvl1 && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 			
 			# increase upper bound
-			lvl_fl = stab_obj.method[stab_obj.actMet] == :lvl1 ? stab_obj.dynPar[stab_obj.actMet] : stab_obj.dynPar[stab_obj.actMet][:lvl]
-			if stab_obj.method[stab_obj.actMet] == :lvl1
-				stab_obj.dynPar[stab_obj.actMet] = opt_tup.lam * lvl_fl + (1 - opt_tup.lam) * stab_obj.objVal / benders_obj.top.options.scaFac.obj
-			else
-				println("Increase level and re-run to be feasible")
-				stab_obj.dynPar[stab_obj.actMet][:lvl] = opt_tup.lam * lvl_fl + (1 - opt_tup.lam) * stab_obj.objVal / benders_obj.top.options.scaFac.obj
-			end
+			lvl_fl = stab_obj.dynPar[stab_obj.actMet]
+			stab_obj.dynPar[stab_obj.actMet] = opt_tup.lam * lvl_fl + (1 - opt_tup.lam) * stab_obj.objVal / benders_obj.top.options.scaFac.obj
 			set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
 			
             # remove stabilization if difference below optimality threshold
-			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap && stab_obj.method[stab_obj.actMet] in (:lvl1, :qtrLvl)
-				println("Remove level constraint to be feasible")
+			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap
 				@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 				delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 			end
-			@suppress optimize!(benders_obj.top.optModel)
+			optimize!(benders_obj.top.optModel)
+        end
+
+		if stab_obj.method[stab_obj.actMet] == :qtrLvl && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+			
+			low_fl = stab_obj.dynPar[stab_obj.actMet][:lvl]
+			up_fl = stab_obj.objVal / benders_obj.top.options.scaFac.obj
+
+			# increase level parameter almost until the upper bound
+			for lvl_fl in collect(low_fl:((up_fl-low_fl)/3):up_fl * (1 - benders_obj.algOpt.gap))[2:end]
+				println("increase level to: ", lvl_fl)
+				# increase level parameter
+				stab_obj.dynPar[stab_obj.actMet][:lvl] = lvl_fl
+				set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
+				# try to re-solve
+				@suppress optimize!(benders_obj.top.optModel)
+				if termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) break end
+			end
+
+			# other steps to create feasible model
+			if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+				
+				# try solving with next higher numeric focus
+				println("increase numeric focus")
+				@suppress solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:2], false)
+				
+				# delete quadratic trust-region
+				if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+					println("delete trust region")
+					delete(benders_obj.top.optModel, stab_obj.cns)
+					@suppress solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], false)
+
+					# solve without stabilization as last resort
+					if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+						println("remove all stabilization")
+						@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
+						delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
+						@suppress solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], false)
+					end
+				end
+			end
         end
 
 		# if no solution and proximal bundle stabilization, remove penalty term temporarily
@@ -763,7 +797,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 
 	itr_obj = benders_obj.itr
 	best_obj = itr_obj.best
-	nameStab_dic = Dict(:lvl1 => "level bundle", :lvl2 => "level bundle", :qtr => "quadratic trust-region", :prx => "proximal bundle", :box => "box-step")
+	nameStab_dic = Dict(:lvl1 => "level bundle", :lvl2 => "level bundle", :qtr => "quadratic trust-region", :prx => "proximal bundle", :box => "box-step", :qtrLvl => "level bundle with trust-region")
 
 	# store information for cuts
 	benders_obj.cuts = copy(collect(cutData_dic))
@@ -910,7 +944,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		lss_dic = Dict{Tuple{Int64,Int64},Float64}()
 		numFoc_dic = Dict{Tuple{Int64,Int64},Int64}()
 	
-		acc_fl = getConvTol(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.sub.rng, benders_obj.algOpt.sub.int)
+		acc_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.sub.rng, benders_obj.algOpt.sub.int)
 	
 		if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
 		@suppress begin
@@ -924,9 +958,22 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		end
 	
 		# top-problem without stabilization
-		println("solve top without stabilization")
+
 		strNoStab_time = now()
-		if !isnothing(benders_obj.stab) runTopWithoutStab!(benders_obj, stabVar_obj) end
+		if !isnothing(benders_obj.stab) 
+			# check if top problem without stabilization should be solved again
+			if benders_obj.itr.cnt.i >= benders_obj.itr.cnt.nextNoStab
+				runTopWithoutStab!(benders_obj, stabVar_obj)
+				# compute next iteration to solve top problem
+				par_ntup = benders_obj.stab.solveNoStab
+				gap_fl = 1 - benders_obj.itr.res[:lowLimCost] / benders_obj.itr.res[:curBest]
+				benders_obj.itr.cnt.nextNoStab = benders_obj.itr.cnt.i + Int(floor(interItrPar(gap_fl, benders_obj.algOpt.gap, reverse(collect(1:par_ntup.upper)), par_ntup.inter)))
+				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Solved top problem without stabilizatio. Next solve in iteration $(benders_obj.itr.cnt.nextNoStab)", testErr = false, printErr = false)
+			else
+				# use results of last correct solve as lower bound
+				benders_obj.itr.res[:lowLimCost] = benders_obj.itr.res[:estTotCostNoStab]
+			end
+		end
 		elpNoStab_time = now() - strNoStab_time
 	
 		# get results of sub-problems
@@ -953,8 +1000,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		deleteCuts!(benders_obj)
 
 		#endregion
-
-		
+	
 		benders_obj.itr.cnt.i = benders_obj.itr.cnt.i + 1
 		if rtn_boo break end
 		
@@ -968,7 +1014,7 @@ function prepareStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFo
 	relVar_arr = benders_obj.complVar |> (z -> unique(vcat(filter(x -> !isempty(x), map(x -> collect(keys(z[x])), collect(keys(z))))...)))
 
 	benders_obj.stab, curBest_tup = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, benders_obj.complVar, relVar_arr, runSubDist)
-	benders_obj.itr = itrStatus(curBest_tup, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0), 1.0, Dict{Symbol,Float64}())
+	benders_obj.itr = itrStatus(curBest_tup, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0, 0), 1.0, Dict{Symbol,Float64}())
 	benders_obj.itr.res[:curBest] = curBest_tup.var.objVal
 end
 
