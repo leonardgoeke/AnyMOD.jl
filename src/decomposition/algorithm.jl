@@ -969,7 +969,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 				# compute next iteration to solve top problem
 				par_ntup = benders_obj.stab.solveNoStab
 				gap_fl = 1 - benders_obj.itr.res[:lowLimCost] / benders_obj.itr.res[:curBest]
-				benders_obj.itr.cnt.nextNoStab = benders_obj.itr.cnt.i + Int(floor(interItrPar(gap_fl, benders_obj.algOpt.gap, reverse(collect(1:par_ntup.upper)), par_ntup.inter)))
+				benders_obj.itr.cnt.nextNoStab = benders_obj.itr.cnt.i + Int(ceil(interItrPar(gap_fl, benders_obj.algOpt.gap, [par_ntup.upper,1], par_ntup.inter)))
 				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Solved top problem without stabilizatio. Next solve in iteration $(benders_obj.itr.cnt.nextNoStab)", testErr = false, printErr = false)
 			else
 				# use results of last correct solve as lower bound
