@@ -793,7 +793,7 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 end
 
 # ! update results and stabilization
-function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64,Int64},resData}, resData_obj::resData, stabVar_obj::resData)
+function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64,Int64},resData}, resData_obj::resData, curRes_dic::Dict{Symbol,DataFrame}, stabVar_obj::resData)
 
 	itr_obj = benders_obj.itr
 	best_obj = itr_obj.best
@@ -820,7 +820,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	if benders_obj.nearOpt.cnt == 0 ? (itr_obj.res[:actTotCost] < best_obj.var.objVal) : (itr_obj.res[:nearObj] <= best_obj.var.objVal && itr_obj.gap <= benders_obj.algOpt.gap)
 		best_obj.var.objVal = benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:actTotCost] : itr_obj.res[:nearObj]
 		best_obj.var.capa, best_obj.var.stLvl, best_obj.var.lim = map(x -> getfield(resData_obj,x), [:capa, :stLvl, :lim])
-		@suppress foreach(x -> best_obj.res[x] = reportResults(x, benders_obj.top, rtnOpt = (:csvDf,)), benders_obj.report.res.general)
+		@suppress foreach(x -> best_obj.res[x] = curRes_dic[x], benders_obj.report.res.general)
 		itr_obj.res[:curBest] = best_obj.var.objVal
 	end
 
@@ -935,7 +935,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		#region # * solve top-problem and (start) sub-problems
 		println("solve top with stabilization")
 		str_time = now()
-		resData_obj, stabVar_obj = runTop(benders_obj);   
+		resData_obj, stabVar_obj = runTop(benders_obj);
 		elpTop_time = now() - str_time
 	
 		# start solving sub-problems
@@ -956,9 +956,11 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 				end
 			end
 		end
+
+		# save current results
+		curRes_dic = Dict(x => reportResults(x, benders_obj.top, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
 	
 		# top-problem without stabilization
-
 		strNoStab_time = now()
 		if !isnothing(benders_obj.stab) 
 			# check if top problem without stabilization should be solved again
@@ -972,6 +974,8 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 			else
 				# use results of last correct solve as lower bound
 				benders_obj.itr.res[:lowLimCost] = benders_obj.itr.res[:estTotCostNoStab]
+				# remove stabilization
+				removeStab!(benders_obj)
 			end
 		end
 		elpNoStab_time = now() - strNoStab_time
@@ -989,7 +993,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		#region # * analyse results and update refinements
 	
 		# update results and stabilization
-		updateIteration!(benders_obj, cutData_dic, resData_obj, stabVar_obj)
+		updateIteration!(benders_obj, cutData_dic, resData_obj, curRes_dic, stabVar_obj)
 		# report on iteration
 		reportBenders!(benders_obj, resData_obj, elpTop_time, elpNoStab_time, timeSub_dic, lss_dic, numFoc_dic)
 	
