@@ -632,8 +632,12 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_arr[numFoc_int])
 		@suppress optimize!(mod_m.optModel)
 		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == length(numFoc_arr)
-			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
-				printIIS(mod_m) 
+			if  !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
+				if checkInfeas_boo
+					printIIS(mod_m)
+				else
+					optimize!(mod_m.optModel)
+				end
 			end
 			break
 		else
