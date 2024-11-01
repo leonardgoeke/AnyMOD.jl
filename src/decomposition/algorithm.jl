@@ -12,7 +12,7 @@ function heuristicSolve(modOpt_tup::NamedTuple, t_int::Int, opt_obj::DataType; r
 	prepareMod!(heu_m, opt_obj, t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
 	set_optimizer_attribute(heu_m.optModel, "Crossover", 0)
-	optimize!(heu_m.optModel)
+	@suppress optimize!(heu_m.optModel)
 
 	# write results to benders object
 	heuData_obj = resData()
@@ -328,7 +328,7 @@ function runTop(benders_obj::bendersObj)
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
 	end
-	@suppress solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[1:1], false)
+	solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[1:1], false)
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -355,7 +355,7 @@ function runTop(benders_obj::bendersObj)
 				@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 				delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 			end
-			optimize!(benders_obj.top.optModel)
+			@suppress optimize!(benders_obj.top.optModel)
         end
 
 		if stab_obj.method[stab_obj.actMet] == :qtrLvl && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
@@ -379,20 +379,20 @@ function runTop(benders_obj::bendersObj)
 				
 				# try solving with next higher numeric focus
 				println("increase numeric focus")
-				@suppress solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:2], false)
+				solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:2], false)
 				
 				# delete quadratic trust-region
 				if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 					println("delete trust region")
 					delete(benders_obj.top.optModel, stab_obj.cns)
-					@suppress solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], false)
+					solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], false)
 
 					# solve without stabilization as last resort
 					if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 						println("remove all stabilization")
 						@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 						delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
-						@suppress solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], false)
+						solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], false)
 					end
 				end
 			end
@@ -401,7 +401,7 @@ function runTop(benders_obj::bendersObj)
 		# if no solution and proximal bundle stabilization, remove penalty term temporarily
 		if stab_obj.method[stab_obj.actMet] == :prx && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 			@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1,1])
-			optimize!(benders_obj.top.optModel)
+			@suppress optimize!(benders_obj.top.optModel)
 		end
 
 		# near-optimal can be infeasible with trust-region since near-optimum constraint cannot be fulfilled
@@ -630,7 +630,7 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 	numFoc_int = 1
 	while true
 		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_arr[numFoc_int])
-		optimize!(mod_m.optModel)
+		@suppress optimize!(mod_m.optModel)
 		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == length(numFoc_arr)
 			if checkInfeas_boo && !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
 				printIIS(mod_m) 
@@ -965,6 +965,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		if !isnothing(benders_obj.stab) 
 			# check if top problem without stabilization should be solved again
 			if benders_obj.itr.cnt.i >= benders_obj.itr.cnt.nextNoStab
+				println("solve top without stabilization")
 				runTopWithoutStab!(benders_obj, stabVar_obj)
 				# compute next iteration to solve top problem
 				par_ntup = benders_obj.stab.solveNoStab
@@ -1150,7 +1151,7 @@ function writeDualVariable!(benders_obj, outDir_str)
 
 	# prepare model
 	removeStab!(benders_obj)
-	optimize!(top_m.optModel)
+	@suppress optimize!(top_m.optModel)
 
 	# prepare directory
 	dualDir_str = outDir_str * "dualValues/"

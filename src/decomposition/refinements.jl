@@ -756,8 +756,7 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 		end
 
 	end
-	solveModel!(benders_obj.top, [0, 2, 3], true)
-	checkIIS(benders_obj.top)
+	solveModel!(benders_obj.top, [0, 2, 3], false)
 
 	# track cuts there wer not binding for a certain number of iterations
 	trackCuts(benders_obj)
