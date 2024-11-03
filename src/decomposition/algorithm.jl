@@ -1728,7 +1728,7 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 		for file in mergFile_arr[2:end]
 			add_df = CSV.read(file, DataFrame, stringtype = String)
 			# filter dispatch variables
-			filter!(x -> !(x.variable in ("capaConv", "capaStIn", "capaStOut", "capaStSize", "capaExc")), add_df)
+			filter!(x -> !(x.variable in ("capaConv", "capaStIn", "capaStOut", "capaStSize", "capaExc", "capaStSizeSeason", "stInterDelta")), add_df)
 			if isempty(add_df) continue end
 			# makes adjustments to cost results
 			if res == :cost
