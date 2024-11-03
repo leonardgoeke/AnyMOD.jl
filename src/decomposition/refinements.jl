@@ -174,7 +174,7 @@ function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_
 		elseif key == :box && !isempty(setdiff(keys(val), (:low, :up, :minDelta, :thr, :fac, :scaLvl, :scaLim)))
 			error("options provided for trust-region do not match the defined options 'low', 'up', 'minDelta', 'thr', 'fac', 'scaLvl', and 'scaLim'")
 		elseif key == :dsb && !isempty(setdiff(keys(val), (:start, :min, :lam, :myMax)))
-			error("options provided for doubly stabilised bundle do not match the defined options 'start', 'min', 'lam', 'myMax'")
+			error("options provided for doubly stabilized bundle do not match the defined options 'start', 'min', 'lam', 'myMax'")
 		end
 	end
 
@@ -473,7 +473,7 @@ function centerStab!(method::Val{:qtrLvl}, stab_obj::stabObj, rngVio_fl::Float64
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet][:lvl])
 end
 
-# function for doubly stabilised bundle method
+# function for doubly stabilized bundle method
 function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
 	# set dual option according to demands of methos 
@@ -637,7 +637,7 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::
 		# enforce parameter
 		stab_obj.dynPar[x_int][:lvl] = (opt_tup.lam * low_fl + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
 		stab_obj.dynPar[x_int][:qtr] = interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.startRad, opt_tup.endRad], Symbol(opt_tup.inter))
-	elseif stab_obj.method[x_int] == :dsb # adjust doubly stabilised method, implementation according to doi.org/10.1007/s10107-015-0873-6
+	elseif stab_obj.method[x_int] == :dsb # adjust doubly stabilized method, implementation according to doi.org/10.1007/s10107-015-0873-6
 		stab_obj.dynPar[x_int][:my] = min(1 - itr_obj.res[:lvlDual], opt_tup.myMax + 1.0)
 		if srsStep_boo
 			stab_obj.dynPar[x_int][:prx] = (stab_obj.dynPar[x_int][:my])*stab_obj.dynPar[x_int][:prx] # added a fixed scaler for the dual variable to avoid extremely large values for prx
@@ -738,7 +738,7 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 end
 
 # solves top problem without trust region and obtains lower limits
-function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
+function runTopWithoutStab!(benders_obj::bendersObj)
 
 	# remove stabilization
 	removeStab!(benders_obj)
@@ -756,7 +756,12 @@ function runTopWithoutStab!(benders_obj::bendersObj, stabVar_obj::resData)
 		end
 
 	end
-	solveModel!(benders_obj.top, [0, 2, 3], false)
+	numFoc_arr = [0, 2, 3]
+	numFoc_int = solveModel!(benders_obj.top, numFoc_arr, false)
+
+	if numFoc_int != numFoc_arr[1]
+		produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem without stabilization solved by increasing numeric focus to $(numFoc_int)" , testErr = false, printErr = false)
+	end
 
 	# track cuts there wer not binding for a certain number of iterations
 	trackCuts(benders_obj)

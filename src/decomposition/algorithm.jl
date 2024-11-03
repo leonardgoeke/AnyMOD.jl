@@ -365,7 +365,8 @@ function runTop(benders_obj::bendersObj)
 
 			# increase level parameter almost until the upper bound
 			for lvl_fl in collect(low_fl:((up_fl-low_fl)/3):up_fl * (1 - benders_obj.algOpt.gap))[2:end]
-				println("increase level to: ", lvl_fl)
+				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increase level bound to $(lvl_fl)" , testErr = false, printErr = false)
+
 				# increase level parameter
 				stab_obj.dynPar[stab_obj.actMet][:lvl] = lvl_fl
 				set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
@@ -378,21 +379,25 @@ function runTop(benders_obj::bendersObj)
 			if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 				
 				# try solving with next higher numeric focus
-				println("increase numeric focus")
+				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increase numeric focus to $(benders_obj.algOpt.top.numFoc[2])" , testErr = false, printErr = false)
 				solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:2], false)
 				
 				# delete quadratic trust-region
 				if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
-					println("delete trust region")
+					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Deleted trust-region" , testErr = false, printErr = false)
+
 					delete(benders_obj.top.optModel, stab_obj.cns)
 					solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], false)
 
 					# solve without stabilization as last resort
 					if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
-						println("remove all stabilization")
+						produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Removed all stabilization" , testErr = false, printErr = false)
 						@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 						delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
-						solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], false)
+						numFoc_int = solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], false)
+						if numFoc_int != benders_obj.algOpt.top.numFoc[2]
+							produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem solved by increasing numeric focus to $(numFoc_int)" , testErr = false, printErr = false)
+						end
 					end
 				end
 			end
@@ -643,7 +648,6 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 		else
 			numFoc_int = numFoc_int + 1
 		end
-		println("Rerun with numeric focus: ", numFoc_arr[numFoc_int])
 	end
 
 	return numFoc_arr[numFoc_int]
@@ -817,9 +821,6 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	itr_obj.res[:actSubCost] = sum(map(x -> x.objVal, values(cutData_dic))) # objective of sub-problems
 	itr_obj.res[:actTotCost] = itr_obj.res[:topCost] + itr_obj.res[:actSubCost]
 
-	# computes optimality gap for cost minimization and feasibility gap for near-optimal
-	itr_obj.gap = benders_obj.nearOpt.cnt == 0 ? (1 - itr_obj.res[:lowLimCost] / itr_obj.res[:curBest]) : abs((itr_obj.res[:actSubCost] - itr_obj.res[:estSubCost]) / itr_obj.res[:optCost])
-
 	# update current best
 	if benders_obj.nearOpt.cnt == 0 ? (itr_obj.res[:actTotCost] < best_obj.var.objVal) : (itr_obj.res[:nearObj] <= best_obj.var.objVal && itr_obj.gap <= benders_obj.algOpt.gap)
 		best_obj.var.objVal = benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:actTotCost] : itr_obj.res[:nearObj]
@@ -827,6 +828,9 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		@suppress foreach(x -> best_obj.res[x] = curRes_dic[x], benders_obj.report.res.general)
 		itr_obj.res[:curBest] = best_obj.var.objVal
 	end
+
+	# computes optimality gap for cost minimization and feasibility gap for near-optimal
+	itr_obj.gap = benders_obj.nearOpt.cnt == 0 ? (1 - itr_obj.res[:lowLimCost] / itr_obj.res[:curBest]) : abs((itr_obj.res[:actSubCost] - itr_obj.res[:estSubCost]) / itr_obj.res[:optCost])
 
 	# adapt center and parameter for stabilization
 	if !isnothing(benders_obj.stab)
@@ -849,7 +853,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		prx2Aux_fl = stab_obj.method[stab_obj.actMet] == :prx2 ? computePrx2Aux(benders_obj.cuts, benders_obj.prevCuts) : nothing
 		foreach(x -> adjustDynPar!(x, benders_obj.stab, benders_obj.top, itr_obj, srsStep_boo, prx2Aux_fl, benders_obj.nearOpt.cnt != 0, benders_obj.algOpt.gap, benders_obj.report), 1:length(stab_obj.method))
 
-		# update center of stabilisation
+		# update center of stabilization
 		if srsStep_boo # update everything in case of serios step
 			stab_obj.var = filterStabVar(stabVar_obj.capa, stabVar_obj.stLvl, stabVar_obj.lim, stab_obj.weight, benders_obj.top)
 			stab_obj.objVal = best_obj.var.objVal
@@ -937,7 +941,6 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Started iteration $(benders_obj.itr.cnt.i)", testErr = false, printErr = false)
 	
 		#region # * solve top-problem and (start) sub-problems
-		println("solve top with stabilization")
 		str_time = now()
 		resData_obj, stabVar_obj = runTop(benders_obj);
 		elpTop_time = now() - str_time
@@ -967,15 +970,18 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		# top-problem without stabilization
 		strNoStab_time = now()
 		if !isnothing(benders_obj.stab) 
-			# check if top problem without stabilization should be solved again
+			# check if top problem without stabilization should be solved again 
 			if benders_obj.itr.cnt.i >= benders_obj.itr.cnt.nextNoStab
-				println("solve top without stabilization")
-				runTopWithoutStab!(benders_obj, stabVar_obj)
+				runTopWithoutStab!(benders_obj)
 				# compute next iteration to solve top problem
 				par_ntup = benders_obj.stab.solveNoStab
 				gap_fl = 1 - benders_obj.itr.res[:lowLimCost] / benders_obj.itr.res[:curBest]
-				benders_obj.itr.cnt.nextNoStab = benders_obj.itr.cnt.i + Int(ceil(interItrPar(gap_fl, benders_obj.algOpt.gap, [par_ntup.upper,1], par_ntup.inter)))
-				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Solved top problem without stabilizatio. Next solve in iteration $(benders_obj.itr.cnt.nextNoStab)", testErr = false, printErr = false)
+				waitTopNoStab_int = max(1, Int(floor(interItrPar(gap_fl, benders_obj.algOpt.gap, [par_ntup.upper,1], par_ntup.inter))))
+				benders_obj.itr.cnt.nextNoStab = benders_obj.itr.cnt.i + waitTopNoStab_int
+				# only report, if problem without stabilization is not solved again in the next iteration
+				if waitTopNoStab_int != 1
+					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Solved top problem without stabilization. Next solve in iteration $(benders_obj.itr.cnt.nextNoStab)", testErr = false, printErr = false)
+				end
 			else
 				# use results of last correct solve as lower bound
 				benders_obj.itr.res[:lowLimCost] = benders_obj.itr.res[:estTotCostNoStab]
@@ -1580,7 +1586,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 	else
 		produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Objective: $(benders_obj.nearOpt.setup.obj[benders_obj.nearOpt.cnt][1]), Objective value: $(round(benders_obj.itr.res[:nearObj], sigdigits = 8)), Feasibility gap: $(round(benders_obj.itr.gap, sigdigits = 4))", testErr = false, printErr = false)
 	end
-	produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Time for top: $timeTop_fl, Time for sub: $timeSubTot_fl, Waiting for top without stabilisation: $timeWaitNoStab_fl", testErr = false, printErr = false)
+	produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Time for top: $timeTop_fl, Time for sub: $timeSubTot_fl, Waiting for top without stabilization: $timeWaitNoStab_fl", testErr = false, printErr = false)
 
 	if Dates.value(floor(now() - report_m.options.startTime, Dates.Minute(1))) > benders_obj.algOpt.timeLim
 		produceMessage(report_m.options, report_m.report, 1, " - Aborted due to time-limit!", testErr = false, printErr = false)
