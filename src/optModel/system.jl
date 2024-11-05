@@ -193,8 +193,8 @@ end
 # ! remove entries where expansion or capacity is fixed zero and no capacity can be created via retrofitting
 function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple}}}, allCapaDf_dic::Dict{Symbol,DataFrame}, anyM::anyModel)
 
-	fixPar_dic = Dict(:expStSize => (:sizeToStOutFix => :expStOut, :sizeToStOutFix => :expStIn), :expStIn => (:stInToConvFix => :expConv, :stOutToStInFix => :expStOut), :expStOut => (:stOutToStInFix => :expStIn, :sizeToStOutFix => :expStSize), 
-										:capaStSize => (:sizeToStOutFix => :capaStOut, :sizeToStOutFix => :capaStIn), :capaStIn => (:stInToConvFix => :capaConv, :stOutToStInFix => :capaStOut), :capaStOut => (:stOutToStInFix => :capaStIn, :sizeToStOutFix => :capaStSize))
+	fixPar_dic = Dict(:expStSize => (:sizeToStOutExpFix => :expStOut, :sizeToStOutExpFix => :expStIn), :expStIn => (:stInToConvExpFix => :expConv, :stOutToStInExpFix => :expStOut), :expStOut => (:stOutToStInExpFix => :expStIn, :sizeToStOutExpFix => :expStSize), 
+										:capaStSize => (:sizeToStOutCapaFix => :capaStOut, :sizeToStOutCapaFix => :capaStIn), :capaStIn => (:stInToConvCapaFix => :capaConv, :stOutToStInCapaFix => :capaStOut), :capaStOut => (:stOutToStInCapaFix => :capaStIn, :sizeToStOutCapaFix => :capaStSize))
 
 	for sys in (:Te, :Exc)
 		sysSym_arr = filter(x -> getfield(anyM.parts, sys == :Te ? :tech : :exc)[x].type in (:stock, :mature, :emerging), collect(keys(prepSys_dic[sys])))
@@ -388,7 +388,9 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 					if !isempty(fixLim_df)
 						fixLim_df[!,:var] .= map(x -> AffExpr(x), fixLim_df[!,:val])
 						resi_df = prepSys_dic[sys][sSym][prepSym].resi
-						resi_df = select(filter(x -> x.val != 0.0, fixLim_df), Not([:val])) |> (w -> isempty(resi_df) ? w : vcat(w, antijoin(resi_df, w, on = intCol(w))))
+
+						if prepSym in (:capaConv, :expConv) filter!(x -> x.val != 0.0, fixLim_df) end
+						resi_df = select(fixLim_df, Not([:val])) |> (w -> isempty(resi_df) ? w : vcat(w, antijoin(resi_df, w, on = intCol(w))))
 						prepSys_dic[sys][sSym][prepSym] = prepSys_dic[sys][sSym][prepSym] |> (x -> (var =  removeEntries([select(fixLim_df, Not([:val, :var]))], x.var), resi = resi_df))
 					end
 				end
