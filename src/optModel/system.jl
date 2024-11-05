@@ -388,9 +388,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 					if !isempty(fixLim_df)
 						fixLim_df[!,:var] .= map(x -> AffExpr(x), fixLim_df[!,:val])
 						resi_df = prepSys_dic[sys][sSym][prepSym].resi
-
-						if prepSym in (:capaConv, :expConv) filter!(x -> x.val != 0.0, fixLim_df) end
-						resi_df = select(fixLim_df, Not([:val])) |> (w -> isempty(resi_df) ? w : vcat(w, antijoin(resi_df, w, on = intCol(w))))
+						resi_df = select(filter(x -> x.val != 0.0, fixLim_df), Not([:val])) |> (w -> isempty(resi_df) ? w : vcat(w, antijoin(resi_df, w, on = intCol(w))))
 						prepSys_dic[sys][sSym][prepSym] = prepSys_dic[sys][sSym][prepSym] |> (x -> (var =  removeEntries([select(fixLim_df, Not([:val, :var]))], x.var), resi = resi_df))
 					end
 				end
