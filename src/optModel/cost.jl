@@ -335,7 +335,7 @@ function createCost!(partCost::OthPart, anyM::anyModel)
 			# groups cost expressions scales groups expression and creates a variables for each grouped entry
 			emVar_df = combine(x -> (expr = sum(x.disFac .* x[!,:var] .* x.emPrc),), groupby(emVar_df, [:Ts_disSup, :R_exp, :C]))
 			if !isempty(emVar_df)
-				transferCostEle!(rename(emVar_df, :R_exp => :R_dis), partCost, :costEm, anyM.optModel, anyM.lock, anyM.sets, anyM.options.coefRng, anyM.options.scaFac.costDisp, anyM.options.checkRng, anyM, 0.0)
+				transferCostEle!(rename(emVar_df, :R_exp => :R_dis), partCost, :costEm, anyM.optModel, anyM.lock, anyM.sets, anyM.options.coefRng, anyM.options.scaFac.costDisp, anyM.options.checkRng, anyM, NaN)
 			end
 			produceMessage(anyM.options, anyM.report, 3, " - Created variables and constraints for emission costs")
 		end
@@ -354,6 +354,21 @@ function createCost!(partCost::OthPart, anyM::anyModel)
 				allVar_df = rename(combine(x -> (expr = sum(x.disFac .* x[!,va] .* x.cost) ./ 1000.0,), groupby(allVar_df, [:Ts_disSup, :R_exp, :C])), :R_exp => :R_dis)
 				transferCostEle!(allVar_df, partCost, va in (:crt, :lls) ? cost_sym : Symbol(cost_sym), anyM.optModel, anyM.lock, anyM.sets, anyM.options.coefRng, anyM.options.scaFac.costDisp, anyM.options.checkRng, anyM, (va == :trdSell ? NaN : 0.0))
 				reachEnd_boo = true
+			end
+		end
+
+		# ! costs from storage dual
+		if :costStLvlRefMonte in keys(anyM.parts.cost.par)
+			# get all storage levels at end of period
+			stLvlFinal_df = filter(x -> !(x.Ts_dis + 1 in keys(anyM.sets[:Ts].nodes)) && getAncestors(x.Ts_dis, anyM.sets[:Ts], :int, anyM.scr.frsLvl)[end] == anyM.subPro[1], getAllVariables(:stLvl, anyM))
+			# merge with costs and reference levels
+			stLvlFinal_df = matchSetParameter(stLvlFinal_df, anyM.parts.cost.par[:stLvlRefMonte], anyM.sets, newCol = :refLvl)
+			stLvlFinal_df = matchSetParameter(stLvlFinal_df, anyM.parts.cost.par[:costStLvlRefMonte], anyM.sets, newCol = :dualVal)
+			stLvlFinal_df = matchSetParameter(rename(stLvlFinal_df, :R_dis => :R_exp), partCost.par[:disFac], anyM.sets, newCol = :disFac)
+			# create actual constraint
+			if !isempty(stLvlFinal_df)		
+				stLvlFinal_df = rename(combine(x -> (expr = x.disFac .* x.dualVal .* (x.refLvl .- x.var) ./ 1000.0,), groupby(stLvlFinal_df, [:Ts_disSup, :R_exp, :Te])), :R_exp => :R_dis)				
+				transferCostEle!(stLvlFinal_df, anyM.parts.cost, :costDualSt, anyM.optModel, anyM.lock, anyM.sets, anyM.options.coefRng, anyM.options.scaFac.costCapa, anyM.options.checkRng, anyM, NaN)
 			end
 		end
 

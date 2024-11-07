@@ -274,7 +274,6 @@ function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::Nam
 		if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.sub.timeLim * 60) end # in seconds
 	end
 
-
 	# collect complicating constraints
 	comVar_dic = Dict{Symbol,DataFrame}()
 	for comVa in filter(x -> occursin("BendersCom",string(x)), keys(sub_m.parts.lim.var))
@@ -758,17 +757,19 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 			end
 
 			# ensure scaling of factors does not move rhs out of range
-			scaRng_tup = (top_m.options.coefRng.rhs[1], top_m.options.coefRng.rhs[2] * rngVio_fl) ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
+			if cut_expr.constant != 0.0
+				scaRng_tup = (top_m.options.coefRng.rhs[1], top_m.options.coefRng.rhs[2] * rngVio_fl) ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
 
-			for x in keys(cut_expr.terms)
-				val_fl = abs(cut_expr.terms[x])
-				if top_m.options.coefRng.mat[1] / val_fl > scaRng_tup[2] # factor requires more up-scaling than possible
-					delete!(cut_expr.terms, x) # removes term
-				elseif top_m.options.coefRng.mat[2] * rngVio_fl / val_fl < scaRng_tup[1] # factor requires more down-scaling than possible
-					cut_expr.terms[x] = sign(cut_expr.terms[x]) * top_m.options.coefRng.mat[2] / scaRng_tup[1] # set to biggest factor possible within range
-					limCoef_boo = true
+				for x in keys(cut_expr.terms)
+					val_fl = abs(cut_expr.terms[x])
+					if top_m.options.coefRng.mat[1] / val_fl > scaRng_tup[2] # factor requires more up-scaling than possible
+						delete!(cut_expr.terms, x) # removes term
+					elseif top_m.options.coefRng.mat[2] * rngVio_fl / val_fl < scaRng_tup[1] # factor requires more down-scaling than possible
+						cut_expr.terms[x] = sign(cut_expr.terms[x]) * top_m.options.coefRng.mat[2] / scaRng_tup[1] # set to biggest factor possible within range
+						limCoef_boo = true
+					end
 				end
-			end
+			end	
 
 		else # check if cut without variables can be scaled into range
 			cutFac_fl = abs(collect(values(cut_var.terms))[1]) # get scaling factor of cut variable
@@ -1166,6 +1167,8 @@ function writeDualVariable!(benders_obj, outDir_str)
 	# prepare directory
 	dualDir_str = outDir_str * "dualValues/"
 	restDir!(dualDir_str)
+	startLvl_str = outDir_str * "startingLvl/"
+	restDir!(startLvl_str)
 
 	# write dual variables on limits
 	for lim in filter(x ->  occursin("Benders", string(x)), keys(top_m.parts.lim.cns))
@@ -1178,7 +1181,7 @@ function writeDualVariable!(benders_obj, outDir_str)
 		writeParameterFile!(top_m, select(cns_df, Not([:cns])), :emissionPrc, parDef_dic[:emissionPrc], dualDir_str * "par_" * string(lim))
 	end
 
-	# write dual and reference level for inter storage
+	# write dual, reference level and starting level for inter storage
 	for sSym in filter(x -> top_m.parts.tech[x].stCyc == -1, collect(keys(benders_obj.itr.best.var.stLvl)))	
 		# write dual on storage level
 		cns_df = copy(top_m.parts.tech[sSym].cns[:expcStLvl])
@@ -1186,10 +1189,42 @@ function writeDualVariable!(benders_obj, outDir_str)
 		writeParameterFile!(top_m, select(cns_df, Not([:cns])), :costStLvlRefMonte, parDef_dic[:costStLvlRefMonte], dualDir_str * "par_" * string(sSym,"_stLvlCost"))
 		# write reference storage level
 		writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sSym][:stLvl], :stLvlRefMonte, parDef_dic[:stLvlRefMonte], dualDir_str * "par_" * string(sSym,"_stLvlRef"))
+		# write starting level
+		var_df = copy(top_m.parts.tech[sSym].var[:startStLvl])
+		var_df[!,:value] = value.(var_df[!,:var])
+		writeParameterFile!(top_m, select(var_df, Not([:var])), :stLvlFix, parDef_dic[:stLvlFix], startLvl_str * "startingLevel_" * string(sSym,"_startingLvl"))
 	end
 
+	# write starting level for non-inter storage
+	for sSym in filter(x -> top_m.parts.tech[x].stCyc == benders_obj.top.supTs.lvl, collect(keys(benders_obj.itr.best.var.stLvl)))
+		startLvl_df = benders_obj.itr.best.var.stLvl[sSym][:stLvl] |> (x -> select(filter(y -> y.value == maximum(x[!,:value]), x), Not([:Ts_dis])))
+		writeParameterFile!(top_m, startLvl_df, :stLvlFix, parDef_dic[:stLvlFix], startLvl_str * "startingLevel_" * string(sSym,"_startingLvl"))
+	end
 end
 
+# fix storage levels at beginning of period
+function fixStartingLevels!(sub_m::anyModel, startLvl_dic::Dict{Symbol, DataFrame}, steps_int::Int)
+    
+	allAncestors_arr = getDescendants(sub_m.subPro[1], sub_m.sets[:Ts], true)
+	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :exchange => :Exc, :mode => :M, :id => :id, :scenario => :scr)
+
+    for sSym in keys(startLvl_dic)
+        # convert csv data to internal types in first iteration
+        if steps_int == 1
+            lvl_df = startLvl_dic[sSym]
+            lvl_df[!,:id_1] .= string.(lvl_df[!,:id_1])
+            select!(lvl_df, Not(Symbol.(names(lvl_df)[findall(eltype.(eachcol(lvl_df)) .== Missing)])))
+            startLvl_dic[sSym] = rename(writeParameter(lvl_df, sub_m.sets, setLngShrt_dic, "testFile.csv", sub_m.report, sub_m.lock)[:stLvlFix], :R => :R_dis)
+        end
+
+        # get storage level at beginning of period and fix it
+        startLvl_df = filter(x -> !(x.Ts_dis in allAncestors_arr), sub_m.parts.tech[sSym].var[:stLvl])
+        startLvl_df = innerjoin(startLvl_df, startLvl_dic[sSym], on = intersect(intCol(startLvl_df),intCol(startLvl_dic[sSym])))
+        foreach(x -> fix(collect(keys(x.var.terms))[1], x.val / collect(values(x.var.terms))[1]; force = true), eachrow(startLvl_df))
+    end
+
+    return startLvl_dic
+end
 #endregion
 
 #region # * data management

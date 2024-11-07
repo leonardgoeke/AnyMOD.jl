@@ -670,7 +670,7 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 
 		# ! get complicating limits covering several sub-problems
 		stochVar_boo = !any(occursin.(["capa","Capa","exp","Exp","retro"],string(va)))
-		if !isempty(anyM.subPro) && anyM.subPro != (0,0) && stochVar_boo
+		if !isempty(anyM.subPro) && anyM.subPro != (0,0) && stochVar_boo && !anyM.options.monteCarlo 
 			
 			comLimit_df = filter(x -> true, allLimit_df)
 			

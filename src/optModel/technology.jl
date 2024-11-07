@@ -22,7 +22,7 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 			# control operated capacity variables
 			if part.decomm != :none createOprVarCns!(part, cns_dic, anyM) end
 			# control capacity for interannual storage
-			if :capaStSize in keys(part.var) && part.stCyc == -1 capaSizeSeasonInter(part, cns_dic, anyM) end
+			if :capaStSize in keys(part.var) && part.stCyc == -1 && !anyM.options.monteCarlo capaSizeSeasonInter(part, cns_dic, anyM) end
 		end
 	end
 
@@ -97,7 +97,7 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 			if anyM.options.createVI.st && (anyM.scr.frsLvl != 0 || part.stCyc == -1) && anyM.subPro == (0,0) && :stLvl in keys(part.var) cns_dic = createStVI(part, ts_dic, r_dic, cns_dic, anyM) end
 
 			# additional constraints for interannual stochastic storage 
-			if part.stCyc == -1
+			if part.stCyc == -1 && !anyM.options.monteCarlo
 				if (isempty(anyM.subPro) || anyM.subPro != (0,0)) 
 					cns_dic = enforceStDelta(part, cns_dic, anyM)
 				end
@@ -225,7 +225,7 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,), :stLvlInter => (:avaStSize,))
 	hasSt_boo = :capaStSize in keys(prepTech_dic) && (!anyM.options.createVI.bal || anyM.scr.frsLvl != 0 || part.stCyc == -1)
-	dispVar_arr = collectKeys(keys(part.carrier)) |> (x -> hasSt_boo  ? [:stLvl, x...]  : x)  |> (x -> part.stCyc == -1  ? [:stLvlInter, :stInterOut, :stInterIn, x...]  : x)
+	dispVar_arr = collectKeys(keys(part.carrier)) |> (x -> hasSt_boo  ? [:stLvl, x...]  : x)  |> (x -> part.stCyc == -1 && !anyM.options.monteCarlo  ? [:stLvlInter, :stInterOut, :stInterIn, x...]  : x)
 	if anyM.subPro == (0,0) && !anyM.options.createVI.bal filter!(x -> x in (:stLvl, :stLvlInter), dispVar_arr) end # case of top problem and reduced foresight
 	onlyGen_boo = :gen in dispVar_arr && isempty(intersect([:use, :stIntIn], dispVar_arr))
 
@@ -487,9 +487,9 @@ function createStBal(part::TechPart, anyM::anyModel)
 		else
 			srcRes_ntup = anyM.cInfo[bal[1]] |> (x -> (Ts_dis = x.tsDis, R_dis = x.rDis, C = anyM.sets[:C].nodes[bal[1]].lvl, M = 1))
 		end
-
+		
 		# ! join in and out dispatch variables and adds efficiency to them (hence efficiency can be specific for different carriers that are stored in and out)
-		relSt_tup = part.stCyc != -1 ? (:in, :out) : (:in, :out, :interIn, :interOut)
+		relSt_tup = part.stCyc == -1 && !anyM.options.monteCarlo ? (:in, :out, :interIn, :interOut) : (:in, :out)
 		for typ in relSt_tup
 			typVar_df = copy(cns_df[!,cnsDim_arr])
 			# create array of all dispatch variables
@@ -587,10 +587,10 @@ function createStBal(part::TechPart, anyM::anyModel)
 		end
 
 		# ! create final equation	
-		if part.stCyc != -1	
-			cnsC_df[!,:cnsExpr] = @expression(anyM.optModel, cnsC_df[!,:stLvlPrev] .* cnsC_df[!,:stDis] .+ cnsC_df[!,:stInflow] .+ cnsC_df[!,:in] .- cnsC_df[!,:out] .- cnsC_df[!,:stLvl])
-		else
+		if part.stCyc == -1	&& !anyM.options.monteCarlo 
 			cnsC_df[!,:cnsExpr] = @expression(anyM.optModel, cnsC_df[!,:stLvlPrev] .* cnsC_df[!,:stDis] .+ cnsC_df[!,:stInflow] .+ cnsC_df[!,:in] .- cnsC_df[!,:out] .- cnsC_df[!,:interIn] .+ cnsC_df[!,:interOut] .- cnsC_df[!,:stLvl])
+		else
+			cnsC_df[!,:cnsExpr] = @expression(anyM.optModel, cnsC_df[!,:stLvlPrev] .* cnsC_df[!,:stDis] .+ cnsC_df[!,:stInflow] .+ cnsC_df[!,:in] .- cnsC_df[!,:out] .- cnsC_df[!,:stLvl])
 		end
 		cCns_arr[idx] = cnsC_df
 	end
