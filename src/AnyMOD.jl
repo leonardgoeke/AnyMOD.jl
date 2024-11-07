@@ -32,7 +32,7 @@ module AnyMOD
     # general functions and objects
     export anyModel, initializeModel, createOptModel!, setObjective! # basic model functions
     export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML, convertYAML2GEXF, reportStorageLevel # write results
-    export plotTree, plotSankeyDiagram, plotNetworkGraph, moveNode!, produceMessage, produceMessageShort # reporting
+    export plotTree, plotSankeyDiagram, plotNetworkGraph, moveNode!, produceMessage, produceMessageShort, restDir! # reporting
     export intCol, getAllVariables, collapseExp, createVar, defineParameter, makeUp, removeEmptyDic! # low-level data management
     export heuristicSolve, evaluateHeu, getFeasResult, writeFixToFiles, exportDesignFactors!, writeResult # functions for heuristic pre-solves
     
@@ -40,7 +40,7 @@ module AnyMOD
     export algSetup, stabSetup, nearOptSetup, bendersObj, resData # objects
     export buildSub, initializeStab!, prepareMod!, runIteration! # low-level processing
     export runSub, runTop, runTopWithoutStab!, checkConvergence, updateIteration!, reportBenders!, writeBendersResults!, getComVar, getSubString, getConvTol # functions for iteration
-    export writeVariableFix!, editTopForDuals!, getSubStringWorker, writeDualVariable!, fixStartingLevels! # monte-carlo analysis
+    export writeVariableFix!, editTopForDuals!, getSubStringWorker, writeDualVariable!, fixStartingLevels!, runMonteCarloStep! # monte-carlo analysis
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
     function __init__()

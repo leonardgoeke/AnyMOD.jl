@@ -260,11 +260,11 @@ end
 #region # * basic benders algorithm
 
 # build sub-problems
-function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
+function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolderSub_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
 	# filter relevant input folders
-	relIn_arr = filter(x -> (occursin("ini",x) && genSetup_ntup.frsLvl != 0 ? occursin(subStr_tup[1],x) : true) && (occursin("scr",x) ? occursin(subStr_tup[2],x) : true), inputFolder_ntup.in)
+	relIn_arr = filter(x -> (occursin("ini",x) && genSetup_ntup.frsLvl != 0 ? occursin(subStr_tup[1],x) : true) && (occursin("scr",x) ? occursin(subStr_tup[2],x) : true), inputFolderSub_ntup.in)
 	# create sub-problems
-	sub_m = anyModel(relIn_arr, inputFolder_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, repTsLvl = genSetup_ntup.repTsLvl, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.sub.dbInf, reportLvl = 1)
+	sub_m = anyModel(relIn_arr, inputFolderSub_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, repTsLvl = genSetup_ntup.repTsLvl, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.sub.dbInf, reportLvl = 1)
 	sub_m.subPro = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)])...)[id]
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.threads)
 	
@@ -1078,7 +1078,7 @@ end
 
 #endregion
 
-#region # * preparation and execution of monte-carlo analysis for dispatch
+#region # * monte-carlo analysis for dispatch
 
 # ! write files for fixing capacities and storage levels
 function writeVariableFix!(benders_obj::bendersObj, outDir_str::String)
@@ -1161,7 +1161,11 @@ function writeDualVariable!(benders_obj, outDir_str)
 	parDef_dic = defineParameter(top_m.options, top_m.report)
 
 	# prepare model
-	removeStab!(benders_obj)
+	try 
+		removeStab!(benders_obj)
+	catch
+		set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
+	end
 	@suppress optimize!(top_m.optModel)
 
 	# prepare directory
@@ -1185,7 +1189,7 @@ function writeDualVariable!(benders_obj, outDir_str)
 	for sSym in filter(x -> top_m.parts.tech[x].stCyc == -1, collect(keys(benders_obj.itr.best.var.stLvl)))	
 		# write dual on storage level
 		cns_df = copy(top_m.parts.tech[sSym].cns[:expcStLvl])
-		cns_df[!,:value] = dual.(cns_df[!,:cns]) .* top_m.options.scaFac.obj
+		cns_df[!,:value] = dual.(cns_df[!,:cns]) .* top_m.options.scaFac.obj .* 1000
 		writeParameterFile!(top_m, select(cns_df, Not([:cns])), :costStLvlRefMonte, parDef_dic[:costStLvlRefMonte], dualDir_str * "par_" * string(sSym,"_stLvlCost"))
 		# write reference storage level
 		writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sSym][:stLvl], :stLvlRefMonte, parDef_dic[:stLvlRefMonte], dualDir_str * "par_" * string(sSym,"_stLvlRef"))
@@ -1197,15 +1201,41 @@ function writeDualVariable!(benders_obj, outDir_str)
 
 	# write starting level for non-inter storage
 	for sSym in filter(x -> top_m.parts.tech[x].stCyc == benders_obj.top.supTs.lvl, collect(keys(benders_obj.itr.best.var.stLvl)))
-		startLvl_df = benders_obj.itr.best.var.stLvl[sSym][:stLvl] |> (x -> select(filter(y -> y.value == maximum(x[!,:value]), x), Not([:Ts_dis])))
+		startLvl_df = benders_obj.itr.best.var.stLvl[sSym][:stLvl] |> (x -> select(filter(y -> y.Ts_dis == maximum(x[!,:Ts_dis]), x), Not([:Ts_dis])))
 		writeParameterFile!(top_m, startLvl_df, :stLvlFix, parDef_dic[:stLvlFix], startLvl_str * "startingLevel_" * string(sSym,"_startingLvl"))
 	end
+
 end
 
-# fix storage levels at beginning of period
+# ! run a step of the monte carlo optimization and update starting
+function runMonteCarloStep!(inputFolder_arr::Array{String,1}, startLvl_dic::Dict{Symbol, DataFrame}, step::Int, ini_int::Int, resultDir_str::String, t_int::Int, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, rngTar_tup::NamedTuple{(:mat, :rhs), Tuple{Tuple{Float64, Float64}, Tuple{Float64, Float64}}}, scal_tup::NamedTuple{(:capa,:capaStSize,:insCapa,:dispConv,:dispSt,:dispExc,:dispTrd,:costDisp,:costCapa,:obj),Tuple{Vararg{Float64,10}}})
+	
+    # create problem
+    sub_m = anyModel(inputFolder_arr, resultDir_str, objName = "subModel", frsLvl = info_ntup.frsLvl, repTsLvl = info_ntup.repTsLvl, supTsLvl = info_ntup.supTsLvl, shortExp = info_ntup.shortExp, coefRng = rngTar_tup, scaFac = scal_tup, holdFixed = true, monteCarlo = true);
+    delete!(sub_m.parts.lim.par, :emissionUp)
+
+    # enforce sub-problem settings
+    allFrs_arr = sort(getfield.(getNodesLvl(sub_m.sets[:Ts], info_ntup.frsLvl), :idx))
+    sub_m.subPro = tuple(allFrs_arr[ini_int], 1)
+
+    # create sup-problem including fix for starting levels
+    prepareMod!(sub_m, Gurobi.Optimizer, t_int)
+    startLvl_dic = fixStartingLevels!(sub_m, startLvl_dic, step)
+
+    # solve problem
+    optimize!(sub_m.optModel)
+
+    # update start level for next iteration
+    startLvl_dic = updateStartingLevel(startLvl_dic, sub_m)
+
+    return sub_m, startLvl_dic
+
+end
+
+# ! fix storage levels at beginning of period
 function fixStartingLevels!(sub_m::anyModel, startLvl_dic::Dict{Symbol, DataFrame}, steps_int::Int)
     
-	allAncestors_arr = getDescendants(sub_m.subPro[1], sub_m.sets[:Ts], true)
+	allAncestors_arr = vcat([sub_m.subPro[1]],getDescendants(sub_m.subPro[1], sub_m.sets[:Ts], true))
 	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :exchange => :Exc, :mode => :M, :id => :id, :scenario => :scr)
 
     for sSym in keys(startLvl_dic)
@@ -1214,7 +1244,7 @@ function fixStartingLevels!(sub_m::anyModel, startLvl_dic::Dict{Symbol, DataFram
             lvl_df = startLvl_dic[sSym]
             lvl_df[!,:id_1] .= string.(lvl_df[!,:id_1])
             select!(lvl_df, Not(Symbol.(names(lvl_df)[findall(eltype.(eachcol(lvl_df)) .== Missing)])))
-            startLvl_dic[sSym] = rename(writeParameter(lvl_df, sub_m.sets, setLngShrt_dic, "testFile.csv", sub_m.report, sub_m.lock)[:stLvlFix], :R => :R_dis)
+            startLvl_dic[sSym] = orderDf(rename(writeParameter(lvl_df, sub_m.sets, setLngShrt_dic, "testFile.csv", sub_m.report, sub_m.lock)[:stLvlFix], :R => :R_dis))
         end
 
         # get storage level at beginning of period and fix it
@@ -1225,6 +1255,21 @@ function fixStartingLevels!(sub_m::anyModel, startLvl_dic::Dict{Symbol, DataFram
 
     return startLvl_dic
 end
+
+# ! update the starting level for the next timestep
+function updateStartingLevel(startLvl_dic::Dict{Symbol, DataFrame}, sub_m::anyModel)
+
+    allAncestors_arr = vcat([sub_m.subPro[1]],getDescendants(sub_m.subPro[1], sub_m.sets[:Ts], true))
+
+    for sSym in keys(startLvl_dic)
+        startLvl_df = filter(x -> x.Ts_dis in allAncestors_arr, sub_m.parts.tech[sSym].var[:stLvl]) |> (x -> select(filter(y -> y.Ts_dis == maximum(x[!,:Ts_dis]), x), Not([:Ts_dis])))
+        startLvl_df[!,:val] .= value.(startLvl_df[!,:var])
+        startLvl_dic[sSym] = orderDf(innerjoin(select(startLvl_dic[sSym],Not([:val])), select(startLvl_df,Not([:var])), on = intersect(intCol(startLvl_dic[sSym]),intCol(startLvl_df))))
+    end
+
+    return startLvl_dic
+end
+
 #endregion
 
 #region # * data management

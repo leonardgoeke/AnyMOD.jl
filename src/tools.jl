@@ -1112,7 +1112,7 @@ function reportAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}}, anyM::anyModel)
 end
 
 # ! write storage levels
-function reportStorageLevel(anyM, writeAgg::Bool=false)
+function reportStorageLevel(anyM, writeAgg::Bool=false, rtnOpt::Tuple{Vararg{Symbol,N} where N} = (:csv,))
 
 	stLvl_df = DataFrame(timestep_superordinate_expansion = String[], timestep_superordinate_dispatch = String[],  timestep_dispatch = String[], region_dispatch = String[], carrier = String[], technology = String[], mode = String[], scenario = String[], id = String[], variable = Float64[])
 
@@ -1120,11 +1120,23 @@ function reportStorageLevel(anyM, writeAgg::Bool=false)
 		append!(stLvl_df, printObject(anyM.parts.tech[tSym].var[:stLvl],anyM, rtnDf = (:csvDf,)))
 	end
 
-	CSV.write("$(anyM.options.outDir)/results_storageLevels_$(anyM.options.outStamp).csv", rename(stLvl_df, :variable => :value))
-
+	if :csv in rtnOpt
+		CSV.write("$(anyM.options.outDir)/results_storageLevels_$(anyM.options.outStamp).csv", rename(stLvl_df, :variable => :value))
+	end
+	
 	if writeAgg 
 		aggStLvl_df = combine(x -> (value = sum(x.variable),), groupby(stLvl_df,[:timestep_dispatch, :technology, :scenario]))
-		CSV.write("$(anyM.options.outDir)/results_aggStorageLevels_$(anyM.options.outStamp).csv", aggStLvl_df) 
+		if :csv in rtnOpt
+			CSV.write("$(anyM.options.outDir)/results_aggStorageLevels_$(anyM.options.outStamp).csv", aggStLvl_df)
+		end
+	end
+
+	if :df in rtnOpt
+		if writeAgg
+			return  rename(stLvl_df, :variable => :value), aggStLvl_df
+		else
+			return rename(stLvl_df, :variable => :value)
+		end
 	end
 
 end
@@ -1405,6 +1417,7 @@ function plotNetworkGraph(anyM::anyModel; fontSize::Int = 12, replot::Bool = tru
 	end
     #endregion
 end
+
 function plotNetworkGraph(inFile::String; fontSize::Int = 12)
 
     # ! extract node data from yaml file and convert
