@@ -958,7 +958,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		@suppress begin
 			for (id,s) in enumerate(sort(collect(keys(benders_obj.sub))))
 				if benders_obj.algOpt.dist # distributed case
-					futData_dic[s] = @suppress runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
+					futData_dic[s] = runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
 				else # non-distributed case
 					cutData_dic[s], timeSub_dic[s], lss_dic[s], numFoc_dic[s] = runSub(benders_obj.sub[s], copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
 				end
