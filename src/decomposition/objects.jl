@@ -184,6 +184,7 @@ mutable struct bendersObj
 
 		# creation of sub-problems
 
+		inputFolderSub_ntup = (in = inputFolder_ntup.in, heu = inputFolder_ntup.heu, results = inputFolder_ntup.results * "/sub")
 		produceMessage(report_m.options, report_m.report, 1, " - Started creation of sub-problems", testErr = false, printErr = false)
 		benders_obj.sub = Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}()
 		
@@ -195,7 +196,7 @@ mutable struct bendersObj
 					global sub_m, comVar_dic = buildSub(myid() - 1, subStr_tup, info_ntup, inputFolderSub_ntup, scale_dic, algSetup_obj)
 				end
 			else # non-distributed case
-				inputFolderSub_ntup = (in = inputFolder_ntup.in, heu = inputFolder_ntup.heu, results = inputFolder_ntup.results * "/sub")
+				
 				benders_obj.sub[s], complCns_dic[s] = buildSub(id, subStr_tup, info_ntup, inputFolderSub_ntup, scale_dic, algSetup_obj)
 			end
 		end
