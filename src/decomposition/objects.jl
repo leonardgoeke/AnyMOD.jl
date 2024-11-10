@@ -139,7 +139,7 @@ mutable struct countItr
 end
 
 mutable struct itrStatus
-	best::NamedTuple{(:var,:res),Tuple{resData,Dict{Symbol,DataFrame}}}
+	best::NamedTuple{(:var,:res,:dual,:startLvl),Tuple{resData,Dict{Symbol,DataFrame},Dict{Symbol, Dict{Symbol,DataFrame}} ,Dict{Symbol,DataFrame}}}
 	cnt::countItr
 	gap::Float64
 	res::Dict{Symbol,Float64} # store different results here
@@ -196,7 +196,6 @@ mutable struct bendersObj
 					global sub_m, comVar_dic = buildSub(myid() - 1, subStr_tup, info_ntup, inputFolderSub_ntup, scale_dic, algSetup_obj)
 				end
 			else # non-distributed case
-				
 				benders_obj.sub[s], complCns_dic[s] = buildSub(id, subStr_tup, info_ntup, inputFolderSub_ntup, scale_dic, algSetup_obj)
 			end
 		end

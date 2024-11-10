@@ -148,7 +148,7 @@ function prepareTechs!(techSym_arr::Array{Symbol,1}, prepAllTech_dic::Dict{Symbo
 		if collect(values(prepTech_dic)) |> (z -> any(map(x -> any(.!isempty.(getfield.(z,x))), (:var, :resi))))
 			prepAllTech_dic[tSym] = prepTech_dic
 		end
-
+	
 	end
 end
 
@@ -1088,6 +1088,8 @@ function enforceStExpc(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyM
 	startLvl_df = rename(matchSetParameter(part.var[:startStLvl], part.par[:expcStStartLvl], anyM.sets, newCol = :expcLvlShare), :var => :expcLvl)
 	cns_df = combine(x -> (sumProb = sum(x.probDelta),), groupby(cns_df, intCol(startLvl_df))) |> (x -> innerjoin(x, startLvl_df, on = intCol(startLvl_df)))
 	cns_df[!,:cnsExpr] = map(x -> x.sumProb - x.expcLvl * x.expcLvlShare, eachrow(cns_df))
+	
+	
 	cns_dic[:expcStLvl] = cnsCont(select(cns_df, Not([:sumProb, :expcLvl, :expcLvlShare])), :greater)
 
 	return cns_dic

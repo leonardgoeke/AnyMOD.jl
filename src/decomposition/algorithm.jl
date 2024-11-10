@@ -478,12 +478,22 @@ function runTop(benders_obj::bendersObj)
 		if !isnothing(benders_obj.stab) benders_obj.itr.res[:thrStab] = 1 - normalized_rhs(benders_obj.stab.cns) / value(benders_obj.stab.cns) end
 	end
 
-	# track cuts there wer not binding for a certain number of iterations
+	# track cuts there were not binding for a certain number of iterations
 	trackCuts(benders_obj)
-	
+
+	# write starting levels for storage
+	stLvl_dic = Dict{Symbol,DataFrame}()
+	for sSym in keys(benders_obj.top.parts.tech)
+		if :startStLvl in keys(benders_obj.top.parts.tech[sSym].var)
+			var_df = copy(benders_obj.top.parts.tech[sSym].var[:startStLvl])
+			var_df[!,:value] = value.(var_df[!,:var])
+			stLvl_dic[sSym] = select(var_df,Not([:var]))
+		end
+	end
+		
 	#endregion
 
-	return resData_obj, stabVar_obj
+	return resData_obj, stabVar_obj, stLvl_dic
 end
 
 # ! run sub-problem
@@ -802,7 +812,7 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 end
 
 # ! update results and stabilization
-function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64,Int64},resData}, resData_obj::resData, curRes_dic::Dict{Symbol,DataFrame}, stabVar_obj::resData)
+function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64,Int64},resData}, resData_obj::resData, curRes_dic::Dict{Symbol,DataFrame}, stabVar_obj::resData, stLvl_dic::Dict{Symbol, DataFrame})
 
 	itr_obj = benders_obj.itr
 	best_obj = itr_obj.best
@@ -828,6 +838,8 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		best_obj.var.capa, best_obj.var.stLvl, best_obj.var.lim = map(x -> getfield(resData_obj,x), [:capa, :stLvl, :lim])
 		@suppress foreach(x -> best_obj.res[x] = curRes_dic[x], benders_obj.report.res.general)
 		itr_obj.res[:curBest] = best_obj.var.objVal
+		best_obj.dual[:stLvl], best_obj.dual[:lim]  = saveMonteCarloInputs(cutData_dic)
+		foreach(x -> best_obj.startLvl[x] = stLvl_dic[x], keys(stLvl_dic))
 	end
 
 	# computes optimality gap for cost minimization and feasibility gap for near-optimal
@@ -943,7 +955,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 	
 		#region # * solve top-problem and (start) sub-problems
 		str_time = now()
-		resData_obj, stabVar_obj = runTop(benders_obj);
+		resData_obj, stabVar_obj, stLvl_dic = runTop(benders_obj);
 		elpTop_time = now() - str_time
 	
 		# start solving sub-problems
@@ -1005,7 +1017,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		#region # * analyse results and update refinements
 	
 		# update results and stabilization
-		updateIteration!(benders_obj, cutData_dic, resData_obj, curRes_dic, stabVar_obj)
+		updateIteration!(benders_obj, cutData_dic, resData_obj, curRes_dic, stabVar_obj, stLvl_dic)
 		# report on iteration
 		reportBenders!(benders_obj, resData_obj, elpTop_time, elpNoStab_time, timeSub_dic, lss_dic, numFoc_dic)
 	
@@ -1077,21 +1089,74 @@ function initializeReporting!(benders_obj::bendersObj, stabSetup_obj::stabSetup,
 end
 
 #endregion
-
+s
 #region # * monte-carlo analysis for dispatch
 
-# ! write files for fixing capacities and storage levels
-function writeVariableFix!(benders_obj::bendersObj, outDir_str::String)
+# ! get results need for monteCarlo
+function saveMonteCarloInputs(cutData_dic::Dict{Tuple{Int64,Int64},resData})
+
+	# merge and aggregate all duals for storage
+	mergeDualSt_dic = Dict{Symbol,DataFrame}()
+
+	for cut in keys(cutData_dic)
+		for sSym in keys(cutData_dic[cut].stLvl)
+			if :stLvlInter in keys(cutData_dic[cut].stLvl[sSym])
+				if sSym in keys(mergeDualSt_dic)
+					mergeDualSt_dic[sSym] = vcat(mergeDualSt_dic[sSym], cutData_dic[cut].stLvl[sSym][:stLvlInter])
+				else
+					mergeDualSt_dic[sSym] = cutData_dic[cut].stLvl[sSym][:stLvlInter]
+				end	
+			end
+		end
+	end
+
+	for sSym in keys(mergeDualSt_dic)
+		mergeDualSt_dic[sSym] = combine(x -> (value = sum(x.dual),), groupby(mergeDualSt_dic[sSym], intCol(mergeDualSt_dic[sSym])))
+	end
+
+	# merge and aggregate all duals for complicating limits
+	mergeDualLim_dic = Dict{Symbol,DataFrame}()
+
+	for cut in keys(cutData_dic)
+		for limSym in keys(cutData_dic[cut].lim)
+
+			lim_df = copy(cutData_dic[cut].lim[limSym])
+			lim_df[!,:Ts_dis] .= cut[1]
+
+			if limSym in keys(mergeDualLim_dic)
+				mergeDualLim_dic[limSym] = vcat(mergeDualLim_dic[limSym], lim_df)
+			else
+				mergeDualLim_dic[limSym] = lim_df
+			end	
+		end
+	end
+
+	for limSym in keys(mergeDualLim_dic)
+		mergeDualLim_dic[limSym] = combine(x -> (value = sum(x.dual),), groupby(mergeDualLim_dic[limSym], intCol(mergeDualLim_dic[limSym])))
+	end
+
+	return mergeDualSt_dic, mergeDualLim_dic
+
+end
+
+# ! write dual values on storage and limits for montecarlo
+function writeMonteCarloInputs!(benders_obj::bendersObj, outDir_str::String, lowLimDual_fl::Float64)
+
+	# prepare inputs
+	top_m = benders_obj.top
+	parDef_dic = defineParameter(top_m.options, top_m.report)
 
 	# create directory
 	restDir!(outDir_str)
-		
-	top_m = benders_obj.top
-	parDef_dic = defineParameter(top_m.options, top_m.report)
-	
-	# write capacity values
+
 	capaDir_str = outDir_str * "capacityFixes/" 
 	restDir!(capaDir_str)
+	dualDir_str = outDir_str * "dualValues/"
+	restDir!(dualDir_str)
+	startLvl_str = outDir_str * "startingLvl/"
+	restDir!(startLvl_str)
+	
+	# write capacity values
 	for sys in (:tech, :exc)
 		for sSym in keys(benders_obj.itr.best.var.capa[sys])
 			for capaSym in filter(x -> !occursin("Season", string(x)), keys(benders_obj.itr.best.var.capa[sys][sSym]))
@@ -1119,92 +1184,57 @@ function writeVariableFix!(benders_obj::bendersObj, outDir_str::String)
 		writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sSym][:stLvl], :stLvlFix, parDef_dic[:stLvlFix], dir_str * "par_" * string(sSym,"_stLvl"))
 	end
 
-end
-
-# ! create top-problem with fixed capacities to compute duals for monte carlo analysis
-function editTopForDuals!(benders_obj::bendersObj, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, stabSetup_obj::stabSetup, scale_dic::Dict{Symbol, NamedTuple}, algSetup_obj::algSetup, outDir_str::String, runSubDist::Function)
-
-	benders_obj.info = (name = benders_obj.info.name * "_Dual", frsLvl = benders_obj.info.frsLvl, supTsLvl = benders_obj.info.supTsLvl, repTsLvl = benders_obj.info.repTsLvl, shortExp = benders_obj.info.shortExp)
-
-	# create new top-problem
-	topDual_m = anyModel(vcat(inputFolder_ntup.in, [outDir_str]), inputFolder_ntup.results, holdFixed = true, objName = "topModelDuals_" * info_ntup.name, frsLvl = info_ntup.frsLvl, supTsLvl = info_ntup.supTsLvl, repTsLvl = info_ntup.repTsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, createVI = algSetup_obj.useVI);
-	topDual_m.subPro = tuple(0, 0)
-
-	prepareMod!(topDual_m, benders_obj.algOpt.opt, benders_obj.algOpt.threads)
-	sub_tup = collect(keys(benders_obj.sub))
-
-	# create separate variables for costs of subproblems
-	topDual_m.parts.obj.var[:cut] = map(y -> map(x -> y == 1 ? sub_tup[x][1] : sub_tup[x][2], 1:length(sub_tup)), 1:2) |> (z -> createVar(DataFrame(Ts_dis = z[1], scr = z[2]), "subCut", NaN, topDual_m.optModel, topDual_m.lock, topDual_m.sets, scaFac = 1e2))
-	push!(topDual_m.parts.obj.cns[:objEqn], (name = :aggCut, cns = @constraint(topDual_m.optModel, sum(topDual_m.parts.obj.var[:cut][!,:var]) == filter(x -> x.name == :benders, topDual_m.parts.obj.var[:objVar])[1,:var])))
-
-	benders_obj.top = topDual_m;
-	benders_obj.cuts = Array{Pair{Tuple{Int,Int},Union{resData}},1}()
-
-	stabSetup_obj.ini = :none
-
-	# initialize reporting
-	initializeReporting!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, benders_obj.report.res)
-
-	# write complicating constraints into top problem
-	writeComplCons!(benders_obj)
-
-	# prepare stabilization
-	prepareStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
-
-end
-
-# ! write dual values on storage and limits for montecarlo
-function writeDualVariable!(benders_obj, outDir_str)
-
-	# prepare object
-	top_m = benders_obj.top
-	parDef_dic = defineParameter(top_m.options, top_m.report)
-
-	# prepare model
-	try 
-		removeStab!(benders_obj)
-	catch
-		set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
-	end
-	@suppress optimize!(top_m.optModel)
-
-	# prepare directory
-	dualDir_str = outDir_str * "dualValues/"
-	restDir!(dualDir_str)
-	startLvl_str = outDir_str * "startingLvl/"
-	restDir!(startLvl_str)
-
+	
 	# write dual variables on limits
+	ts_arr = unique(getindex.(collect(keys(benders_obj.sub)),1))
+
 	for lim in filter(x ->  occursin("Benders", string(x)), keys(top_m.parts.lim.cns))
 		if lim == :emissionBendersComUp
-			cns_df = copy(top_m.parts.lim.cns[lim])
-			cns_df[!,:value] = dual.(cns_df[!,:cns]) .* (-1) .* top_m.options.scaFac.obj
+			dual_df = copy(benders_obj.itr.best.dual[:lim][:emissionBendersCom])
+			dual_df[!,:value] = dual_df[!,:value] * (-1)
+			dual_df = enforceLowerLim(dual_df, ts_arr, lowLimDual_fl)
 		else
 			error("Extracting of dual for Monte Carlo simulation only supported for emission constraints so far.")
 		end
-		writeParameterFile!(top_m, select(cns_df, Not([:cns])), :emissionPrc, parDef_dic[:emissionPrc], dualDir_str * "par_" * string(lim))
+		writeParameterFile!(top_m, dual_df, :emissionPrc, parDef_dic[:emissionPrc], dualDir_str * "par_" * string(lim))
 	end
-
+	
 	# write dual, reference level and starting level for inter storage
 	for sSym in filter(x -> top_m.parts.tech[x].stCyc == -1, collect(keys(benders_obj.itr.best.var.stLvl)))	
 		# write dual on storage level
-		cns_df = copy(top_m.parts.tech[sSym].cns[:expcStLvl])
-		cns_df[!,:value] = dual.(cns_df[!,:cns]) .* top_m.options.scaFac.obj .* 1000
-		writeParameterFile!(top_m, select(cns_df, Not([:cns])), :costStLvlRefMonte, parDef_dic[:costStLvlRefMonte], dualDir_str * "par_" * string(sSym,"_stLvlCost"))
-		# write reference storage level
-		writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sSym][:stLvl], :stLvlRefMonte, parDef_dic[:stLvlRefMonte], dualDir_str * "par_" * string(sSym,"_stLvlRef"))
+		if sSym in keys(benders_obj.itr.best.dual[:stLvl])
+			dual_df = copy(benders_obj.itr.best.dual[:stLvl][sSym])
+			dual_df[!,:value] = dual_df[!,:value] .* 1000
+			dual_df = enforceLowerLim(dual_df, ts_arr, lowLimDual_fl)		
+			writeParameterFile!(top_m, dual_df, :costStLvlRefMonte, parDef_dic[:costStLvlRefMonte], dualDir_str * "par_" * string(sSym,"_stLvlCost"))
+			# write reference storage level
+			writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sSym][:stLvl], :stLvlRefMonte, parDef_dic[:stLvlRefMonte], dualDir_str * "par_" * string(sSym,"_stLvlRef"))
+		end
+		
 		# write starting level
-		var_df = copy(top_m.parts.tech[sSym].var[:startStLvl])
-		var_df[!,:value] = value.(var_df[!,:var])
-		writeParameterFile!(top_m, select(var_df, Not([:var])), :stLvlFix, parDef_dic[:stLvlFix], startLvl_str * "startingLevel_" * string(sSym,"_startingLvl"))
+		if sSym in keys(benders_obj.itr.best.startLvl)
+			writeParameterFile!(top_m, benders_obj.itr.best.startLvl[sSym], :stLvlFix, parDef_dic[:stLvlFix], startLvl_str * "startingLevel_" * string(sSym,"_startingLvl"))
+		end
 	end
-
+	
 	# write starting level for non-inter storage
 	for sSym in filter(x -> top_m.parts.tech[x].stCyc == benders_obj.top.supTs.lvl, collect(keys(benders_obj.itr.best.var.stLvl)))
-		startLvl_df = benders_obj.itr.best.var.stLvl[sSym][:stLvl] |> (x -> select(filter(y -> y.Ts_dis == maximum(x[!,:Ts_dis]), x), Not([:Ts_dis])))
+		startLvl_df = copy(benders_obj.itr.best.var.stLvl[sSym][:stLvl] |> (x -> select(filter(y -> y.Ts_dis == maximum(x[!,:Ts_dis]), x), Not([:Ts_dis]))))
 		writeParameterFile!(top_m, startLvl_df, :stLvlFix, parDef_dic[:stLvlFix], startLvl_str * "startingLevel_" * string(sSym,"_startingLvl"))
 	end
 
+end
+
+# ! enforce lower limit on written dual values to prevent implausible results (e.g., curtailment rather than filling storage)
+function enforceLowerLim(dual_df::DataFrame, ts_arr::Array{Int64, 1}, lowLimDual_fl::Float64)
+	# create datamframe with all potential duals
+	allDual_df = unique(select(dual_df, Not([:Ts_dis,:value])))
+	allDual_df[!,:Ts_dis] .= fill(ts_arr, size(allDual_df,1))
+	allDual_df = flatten(allDual_df, [:Ts_dis])
+	# enfore lower limit on duals
+	allDual_df = joinMissing(allDual_df, dual_df, intCol(allDual_df), :left, Dict(:value => 0.0))
+	allDual_df[!,:value] = max.(allDual_df[!,:value], lowLimDual_fl)
+	return allDual_df 	
 end
 
 # ! run a step of the monte carlo optimization and update starting
@@ -1239,6 +1269,7 @@ function fixStartingLevels!(sub_m::anyModel, startLvl_dic::Dict{Symbol, DataFram
 	setLngShrt_dic = Dict(:timestep => :Ts, :region => :R, :carrier => :C, :technology => :Te, :exchange => :Exc, :mode => :M, :id => :id, :scenario => :scr)
 
     for sSym in keys(startLvl_dic)
+		println(sSym)
         # convert csv data to internal types in first iteration
         if steps_int == 1
             lvl_df = startLvl_dic[sSym]
@@ -1634,7 +1665,7 @@ function addComplCns!(top_m::anyModel, relVar_arr::Vector{Symbol}, complCns_dic:
 		allCompl_df[!,:var] = aggDivVar(topVar_df, allCompl_df, tuple(intCol(allCompl_df)...), top_m.sets)
 
 		cns_dic = Dict{Symbol,cnsCont}()
-		cns_dic = createLimitCont(allCompl_df, compl, cns_dic, top_m, scalEq_boo = false)
+		cns_dic = createLimitCont(allCompl_df, compl, cns_dic, top_m)
 		
 		for cnsSym in keys(cns_dic)
 			top_m.parts.lim.cns[cnsSym] = createCns(cns_dic[cnsSym], top_m.optModel, top_m.options.holdFixed)

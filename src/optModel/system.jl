@@ -418,7 +418,8 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 	# ! ensure consistency among different storage capacities (to every storage in- or output capacity a corresponding storage size has to exist)
 	stVar_arr = ([:capaStIn, :capaStOut, :capaStSize], [:expStIn, :expStOut, :expStSize])
 	nameSt_dic = Dict(:capaStIn => "input power", :capaStOut => "output power", :capaStSize => "energy", :expStIn => "input power", :expStOut => "output power", :expStSize => "energy")
-
+	
+	
 	for tSym in collect(keys(prepSys_dic[:Te]))
 		
 		# collect variables 
@@ -565,7 +566,7 @@ function addInsCapa!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple
 					if prepTech_dic[cap] |> (w -> isempty(w.var) && isempty(w.resi)) delete!(prepTech_dic, cap) end
 				end
 			end
-		elseif anyM.parts.tech[tSym].stCyc == -1 && !isempty(anyM.subPro) && anyM.subPro != (0,0) && :capaStSize in keys(prepTech_dic)	
+		elseif anyM.parts.tech[tSym].stCyc == -1 && !isempty(anyM.subPro) && anyM.subPro != (0,0) && :capaStSize in keys(prepTech_dic) && !anyM.options.monteCarlo 
 			prepTech_dic[:capaStSize] = (var = unique(vcat(prepTech_dic[:capaStSize].var, select(prepTech_dic[:capaStSize].resi, Not([:var])))), resi = DataFrame())
 		end
 	end
@@ -581,7 +582,7 @@ function createExpCap!(part::AbstractModelPart, prep_dic::Dict{Symbol,NamedTuple
 	# create variables for expansion and capacity
 	for expVar in sort(collectKeys(keys(prep_dic)))
 
-		seasStSize_boo = expVar == :capaStSize && part.stCyc == -1 && !isempty(anyM.subPro) && anyM.subPro != (0,0) # only needs capacity for seasonal storage in case of inter-annual storage system and distributed creation
+		seasStSize_boo = expVar == :capaStSize && part.stCyc == -1 && !isempty(anyM.subPro) && anyM.subPro != (0,0) && !anyM.options.monteCarlo # only needs capacity for seasonal storage in case of inter-annual storage system and distributed creation
 		
 		exc_boo = typeof(part) <: ExcPart
 		s_sym = exc_boo ? :Exc : :Te
@@ -1006,7 +1007,7 @@ function createCapaRestr!(part::AbstractModelPart, ts_dic::Dict{Tuple{Int64,Int6
 		# check special cases relevant for reduced foresight and storage level
 		if typeof(part) == TechPart
 			topFrs_boo = anyM.subPro == (0,0) && anyM.scr.frsLvl != 0
-			subFrs_boo = anyM.subPro != (0,0) && !isempty(anyM.subPro ) && anyM.scr.frsLvl != 0 && anyM.scr.frsLvl > part.stCyc
+			subFrs_boo = anyM.subPro != (0,0) && !isempty(anyM.subPro ) && anyM.scr.frsLvl != 0 && anyM.scr.frsLvl > part.stCyc && !anyM.options.monteCarlo
 		else
 			topFrs_boo = false
 			subFrs_boo = false

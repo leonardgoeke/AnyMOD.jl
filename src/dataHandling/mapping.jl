@@ -616,7 +616,7 @@ function createCapaRestrMap!(part::AbstractModelPart, anyM::anyModel)
 			if isempty(stC_arr) continue end
 			carDis_arr = map(x -> [x, anyM.cInfo[x].tsDis, anyM.cInfo[x].rDis], stC_arr)
 			restrInfo_arr = mapCapaRestr(carDis_arr, :exc, anyM, carGrp_ntup, balLvl_ntup)
-			map(x -> push!(capaDispRestr_arr, (string(st, part.stCyc == -1 && st == :stSize ? "Season_" : "_", g), restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])), 1:length(restrInfo_arr))
+			map(x -> push!(capaDispRestr_arr, (string(st, part.stCyc == -1 && !anyM.options.monteCarlo && st == :stSize ? "Season_" : "_", g), restrInfo_arr[x][1], restrInfo_arr[x][2], restrInfo_arr[x][3])), 1:length(restrInfo_arr))
 		end
 	end
 

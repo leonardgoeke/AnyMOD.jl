@@ -129,7 +129,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 
 		append!(benders_obj.report.itr, secItr_df)
 
-		startSol_tup = (var = startSol_obj, res = startRes_dic)
+		startSol_tup = (var = startSol_obj, res = startRes_dic, dual = Dict{Symbol, Dict{Symbol,DataFrame}}(), startLvl = Dict{Symbol, DataFrame}())
 
 		#endregion
 
@@ -145,7 +145,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		stab_obj = nothing
 		startSol_obj = resData()
 		benders_obj.cuts = Array{Pair{Tuple{Int,Int},Union{resData}},1}()
-		startSol_tup = (var = startSol_obj, res = Dict{Symbol,DataFrame}())
+		startSol_tup = (var = startSol_obj, res = Dict{Symbol,DataFrame}(), dual = Dict{Symbol, Dict{Symbol,DataFrame}}(), startLvl = Dict{Symbol, DataFrame}())
 	end
 
 	return stab_obj, startSol_tup
