@@ -1504,11 +1504,10 @@ Plots the Sankey diagram for energy flows in a model.
 function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region, :timestep, :scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false, wrtVal::Bool = true, digVal::Int = 1, sgnVal::String = ";")
 
 	flowGrap_obj = anyM.graInfo.graph
-
 	#region # * initialize data
-	
+
 	if !isempty(setdiff(dropDown, [:region, :timestep, :scenario]))
-	error("dropDown only accepts array :region and :timestep as content")
+		error("dropDown only accepts array :region and :timestep as content")
 	end
 	
 	# get mappings to create buttons of dropdown menue
@@ -1520,7 +1519,6 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		data_df = select(reportResults(:summary, anyM; rtnOpt = (:rawDf,)), Not([:objName]))
 		filter!(x -> x.variable in (:demand, :gen, :use, :stExtIn, :stExtOut, :trdBuy, :trdSell, :demand, :import, :export, :lss, :crt), data_df)
 		data_df[!,:variable] = map(x -> x in (:stExtIn, :stExtOut) ? Symbol(replace(string(x), "Ext" => "")) : x, data_df[!,:variable])
-	
 	
 		# substracts demand from descendant carriers from demand of upwards carriers displayed in sankey diagram
 		c_dic, r_dic = [anyM.sets[x].nodes for x in [:C, :R]]
@@ -1539,7 +1537,10 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		data_df[!,:carrier] = map(x -> lookupString(x, anyM.sets[:C]), data_df[!,:carrier])
 		data_df[!,:id] = map(x -> lookupString(x, anyM.sets[:id]), data_df[!,:id])
 		data_df[!,:variable] = Symbol.(data_df[!,:variable]) 
-		rename!(data_df, [:timestep_superordinate_dispatch => :Ts_disSup, :region_dispatch => :R_dis, :technology => :Te, :carrier => :C])
+		if "scenario" in names(data_df) 
+			data_df[!,:scenario] = map(x -> lookupString(x, anyM.sets[:scr]), data_df[!,:scenario]) 
+		end
+		rename!(data_df, [:timestep_superordinate_dispatch => :Ts_disSup, :region_dispatch => :R_dis, :technology => :Te, :carrier => :C, :scenario => :scr, :value => :value, :variable => :variable, :id => :id])
 	end
 	
 	if savaData 
@@ -1549,7 +1550,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	# converts export and import quantities into net values
 	if netExc
 		allExc_df = filter(x -> x.variable in (:import, :export), data_df)
-		if !isempty(data_df)
+		if !isempty(allExc_df)
 			joinedExc_df = joinMissing(select(rename(filter(x -> x.variable == :export, allExc_df), :value => :export), Not([:variable])), select(rename(filter(x -> x.variable == :import, allExc_df), :value => :import), Not([:variable])), intCol(data_df), :outer, Dict(:export => 0.0, :import => 0.0))
 			joinedExc_df[!,:value] = joinedExc_df[!,:export] .+ joinedExc_df[!,:import]
 			select!(joinedExc_df, Not([:export, :import]))
@@ -1811,7 +1812,8 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	savefig(plot(data_obj, layout_obj), "$(anyM.options.outDir)/energyFlowSankey_$(join(string.(dropDown), "_"))$(name == "" ? "" : "_" * name)_$(anyM.options.outStamp).html")
 	
 	#endregion
-
+	
+	
 end
 
 # ! define postions of nodes in energy flow graph

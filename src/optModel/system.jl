@@ -1256,10 +1256,12 @@ function createRatioCns!(part::AbstractModelPart, cns_dic::Dict{Symbol,cnsCont},
 				end
 
 				cns_df = combine(groupby(cns_df, intCol(cns_df)), :var => (x -> sum(x)) => :var)
-				# extend to scenarios
-				cns_df = addScenarios(cns_df, anyM.sets[:Ts], anyM.scr, anyM.supTs)
-				# scale to energy units
-				cns_df[!,:var] .= cns_df[!,:var] .* getEnergyFac(cns_df[!,:Ts_dis], anyM.supTs) 
+				if :Ts_dis in namesSym(cns_df)
+					# extend to scenarios
+					cns_df = addScenarios(cns_df, anyM.sets[:Ts], anyM.scr)
+					# scale to energy units
+					cns_df[!,:var] .= cns_df[!,:var] .* getEnergyFac(cns_df[!,:Ts_dis], anyM.supTs)
+				end
 			end
 
 			# matches variables with parameters denominator

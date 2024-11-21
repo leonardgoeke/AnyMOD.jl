@@ -1089,7 +1089,7 @@ function initializeReporting!(benders_obj::bendersObj, stabSetup_obj::stabSetup,
 end
 
 #endregion
-s
+
 #region # * monte-carlo analysis for dispatch
 
 # ! get results need for monteCarlo
