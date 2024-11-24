@@ -129,14 +129,17 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 
 		append!(benders_obj.report.itr, secItr_df)
 
-		startSol_tup = (var = startSol_obj, res = startRes_dic, dual = Dict{Symbol, Dict{Symbol,DataFrame}}(), startLvl = Dict{Symbol, DataFrame}())
+		startSol_tup = (var = startSol_obj, res = startRes_dic, startLvl = Dict{Symbol, DataFrame}())
 
 		#endregion
 
 		#region # * initialize stabilization 
 
-		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.srsThr, stabSetup_obj.switch, stabSetup_obj.weight, startSol_obj, lowBd_fl, stabSetup_obj.solveNoStab, benders_obj.top);
-		centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, report_m);
+		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.srsThr, stabSetup_obj.lowLimVal, stabSetup_obj.switch, stabSetup_obj.weight, startSol_obj, lowBd_fl, stabSetup_obj.solveNoStab, benders_obj.top);
+	
+		stabVio_df = centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, report_m);
+		stabVio_df[!,:i] .= 0
+		append!(benders_obj.report.stabVio, stabVio_df)
 
 		#endregion
 		
@@ -171,6 +174,8 @@ function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_
 			error("options provided for level bundle do not match the defined option 'lam'")
 		elseif key == :lvl2 && !isempty(setdiff(keys(val), (:lam, :myMax)))
 			error("options provided for level bundle do not match the defined options 'lam', 'myMax'")
+		elseif key == :qtrLvl && !isempty(setdiff(keys(val), (:startRad, :itrRad, :decStart, :decEnd, :incStart, :incEnd, :facStart, :facEnd,:inter, :lam)))
+			error("options provided for trust-region level bundle do not match the defined options 'startRad', 'itrRad', 'decStart', 'decEnd', 'incStart', 'incEnd', 'facStart', 'facEnd', 'inter', and 'lam'")
 		elseif key == :box && !isempty(setdiff(keys(val), (:low, :up, :minDelta, :thr, :fac, :scaLvl, :scaLim)))
 			error("options provided for trust-region do not match the defined options 'low', 'up', 'minDelta', 'thr', 'fac', 'scaLvl', and 'scaLim'")
 		elseif key == :dsb && !isempty(setdiff(keys(val), (:start, :min, :lam, :myMax)))
@@ -432,52 +437,92 @@ function centerStab!(method::Val{:qtrLvl}, stab_obj::stabObj, rngVio_fl::Float64
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj, top_m)
 
-	# sets values of variables that will violate range to zero
-	minFac_fl = (2 * maximum(abs.(allVar_df[!,:value]) .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] * rngVio_fl / top_m.options.coefRng.mat[1])
-	allVar_df[!,:refValue] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
+	# set small capacity values to zero or smallest possible value within range, whatever is more accurate
+	lowerLimTrust_fl = stab_obj.lowLimVal
+	allVar_df[!,:corValue] = map(x -> x != 0.0 && abs(x) < lowerLimTrust_fl ? (x < lowerLimTrust_fl / 2 ? 0.0 : lowerLimTrust_fl) : x, allVar_df[!,:value])
 	
-	# absolute value for rhs of equation
-	abs_fl = sum(allVar_df[!,:refValue] .* allVar_df[!,:scaFac]) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
+	# compute minimum size of rhs to ensure that correction of capacity does not exclude current best from the trust region
+	abs_fl = sum(allVar_df[!,:value] .* allVar_df[!,:scaFac]) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
+	delta_fl = sum((allVar_df[!,:value] - allVar_df[!,:corValue]).^2)
+
+	# computes constraint expression
+	capaSum_expr = sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> x.scaFac * (z^2 - 2 * x.corValue * z + x.corValue^2)), eachrow(allVar_df)))
+	qtrCons_expr = capaSum_expr - (delta_fl + abs_fl * stab_obj.dynPar[stab_obj.actMet][:qtr])
 	
-	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ abs(stab_obj.dynPar[stab_obj.actMet][:qtr] * abs_fl^2 - sum(allVar_df[!,:scaFac].^2 .* allVar_df[!,:value].^2))
+	# scaling factors
+	coefRng_tup = (top_m.options.coefRng.mat[1], top_m.options.coefRng.mat[2] * rngVio_fl)
+	matRng_tup = abs.(values(qtrCons_expr.aff.terms)) |> (y -> isempty(y) ? (0.0, 0.0) : (minimum(y), maximum(y)))
+	qtrConsSca_expr = scaleRng([qtrCons_expr], [matRng_tup], coefRng_tup, false)[1]
 
-	# get scaled l2-norm expression for capacities
-	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
+	# scaling rhs
+	rhsRange_arr = (top_m.options.coefRng.rhs[1], top_m.options.coefRng.rhs[2] * rngVio_fl)
+	
+	if abs(qtrConsSca_expr.aff.constant) < rhsRange_arr[1] # upscaling rhs
+		qtrConsSca_expr = qtrConsSca_expr * rhsRange_arr[1] / qtrConsSca_expr.aff.constant
+	else abs(qtrConsSca_expr.aff.constant) > rhsRange_arr[2] # downscaling rhs
+		qtrConsSca_expr = qtrConsSca_expr * rhsRange_arr[2] / qtrConsSca_expr.aff.constant
+	end
+	#region # * reports on factors out of range (rhs will be in range since scaled last)
+	
+	# get factors that violate range
+	trackVioSm_arr = Pair[]
+	trackVioBg_arr = Pair[]
 
-	# adjust the radius of trust-region, if rounding would move current best outside of trust-region
-	adRad_boo = false
-	if sqrt(sum((allVar_df[!,:value] .- allVar_df[!,:refValue]).^2) * 1.1) < abs_fl
-		rad2_fl = stab_obj.dynPar[stab_obj.actMet][:qtr] * abs_fl^2
-	else
-		rad2_fl = sum((allVar_df[!,:value] .- allVar_df[!,:refValue]).^2) * 1.1
-		adRad_boo = true
-		produceMessage(report_m.options, report_m.report, 1, " - Extended radius of stabilization to ensure current best in trust-region after rounding capacities", testErr = false, printErr = false)
+	for x in keys(qtrConsSca_expr.terms)
+		if matRng_tup[1] * rngVio_fl > abs(qtrConsSca_expr.terms[x]) 
+			push!(trackVioSm_arr, string(x.a) => abs(qtrConsSca_expr.terms[x])) 
+		elseif matRng_tup[2] / rngVio_fl < abs(qtrConsSca_expr.terms[x]) 
+			push!(trackVioBg_arr, string(x.a) => abs(qtrConsSca_expr.terms[x])) 
+		end
 	end
 
-	# adjusts creation of trust-region, if rhs would substanitally violate rhs range
-	rhs_fl = (rad2_fl - capaSum_expr.aff.constant)  * scaFac_fl
+	for x in keys(qtrConsSca_expr.aff.terms) 
+		if matRng_tup[1] * rngVio_fl > abs(qtrConsSca_expr.aff.terms[x])
+			push!(trackVioSm_arr, string(x) => abs(qtrConsSca_expr.aff.terms[x])^0.5) 
+		elseif matRng_tup[2] / rngVio_fl < abs(qtrConsSca_expr.aff.terms[x])
+			push!(trackVioBg_arr, string(x) => abs(qtrConsSca_expr.aff.terms[x])^0.5) 
+		end
+	end
+
+	repVio_df = DataFrame(var = String[], fac = Float64[], type = Symbol[])
+	# add too small factors to reporting
+	for x in unique(getindex.(trackVioSm_arr,1))
+		# find greatest violation for each variable
+		allRel_arr = filter(y -> y[1] == x, trackVioSm_arr)  
+		min_fl = minimum(getindex.(allRel_arr,2))
+		relEntr_pair = filter(y -> y[2] == min_fl, allRel_arr)[1]
+		# add to overall dataframe
+		push!(repVio_df, (var = relEntr_pair[1], fac = relEntr_pair[2], type = :tooSmall))
+	end
+	
+	# add too large factors to reporting
+	for x in unique(getindex.(trackVioBg_arr,1))
+		# find greatest violation for each variable
+		allRel_arr = filter(y -> y[1] == x, trackVioBg_arr)  
+		max_fl = maximum(getindex.(allRel_arr,2))
+		relEntr_pair = filter(y -> y[2] == max_fl, allRel_arr)[1]
+		# add to overall dataframe
+		push!(repVio_df, (var = relEntr_pair[1], fac = relEntr_pair[2], type = :tooBig))
+	end
+
+	#endregion
+
 	# create final constraint
-	if top_m.options.coefRng.rhs[1] / rngVio_fl > abs(rhs_fl)
-		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaFac_fl <= top_m.options.coefRng.rhs[1]* rngVio_fl + capaSum_expr.aff.constant * scaFac_fl)
-		produceMessage(report_m.options, report_m.report, 1, " - Increased radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
-	elseif top_m.options.coefRng.rhs[2] * rngVio_fl > abs(rhs_fl) || adRad_boo
-		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaFac_fl <= rad2_fl  * scaFac_fl)
-	elseif !forceRad
-		stab_obj.cns = @constraint(top_m.optModel,  capaSum_expr * scaFac_fl <= top_m.options.coefRng.rhs[2]* rngVio_fl + capaSum_expr.aff.constant * scaFac_fl)
-		produceMessage(report_m.options, report_m.report, 1, " - Reduced radius of stabilization to prevent numerical problems", testErr = false, printErr = false)
-	end
+	stab_obj.cns = @constraint(top_m.optModel,  qtrConsSca_expr <= 0.0)
 
 	# adjust objective function and level set
 	@objective(top_m.optModel, Min, 0.0)
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet][:lvl])
+
+	return repVio_df
+
 end
 
 # function for doubly stabilized bundle method
 function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
 	# set dual option according to demands of methos 
-	set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
+	set_optimizer_attribute(top_m.optModel, "QCPopt_tup.inter", 1)
 
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj, top_m)
@@ -528,7 +573,7 @@ end
 function computePrx2Aux(cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, prevCuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1})
 
 	diffVal_arr = Float64[]
-	diffDual_arr = Float64[]
+	diffopt_tup.inter_arr = Float64[]
 	
 	for cut in prevCuts_arr # loop over cut data
 		
@@ -580,7 +625,7 @@ function computePrx2Aux(cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, 
 end
 
 # update dynamic parameter of stabilization method
-function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::itrStatus, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, tarGap_fl::Float64, report_ntup::NamedTuple{(:itr,:nearOpt,:res,:mod),Tuple{DataFrame,DataFrame,NamedTuple,anyModel}})
+function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::itrStatus, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, tarGap_fl::Float64, report_ntup::NamedTuple{(:itr,:nearOpt,:stabVio,:res,:mod),Tuple{DataFrame,DataFrame,DataFrame,NamedTuple,anyModel}})
 
 	opt_tup = stab_obj.methodOpt[x_int]
 	if stab_obj.method[x_int] == :qtr # adjust radius of quadratic trust-region
@@ -632,15 +677,42 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::
 			end
 		end
 	elseif stab_obj.method[x_int] == :qtrLvl
-		# avoid decreasing the level parameter at non serious step to prevent infeasible top problem
-		low_fl = srsStep_boo ? itr_obj.res[:estTotCostNoStab] : max(itr_obj.res[:estTotCostNoStab], stab_obj.dynPar[stab_obj.actMet][:lvl]) 
-		# enforce parameter
+		# avoid decreasing the level parameter at non-serious step to prevent infeasible top problem
+		low_fl = srsStep_boo ? itr_obj.res[:estTotCostNoStab] : max(itr_obj.res[:estTotCostNoStab], stab_obj.dynPar[stab_obj.actMet][:lvl] * top_m.options.scaFac.obj) 
+		
+		# update level parameter
 		stab_obj.dynPar[x_int][:lvl] = (opt_tup.lam * low_fl + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
-		stab_obj.dynPar[x_int][:qtr] = interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.startRad, opt_tup.endRad], Symbol(opt_tup.inter))
+		#stab_obj.dynPar[x_int][:qtr] = interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.startRad, 0.005], Symbol(opt_tup.inter))
+
+		# compute weighted harmonic average of relative deviation between current and best objective value over last iterations
+		if size(report_ntup.itr, 1) > opt_tup.itrRad
+			relRep_df = report_ntup.itr[end-opt_tup.itrRad:end,:] 
+			dev_arr = filter(x -> x != 0.0, (relRep_df[!,:curCost] - relRep_df[!,:bestObj]) ./ relRep_df[!,:bestObj])
+			rad_arr = map(x -> typeof(x) <: Array ? x[1] : x, relRep_df[!,:dynPar_qtrLvl])
+
+			# return zero, if serios steps occured or if radius was adjusted already in last itertions
+			if length(unique(rad_arr)) > 1
+				relMeanDev_fl = NaN
+			else
+				relMeanDev_fl = weightMean(reverse(dev_arr))
+			end
+
+			# adjust quadratic trust-region radius based on relative deviation
+			if !isnan(relMeanDev_fl)
+				if interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.decStart, opt_tup.decEnd], opt_tup.inter) < relMeanDev_fl # reduce radius
+					stab_obj.dynPar[x_int][:qtr] = stab_obj.dynPar[x_int][:qtr] / interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.facStart, opt_tup.facEnd], opt_tup.inter)
+					produceMessage(report_ntup.mod.options, report_ntup.mod.report, 1, " - Reduce radius of quadratic trust-region to decrease oscillation", testErr = false, printErr = false)
+				elseif interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.incStart, opt_tup.incEnd], opt_tup.inter) > relMeanDev_fl  # increase radius
+					stab_obj.dynPar[x_int][:qtr] = stab_obj.dynPar[x_int][:qtr] * interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.facStart, opt_tup.facEnd], opt_tup.inter)
+					produceMessage(report_ntup.mod.options, report_ntup.mod.report, 1, " - Extend radius of quadratic trust-region to increase oscillation", testErr = false, printErr = false)
+				end
+			end
+		end
+
 	elseif stab_obj.method[x_int] == :dsb # adjust doubly stabilized method, implementation according to doi.org/10.1007/s10107-015-0873-6
 		stab_obj.dynPar[x_int][:my] = min(1 - itr_obj.res[:lvlDual], opt_tup.myMax + 1.0)
 		if srsStep_boo
-			stab_obj.dynPar[x_int][:prx] = (stab_obj.dynPar[x_int][:my])*stab_obj.dynPar[x_int][:prx] # added a fixed scaler for the dual variable to avoid extremely large values for prx
+			stab_obj.dynPar[x_int][:prx] = (stab_obj.dynPar[x_int][:my]) * stab_obj.dynPar[x_int][:prx] # added a fixed scaler for the dual variable to avoid extremely large values for prx
 			stab_obj.dynPar[x_int][:yps] = min(stab_obj.dynPar[x_int][:yps], (1 - opt_tup.lam)*(itr_obj.res[:curBest]- itr_obj.res[:estTotCostNoStab]) / top_m.options.scaFac.obj)
 		else
 			newPrx_fl = stab_obj.dynPar[x_int][:prx] * (stab_obj.dynPar[x_int][:yps] / ((itr_obj.res[:curBest] - itr_obj.res[:estTotCostNoStab]) / top_m.options.scaFac.obj))
@@ -747,7 +819,7 @@ function runTopWithoutStab!(benders_obj::bendersObj)
 	@suppress begin
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
 		# solve only to optimality for fully accurate lower bound when close to optimum
-		if benders_obj.itr.gap < 0.5
+		if benders_obj.itr.gap < 0.2
 			set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 1)
 			set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", 1e-6)
 		else
@@ -958,7 +1030,9 @@ function trackCuts(benders_obj::bendersObj)
 end
 
 # ! interpolate iteration parameter based on current gap (used for convergence tolerance of subproblems or radius in qtrLvl stabilization)
-function interItrPar(gapCur_fl::Float64, gapEnd_fl::Float64, rng_arr::Union{Array{Float64, 1}, Array{Int, 1}}, int_sym::Symbol)
+function interItrPar(gapCur_fl::Float64, gapEnd_fl::Float64, rng_arr::Union{Array{Float64, 1}, Array{Int, 1}}, int_sym::Union{Symbol,String})
+
+	int_sym = typeof(int_sym) == Symbol ? int_sym : Symbol(int_sym)
 
 	if int_sym == :lin
 		m = (rng_arr[1] -rng_arr[2])/(1-gapEnd_fl)
@@ -1028,3 +1102,4 @@ function deleteLinearTrust!(top_m::anyModel)
 end
 
 #endregion
+

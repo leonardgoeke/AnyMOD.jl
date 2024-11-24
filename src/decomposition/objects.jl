@@ -25,12 +25,13 @@ mutable struct stabSetup
 	method::Tuple # method(s) for stabilization
 	srsThr::Float64 # threshold for serious step
 	ini::Symbol # rule for stabilization (:none will skip stabilization)
+	lowLimVal::Float64
 	solveNoStab::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}} 
 	switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} # rule to switch between different methods
 	weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} # weight of variables in stabilization
 	
-	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_sym::Symbol, solveNoStab::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 10, avgImp = 1e-5, itrAvg = 5), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
-		return new(method_tup, srsThr_fl, ini_sym, solveNoStab, switch, weight)
+	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_sym::Symbol, lowLimVal_fl::Float64, solveNoStab::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 10, avgImp = 1e-5, itrAvg = 5), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
+		return new(method_tup, srsThr_fl, ini_sym, lowLimVal_fl, solveNoStab, switch, weight)
 	end
 end
 
@@ -87,8 +88,9 @@ mutable struct stabObj
 	methodOpt::Array{NamedTuple,1} # array of options for adjustment of stabilization parameters
 	solveNoStab::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}} 
 	srsThr::Float64 # threshold for serious step
+	lowLimVal::Float64 # lower limit for stabilization value (smaller values are rounded)
 	ruleSw::Union{NamedTuple{(), Tuple{}}, NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}}} # rule for switching between stabilization methods
-	weight::NamedTuple{(:capa,:capaStSize,:stLvl, :lim), NTuple{4, Float64}} # weight of variables in stabilization
+	weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), NTuple{4, Float64}} # weight of variables in stabilization
 	actMet::Int # index of currently active stabilization method
 	objVal::Float64 # array of objective value for current center
 	lastSw::Int # iteration of last switch
@@ -96,7 +98,7 @@ mutable struct stabObj
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
 	
-	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, solveNoStab_ntup::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}},  top_m::anyModel)
+	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, lowLimVal_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, solveNoStab_ntup::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}}, top_m::anyModel)
 		stab_obj = new()
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64,Float64,Int64}})
@@ -112,6 +114,7 @@ mutable struct stabObj
 
 		# set other fields
 		stab_obj.srsThr = srsThr_fl
+		stab_obj.lowLimVal = lowLimVal_fl
 		stab_obj.ruleSw = ruleSw_ntup
 		stab_obj.weight = weight_ntup
 		stab_obj.actMet = 1
@@ -139,7 +142,7 @@ mutable struct countItr
 end
 
 mutable struct itrStatus
-	best::NamedTuple{(:var,:res,:dual,:startLvl),Tuple{resData,Dict{Symbol,DataFrame},Dict{Symbol, Dict{Symbol,DataFrame}} ,Dict{Symbol,DataFrame}}}
+	best::NamedTuple{(:var,:res,:startLvl),Tuple{resData,Dict{Symbol,DataFrame},Dict{Symbol,DataFrame}}}
 	cnt::countItr
 	gap::Float64
 	res::Dict{Symbol,Float64} # store different results here
@@ -157,7 +160,7 @@ mutable struct bendersObj
     algOpt::algSetup
 	nearOpt::nearOptObj
 	info::NamedTuple{(:name,:frsLvl,:supTsLvl,:repTsLvl,:shortExp), Tuple{String, Int64, Int64, Int64, Int64}}
-	report::NamedTuple{(:itr,:nearOpt,:res,:mod),Tuple{DataFrame,DataFrame,NamedTuple,anyModel}}
+	report::NamedTuple{(:itr,:nearOpt,:stabVio,:res,:mod),Tuple{DataFrame,DataFrame,DataFrame,NamedTuple,anyModel}}
 	
 	function bendersObj(info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, getComVarDist::Function, resInfo::NamedTuple, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
 
