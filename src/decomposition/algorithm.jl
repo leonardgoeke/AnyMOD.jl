@@ -371,7 +371,7 @@ function runTop(benders_obj::bendersObj)
 				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increase radius to $(stab_obj.dynPar[stab_obj.actMet][:qtr])" , testErr = false, printErr = false)
 				if termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) break end
 			end
-			
+
 			if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 
 				# increase level parameter almost until the upper bound
