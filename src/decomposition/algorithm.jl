@@ -1680,9 +1680,6 @@ function writeResultsAsInputs!(benders_obj::bendersObj, outDir_str::String)
 
 	# create directory
 	restDir!(outDir_str)
-
-	capaDir_str = outDir_str * "capacityFixes/" 
-	restDir!(capaDir_str)
 	
 	# write capacity values
 	for sys in (:tech, :exc)
@@ -1698,7 +1695,7 @@ function writeResultsAsInputs!(benders_obj::bendersObj, outDir_str::String)
 				end
 				# write parameter fle
 				par_sym = Symbol(capaSym,"Fix")
-				writeParameterFile!(top_m, var_df, par_sym, parDef_dic[par_sym], capaDir_str * "par_" * string(sSym,"_",capaSym))
+				writeParameterFile!(top_m, var_df, par_sym, parDef_dic[par_sym], outDir_str * "par_" * string(sSym,"_",capaSym))
 			end
 		end
 	end
