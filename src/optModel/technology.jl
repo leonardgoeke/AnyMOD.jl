@@ -1112,7 +1112,8 @@ function stochStRestr(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyMo
 
     # ! create constraints to enforce worst case
     enfWorst_df = innerjoin(rename(part.var[:stLvlInter], :var => :delta), rename(part.var[:worstCaseStDelta], :var => :worst), on = intCol(part.var[:worstCaseStDelta]))
-    enfWorst_df[!,:cnsExpr] = map(x -> x.delta - x.worst, eachrow(enfWorst_df))
+	enfWorst_df = matchSetParameter(enfWorst_df, part.par[:secFacWorstCase], anyM.sets, newCol = :secFac)
+    enfWorst_df[!,:cnsExpr] = map(x -> (1 + x.secFac) * x.delta - x.worst, eachrow(enfWorst_df))
     cns_dic[:worstCaseStDelta] = cnsCont(select(enfWorst_df, Not([:delta,:worst])), :greater)
 
 	# ! compute net-level for each step in worst-case
