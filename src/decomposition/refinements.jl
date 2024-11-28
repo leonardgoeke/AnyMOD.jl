@@ -469,17 +469,17 @@ function centerStab!(method::Val{:qtrLvl}, stab_obj::stabObj, rngVio_fl::Float64
 	trackVioBg_arr = Pair[]
 
 	for x in keys(qtrConsSca_expr.terms)
-		if matRng_tup[1] * rngVio_fl > abs(qtrConsSca_expr.terms[x]) 
+		if matRng_tup[1] / rngVio_fl > abs(qtrConsSca_expr.terms[x]) 
 			push!(trackVioSm_arr, string(x.a) => abs(qtrConsSca_expr.terms[x])) 
-		elseif matRng_tup[2] / rngVio_fl < abs(qtrConsSca_expr.terms[x]) 
+		elseif matRng_tup[2] * rngVio_fl < abs(qtrConsSca_expr.terms[x]) 
 			push!(trackVioBg_arr, string(x.a) => abs(qtrConsSca_expr.terms[x])) 
 		end
 	end
 
 	for x in keys(qtrConsSca_expr.aff.terms) 
-		if matRng_tup[1] * rngVio_fl > abs(qtrConsSca_expr.aff.terms[x])
+		if matRng_tup[1] / rngVio_fl > abs(qtrConsSca_expr.aff.terms[x])
 			push!(trackVioSm_arr, string(x) => abs(qtrConsSca_expr.aff.terms[x])^0.5) 
-		elseif matRng_tup[2] / rngVio_fl < abs(qtrConsSca_expr.aff.terms[x])
+		elseif matRng_tup[2] * rngVio_fl < abs(qtrConsSca_expr.aff.terms[x])
 			push!(trackVioBg_arr, string(x) => abs(qtrConsSca_expr.aff.terms[x])^0.5) 
 		end
 	end
