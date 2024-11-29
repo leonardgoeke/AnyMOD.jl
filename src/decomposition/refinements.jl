@@ -164,7 +164,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		stab_obj = nothing
 		startSol_obj = resData()
 		benders_obj.cuts = Array{Pair{Tuple{Int,Int},Union{resData}},1}()
-		startSol_tup = (var = startSol_obj, res = Dict{Symbol,DataFrame}(), dual = Dict{Symbol, Dict{Symbol,DataFrame}}(), startLvl = Dict{Symbol, DataFrame}())
+		startSol_tup = (var = startSol_obj, res = Dict{Symbol,DataFrame}(), startLvl = Dict{Symbol, DataFrame}())
 	end
 
 	return stab_obj, startSol_tup
@@ -249,7 +249,7 @@ function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, t
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# create quadratic constraint
-	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, stab_obj.dynPar[stab_obj.actMet])
+	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, rhs = stab_obj.dynPar[stab_obj.actMet])
 	stab_obj.cns = @constraint(top_m.optModel,  qtrConsSca_expr <= 0.0)
 
 	# report violation
@@ -265,44 +265,16 @@ function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, rn
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
-	# get penalty factor
-	pen_fl = 1/(2 * stab_obj.dynPar[stab_obj.actMet][:prx])
-
-	# match values with variables in model
-	allVar_df = getStabDf(stab_obj, top_m)
-
-	# sets values of variables that will violate range to zero
-	minFac_fl = (2 * maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:refValue] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
-
-	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ (sum(allVar_df[!,:value] .^ 2) |> (x -> x == 0.0 ? 1.0 : x))
-
-	# get scaled l2-norm expression for capacities
-	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
-
-	# current range of factors and value of constant
-	fac_arr = abs.(vcat(collect(values(capaSum_expr.aff.terms)), collect(values(capaSum_expr.terms)))) |> (x -> scaFac_fl .* (minimum(x), maximum(x)))	
-	const_fl = capaSum_expr.aff.constant * scaFac_fl |> (x -> x == 0.0 ? top_m.options.coefRng.rhs[1] : x)
-	
-	# maximum and minimum value for penalty
-	maxPen_fl =  min(top_m.options.coefRng.mat[2]/fac_arr[2], top_m.options.coefRng.rhs[2]/const_fl) * rngVio_fl	
-	minPen_fl =  max(top_m.options.coefRng.mat[1]/fac_arr[1], top_m.options.coefRng.rhs[1]/const_fl) / rngVio_fl
+	# create quadratic expression
+	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, fac =  1/(2 * stab_obj.dynPar[stab_obj.actMet][:prx]))
 	
 	# adjust objective function
-	if pen_fl < maxPen_fl && pen_fl > minPen_fl
-		@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] +  pen_fl * capaSum_expr  * scaFac_fl)
-	else
-		if pen_fl > maxPen_fl
-			@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] +  maxPen_fl * capaSum_expr  * scaFac_fl)
-		else
-			@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] +  minPen_fl * capaSum_expr  * scaFac_fl)
-		end
-		produceMessage(report_m.options, report_m.report, 1, " - Adjusted proximal parameter to prevent numerical problems", testErr = false, printErr = false)
-	end
+	@objective(top_m.optModel, Min, top_m.parts.obj.var[:obj][1,1] + qtrConsSca_expr)
 
 	# report violation
 	repVio_df = reportRngViolations(qtrConsSca_expr, top_m.options.coefRng.mat, rngVio_fl, stab_obj.repVio)
+
+	return repVio_df
 end
 
 # functions for level bundle methods
@@ -311,55 +283,38 @@ function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, 
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
-	# match values with variables in model
-	allVar_df = getStabDf(stab_obj, top_m)
-
-	# sets values of variables that will violate range to zero
-	minFac_fl = (2 * maximum(abs.(allVar_df[!,:value]) .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] * rngVio_fl / top_m.options.coefRng.mat[1])
-	allVar_df[!,:refValue] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
-	
-	# absolute value for rhs of equation
-	abs_fl = sum(allVar_df[!,:refValue] .* allVar_df[!,:scaFac]) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
-	
-	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ abs(stab_obj.dynPar[stab_obj.actMet] * abs_fl^2 - sum(allVar_df[!,:scaFac].^2 .* allVar_df[!,:value].^2))
-
-	# get scaled l2-norm expression for capacities
-	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
+	# create quadratic expression
+	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl)
 
 	# adjust objective function and level set
-	@objective(top_m.optModel, Min, 0.5 * capaSum_expr  * scaFac_fl)
+	@objective(top_m.optModel, Min, qtrConsSca_expr)
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet])
 
+	# report violation
+	repVio_df = reportRngViolations(qtrConsSca_expr, top_m.options.coefRng.mat, rngVio_fl, stab_obj.repVio)
+
+	return repVio_df
 end
 
 function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
 	# set dual option according to demands of methos 
-	set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
-		
-	# match values with variables in model
-	allVar_df = getStabDf(stab_obj, top_m)
+	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
-	# sets values of variables that will violate range to zero
-	minFac_fl = (2 * maximum(abs.(allVar_df[!,:value]) .* allVar_df[!,:scaFac])) / (top_m.options.coefRng.mat[2] * rngVio_fl / top_m.options.coefRng.mat[1])
-	allVar_df[!,:refValue] = map(x -> 2 * abs(x.value) * x.scaFac < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
-	
-	# absolute value for rhs of equation
-	abs_fl = sum(allVar_df[!,:refValue] .* allVar_df[!,:scaFac]) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
-	
-	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ abs(stab_obj.dynPar[stab_obj.actMet] * abs_fl^2 - sum(allVar_df[!,:scaFac].^2 .* allVar_df[!,:value].^2))
-
-	# get scaled l2-norm expression for capacities
-	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
+	# create quadratic expression
+	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl)
 
 	# compute level set constraint
 	ell_fl = stab_obj.objVal/ top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps] 
 
 	# adjust objective function and level set
-	@objective(top_m.optModel, Min, 0.5 * capaSum_expr  * scaFac_fl)
+	@objective(top_m.optModel, Min, qtrConsSca_expr)
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], ell_fl)
+
+	# report violation
+	repVio_df = reportRngViolations(qtrConsSca_expr, top_m.options.coefRng.mat, rngVio_fl, stab_obj.repVio)
+
+	return repVio_df
 end
 
 # function for box step method
@@ -387,11 +342,12 @@ function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, t
 
 	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
 
-
 	# set lower and upper bound
 	minDelta_fl = stab_obj.methodOpt[stab_obj.actMet].minDelta
 	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], getLowerBound(x.value, minDelta_fl * x.scalBox, x.negPos, stab_obj.methodOpt[stab_obj.actMet].low * x.scalBox, top_m.options.coefRng.rhs[1]))), eachrow(allVar_df))
 	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], getUpperBound(x.value, minDelta_fl * x.scalBox, stab_obj.methodOpt[stab_obj.actMet].up * x.scalBox))), eachrow(allVar_df))
+
+	return DataFrame(var = String[], fac = Float64[], type = Symbol[])
 
 end
 
@@ -422,7 +378,7 @@ function centerStab!(method::Val{:qtrLvl}, stab_obj::stabObj, rngVio_fl::Float64
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# create quadratic constraint
-	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, stab_obj.dynPar[stab_obj.actMet][:qtr])
+	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, rhs = stab_obj.dynPar[stab_obj.actMet][:qtr])
 	stab_obj.cns = @constraint(top_m.optModel,  qtrConsSca_expr <= 0.0)
 
 	# adjust objective function and level set
@@ -441,34 +397,27 @@ function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, t
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
 
-	# match values with variables in model
-	allVar_df = getStabDf(stab_obj, top_m)
-
-	# sets values of variables that will violate range to zero
-	minFac_fl = (maximum(allVar_df[!,:value] .* allVar_df[!,:scaFac]))/(top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1])
-	allVar_df[!,:value] = map(x -> abs(x.value) < minFac_fl ? 0.0 : x.value, eachrow(allVar_df))
-
-	# compute possible range of scaling factors with rhs still in range
-	scaRng_tup = top_m.options.coefRng.rhs ./ sum(allVar_df[!,:value].^2)
-
-	# get scaled l2-norm expression for capacities
-	capaSum_expr, allVar_df, scaFac_fl = computeL2Norm(allVar_df, scaRng_tup, top_m)
+	# create quadratic expression
+	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, fac =  0.5 * stab_obj.dynPar[stab_obj.actMet][:prx])
 
 	# compute level set constraint
 	ell_fl = stab_obj.objVal/ top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
-
-	# compute penalty multiplier
-	pen_fl = stab_obj.dynPar[stab_obj.actMet][:prx]
-
+	
 	# adjust objective function and level set
 	stab_obj.helper_var = @variable(top_m.optModel, r)
-	@objective(top_m.optModel, Min, r + (1/2*pen_fl) * capaSum_expr  * scaFac_fl)
+	
+	@objective(top_m.optModel, Min, r + qtrConsSca_expr)
 	stab_obj.cns = @constraint(top_m.optModel, top_m.parts.obj.var[:obj][1, 1] <= r)
 	set_upper_bound(stab_obj.helper_var, ell_fl)
+
+	# report violation
+	repVio_df = reportRngViolations(qtrConsSca_expr, top_m.options.coefRng.mat, rngVio_fl, stab_obj.repVio)
+
+	return repVio_df
 end
 
 # compute quadratic expression for stabilization
-function computeQuadExp(top_m::anyModel, stab_obj::stabObj, rngVio_fl::Float64, rhs_fl::Float64)
+function computeQuadExp(top_m::anyModel, stab_obj::stabObj, rngVio_fl::Float64; rhs::Float64 = 0.0, fac::Float64 = 1.0)	
 
 	# set dual option according to demands of methos 
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
@@ -484,8 +433,8 @@ function computeQuadExp(top_m::anyModel, stab_obj::stabObj, rngVio_fl::Float64, 
 	delta_fl = sum((allVar_df[!,:value] - allVar_df[!,:corValue]).^2)
 
 	# computes constraint expression
-	capaSum_expr = sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> x.scaFac * (z^2 - 2 * x.corValue * z + x.corValue^2)), eachrow(allVar_df)))
-	qtrCons_expr = capaSum_expr - (delta_fl + rhs_fl)
+	capaSum_expr = fac * sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> x.scaFac * (z^2 - 2 * x.corValue * z + x.corValue^2)), eachrow(allVar_df)))
+	qtrCons_expr = capaSum_expr - (delta_fl + rhs)
 	
 	# scaling factors
 	coefRng_tup = (top_m.options.coefRng.mat[1], top_m.options.coefRng.mat[2] * rngVio_fl)

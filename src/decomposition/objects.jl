@@ -99,6 +99,7 @@ mutable struct stabObj
 	repVio::Bool # report violations of range in quadratic stabilization
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
+	helper_var::VariableRef
 	
 	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, lowLimVal_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, solveNoStab_ntup::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}}, repVio_boo::Bool, top_m::anyModel)
 		stab_obj = new()
