@@ -663,7 +663,7 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 				if checkInfeas_boo
 					printIIS(mod_m)
 				else
-					optimize!(mod_m.optModel)
+					@suppress optimize!(mod_m.optModel)
 				end
 			end
 			break
@@ -1042,7 +1042,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		deleteCuts!(benders_obj)
 
 		#endregion
-	
+
 		benders_obj.itr.cnt.i = benders_obj.itr.cnt.i + 1
 		if rtn_boo break end
 		
@@ -1479,6 +1479,59 @@ end
 
 #region # * reporting
 
+# report violation of range in quadratic trust-region
+function reportRngViolations(qtrConsSca_expr::QuadExpr, matRng_tup::Tuple{Float64,Float64}, rngVio_fl::Float64, wrtRep::Bool)
+	
+	# create dataframe for reporting
+	repVio_df = DataFrame(var = String[], fac = Float64[], type = Symbol[])
+
+	if wrtRep
+
+		# get factors that violate range
+		trackVioSm_arr = Pair[]
+		trackVioBg_arr = Pair[]
+
+		for x in keys(qtrConsSca_expr.terms)
+			if matRng_tup[1] / rngVio_fl > abs(qtrConsSca_expr.terms[x]) 
+				push!(trackVioSm_arr, string(x.a) => abs(qtrConsSca_expr.terms[x])) 
+			elseif matRng_tup[2] * rngVio_fl < abs(qtrConsSca_expr.terms[x]) 
+				push!(trackVioBg_arr, string(x.a) => abs(qtrConsSca_expr.terms[x])) 
+			end
+		end
+		
+		for x in keys(qtrConsSca_expr.aff.terms) 
+			if matRng_tup[1] / rngVio_fl > abs(qtrConsSca_expr.aff.terms[x])
+				push!(trackVioSm_arr, string(x) => abs(qtrConsSca_expr.aff.terms[x])^0.5) 
+			elseif matRng_tup[2] * rngVio_fl < abs(qtrConsSca_expr.aff.terms[x])
+				push!(trackVioBg_arr, string(x) => abs(qtrConsSca_expr.aff.terms[x])^0.5) 
+			end
+		end	
+		
+		# add too small factors to reporting
+		for x in unique(getindex.(trackVioSm_arr,1))
+			# find greatest violation for each variable
+			allRel_arr = filter(y -> y[1] == x, trackVioSm_arr)  
+			min_fl = minimum(getindex.(allRel_arr,2))
+			relEntr_pair = filter(y -> y[2] == min_fl, allRel_arr)[1]
+			# add to overall dataframe
+			push!(repVio_df, (var = relEntr_pair[1], fac = relEntr_pair[2], type = :tooSmall))
+		end
+		
+		# add too large factors to reporting
+		for x in unique(getindex.(trackVioBg_arr,1))
+			# find greatest violation for each variable
+			allRel_arr = filter(y -> y[1] == x, trackVioBg_arr)  
+			max_fl = maximum(getindex.(allRel_arr,2))
+			relEntr_pair = filter(y -> y[2] == max_fl, allRel_arr)[1]
+			# add to overall dataframe
+			push!(repVio_df, (var = relEntr_pair[1], fac = relEntr_pair[2], type = :tooBig))
+		end
+
+	end
+
+	return repVio_df
+end
+
 # report on benders iteration
 function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_time::Millisecond, elpNoStab_time::Millisecond, timeSub_dic::Dict{Tuple{Int64,Int64},Millisecond}, lss_dic::Dict{Tuple{Int64,Int64},Float64}, numFoc_dic::Dict{Tuple{Int64,Int64},Int64})
 
@@ -1627,7 +1680,6 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 	
 	# merge general results into single files
 	for res in res_ntup.general
-	
 		# get all relevant csv files
 		mergFile_arr = ["$(benders_obj.top.options.outDir)/results_" * string(res) * "_$(benders_obj.top.options.outStamp).csv"]
 		if benders_obj.algOpt.dist # get name for sub-problems from workers
@@ -1658,7 +1710,7 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 					add_df[!,:timestep_foresight] .= benders_obj.top.sets[:Ts].nodes[sub_tup[1]].val
 				end
 			end
-			append!(merged_df, add_df)
+			append!(merged_df, select(add_df, intersect(namesSym(merged_df), namesSym(add_df))))
 		end
 	
 		merged_df[!,:objName] .= benders_obj.info.name 

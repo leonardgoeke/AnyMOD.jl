@@ -29,9 +29,10 @@ mutable struct stabSetup
 	solveNoStab::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}} 
 	switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} # rule to switch between different methods
 	weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} # weight of variables in stabilization
+	repVio::Bool
 	
-	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_sym::Symbol, lowLimVal_fl::Float64, solveNoStab::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}}, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 10, avgImp = 1e-5, itrAvg = 5), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
-		return new(method_tup, srsThr_fl, ini_sym, lowLimVal_fl, solveNoStab, switch, weight)
+	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_sym::Symbol, lowLimVal_fl::Float64, solveNoStab::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}}, repVio::Bool = false, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 10, avgImp = 1e-5, itrAvg = 5), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
+		return new(method_tup, srsThr_fl, ini_sym, lowLimVal_fl, solveNoStab, switch, weight, repVio)
 	end
 end
 
@@ -95,10 +96,11 @@ mutable struct stabObj
 	objVal::Float64 # array of objective value for current center
 	lastSw::Int # iteration of last switch
 	dynPar::Array{Union{Dict,Float64},1} # array of dynamic parameters for each method
+	repVio::Bool # report violations of range in quadratic stabilization
 	var::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symbol,Dict{Symbol,DataFrame}},Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}}} # variables subject to stabilization
 	cns::ConstraintRef
 	
-	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, lowLimVal_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, solveNoStab_ntup::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}}, top_m::anyModel)
+	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, lowLimVal_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, solveNoStab_ntup::NamedTuple{(:upper, :inter), Tuple{Int64, Symbol}}, repVio_boo::Bool, top_m::anyModel)
 		stab_obj = new()
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64,Float64,Int64}})
@@ -120,6 +122,7 @@ mutable struct stabObj
 		stab_obj.actMet = 1
 		stab_obj.lastSw = 0
 		stab_obj.objVal = resData_obj.objVal
+		stab_obj.repVio = repVio_boo
 		stab_obj.var = filterStabVar(resData_obj.capa, resData_obj.stLvl, resData_obj.lim, weight_ntup, top_m)
 		
 		# compute number of variables subject to stabilization
