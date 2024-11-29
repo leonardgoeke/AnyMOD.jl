@@ -421,8 +421,80 @@ function centerStab!(method::Val{:qtrLvl}, stab_obj::stabObj, rngVio_fl::Float64
 	
 	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
-	# create quadratic constraint
-	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, stab_obj.dynPar[stab_obj.actMet][:qtr])
+	# match values with variables in model
+	allVar_df = getStabDf(stab_obj, top_m)
+
+	# set small capacity values to zero or smallest possible value within range, whatever is more accurate
+	lowerLimTrust_fl = stab_obj.lowLimVal
+	allVar_df[!,:corValue] = map(x -> x != 0.0 && abs(x) < lowerLimTrust_fl ? (x < lowerLimTrust_fl / 2 ? 0.0 : lowerLimTrust_fl) : x, allVar_df[!,:value])
+	
+	# compute minimum size of rhs to ensure that correction of capacity does not exclude current best from the trust region
+	abs_fl = sum(allVar_df[!,:value] .* allVar_df[!,:scaFac]) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
+	delta_fl = sum((allVar_df[!,:value] - allVar_df[!,:corValue]).^2)
+
+	# computes constraint expression
+	capaSum_expr = sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> x.scaFac * (z^2 - 2 * x.corValue * z + x.corValue^2)), eachrow(allVar_df)))
+	qtrCons_expr = capaSum_expr - (delta_fl + abs_fl * stab_obj.dynPar[stab_obj.actMet][:qtr])
+	
+	# scaling factors
+	coefRng_tup = (top_m.options.coefRng.mat[1], top_m.options.coefRng.mat[2] * rngVio_fl)
+	matRng_tup = abs.(values(qtrCons_expr.aff.terms)) |> (y -> isempty(y) ? (0.0, 0.0) : (minimum(y), maximum(y)))
+	qtrConsSca_expr = scaleRng([qtrCons_expr], [matRng_tup], coefRng_tup, false)[1]
+
+	# scaling rhs
+	rhsRange_arr = (top_m.options.coefRng.rhs[1], top_m.options.coefRng.rhs[2] * rngVio_fl)
+	
+	if abs(qtrConsSca_expr.aff.constant) < rhsRange_arr[1] # upscaling rhs
+		qtrConsSca_expr = qtrConsSca_expr * rhsRange_arr[1] / qtrConsSca_expr.aff.constant
+	else abs(qtrConsSca_expr.aff.constant) > rhsRange_arr[2] # downscaling rhs
+		qtrConsSca_expr = qtrConsSca_expr * rhsRange_arr[2] / qtrConsSca_expr.aff.constant
+	end
+	#region # * reports on factors out of range (rhs will be in range since scaled last)
+	
+	# get factors that violate range
+	trackVioSm_arr = Pair[]
+	trackVioBg_arr = Pair[]
+
+	for x in keys(qtrConsSca_expr.terms)
+		if matRng_tup[1] / rngVio_fl > abs(qtrConsSca_expr.terms[x]) 
+			push!(trackVioSm_arr, string(x.a) => abs(qtrConsSca_expr.terms[x])) 
+		elseif matRng_tup[2] * rngVio_fl < abs(qtrConsSca_expr.terms[x]) 
+			push!(trackVioBg_arr, string(x.a) => abs(qtrConsSca_expr.terms[x])) 
+		end
+	end
+
+	for x in keys(qtrConsSca_expr.aff.terms) 
+		if matRng_tup[1] / rngVio_fl > abs(qtrConsSca_expr.aff.terms[x])
+			push!(trackVioSm_arr, string(x) => abs(qtrConsSca_expr.aff.terms[x])^0.5) 
+		elseif matRng_tup[2] * rngVio_fl < abs(qtrConsSca_expr.aff.terms[x])
+			push!(trackVioBg_arr, string(x) => abs(qtrConsSca_expr.aff.terms[x])^0.5) 
+		end
+	end
+
+	repVio_df = DataFrame(var = String[], fac = Float64[], type = Symbol[])
+	# add too small factors to reporting
+	for x in unique(getindex.(trackVioSm_arr,1))
+		# find greatest violation for each variable
+		allRel_arr = filter(y -> y[1] == x, trackVioSm_arr)  
+		min_fl = minimum(getindex.(allRel_arr,2))
+		relEntr_pair = filter(y -> y[2] == min_fl, allRel_arr)[1]
+		# add to overall dataframe
+		push!(repVio_df, (var = relEntr_pair[1], fac = relEntr_pair[2], type = :tooSmall))
+	end
+	
+	# add too large factors to reporting
+	for x in unique(getindex.(trackVioBg_arr,1))
+		# find greatest violation for each variable
+		allRel_arr = filter(y -> y[1] == x, trackVioBg_arr)  
+		max_fl = maximum(getindex.(allRel_arr,2))
+		relEntr_pair = filter(y -> y[2] == max_fl, allRel_arr)[1]
+		# add to overall dataframe
+		push!(repVio_df, (var = relEntr_pair[1], fac = relEntr_pair[2], type = :tooBig))
+	end
+
+	#endregion
+
+	# create final constraint
 	stab_obj.cns = @constraint(top_m.optModel,  qtrConsSca_expr <= 0.0)
 
 	# adjust objective function and level set
