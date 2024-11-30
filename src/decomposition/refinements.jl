@@ -581,6 +581,7 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::
 			else
 				relMeanDev_fl = weightMean(reverse(dev_arr))
 			end
+			println(relMeanDev_fl)
 
 			# adjust quadratic trust-region radius based on relative deviation
 			if !isnan(relMeanDev_fl)
