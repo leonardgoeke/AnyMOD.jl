@@ -579,7 +579,7 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::
 			if length(unique(rad_arr)) > 1
 				relMeanDev_fl = NaN
 			else
-				relMeanDev_fl = weightMean(reverse(dev_arr))
+				relMeanDev_fl = sum(dev_arr) / length(dev_arr)
 			end
 			println(relMeanDev_fl)
 
