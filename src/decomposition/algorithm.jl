@@ -365,7 +365,7 @@ function runTop(benders_obj::bendersObj)
 			# increase radius of trust-region to make feasible
 			for i in 1:2
 				removeStab!(benders_obj)
-				stab_obj.dynPar[stab_obj.actMet][:qtr] = stab_obj.dynPar[stab_obj.actMet][:qtr] * interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, [opt_tup.facStart, opt_tup.facEnd], opt_tup.inter)
+				stab_obj.dynPar[stab_obj.actMet][:qtr] = stab_obj.dynPar[stab_obj.actMet][:qtr] * 1.5
 				centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, benders_obj.report.mod; forceRad = true)
 				@suppress optimize!(benders_obj.top.optModel)
 				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increase radius to $(stab_obj.dynPar[stab_obj.actMet][:qtr])" , testErr = false, printErr = false)
