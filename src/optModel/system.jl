@@ -1282,6 +1282,10 @@ function createRatioCns!(part::AbstractModelPart, cns_dic::Dict{Symbol,cnsCont},
 			end
 
 			top_df = vcat(map(x -> part.var[x], collect(rlvTop_arr))...)
+			# scale to energy units for flh and cycling restrictions
+			if !capaRatio_boo
+				top_df[!,:var] .= top_df[!,:var] .* getEnergyFac(top_df[!,:Ts_dis], anyM.supTs)
+			end
 
 			# rename column for aggregation
 			if !capaRatio_boo cns_df = rename(cns_df, :Ts_disSup => :Ts_dis) end
