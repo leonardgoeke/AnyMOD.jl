@@ -669,7 +669,7 @@ function runTopWithoutStab!(benders_obj::bendersObj)
 	@suppress begin
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", 0)
 		# solve only to optimality for fully accurate lower bound when close to optimum
-		if benders_obj.itr.gap < 0.2
+		if benders_obj.stab.crossNoStab
 			set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 1)
 			set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", 1e-6)
 		else
@@ -880,24 +880,24 @@ function trackCuts(benders_obj::bendersObj)
 end
 
 # ! interpolate iteration parameter based on current gap (used for convergence tolerance of subproblems or radius in qtrLvl stabilization)
-function interItrPar(gapCur_fl::Float64, gapEnd_fl::Float64, rng_arr::Union{Array{Float64, 1}, Array{Int, 1}}, int_sym::Union{Symbol,String})
+function interItrPar(gapCur_fl::Float64, gapEnd_fl::Float64, rng_arr::Union{Array{Float64, 1}, Array{Int, 1}}, int_sym::Union{Symbol,String}, cons_fl::Float64 = 0.0)
 
 	int_sym = typeof(int_sym) == Symbol ? int_sym : Symbol(int_sym)
 
 	if int_sym == :lin
 		m = (rng_arr[1] -rng_arr[2])/(1-gapEnd_fl)
 		b =rng_arr[1] - m
-		return b + m * gapCur_fl
+		return b + m * gapCur_fl - cons_fl
 	elseif int_sym == :exp
 		m = log(rng_arr[1]/rng_arr[2])/(1-gapEnd_fl)
 		b = log(rng_arr[1]) - m
-		return exp(b + m * gapCur_fl)
+		return exp(b + m * gapCur_fl) - cons_fl
 	elseif int_sym == :log
 		b =rng_arr[1]
 		m = (rng_arr[2] - b ) / log(gapEnd_fl)
-		return b + m * log(gapCur_fl)
+		return b + m * log(gapCur_fl) - cons_fl
 	elseif int_sym == :none
-		return rng_arr[2]
+		return rng_arr[2] - cons_fl
 	end
 end
 

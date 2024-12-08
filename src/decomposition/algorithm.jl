@@ -941,8 +941,15 @@ function checkConvergence(benders_obj::bendersObj, lss_dic::Dict{Tuple{Int64,Int
 			adaptNearOpt!(benders_obj.top, benders_obj.nearOpt.setup, itr_obj.res[:optCost], benders_obj.nearOpt.cnt)
 			produceMessage(report_m.options, report_m.report, 1, " - Switched to near-optimal for $(benders_obj.nearOpt.setup.obj[benders_obj.nearOpt.cnt ][1])", testErr = false, printErr = false)
 		else
-			produceMessage(report_m.options, report_m.report, 1, " - Finished iteration!", testErr = false, printErr = false)
-			rtn_boo = true
+			if benders_obj.stab.crossNoStab
+				rtn_boo = true
+				produceMessage(report_m.options, report_m.report, 1, " - Finished iteration!", testErr = false, printErr = false)
+			else
+				benders_obj.stab.crossNoStab = true
+				produceMessage(report_m.options, report_m.report, 1, " - Activated crossover when solving without stabilization to verify convergence!", testErr = false, printErr = false)
+			end
+			
+
 		end
 	elseif Dates.value(floor(now() - report_m.options.startTime, Dates.Minute(1))) > benders_obj.algOpt.timeLim
 		rtn_boo = true
@@ -994,7 +1001,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 				# compute next iteration to solve top problem
 				par_ntup = benders_obj.stab.solveNoStab
 				gap_fl = 1 - benders_obj.itr.res[:lowLimCost] / benders_obj.itr.res[:curBest]
-				waitTopNoStab_int = max(1, Int(floor(interItrPar(gap_fl, benders_obj.algOpt.gap, [par_ntup.upper,1], par_ntup.inter))))
+				waitTopNoStab_int = max(1, Int(floor(interItrPar(gap_fl, benders_obj.algOpt.gap, [par_ntup.upper,1], par_ntup.inter, par_ntup.sub))))
 				benders_obj.itr.cnt.nextNoStab = benders_obj.itr.cnt.i + waitTopNoStab_int
 				# only report, if problem without stabilization is not solved again in the next iteration
 				if waitTopNoStab_int != 1

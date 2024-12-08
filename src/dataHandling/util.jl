@@ -74,9 +74,6 @@ plus(a::Int, b::Int) = a + b
 plus(a::Int, b::Nothing) = a
 plus(a::Nothing, b::Int) = b
 
-# ! comput the weighted harmonic mean of array
-weightMean(in_arr::Array{Float64,1}) = map(x -> 1/x, 1:length(in_arr)) |> (y -> sum(in_arr .* y ./ sum(y)))
-
 # ! creates array of string from typical input of array
 makeC(in::Union{String, String1, String3, String7, String15, String31, String63, String127, String255}) = split(replace(in, " " => ""), ";")
 
