@@ -576,7 +576,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	numFoc_int = solveModel!(sub_m, [0,3], false)
 
 	# write results into files (only used once optimum is obtained)
-	writeAllResults!(sub_m, resultOpt)
+	writeAllResults!(sub_m, resultOpt, false)
 
 	#endregion
 
@@ -990,7 +990,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		end
 
 		# save current results
-		curRes_dic = Dict(x => reportResults(x, benders_obj.top, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
+		curRes_dic = Dict(x => reportResults(x, benders_obj.top, rtnOpt = (:csvDf,), rmvZero = false) for x in benders_obj.report.res.general)
 	
 		# top-problem without stabilization
 		strNoStab_time = now()

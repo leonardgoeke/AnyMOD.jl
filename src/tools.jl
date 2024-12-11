@@ -1142,11 +1142,11 @@ function reportStorageLevel(anyM, writeAgg::Bool=false, rtnOpt::Tuple{Vararg{Sym
 end
 
 # ! write results specified in named tuple
-function writeAllResults!(anyM::anyModel, res_ntup::NamedTuple)
+function writeAllResults!(anyM::anyModel, res_ntup::NamedTuple, rmvZero::Bool = true)
 
 	if !isempty(res_ntup)
 		# write general results
-		for x in res_ntup.general reportResults(x, anyM) end
+		for x in res_ntup.general reportResults(x, anyM, rmvZero = rmvZero) end
 
 		# write time-series results
 		for x in res_ntup.carrierTs reportTimeSeries(x, anyM) end
