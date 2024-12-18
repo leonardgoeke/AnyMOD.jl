@@ -501,7 +501,7 @@ function runTop(benders_obj::bendersObj)
 end
 
 # ! run sub-problem
-function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, resultOpt::NamedTuple = NamedTuple())
+function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, check_boo::Bool = false, resultOpt::NamedTuple = NamedTuple())
 
 	str_time = now()
 
@@ -573,7 +573,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	end
 
 	# increase numeric focus if model did not solve
-	numFoc_int = solveModel!(sub_m, [0,3], false)
+	numFoc_int = solveModel!(sub_m, [0,3], check_boo)
 
 	# write results into files (only used once optimum is obtained)
 	writeAllResults!(sub_m, resultOpt, false)
@@ -643,18 +643,18 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 end
 
 # ! solves a model increasing the numeric focus from starting value to maximum in infeasible
-function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo::Bool = true)
+function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, check_boo::Bool = true)
 
 	numFoc_int = 1
 	while true
 		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_arr[numFoc_int])
-		@suppress optimize!(mod_m.optModel)
+		if !check_boo @suppress optimize!(mod_m.optModel) else optimize!(mod_m.optModel) end
 		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == length(numFoc_arr)
-			if  !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
-				if checkInfeas_boo
+			if !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
+				if check_boo
 					printIIS(mod_m)
 				else
-					@suppress optimize!(mod_m.optModel)
+					if !check_boo @suppress optimize!(mod_m.optModel) else optimize!(mod_m.optModel) end
 				end
 			end
 			break
@@ -668,8 +668,8 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, checkInfeas_boo
 end
 
 # ! run sub-problem on worker (sub_m is a global variable at package scope)
-function runSub(resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, resultOpt::NamedTuple = NamedTuple())
-	return runSub(sub_m, resData_obj, rngVio_fl, sol_sym, optTol_fl, crsOver_boo, resultOpt)
+function runSub(resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTol_fl::Float64 = 1e-8, crsOver_boo::Bool = false, check_boo::Bool = false, resultOpt::NamedTuple = NamedTuple())
+	return runSub(sub_m, resData_obj, rngVio_fl, sol_sym, optTol_fl, crsOver_boo, check_boo, resultOpt)
 end
 
 getComVar() = comVar_dic
@@ -979,13 +979,11 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		acc_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.sub.rng, benders_obj.algOpt.sub.int)
 	
 		if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
-		@suppress begin
-			for (id,s) in enumerate(sort(collect(keys(benders_obj.sub))))
-				if benders_obj.algOpt.dist # distributed case
-					futData_dic[s] = @suppress runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
-				else # non-distributed case
-					cutData_dic[s], timeSub_dic[s], lss_dic[s], numFoc_dic[s] = runSub(benders_obj.sub[s], copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs)
-				end
+		for (id,s) in enumerate(sort(collect(keys(benders_obj.sub))))
+			if benders_obj.algOpt.dist # distributed case
+				futData_dic[s] = runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
+			else # non-distributed case
+				cutData_dic[s], timeSub_dic[s], lss_dic[s], numFoc_dic[s] = runSub(benders_obj.sub[s], copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
 			end
 		end
 
