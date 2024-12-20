@@ -1665,7 +1665,7 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 	@suppress begin
 		for (id,s) in enumerate(collect(keys(benders_obj.sub)))
 			if benders_obj.algOpt.dist # distributed case
-				futData_dic[s] = runSubDist(id + 1, copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
+				futData_dic[s] = runSubDist(id + 1, copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, benders_obj.algOpt.sub.check, res_ntup)
 			else # non-distributed case
 				runSub(benders_obj.sub[s], copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
 			end
