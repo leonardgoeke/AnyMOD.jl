@@ -363,7 +363,7 @@ function runTop(benders_obj::bendersObj)
 			up_fl = stab_obj.objVal / benders_obj.top.options.scaFac.obj
 
 			# increase level parameter almost until the upper bound
-			lvl1_arr = collect(low_fl:((up_fl - low_fl) / 2):up_fl * (1 - benders_obj.algOpt.gap))[2:end]
+			lvl1_arr = collect(low_fl:((up_fl* (1 - benders_obj.algOpt.gap) - low_fl) / 2):up_fl * (1 - benders_obj.algOpt.gap))[2:end]
 			lvl2_arr = collect(lvl1_arr[end]:((up_fl - lvl1_arr[end]) / 3):up_fl * (1 - benders_obj.algOpt.gap))[2:end]
 			
 			for lvl_fl in vcat(lvl1_arr, lvl2_arr)
@@ -647,7 +647,12 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, check_boo::Bool
 
 	numFoc_int = 1
 	while true
-		set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_arr[numFoc_int])
+		if !check_boo 
+			@suppress set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_arr[numFoc_int])
+		else 
+			set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_arr[numFoc_int])
+		end
+		
 		if !check_boo @suppress optimize!(mod_m.optModel) else optimize!(mod_m.optModel) end
 		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == length(numFoc_arr)
 			if !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
@@ -1667,7 +1672,7 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 			if benders_obj.algOpt.dist # distributed case
 				futData_dic[s] = runSubDist(id + 1, copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, benders_obj.algOpt.sub.check, res_ntup)
 			else # non-distributed case
-				runSub(benders_obj.sub[s], copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, res_ntup)
+				runSub(benders_obj.sub[s], copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, benders_obj.algOpt.sub.check, res_ntup)
 			end
 		end
 	end

@@ -154,9 +154,11 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 			end
 
 			# add foresight period if applies
-			if anyM.scr.frsLvl != anyM.supTs.lvl && (length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0)))
+			if anyM.scr.frsLvl != 0 && anyM.scr.frsLvl != anyM.supTs.lvl && (length(anyM.scr.scrProb) > 1 || (!isempty(anyM.subPro) && anyM.subPro != (0,0)))
 				dem_df[!,:Ts_frs] = getTsFrs(dem_df[!,:Ts_dis], anyM.sets[:Ts], anyM.scr.frsLvl)
 				dem_df = flatten(dem_df,:Ts_frs)
+			else
+				dem_df[!,:Ts_frs] .= anyM.subPro[1]
 			end
 
 			if !isempty(anyM.subPro) filter!(x -> x.Ts_frs == anyM.subPro[1], dem_df) end
