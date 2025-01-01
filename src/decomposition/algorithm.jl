@@ -269,10 +269,8 @@ function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::Nam
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.threads)
 	
 	# set options
-	@suppress begin
-		set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
-		if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.sub.timeLim * 60) end # in seconds
-	end
+	set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.threads)
+	if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.sub.timeLim * 60) end # in seconds
 
 	# collect complicating constraints
 	comVar_dic = Dict{Symbol,DataFrame}()
