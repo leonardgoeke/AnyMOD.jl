@@ -943,7 +943,8 @@ function checkConvergence(benders_obj::bendersObj, lss_dic::Dict{Tuple{Int64,Int
 			# adapt the objective and constraint to near-optimal
 			adaptNearOpt!(benders_obj.top, benders_obj.nearOpt.setup, itr_obj.res[:optCost], benders_obj.nearOpt.cnt)
 			produceMessage(report_m.options, report_m.report, 1, " - Switched to near-optimal for $(benders_obj.nearOpt.setup.obj[benders_obj.nearOpt.cnt ][1])", testErr = false, printErr = false)
-		else
+		# finish iteration
+		else 
 			if benders_obj.stab.crossNoStab
 				rtn_boo = true
 				produceMessage(report_m.options, report_m.report, 1, " - Finished iteration!", testErr = false, printErr = false)
@@ -951,11 +952,11 @@ function checkConvergence(benders_obj::bendersObj, lss_dic::Dict{Tuple{Int64,Int
 				benders_obj.stab.crossNoStab = true
 				produceMessage(report_m.options, report_m.report, 1, " - Activated crossover when solving without stabilization to verify convergence!", testErr = false, printErr = false)
 			end
-			
-
 		end
 	elseif Dates.value(floor(now() - report_m.options.startTime, Dates.Minute(1))) > benders_obj.algOpt.timeLim
 		rtn_boo = true
+	else # reset option for solve without stabilization with crossover
+		benders_obj.stab.crossNoStab = false
 	end
 
 	return rtn_boo
@@ -997,7 +998,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		strNoStab_time = now()
 		if !isnothing(benders_obj.stab) 
 			# check if top problem without stabilization should be solved again 
-			if benders_obj.itr.cnt.i >= benders_obj.itr.cnt.nextNoStab
+			if benders_obj.itr.cnt.i >= benders_obj.itr.cnt.nextNoStab || benders_obj.stab.crossNoStab
 				runTopWithoutStab!(benders_obj)
 				# compute next iteration to solve top problem
 				par_ntup = benders_obj.stab.solveNoStab
