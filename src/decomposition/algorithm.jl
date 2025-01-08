@@ -189,7 +189,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
-	solveModel!(top_m, [0,3], false)
+	solveModel!(top_m, [0,3], false, false)
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -319,13 +319,17 @@ function runTop(benders_obj::bendersObj)
 		if benders_obj.algOpt.top.dnsThrs != 0 && benders_obj.algOpt.top.dnsThrs != 0.0
 			set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.top.dnsThrs)
 		end
+		# compute tolerances
+		qtrTol_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.qtrTol[2], benders_obj.algOpt.top.qtrTol[1])
+		feasTol_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.feasTol[2], benders_obj.algOpt.top.feasTol[1])
+		# set options
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
-		set_optimizer_attribute(benders_obj.top.optModel, "BarQCPConvTol", benders_obj.algOpt.top.qtrTol)
-		set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", benders_obj.algOpt.top.feasTol)
+		set_optimizer_attribute(benders_obj.top.optModel, "BarQCPConvTol", max(qtrTol_fl, benders_obj.algOpt.top.qtrTol[2][2]))
+		set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", max(feasTol_fl, benders_obj.algOpt.top.feasTol[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
 	end
-	solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[1:1], false)
+	solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[1:1], benders_obj.algOpt.top.check, false)
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -388,7 +392,7 @@ function runTop(benders_obj::bendersObj)
 
 					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Deleted trust-region" , testErr = false, printErr = false)
 					delete(benders_obj.top.optModel, stab_obj.cns)
-					solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], false)
+					solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], benders_obj.algOpt.top.check, false)
 
 					# solve without stabilization as last resort
 					if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
@@ -571,7 +575,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	end
 
 	# increase numeric focus if model did not solve
-	numFoc_int = solveModel!(sub_m, [0,3], check_boo)
+	numFoc_int = solveModel!(sub_m, [0,3], check_boo, check_boo)
 
 	# write results into files (only used once optimum is obtained)
 	writeAllResults!(sub_m, resultOpt, false)
@@ -641,7 +645,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 end
 
 # ! solves a model increasing the numeric focus from starting value to maximum in infeasible
-function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, check_boo::Bool = true)
+function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, check_boo::Bool = true, iss_boo::Bool = false)
 
 	numFoc_int = 1
 	while true
@@ -654,7 +658,7 @@ function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, check_boo::Bool
 		if !check_boo @suppress optimize!(mod_m.optModel) else optimize!(mod_m.optModel) end
 		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == length(numFoc_arr)
 			if !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
-				if check_boo
+				if iss_boo
 					printIIS(mod_m)
 				else
 					if !check_boo @suppress optimize!(mod_m.optModel) else optimize!(mod_m.optModel) end

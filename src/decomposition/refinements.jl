@@ -673,8 +673,9 @@ function runTopWithoutStab!(benders_obj::bendersObj)
 			set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 1)
 			set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", 1e-6)
 		else
+			feasTol_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.feasTol[2], benders_obj.algOpt.top.feasTol[1])
 			set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
-			set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", benders_obj.algOpt.top.feasTol)
+			set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", feasTol_fl)
 		end
 
 	end
