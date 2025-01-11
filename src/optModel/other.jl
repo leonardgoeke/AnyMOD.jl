@@ -327,7 +327,7 @@ function createCapaBal!(r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, anyM::an
 	# ! create variables for missing capacities
 	if :costMissCapa in keys(partBal.par) 
 		var_df = matchSetParameter(allCapa_df, partBal.par[:costMissCapa], anyM.sets)
-		partBal.var[:missCapa] = orderDf(createVar(select(var_df, Not([:val])), "missCapa", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.insCapa))
+		partBal.var[:missCapa] = orderDf(createVar(select(var_df, Not([:val])), "missCapa", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.insCapa/1000))
 	end 
 
 	# ! match with capacity demand
@@ -455,6 +455,7 @@ function createExpShareCns!(anyM::anyModel)
 
         cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:denom] .* cns_df[!,:share] .- cns_df[!,:num])
 	
+		scaleCnsExpr!(cns_df, anyM.options.coefRng, anyM.options.checkRng)
         anyM.parts.bal.cns[share_sym] = createCns(cnsCont(orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]]), Dict(:Up => :greater, :Low => :smaller, :Fix => :equal)[lim]), anyM.optModel, anyM.options.holdFixed)
     end
 
@@ -833,7 +834,7 @@ function checkExprRng(expr_arr::Array{AffExpr,1}, coefRng::NamedTuple{(:mat,:rhs
 
 	aboveThres_arr = findall(.!((getindex.(matRng_arr, 1)  .> coefRng.mat[1]*0.9999) .& (getindex.(matRng_arr, 2) .< coefRng.mat[2]*1.0001) .& (map(x -> x == 0.0 || (x > coefRng.rhs[1]*0.9999 && x < coefRng.rhs[2]*1.0001), rhs_arr))))
 	if !isempty(aboveThres_arr)
-		if printAll_boo # filters row where ranges of coefficients or rhs are furthest above the threshold and prints it
+		if !printAll_boo # filters row where ranges of coefficients or rhs are furthest above the threshold and prints it
 			# get relative violation for lower and upper bound of coefficients and rhs
 			matLow_arr = coefRng.mat[1] ./ getindex.(matRng_arr, 1)
 			matUp_arr = getindex.(matRng_arr, 2) ./ coefRng.mat[2]
@@ -844,7 +845,7 @@ function checkExprRng(expr_arr::Array{AffExpr,1}, coefRng::NamedTuple{(:mat,:rhs
 			# print constraint with biggest violation
 			println(expr_arr[findall(maxVio_arr .== maximum(maxVio_arr))[1]])
 		else # filters all rows where ranges of coefficients or rhs are above threshold and prints them
-			for expr in expr_arr[aboveThres_arr[1]] println(expr) end
+			for expr in expr_arr[aboveThres_arr] println(expr) end
 		end
 	end
 end

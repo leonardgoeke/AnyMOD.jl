@@ -13,9 +13,9 @@ mutable struct algSetup
 	opt::DataType
 	rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}} # acceptable violation of target range for stabilization, cut, and fix of variables
 	sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf, :check), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool, Bool}} # range and interpolation method for convergence criteria of subproblems, use of crossover for sub-problems when using barrier
-	top::NamedTuple{(:numFoc, :dnsThrs, :crs, :qtrTol, :feasTol, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Bool}} # infeasible variable at start of foresight period, numeric focus for top-problem, factor by which quadratic trust-region is allowed to violate paramete range
+	top::NamedTuple{(:numFoc, :dnsThrs, :crs, :stabTol, :noStabTol, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Bool}} # infeasible variable at start of foresight period, numeric focus for top-problem, factor by which quadratic trust-region is allowed to violate paramete range
 
-	function algSetup(gap_fl::Float64, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, threads_int::Int, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf, :check), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false, meth = :barrier, timeLim = 0.0, dbInf = true, check = false), top::NamedTuple{(:numFoc, :dnsThrs, :crs, :qtrTol, :feasTol, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Bool}} = (numFoc = [1,3], dnsThrs = 200, crs = true, qtrTol = (:lin, [1e-6, 1e-6]), feasTol = (:lin, [1e-6, 1e-6]), check = false))
+	function algSetup(gap_fl::Float64, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, threads_int::Int, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf, :check), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false, meth = :barrier, timeLim = 0.0, dbInf = true, check = false), top::NamedTuple{(:numFoc, :dnsThrs, :crs, :stabTol, :noStabTol, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Bool}} = (numFoc = [1,3], dnsThrs = 200, crs = true, stabTol = (:lin, [1e-6, 1e-6]), noStabTol = (:lin, [1e-6, 1e-6]), check = false))
 		return new(gap_fl, delCut_int, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, threads_int, opt_type, rngVio, sub, top)
 	end
 end
@@ -212,7 +212,7 @@ mutable struct bendersObj
 
 		# finish creation of top-problems
 		top_m.subPro = tuple(0, 0)
-		@suppress prepareMod!(top_m, benders_obj.algOpt.opt, benders_obj.algOpt.threads)
+		prepareMod!(top_m, benders_obj.algOpt.opt, benders_obj.algOpt.threads)
 
 		# create separate variables for costs of subproblems
 		top_m.parts.obj.var[:cut] = map(y -> map(x -> y == 1 ? sub_tup[x][1] : sub_tup[x][2], 1:length(sub_tup)), 1:2) |> (z -> createVar(DataFrame(Ts_dis = z[1], scr = z[2]), "subCut", NaN, top_m.optModel, top_m.lock, top_m.sets, scaFac = 1e2))

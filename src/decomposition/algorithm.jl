@@ -320,12 +320,11 @@ function runTop(benders_obj::bendersObj)
 			set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.top.dnsThrs)
 		end
 		# compute tolerances
-		qtrTol_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.qtrTol[2], benders_obj.algOpt.top.qtrTol[1])
-		feasTol_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.feasTol[2], benders_obj.algOpt.top.feasTol[1])
+		stabTol_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.stabTol[2], benders_obj.algOpt.top.stabTol[1])
 		# set options
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", 2)
-		set_optimizer_attribute(benders_obj.top.optModel, "BarQCPConvTol", max(qtrTol_fl, benders_obj.algOpt.top.qtrTol[2][2]))
-		set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", max(feasTol_fl, benders_obj.algOpt.top.feasTol[2][2]))
+		set_optimizer_attribute(benders_obj.top.optModel, "BarQCPConvTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
+		set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
 	end
@@ -794,14 +793,15 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 
 		else # check if cut without variables can be scaled into range
 			cutFac_fl = abs(collect(values(cut_var.terms))[1]) # get scaling factor of cut variable
-			scaRng_tup = (top_m.options.coefRng.rhs[1] / rngVio_fl, top_m.options.coefRng.rhs[2] * rngVio_fl) ./ abs(cut_expr)
+			scaRng_tup = (top_m.options.coefRng.mat[1], top_m.options.coefRng.mat[2] * rngVio_fl) ./ cutFac_fl
 			negSign_boo = cut_expr < 0
-
-			if top_m.options.coefRng.mat[1] / rngVio_fl / cutFac_fl > scaRng_tup[2] 
-				cut_expr = top_m.options.coefRng.rhs[2] * rngVio_fl / (top_m.options.coefRng.mat[1]/cutFac_fl) * (negSign_boo ? -1.0 : 1.0) # biggest rhs possible within range
+	
+			if cut_expr > top_m.options.coefRng.rhs[2] / scaRng_tup[1] 
+				cut_expr = top_m.options.coefRng.rhs[2] / scaRng_tup[1] * (negSign_boo ? -1.0 : 1.0) # biggest rhs possible within range
 				limCoef_boo = true
-			elseif top_m.options.coefRng.mat[2] * rngVio_fl / cutFac_fl < scaRng_tup[1]
-				minCut_expr = top_m.options.coefRng.rhs[1] / rngVio_fl / (top_m.options.coefRng.mat[2]/cutFac_fl) # smallest rhs possible within range
+			elseif cut_expr < top_m.options.coefRng.rhs[1] / scaRng_tup[2]
+				top_m.options.coefRng.mat[2] * rngVio_fl / cutFac_fl < scaRng_tup[1]
+				minCut_expr = top_m.options.coefRng.rhs[1] / scaRng_tup[2] # smallest rhs possible within range
 				# check if zero is not closer to acutal value than smallest value possible
 				if abs(cut_expr - minCut_expr) > abs(cut_expr - 0)
 					cut_expr = 0.0
@@ -818,7 +818,8 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 	end
 
 	# scale cuts and add to dataframe of benders cuts in model
-	scaleCnsExpr!(cut_df, top_m.options.coefRng, top_m.options.checkRng)
+	coefRng_tup = (mat = (top_m.options.coefRng.mat[1], top_m.options.coefRng.mat[2] * rngVio_fl), rhs = (top_m.options.coefRng.rhs[1], top_m.options.coefRng.rhs[2] * rngVio_fl))
+	scaleCnsExpr!(cut_df, coefRng_tup, top_m.options.checkRng)
 	append!(top_m.parts.obj.cns[:bendersCuts], createCns(cnsCont(cut_df, :smaller), top_m.optModel, false))
 end
 

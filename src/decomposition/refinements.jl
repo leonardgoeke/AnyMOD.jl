@@ -233,7 +233,7 @@ centerStab!(method::Symbol, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyMod
 # function for quadratic trust region
 function centerStab!(method::Val{:qtr}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
-	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# create quadratic constraint
 	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, relRhs = stab_obj.dynPar[stab_obj.actMet])
@@ -250,7 +250,7 @@ end
 function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 
 	# set dual option according to demands of methos 
-	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# create quadratic expression
 	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, fac =  1/(2 * stab_obj.dynPar[stab_obj.actMet][:prx]))
@@ -268,7 +268,7 @@ end
 function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
 	# set dual option according to demands of methos 
-	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# create quadratic expression
 	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl)
@@ -286,7 +286,7 @@ end
 function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
 	# set dual option according to demands of methos 
-	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# create quadratic expression
 	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl)
@@ -308,7 +308,7 @@ end
 function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 
 	# set dual option according to demands of methos 
-	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# match values with variables in model
 	expExpr_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
@@ -362,7 +362,7 @@ end
 # function for level paired with quadratic trust region 
 function centerStab!(method::Val{:qtrLvl}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
-	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# create quadratic constraint
 	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, relRhs = stab_obj.dynPar[stab_obj.actMet][:qtr])
@@ -382,7 +382,7 @@ end
 function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
 	# set dual option according to demands of methos 
-	set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
+	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
 
 	# create quadratic expression
 	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, fac =  0.5 * stab_obj.dynPar[stab_obj.actMet][:prx])
@@ -404,10 +404,7 @@ function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, t
 end
 
 # compute quadratic expression for stabilization
-function computeQuadExp(top_m::anyModel, stab_obj::stabObj, rngVio_fl::Float64; relRhs::Float64 = 0.0, fac::Float64 = 1.0)	
-
-	# set dual option according to demands of methos 
-	set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+function computeQuadExp(top_m::anyModel, stab_obj::stabObj, rngVio_fl::Float64; relRhs::Float64 = 0.0, fac::Float64 = 1.0)
 
 	# match values with variables in model
 	allVar_df = getStabDf(stab_obj, top_m)
@@ -673,14 +670,14 @@ function runTopWithoutStab!(benders_obj::bendersObj)
 			set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 1)
 			set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", 1e-6)
 		else
-			feasTol_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.feasTol[2], benders_obj.algOpt.top.feasTol[1])
+			noStabTol_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.noStabTol[2], benders_obj.algOpt.top.noStabTol[1])
 			set_optimizer_attribute(benders_obj.top.optModel, "Crossover", 0)
-			set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", feasTol_fl)
+			set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", noStabTol_fl)
 		end
 
 	end
 	numFoc_arr = [0, 2, 3]
-	numFoc_int = solveModel!(benders_obj.top, numFoc_arr, false)
+	numFoc_int = solveModel!(benders_obj.top, numFoc_arr, benders_obj.algOpt.top.check, false)
 
 	if numFoc_int != numFoc_arr[1]
 		produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem without stabilization solved by increasing numeric focus to $(numFoc_int)" , testErr = false, printErr = false)
