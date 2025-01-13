@@ -882,20 +882,24 @@ function interItrPar(gapCur_fl::Float64, gapEnd_fl::Float64, rng_arr::Union{Arra
 
 	int_sym = typeof(int_sym) == Symbol ? int_sym : Symbol(int_sym)
 
-	if int_sym == :lin
-		m = (rng_arr[1] -rng_arr[2])/(1-gapEnd_fl)
-		b =rng_arr[1] - m
-		return b + m * gapCur_fl - cons_fl
-	elseif int_sym == :exp
-		m = log(rng_arr[1]/rng_arr[2])/(1-gapEnd_fl)
-		b = log(rng_arr[1]) - m
-		return exp(b + m * gapCur_fl) - cons_fl
-	elseif int_sym == :log
-		b =rng_arr[1]
-		m = (rng_arr[2] - b ) / log(gapEnd_fl)
-		return b + m * log(gapCur_fl) - cons_fl
-	elseif int_sym == :none
+	if gapCur_fl < gapEnd_fl
 		return rng_arr[2] - cons_fl
+	else
+		if int_sym == :lin
+			m = (rng_arr[1] -rng_arr[2])/(1-gapEnd_fl)
+			b =rng_arr[1] - m
+			return b + m * gapCur_fl - cons_fl
+		elseif int_sym == :exp
+			m = log(rng_arr[1]/rng_arr[2])/(1-gapEnd_fl)
+			b = log(rng_arr[1]) - m
+			return exp(b + m * gapCur_fl) - cons_fl
+		elseif int_sym == :log
+			b = rng_arr[1]
+			m = (rng_arr[2] - b ) / log(gapEnd_fl)
+			return b + m * log(gapCur_fl) - cons_fl
+		elseif int_sym == :none
+			return rng_arr[2] - cons_fl
+		end
 	end
 end
 
