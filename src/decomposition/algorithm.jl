@@ -487,7 +487,7 @@ function runTop(benders_obj::bendersObj)
 	trackCuts(benders_obj)
 
 	if benders_obj.algOpt.delCut > 200
-		write_to_file(benders_obj.top.optModel, "collectError/testError_$(benders_obj.itr.cnt.i).mps")
+		write_to_file(benders_obj.top.optModel, benders_obj.report.mod.options.outDir * "/testError_$(benders_obj.itr.cnt.i).mps")
 	end
 
 	# write starting levels for storage
