@@ -486,6 +486,10 @@ function runTop(benders_obj::bendersObj)
 	# track cuts there were not binding for a certain number of iterations
 	trackCuts(benders_obj)
 
+	if benders_obj.algOpt.delCut > 200
+		write_to_file(benders_obj.top.optModel, "collectError/testError_$(benders_obj.itr.cnt.i).mps")
+	end
+
 	# write starting levels for storage
 	stLvl_dic = Dict{Symbol,DataFrame}()
 	for sSym in keys(benders_obj.top.parts.tech)
