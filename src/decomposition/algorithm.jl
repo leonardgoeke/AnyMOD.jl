@@ -327,8 +327,6 @@ function runTop(benders_obj::bendersObj)
 		set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
-		set_optimizer_attribute(benders_obj.top.optModel, "BarHomogeneous", 1)
-		set_optimizer_attribute(benders_obj.top.optModel, "Aggregate", 0)
 	end
 	set_optimizer_attribute(benders_obj.top.optModel, "Threads", 1)	
 	solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[1:1], benders_obj.algOpt.top.check, false)
