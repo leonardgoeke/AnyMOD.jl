@@ -327,7 +327,10 @@ function runTop(benders_obj::bendersObj)
 		set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
+		set_optimizer_attribute(benders_obj.top.optModel, "BarHomogeneous", 1)
+		set_optimizer_attribute(benders_obj.top.optModel, "Aggregate", 0)
 	end
+	set_optimizer_attribute(benders_obj.top.optModel, "Threads", 1)	
 	solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[1:1], benders_obj.algOpt.top.check, false)
 	
 	# handle unsolved top problem
@@ -485,10 +488,6 @@ function runTop(benders_obj::bendersObj)
 
 	# track cuts there were not binding for a certain number of iterations
 	trackCuts(benders_obj)
-
-	if benders_obj.algOpt.delCut > 200
-		write_to_file(benders_obj.top.optModel, benders_obj.report.mod.options.outDir * "/testError_$(benders_obj.itr.cnt.i).mps")
-	end
 
 	# write starting levels for storage
 	stLvl_dic = Dict{Symbol,DataFrame}()

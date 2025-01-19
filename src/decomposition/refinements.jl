@@ -369,7 +369,11 @@ function centerStab!(method::Val{:qtrLvl}, stab_obj::stabObj, rngVio_fl::Float64
 	stab_obj.cns = @constraint(top_m.optModel,  qtrConsSca_expr <= 0.0)
 
 	# adjust objective function and level set
-	@objective(top_m.optModel, Min, 0.0)
+	if objective_sense(top_m.optModel) == MOI.MIN_SENSE 
+		@objective(top_m.optModel, Max, 0.0)
+	else
+		@objective(top_m.optModel, Min, 0.0)
+	end
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet][:lvl])
 
 	# report violation
