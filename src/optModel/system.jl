@@ -523,7 +523,7 @@ function addInsCapa!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTuple
 				unfix_df = prepExc_dic[:capaExc].resi
 			end
 			# re-define capacity variables as installed variables
-			prepExc_dic[:insCapaExc] =  (var = prepExc_dic[:capaExc].var, resi = unfix_df)
+			prepExc_dic[:insCapaExc] =  (var = filter(x -> anyM.parts.exc[excSym].type != :stock, prepExc_dic[:capaExc].var), resi = unfix_df)
 			# create an entry for capacity variables, also where installed capacities only exists as fixed residual
 			excResi_df = select(unfix_df, Not([:var]))
 			capaExc_df = unique(vcat(prepExc_dic[:capaExc].var, filter(x -> x.R_from < x.R_to, vcat(excResi_df, rename(excResi_df, :R_from => :R_to, :R_to => :R_from)))))
@@ -698,7 +698,7 @@ function createCapaCns!(part::AbstractModelPart, sets_dic::Dict{Symbol,Tree}, cn
 		sys_int = sysInt(Symbol(part.name[end]), sets_dic[exc_boo ? :Exc : :Te])
 
         # joins corresponding capacity, retrofitting and expansion variables together
-		expVar_sym, retroVar_sym = [Symbol(replace(string(capaVar), (isDecomm_boo ? "insCapa" : "capa") => x)) for x in ["exp", "retro"]]    
+		expVar_sym, retroVar_sym = [Symbol(replace(string(capaVar), (occursin("insCapa", string(capaVar)) ? "insCapa" : "capa") => x)) for x in ["exp", "retro"]]  
 		exp_boo, retro_boo = [expVar_sym in keys(part.var), retroVar_sym in keys(part.var) && sys_int in part.var[retroVar_sym][!, exc_boo ? :Exc_j : :Te_j]]
 	
 		# gets capacity variables
@@ -791,7 +791,7 @@ function createOprVarCns!(part::AbstractModelPart, cns_dic::Dict{Symbol,cnsCont}
 		if exc_boo
 			oprVar_df = part.dir ? part.var[capaVar] : flipExc(part.var[capaVar])
 			var_df = leftjoin(var_df, rename(select(oprVar_df, Not([:dir])), :var => :var_2), on = intCol(var_df))
-			var_df[!,:cnsExpr] = @expression(anyM.optModel, var_df[:var_2] .- var_df[:var])
+			var_df[!,:cnsExpr] = @expression(anyM.optModel, var_df[!,:var_2] .- var_df[!,:var])
 			select!(var_df, Not([:var_2]))
 		else
 			oprVar_df = part.var[capaVar]
