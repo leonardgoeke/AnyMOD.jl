@@ -1100,7 +1100,7 @@ function reportAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}}, anyM::anyModel)
             
             # get dual and aggregate
             cnsDual_df[!,:value] .= dual.(cnsDual_df[!,:cns]) .* scaFac_arr
-            cnsDual_df = combine(x -> (value = sum(x.value),), groupby(cnsDual_df, [:Ts_disSup, :Ts_dis, :scr]))
+            cnsDual_df = combine(x -> (value = sum(x.value),), groupby(cnsDual_df, [:Ts_disSup, :Ts_dis, :R_dis, :scr]))
             
             # add infos and write to overall object
             cnsDual_df[!,:bal] .= x
