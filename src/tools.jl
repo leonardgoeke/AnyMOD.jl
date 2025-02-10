@@ -1076,7 +1076,7 @@ function reportAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}}, anyM::anyModel)
                     :capaExc => :capa, :capaConv => :capa, :capaStIn => :capa, :capaStOut => :capa, :capaStSize => :capaStSize, :stInterOut => :dispSt, :stInterIn => :dispSt)
 
     # fill dataframe with relevant duals
-    dual_df = DataFrame(Ts_disSup = Int[], Ts_dis = Int[], scr = Int[], bal = Symbol[], cat = Symbol[], value = Float64[])
+    dual_df = DataFrame(Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], R_from = Int[], R_to = Int[], scr = Int[], bal = Symbol[], cat = Symbol[], value = Float64[])
 
     for x in keys(cns_dic)
         for y in cns_dic[x]
@@ -1100,8 +1100,15 @@ function reportAggDuals(cns_dic::Dict{Symbol, Vector{Symbol}}, anyM::anyModel)
             
             # get dual and aggregate
             cnsDual_df[!,:value] .= dual.(cnsDual_df[!,:cns]) .* scaFac_arr
-            cnsDual_df = combine(x -> (value = sum(x.value),), groupby(cnsDual_df, [:Ts_disSup, :Ts_dis, :R_dis, :scr]))
-            
+			if x == :excRestr
+            	cnsDual_df = combine(x -> (value = sum(x.value),), groupby(cnsDual_df, [:Ts_disSup, :Ts_dis, :R_from, :R_to, :scr]))
+				cnsDual_df[!,:R_dis] .= 0
+            else
+				cnsDual_df = combine(x -> (value = sum(x.value),), groupby(cnsDual_df, [:Ts_disSup, :Ts_dis, :R_dis, :scr]))
+				cnsDual_df[!,:R_from] .= 0
+				cnsDual_df[!,:R_to] .= 0
+			end
+
             # add infos and write to overall object
             cnsDual_df[!,:bal] .= x
             cnsDual_df[!,:cat] .= y
