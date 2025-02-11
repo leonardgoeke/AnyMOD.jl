@@ -321,9 +321,10 @@ function runTop(benders_obj::bendersObj)
 		end
 		# compute tolerances
 		stabTol_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.stabTol[2], benders_obj.algOpt.top.stabTol[1])
+		stabTolQ_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.stabTolQ[2], benders_obj.algOpt.top.stabTolQ[1])
 		# set options
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", benders_obj.algOpt.top.stabMeth)
-		set_optimizer_attribute(benders_obj.top.optModel, "BarQCPConvTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
+		set_optimizer_attribute(benders_obj.top.optModel, "BarQCPConvTol", stabTolQ_fl)
 		set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
