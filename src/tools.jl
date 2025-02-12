@@ -336,6 +336,31 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), disp_df))
 	end
 
+	# ! add storage levels for case of reduced foresight
+	if anyM.scr.frsLvl > anyM.supTs.lvl 
+		stLvl_df = getAllVariables(:stLvl, anyM)
+		filter!(x -> anyM.parts.tech[Symbol(anyM.sets[:Te].nodes[x.Te].val)].stCyc < anyM.scr.frsLvl, stLvl_df)
+
+		# filter steps at change of foresight period
+		frsTs_arr = getfield.(getNodesLvl(anyM.sets[:Ts], anyM.scr.frsLvl),:idx)
+		c_arr = unique(stLvl_df[!,:C])
+		trackTe_arr = filter(x -> anyM.parts.tech[Symbol(anyM.sets[:Te].nodes[x].val)].stTrack != nothing, unique(stLvl_df[!,:Te]))
+
+		# identify relevant combinations of timestep and carrier or technology (if cycling is technology specific)
+		tsC_arr = vcat([(getDescendants(ts, anyM.sets[:Ts], :false, anyM.cInfo[c].tsDis)[end],c) for c in c_arr, ts in frsTs_arr]...)
+		tsTe_arr = vcat([(getDescendants(ts, anyM.sets[:Ts], :false, anyM.parts.tech[Symbol(anyM.sets[:Te].nodes[te].val)].stTrack)[end],c) for te in trackTe_arr, ts in frsTs_arr]...)
+
+		# filter storage levels and add foresight column
+		filter!(x -> x.Te in trackTe_arr ? (x.Ts_dis, x.Te)  in tsTe_arr : (x.Ts_dis, x.C) in tsC_arr, stLvl_df)
+		stLvl_df[!,:Ts_frs] = map(x -> getAncestors(x, anyM.sets[:Ts], :int, anyM.scr.frsLvl)[end], stLvl_df[!,:Ts_dis])
+
+		# add to result dataframe
+		stLvl_df[!,:variable] .= :stLvl
+		stLvl_df[!,:value] .= value.(stLvl_df[!,:var])
+
+		append!(allData_df, select(stLvl_df,intersect(names(allData_df),names(stLvl_df))))
+	end
+	
 	# ! get exchange variables aggregated by import and export
 	allExc_df = getAllVariables(:exc, anyM)
 	
