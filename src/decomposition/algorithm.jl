@@ -1703,6 +1703,8 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 		# add foresight column to costs if needed
 		if res == :cost && benders_obj.top.scr.frsLvl != benders_obj.top.supTs.lvl
 			merged_df[!,:timestep_foresight] .= "none"
+		elseif "timestep_foresight" in names(merged_df)
+			merged_df[!,:timestep_foresight] = replace.(merged_df[!,:timestep_foresight], " " => "")
 		end
 	
 		for file in mergFile_arr[2:end]
