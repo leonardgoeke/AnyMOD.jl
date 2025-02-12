@@ -520,7 +520,9 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     parDef_dic[:expcStStartLvl]  = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr), problem = :top, defVal = 0.0,     herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt)
     parDef_dic[:repWorstCase]    = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr), problem = :top, defVal = 1.0,     herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt)
     parDef_dic[:secFacWorstCase] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr), problem = :top, defVal = 0.0,     herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt)
-   
+    parDef_dic[:repBestCase]    = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr), problem = :top, defVal = 1.0,     herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt)
+    parDef_dic[:secFacBestCase] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :scr), problem = :top, defVal = 0.0,     herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :techSt)
+
     # variable costs
     parDef_dic[:costVarUse]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost)
     parDef_dic[:costVarGen]   = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :avg_any, :R_dis => :up, :C => :up, :Te => :up, :Ts_dis => :up, :scr => :up, :Ts_dis => :avg_any, :R_dis => :avg_any), part = :cost)
