@@ -331,6 +331,8 @@ function runTop(benders_obj::bendersObj)
 	end
 	set_optimizer_attribute(benders_obj.top.optModel, "Threads", benders_obj.algOpt.top.threads)	
 	solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[1:1], benders_obj.algOpt.top.check, false)
+
+	write_to_file(benders_obj.top.optModel, benders_obj.report.mod.options.outDir  * "/my_file.mps")
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -1654,7 +1656,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 end
 
 # write results for overall algorithm
-function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, getSubStringDist::Function, res_ntup::NamedTuple)
+function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, getSubStringDist::Function)
 
 	res_ntup = benders_obj.report.res
 	# reporting on iteration
@@ -1697,7 +1699,6 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 	
 		# read in files and merge into one
 		merged_df = CSV.read(mergFile_arr[1], DataFrame, stringtype = String)
-		merged_df[!,:scenario] .= "none"
 	
 		# add foresight column to costs if needed
 		if res == :cost && benders_obj.top.scr.frsLvl != benders_obj.top.supTs.lvl
@@ -1707,7 +1708,7 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 		for file in mergFile_arr[2:end]
 			add_df = CSV.read(file, DataFrame, stringtype = String)
 			# filter dispatch variables
-			filter!(x -> !(x.variable in ("capaConv", "capaStIn", "capaStOut", "capaStSize", "capaExc", "capaStSizeSeason", "stInterDelta")), add_df)
+			filter!(x -> !(x.variable in ("capaConv", "capaStIn", "capaStOut", "capaStSize", "capaExc", "capaStSizeSeason", "stInterDelta", "stLvl")), add_df)
 			if isempty(add_df) continue end
 			# makes adjustments to cost results
 			if res == :cost
