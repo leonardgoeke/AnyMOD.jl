@@ -1105,8 +1105,8 @@ function stochStRestr(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyMo
 	upBound_arr = getUpBound(var_df, anyM.options.bound.disp / scaFac_fl, anyM.supTs, anyM.sets[:Ts])
 	
 	# create variables itself
-	part.var[:worstCaseStDelta] = createVar(var_df, "worstCaseStDelta", upBound_arr, anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl, lowBd = -1 * maximum(upBound_arr))
-	part.var[:bestCaseStDelta] = createVar(var_df, "bestCaseStDelta", upBound_arr, anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl, lowBd = maximum(upBound_arr))
+	part.var[:worstCaseStDelta] = createVar(var_df, "worstCaseStDelta", fill(0.0,length(upBound_arr)), anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl, lowBd = -1 * maximum(upBound_arr))
+	part.var[:bestCaseStDelta] = createVar(var_df, "bestCaseStDelta", upBound_arr, anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl, lowBd = 0.0)
 
 	# create expression for sum of worst- and best-case
 	conLvl_dic = Dict{Symbol,DataFrame}()
