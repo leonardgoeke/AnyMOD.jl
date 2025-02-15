@@ -2,7 +2,7 @@
 #region # * stabilization
 
 # initialize stabilization when creating benders object, returns the stabilization object
-function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, scale_dic::Dict{Symbol,NamedTuple}, complCns_dic::Dict{Tuple{Int64, Int64}, Dict{Symbol, DataFrame}}, relVar_arr::Vector{Symbol}, runSubDist::Function)
+function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, scale_dic::Dict{Symbol,NamedTuple}, runSubDist::Function)
 
 	report_m = benders_obj.report.mod
 
@@ -81,7 +81,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		#region # * evaluate heuristic solution
 	
 		# first result for first iteration
-		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_waitNoStab = 0, time_subTot = 0, time_sub = Float64[], numFoc = Int[], objName = benders_obj.info.name)
+		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_waitNoStab = 0, time_subTot = 0, cntCuts = 0, time_sub = Float64[], numFoc = Int[], objName = benders_obj.info.name)
 		if !isnothing(benders_obj.nearOpt.setup) firstItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			firstItr_df[!,:actMethod] .= Symbol()
@@ -112,9 +112,17 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = fetch(futData_dic[s])
 			end
 		end
-	
+
 		# store information for cuts
-		benders_obj.cuts = collect(cutData_dic)
+		colCuts_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}()
+		for cut in collect(cutData_dic)
+			cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.algOpt.rngVio.cut, benders_obj.top)
+			push!(colCuts_arr, (1,cut[1][1], cut[1][2]) => (cut_expr, limCoef_boo))
+		end
+
+		benders_obj.cuts.all = colCuts_arr
+		benders_obj.cuts.slack = fill(Float64[], length(benders_obj.cuts.all))
+		benders_obj.cuts.active = collect(1:length(benders_obj.cuts.all))
 
 		# analyse results
 		startSol_obj.objVal = startSol_obj.objVal + sum(map(x -> x.objVal, values(cutData_dic)))
@@ -123,7 +131,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		numFoc_arr = getindex.(sort(collect(numFoc_dic)),2)
 		
 		# write results for second iteration
-		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_waitNoStab = 0, time_subTot = timeSubTot_fl/60, time_sub = [timeSub_arr], numFoc = [numFoc_arr], objName = benders_obj.info.name)
+		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_waitNoStab = 0, time_subTot = timeSubTot_fl/60, time_sub = [timeSub_arr], cntCuts = [0], numFoc = [numFoc_arr], objName = benders_obj.info.name)
 		if !isnothing(benders_obj.nearOpt.setup) secItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			secItr_df[!,:actMethod] .= Symbol()
@@ -150,12 +158,11 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 	else
 		stab_obj = nothing
 		startSol_obj = resData()
-		benders_obj.cuts = Array{Pair{Tuple{Int,Int},Union{resData}},1}()
 		startSol_tup = (var = startSol_obj, res = Dict{Symbol,DataFrame}(), startLvl = Dict{Symbol, DataFrame}())
 	end
 
 	return stab_obj, startSol_tup
-	
+
 end
 
 # write options of stabilization method
@@ -446,15 +453,15 @@ function computeQuadExp(top_m::anyModel, stab_obj::stabObj, rngVio_fl::Float64; 
 end
 
 # write function to compute poorman's Hessian auxilary scalar for prx_2
-function computePrx2Aux(cuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1}, prevCuts_arr::Array{Pair{Tuple{Int,Int},Union{resData}},1})
+function computePrx2Aux(prevCuts_arr::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1})
 
 	diffVal_arr = Float64[]
 	diffDual_arr = Float64[]
 	
 	for cut in prevCuts_arr # loop over cut data
 		
-		scr = cut[1]
-		relCut_obj = filter(x -> x[1] == scr, cuts_arr)[1][2]
+		scr = (cut[1][2], cut[1][3])
+		relCut_obj = cut[2][1]
 
 		for sys in (:exc, :tech)
 			
@@ -856,29 +863,30 @@ end
 #region # * other refinements
 
 # ! track and delete cuts that were not binding for a certain number of iterations
+function trackCuts(benders_obj::bendersObj)
+	
+	delCut_ntup = benders_obj.nearOpt.cnt == 0 ? benders_obj.algOpt.delCut : benders_obj.nearOpt.setup.delCut
+	
+	# add current slack to data
+	absGap_fl = benders_obj.itr.res[:curBest] - benders_obj.itr.res[:lowLimCost]
+	foreach(x ->  push!(benders_obj.cuts.slack[x[1]], -value(x[2][2][1]) / absGap_fl), enumerate(benders_obj.cuts.all))
+
+	# determine cuts that should be active
+	rng_int = delCut_ntup.cnt
+	thrs_fl = delCut_ntup.thres
+	benders_obj.cuts.active = findall(map(x -> length(x) < rng_int || any(x[end-rng_int+1:end] .< thrs_fl), benders_obj.cuts.slack))
+
+end
+
 function deleteCuts!(benders_obj::bendersObj)
 	
 	top_m = benders_obj.top
-	# numer of iterations after which unused cuts are delted
-	delCut_int = benders_obj.nearOpt.cnt == 0 ? benders_obj.algOpt.delCut : benders_obj.nearOpt.setup.delCut
-	
-	# tracking latest binding iteration for cuts
-	if delCut_int < Inf
-		delete.(top_m.optModel, filter(x -> x.actItr + delCut_int <= benders_obj.itr.cnt.i, top_m.parts.obj.cns[:bendersCuts])[!,:cns])
-		filter!(x -> (x.actItr + delCut_int > benders_obj.itr.cnt.i), top_m.parts.obj.cns[:bendersCuts])
-	end
-end
 
-function trackCuts(benders_obj::bendersObj)
-	
-	top_m = benders_obj.top
-	# numer of iterations after which unused cuts are delted
-	delCut_int = benders_obj.nearOpt.cnt == 0 ? benders_obj.algOpt.delCut : benders_obj.nearOpt.setup.delCut
-	
-	# delete cuts that were not binding long enough
-	if delCut_int < Inf
-		top_m.parts.obj.cns[:bendersCuts][!,:actItr] .= map(x -> abs(value(x.cns) / normalized_rhs(x.cns) - 1) < 1e-3 ? benders_obj.itr.cnt.i : x.actItr, eachrow(top_m.parts.obj.cns[:bendersCuts]))
-	end
+	# filter cuts to be deleted
+	allAct_arr = map(x -> benders_obj.cuts.all[x][1], benders_obj.cuts.active)
+	delete.(top_m.optModel, filter(x -> !((x.i, x.Ts_dis, x.scr) in allAct_arr), top_m.parts.obj.cns[:bendersCuts])[!,:cns])
+	filter!(x -> (x.i, x.Ts_dis, x.scr) in allAct_arr, top_m.parts.obj.cns[:bendersCuts])
+
 end
 
 # ! interpolate iteration parameter based on current gap (used for convergence tolerance of subproblems or radius in qtrLvl stabilization)

@@ -65,7 +65,7 @@ function createObjective!(obj_tup::Tuple, anyM::anyModel, minimize::Bool=true)
 		push!(partObj.var[:objVar],(name = :benders, fac = facCost_fl, var = anyM.options.scaFac.obj * JuMP.add_variable(anyM.optModel, JuMP.build_variable(error, VariableInfo(true, 0.0, false, NaN, false, NaN, false, NaN, false, false)), "allCut")))
 		
 		if !(:bendersCuts in keys(partObj.cns)) # create table for cuts if none exist yet
-			partObj.cns[:bendersCuts] = DataFrame(i=Int[], Ts_dis = Int[], scr = Int[], limCoef = Bool[], actItr = Int[], cns = ConstraintRef[])
+			partObj.cns[:bendersCuts] = DataFrame(i=Int[], Ts_dis = Int[], scr = Int[], limCoef = Bool[], cns = ConstraintRef[])
 		else # connect cut variables with new overall benders variable
 			push!(anyM.parts.obj.cns[:objEqn], (name = :aggCut, cns = @constraint(anyM.optModel, sum(anyM.parts.obj.var[:cut][!,:var]) == filter(x -> x.name == :benders, anyM.parts.obj.var[:objVar])[1,:var])))
 		end

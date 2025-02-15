@@ -4,7 +4,7 @@
 # setup for benders computation
 mutable struct algSetup
 	gap::Float64 # target gap
-	delCut::Int # number of iterations since cut creation or last binding before cut is deleted
+	delCut::NamedTuple{(:cnt, :thres), Tuple{Int, Float64}}  # number of iterations since cut creation or last binding before cut is deleted
 	useVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}} # use vaild inequalities
 	reportFreq::Int # number of iterations report files are written
 	timeLim::Float64 # tuple with objectives
@@ -14,8 +14,8 @@ mutable struct algSetup
 	sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf, :threads, :check), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool, Int, Bool}} # range and interpolation method for convergence criteria of subproblems, use of crossover for sub-problems when using barrier
 	top::NamedTuple{(:numFoc, :dnsThrs, :crs, :stabTol, :stabTolQ, :noStabTol, :stabMeth, :noStabMeth, :threads, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Int, Int, Int, Bool}} # infeasible variable at start of foresight period, numeric focus for top-problem, factor by which quadratic trust-region is allowed to violate paramete range
 
-	function algSetup(gap_fl::Float64, delCut_int::Int, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf, :threads, :check), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool, Int, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false, meth = :barrier, timeLim = 0.0, dbInf = true, threads = 1, check = false), top::NamedTuple{(:numFoc, :dnsThrs, :crs, :stabTol, :stabTolQ, :noStabTol, :stabMeth, :noStabMeth, :threads, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Int, Int, Int, Bool}} = (numFoc = [1,3], dnsThrs = 200, crs = true, stabTol = (:lin, [1e-6, 1e-6]), stabTolQ = (:lin, [1e-4, 1e-6]), noStabTol = (:lin, [1e-6, 1e-6]), stabMeth = -1, noStabMeth = -1, threads = 1, check = false))
-		return new(gap_fl, delCut_int, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, opt_type, rngVio, sub, top)
+	function algSetup(gap_fl::Float64, delCut_ntup::NamedTuple{(:cnt, :thres), Tuple{Int, Float64}}, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf, :threads, :check), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool, Int, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false, meth = :barrier, timeLim = 0.0, dbInf = true, threads = 1, check = false), top::NamedTuple{(:numFoc, :dnsThrs, :crs, :stabTol, :stabTolQ, :noStabTol, :stabMeth, :noStabMeth, :threads, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Int, Int, Int, Bool}} = (numFoc = [1,3], dnsThrs = 200, crs = true, stabTol = (:lin, [1e-6, 1e-6]), stabTolQ = (:lin, [1e-4, 1e-6]), noStabTol = (:lin, [1e-6, 1e-6]), stabMeth = -1, noStabMeth = -1, threads = 1, check = false))
+		return new(gap_fl, delCut_ntup, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, opt_type, rngVio, sub, top)
 	end
 end
 
@@ -41,11 +41,11 @@ struct nearOptSetup
 	lssThres::Float64 # lss threshold to keep solution
 	optThres::Float64 # cost threshold for optimization
 	feasGap::Float64 # target feasibility gap
-	delCut::Int64 # number of iterations that unused cuts are deleted during near-opt
+	delCut::NamedTuple{(:cnt, :thres), Tuple{Int, Float64}} # number of iterations that unused cuts are deleted during near-opt
 	obj::NTuple #  tuple with objectives
 	parThres::NamedTuple{(:dom, :zero), Tuple{Float64, Float64}} # thresholds for filtering pareto efficient solutions
 
-	function nearOptSetup(cutThres::Float64, lssThres::Float64, optThres::Float64, feasGap::Float64, delCut::Int64, obj::NTuple, parThres::NamedTuple{(:dom, :zero), Tuple{Float64, Float64}} = (dom = 0.005, zero = 1e-4))
+	function nearOptSetup(cutThres::Float64, lssThres::Float64, optThres::Float64, feasGap::Float64, delCut::NamedTuple{(:cnt, :thres), Tuple{Int, Float64}} , obj::NTuple, parThres::NamedTuple{(:dom, :zero), Tuple{Float64, Float64}} = (dom = 0.005, zero = 1e-4))
 		return new(cutThres, lssThres, optThres, feasGap, delCut, obj, parThres)
 	end
 end
@@ -153,12 +153,20 @@ mutable struct itrStatus
 	res::Dict{Symbol,Float64} # store different results here
 end
 
+mutable struct cutObj
+	active::Array{Int,1}
+	prev::Array{Int,1}
+	all::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}
+	slack::Array{Array{Float64,1},1}
+	cnt::Int
+end
+
+
 # overall benders structure
 mutable struct bendersObj
 	top::anyModel
 	sub::Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}
-	cuts::Array{Pair{Tuple{Int,Int},Union{resData}},1}
-	prevCuts::Array{Pair{Tuple{Int,Int},Union{resData}},1}
+	cuts::cutObj
 	complVar::Dict{Tuple{Int,Int},Dict{Symbol,DataFrame}}
 	itr::itrStatus
 	stab::Union{Nothing,stabObj}
@@ -173,6 +181,7 @@ mutable struct bendersObj
 
         benders_obj = new()
 		benders_obj.info = info_ntup
+		benders_obj.cuts = cutObj(Int[], Int[], Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}}[], Array{Array{Float64,1},1}(),0)
         benders_obj.algOpt = algSetup_obj
 		benders_obj.nearOpt = nearOptObj(0, nearOptSetup_obj)
 
@@ -180,7 +189,7 @@ mutable struct bendersObj
 		initializeReporting!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, resInfo)
 
 		#endregion
-
+		
         #region # * create top- and sub-problems
 
 		# start creating top-problem and extract info on sub-problem structure
