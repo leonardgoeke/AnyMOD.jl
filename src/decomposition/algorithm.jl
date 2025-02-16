@@ -189,7 +189,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
-	solveModel!(top_m, [0,3], false, false)
+	solveModel!(top_m, top_m.optModel, [0,3], false, false)
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -269,8 +269,10 @@ function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::Nam
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.sub.threads)
 	
 	# set options
-	set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.sub.threads)
-	if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.sub.timeLim * 60) end # in seconds
+	@suppress  begin
+		set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.sub.threads)
+		if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.sub.timeLim * 60) end # in seconds
+	end
 
 	# collect complicating constraints
 	comVar_dic = Dict{Symbol,DataFrame}()
@@ -297,13 +299,13 @@ function runTop(benders_obj::bendersObj)
 	#region # * create cuts
 	stab_obj = benders_obj.stab
 	allAct_arr = map(x -> (x.i, x.Ts_dis, x.scr), eachrow(benders_obj.top.parts.obj.cns[:bendersCuts]))
-	addCuts_arr = filter(x -> !(benders_obj.cuts.allStab[x][1] in allAct_arr), benders_obj.cuts.active)
+	addCuts_arr = filter(x -> !(benders_obj.cuts.all[x][1] in allAct_arr), benders_obj.cuts.active)
 
 	if !isempty(addCuts_arr) 
 		# save values of previous cut for proximal method variation 2
 		benders_obj.cuts.prev = !isnothing(stab_obj) && stab_obj.method[stab_obj.actMet] == :prx2 ? copy(benders_obj.cuts.active) : Int[]
 		# add cuts and reset collecting array
-		addCuts!(benders_obj.top, benders_obj.algOpt.rngVio.cut, benders_obj.cuts.allStab[addCuts_arr]) 
+		addCuts!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.rngVio.cut, benders_obj.cuts.all[addCuts_arr]) 
 	end
 
 	benders_obj.cuts.cnt = size(benders_obj.top.parts.obj.cns[:bendersCuts], 1)
@@ -331,7 +333,7 @@ function runTop(benders_obj::bendersObj)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
 	end
 	set_optimizer_attribute(benders_obj.top.optModel, "Threads", benders_obj.algOpt.top.threads)	
-	solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[1:1], benders_obj.algOpt.top.check, false)
+	solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[1:1], benders_obj.algOpt.top.check, false)
 	
 	# handle unsolved top problem
 	if !isnothing(stab_obj)
@@ -394,14 +396,14 @@ function runTop(benders_obj::bendersObj)
 
 					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Deleted trust-region" , testErr = false, printErr = false)
 					delete(benders_obj.top.optModel, stab_obj.cns)
-					solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], benders_obj.algOpt.top.check, false)
+					solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[2:end], benders_obj.algOpt.top.check, false)
 
 					# solve without stabilization as last resort
 					if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 						produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Removed all stabilization" , testErr = false, printErr = false)
 						@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 						delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
-						numFoc_int = solveModel!(benders_obj.top, benders_obj.algOpt.top.numFoc[2:end], false)
+						numFoc_int = solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[2:end], false)
 						if numFoc_int != benders_obj.algOpt.top.numFoc[2]
 							produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem solved by increasing numeric focus to $(numFoc_int)" , testErr = false, printErr = false)
 						end
@@ -577,7 +579,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 	end
 
 	# increase numeric focus if model did not solve
-	numFoc_int = solveModel!(sub_m, [0,3], check_boo, check_boo)
+	numFoc_int = solveModel!(sub_m, sub_m.optModel, [0,3], check_boo, check_boo)
 
 	# write results into files (only used once optimum is obtained)
 	writeAllResults!(sub_m, resultOpt, false)
@@ -647,23 +649,23 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 end
 
 # ! solves a model increasing the numeric focus from starting value to maximum in infeasible
-function solveModel!(mod_m::anyModel, numFoc_arr::Array{Int, 1}, check_boo::Bool = true, iss_boo::Bool = false)
+function solveModel!(mod_m::anyModel, opt_mod::Model, numFoc_arr::Array{Int, 1}, check_boo::Bool = true, iss_boo::Bool = false, noStab_ntup::Union{Nothing,NamedTuple{(:opt,:ref),Tuple{Model,GenericReferenceMap}}} = nothing)
 
 	numFoc_int = 1
 	while true
 		if !check_boo 
-			@suppress set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_arr[numFoc_int])
+			@suppress set_optimizer_attribute(opt_mod, "NumericFocus", numFoc_arr[numFoc_int])
 		else 
-			set_optimizer_attribute(mod_m.optModel, "NumericFocus", numFoc_arr[numFoc_int])
+			set_optimizer_attribute(opt_mod, "NumericFocus", numFoc_arr[numFoc_int])
 		end
 		
-		if !check_boo @suppress optimize!(mod_m.optModel) else optimize!(mod_m.optModel) end
-		if termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == length(numFoc_arr)
-			if !(termination_status(mod_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
+		if !check_boo @suppress optimize!(opt_mod) else optimize!(opt_mod) end
+		if termination_status(opt_mod) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT) || numFoc_int == length(numFoc_arr)
+			if !(termination_status(opt_mod) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED, MOI.TIME_LIMIT)) # check infeasibility, if activated
 				if iss_boo
-					printIIS(mod_m)
+					printIIS(mod_m, noStab_ntup)
 				else
-					if !check_boo @suppress optimize!(mod_m.optModel) else optimize!(mod_m.optModel) end
+					if !check_boo @suppress optimize!(opt_mod) else optimize!(opt_mod) end
 				end
 			end
 			break
@@ -686,7 +688,9 @@ getSubString(res_sym::Symbol) = getSubStringWorker(res_sym::Symbol)
 getSubStringWorker(res_sym::Symbol) = "$(sub_m.options.outDir)/results_" * string(res_sym) * "_$(sub_m.options.outStamp).csv"
 
 # ! add all cuts from input dictionary to top problem
-function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1})
+function addCuts!(top_m::anyModel, opt_mod::Model, rngVio_fl::Float64, cuts_arr::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}, noStab_boo::Bool = false)
+
+	
 	
 	# create array of expressions with duals for sub-problems
 	cut_df = DataFrame(i = Int[], Ts_dis = Int[], scr = Int[], limCoef = Bool[], cnsExpr = AffExpr[])
@@ -699,7 +703,7 @@ function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tupl
 	# scale cuts and add to dataframe of benders cuts in model
 	coefRng_tup = (mat = (top_m.options.coefRng.mat[1], top_m.options.coefRng.mat[2] * rngVio_fl), rhs = (top_m.options.coefRng.rhs[1], top_m.options.coefRng.rhs[2] * rngVio_fl))
 	scaleCnsExpr!(cut_df, coefRng_tup, top_m.options.checkRng)
-	append!(top_m.parts.obj.cns[:bendersCuts], createCns(cnsCont(cut_df, :smaller), top_m.optModel, false))
+	append!(top_m.parts.obj.cns[noStab_boo ? :bendersCutsNoStab : :bendersCuts], createCns(cnsCont(cut_df, :smaller), opt_mod, false))
 end
 
 # ! update results and stabilization
@@ -716,23 +720,32 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Could not solve sub-problem $sub and did not add a cut!", testErr = false, printErr = false) 
 	end
 
-	# add new cut expressions
-	colCuts_dic = Dict(case => Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() for case in (:stab,:noStab))
-	for case in (:stab,:noStab)
-		exExpr_arr = getindex.(getindex.(getfield(benders_obj.cuts,Symbol(:all, makeUp(case))), 2), 1)
-		for cut in collect(cutData_dic)
-			cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.algOpt.rngVio.cut, case == :stab ? benders_obj.top : benders_obj.topNoStab)
-			# add to overall cuts if unique
-			if isempty(findall(cut_expr .== exExpr_arr)) push!(colCuts_dic[case], (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo)) end
+	# create cuts for top problem with stabilization
+	colCuts_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
+	exExpr_arr = getindex.(getindex.(benders_obj.cuts.all, 2), 1)
+	for cut in collect(cutData_dic)
+		cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.top.optModel, benders_obj.algOpt.rngVio.cut, benders_obj.top)
+		
+		if isempty(findall(cut_expr .== exExpr_arr)) # add to overall cuts if unique
+			push!(colCuts_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
+		else # otherwise remove to prevent addition problem without stabilization
+			delete!(cutData_dic, cut[1])
 		end
 	end
 
-	# activate new cuts in next iteration and them
-	append!(benders_obj.cuts.slack, map(x -> Float64[], 1:length(colCuts_dic[:stab])))
-	append!(benders_obj.cuts.active, collect(length(benders_obj.cuts.allStab) : length(benders_obj.cuts.allStab) + length(colCuts_dic[:stab]) - 1) .+ 1)
-	append!(benders_obj.cuts.allStab, colCuts_dic[:stab])
-	append!(benders_obj.cuts.allNoStab, colCuts_dic[:noStab])
-	
+	append!(benders_obj.cuts.slack, map(x -> Float64[], 1:length(colCuts_arr)))
+	append!(benders_obj.cuts.active, collect(length(benders_obj.cuts.all) : length(benders_obj.cuts.all) + length(colCuts_arr) - 1) .+ 1)
+	append!(benders_obj.cuts.all, colCuts_arr)
+
+	# create and directly add cuts for top problem without stabilization
+	colCutsNoStab_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
+	for cut in collect(cutData_dic)
+		cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, benders_obj.top, benders_obj.topNoStab.ref)
+		push!(colCutsNoStab_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
+	end
+	addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
+
+
 	# get sub-results
 	itr_obj.res[:actSubCost] = sum(map(x -> x.objVal, values(cutData_dic))) # objective of sub-problems
 	itr_obj.res[:actTotCost] = itr_obj.res[:topCost] + itr_obj.res[:actSubCost]
@@ -1281,7 +1294,7 @@ function addDual(dual_df::DataFrame, cns_df::DataFrame, scaFac_fl::Float64)
 end
 
 # ! generate cut expression
-function createCutExpr(cut::Pair{Tuple{Int64,Int64},resData}, rngVio_fl::Float64, top_m::anyModel)
+function createCutExpr(cut::Pair{Tuple{Int64,Int64},resData}, opt_mod::Model, rngVio_fl::Float64, top_m::anyModel, noStab_map::Union{Nothing,GenericReferenceMap} = nothing)
 
 	subCut = cut[2]
 	cutExpr_arr = Array{GenericAffExpr,1}()
@@ -1290,7 +1303,7 @@ function createCutExpr(cut::Pair{Tuple{Int64,Int64},resData}, rngVio_fl::Float64
 		part_dic = getfield(top_m.parts, sys)
 		for sSym in keys(subCut.capa[sys]), capaSym in filter(x -> occursin("capa", lowercase(string(x))), collect(keys(subCut.capa[sys][sSym])))
 			scaCapa_fl = getfield(top_m.options.scaFac, occursin("StSize", string(capaSym)) ? :capaStSize : :capa)
-			push!(cutExpr_arr, getBendersCut(subCut.capa[sys][sSym][capaSym], part_dic[sSym].var[capaSym], scaCapa_fl))
+			push!(cutExpr_arr, getBendersCut(subCut.capa[sys][sSym][capaSym], part_dic[sSym].var[capaSym], scaCapa_fl, noStab_map))
 		end
 	end
 
@@ -1305,7 +1318,7 @@ function createCutExpr(cut::Pair{Tuple{Int64,Int64},resData}, rngVio_fl::Float64
 					else
 						var_df = part_obj.var[stType]
 					end
-					push!(cutExpr_arr, getBendersCut(subCut.stLvl[sSym][stType], var_df, top_m.options.scaFac.dispSt))
+					push!(cutExpr_arr, getBendersCut(subCut.stLvl[sSym][stType], var_df, top_m.options.scaFac.dispSt, noStab_map))
 				end
 			end
 		end
@@ -1314,13 +1327,14 @@ function createCutExpr(cut::Pair{Tuple{Int64,Int64},resData}, rngVio_fl::Float64
 	# compute cut element for each limit
 	if !isempty(subCut.lim)
 		for limSym in keys(subCut.lim)
-			push!(cutExpr_arr, getBendersCut(subCut.lim[limSym], filter(x -> x.sub == cut[1], top_m.parts.lim.var[limSym]), top_m.options.scaFac.dispConv)) 
+			push!(cutExpr_arr, getBendersCut(subCut.lim[limSym], filter(x -> x.sub == cut[1], top_m.parts.lim.var[limSym]), top_m.options.scaFac.dispConv, noStab_map)) 
 		end
 	end
 
-	# get cut variable and compute cut expression 
+	# get cut variable and compute cut expression
 	cut_var = filter(x -> x.Ts_dis == cut[1][1] && x.scr == cut[1][2], top_m.parts.obj.var[:cut])[1,:var]
-	cut_expr = @expression(top_m.optModel, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)))
+	if !isnothing(noStab_map) cut_var = convertAffExpr(cut_var, noStab_map) end
+	cut_expr = @expression(opt_mod, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)))
 
 	#region # * remove extremely small terms and limit the coefficient of extremely large terms
 	limCoef_boo = false
@@ -1412,9 +1426,16 @@ function createCutExpr(cut::Pair{Tuple{Int64,Int64},resData}, rngVio_fl::Float64
 end
 
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
-function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaFac_fl::Float64)
+function getBendersCut(sub_df::DataFrame, var_df::DataFrame, scaFac_fl::Float64, noStab_map::Union{Nothing,GenericReferenceMap})
 	ben_df = deSelect(sub_df) |> (z -> innerjoin(deSelect(var_df), z, on = intCol(z, :dir)))
-	return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual * scaFac_fl * (collect(keys(x.var.terms))[1] - x.value / scaFac_fl), eachrow(ben_df)))
+
+	if !isnothing(noStab_map)
+		return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual * scaFac_fl * (noStab_map[collect(keys(x.var.terms))[1]] - x.value / scaFac_fl), eachrow(ben_df)))
+	else
+		return isempty(ben_df) ? AffExpr() : sum(map(x -> x.dual * scaFac_fl * (collect(keys(x.var.terms))[1] - x.value / scaFac_fl), eachrow(ben_df)))
+	end
+
+	
 end
 
 # ! removes cases where storage variables are fixed by a ratio (e.g. storage energy capacity fixed by e/p ratio) 

@@ -26,7 +26,6 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			lowBd_fl = 0.0
 				
 			top_m = computeFeas(top_m, heuSol_obj.capa, 0.001, cutSmall = true);
-			
 		
 			# write results for heuristic solution
 			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim) = writeResult(top_m, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)
@@ -114,18 +113,31 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		end
 
 		# store information for cuts
-		colCuts_dic = Dict(case => Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() for case in (:stab,:noStab))
-		for case in (:stab,:noStab)
-			for cut in collect(cutData_dic)
-				cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.algOpt.rngVio.cut, case == :stab ? benders_obj.top : benders_obj.topNoStab)
-				push!(colCuts_dic[case], (1,cut[1][1], cut[1][2]) => (cut_expr, limCoef_boo))
-			end
+		colCuts_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}()
+		for cut in collect(cutData_dic)
+			cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.top.optModel, benders_obj.algOpt.rngVio.cut, benders_obj.top)
+			push!(colCuts_arr, (1,cut[1][1], cut[1][2]) => (cut_expr, limCoef_boo))
 		end
 
-		benders_obj.cuts.allStab = colCuts_dic[:stab]
-		benders_obj.cuts.allNoStab = colCuts_dic[:noStab]
-		benders_obj.cuts.slack = map(x -> Float64[], 1:length(benders_obj.cuts.allStab))
-		benders_obj.cuts.active = collect(1:length(benders_obj.cuts.allStab))
+		benders_obj.cuts.all = colCuts_arr
+		benders_obj.cuts.slack = map(x -> Float64[], 1:length(benders_obj.cuts.all))
+		benders_obj.cuts.active = collect(1:length(benders_obj.cuts.all))
+
+		# create copy for problem without stabilization
+		noStab_opt, ref_refm = copy_model(benders_obj.top.optModel)
+		set_optimizer(noStab_opt, benders_obj.algOpt.opt)
+		set_optimizer_attribute(noStab_opt, "Threads", benders_obj.algOpt.top.threads)	
+		benders_obj.topNoStab = (opt = noStab_opt, ref = ref_refm)
+
+
+		# create and directly add cuts for top problem without stabilization
+		colCutsNoStab_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
+		for cut in collect(cutData_dic)
+			cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, benders_obj.top, benders_obj.topNoStab.ref)
+			push!(colCutsNoStab_arr, (1, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
+		end
+		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
+
 
 		# analyse results
 		startSol_obj.objVal = startSol_obj.objVal + sum(map(x -> x.objVal, values(cutData_dic)))
@@ -673,41 +685,32 @@ end
 # solves top problem without trust region and obtains lower limits
 function runTopWithoutStab!(benders_obj::bendersObj)
 
-	# add new cuts to top problem without stabilization
-	allAct_arr = map(x -> (x.i, x.Ts_dis, x.scr), eachrow(benders_obj.topNoStab.parts.obj.cns[:bendersCuts]))
-	addCuts_arr = filter(x -> !(benders_obj.cuts.allNoStab[x][1] in allAct_arr), collect(1:length(benders_obj.cuts.allNoStab)))
-
-	if !isempty(addCuts_arr) 
-		addCuts!(benders_obj.topNoStab, benders_obj.algOpt.rngVio.cut, benders_obj.cuts.allNoStab[addCuts_arr]) 
-	end
-
 	# solve problem
 	@suppress begin
-		set_optimizer_attribute(benders_obj.topNoStab.optModel, "Method", benders_obj.algOpt.top.noStabMeth)
+		set_optimizer_attribute(benders_obj.topNoStab.opt, "Method", benders_obj.algOpt.top.noStabMeth)
 		# solve only to optimality for fully accurate lower bound when close to optimum
 		if benders_obj.stab.crossNoStab
-			set_optimizer_attribute(benders_obj.topNoStab.optModel, "Crossover", 1)
-			set_optimizer_attribute(benders_obj.topNoStab.optModel, "FeasibilityTol", 1e-6)
+			set_optimizer_attribute(benders_obj.topNoStab.opt, "Crossover", 1)
+			set_optimizer_attribute(benders_obj.topNoStab.opt, "FeasibilityTol", 1e-6)
 		else
 			noStabTol_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.noStabTol[2], benders_obj.algOpt.top.noStabTol[1])
-			set_optimizer_attribute(benders_obj.topNoStab.optModel, "Crossover", 0)
-			set_optimizer_attribute(benders_obj.topNoStab.optModel, "FeasibilityTol", noStabTol_fl)
+			set_optimizer_attribute(benders_obj.topNoStab.opt, "Crossover", 0)
+			set_optimizer_attribute(benders_obj.topNoStab.opt, "FeasibilityTol", noStabTol_fl)
 		end
-
 	end
 	numFoc_arr = [0, 2, 3]
-	numFoc_int = solveModel!(benders_obj.topNoStab, numFoc_arr, benders_obj.algOpt.top.check, false)
+	numFoc_int = solveModel!(benders_obj.top, benders_obj.topNoStab.opt, numFoc_arr, benders_obj.algOpt.top.check, false, benders_obj.topNoStab)
 
 	if numFoc_int != numFoc_arr[1]
 		produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem without stabilization solved by increasing numeric focus to $(numFoc_int)" , testErr = false, printErr = false)
 	end
 
 	# obtain different objective values
-	benders_obj.itr.res[:topCostNoStab] = value(sum(filter(x -> x.name == :cost, benders_obj.topNoStab.parts.obj.var[:objVar])[!,:var])) # costs of unconstrained top-problem
-	benders_obj.itr.res[:estTotCostNoStab] = benders_obj.itr.res[:topCostNoStab] + value(filter(x -> x.name == :benders, benders_obj.topNoStab.parts.obj.var[:objVar])[1,:var]) # objective (incl. benders) of unconstrained top-problem
+	benders_obj.itr.res[:topCostNoStab] = value(sum(convertAffExpr.(filter(x -> x.name == :cost, benders_obj.top.parts.obj.var[:objVar])[!,:var], benders_obj.topNoStab.ref))) # costs of unconstrained top-problem
+	benders_obj.itr.res[:estTotCostNoStab] = benders_obj.itr.res[:topCostNoStab] + value(convertAffExpr(filter(x -> x.name == :benders, benders_obj.top.parts.obj.var[:objVar])[1,:var], benders_obj.topNoStab.ref)) # objective (incl. benders) of unconstrained top-problem
 	benders_obj.itr.res[:lowLimCost] = benders_obj.itr.res[:estTotCostNoStab]
 	
-	if benders_obj.nearOpt.cnt != 0 benders_obj.itr.res[:nearObjNoStab] = objective_value(benders_obj.topNoStab.optModel) end
+	if benders_obj.nearOpt.cnt != 0 benders_obj.itr.res[:nearObjNoStab] = objective_value(benders_obj.topNoStab.opt) end
 	
 end
 
@@ -875,7 +878,7 @@ function trackCuts(benders_obj::bendersObj)
 	# add current slack to data
 	# foreach(x ->  push!(benders_obj.cuts.slack[x[1]], abs(value(x[2][2][1]) / x[2][2][1].constant - 1)), enumerate(benders_obj.cuts.all))
 	absGap_fl = benders_obj.itr.res[:curBest] - benders_obj.itr.res[:lowLimCost]
-	foreach(x ->  push!(benders_obj.cuts.slack[x[1]], -value(x[2][2][1]) / absGap_fl), enumerate(benders_obj.cuts.allStab))
+	foreach(x ->  push!(benders_obj.cuts.slack[x[1]], -value(x[2][2][1]) / absGap_fl), enumerate(benders_obj.cuts.all))
 
 	# determine cuts that should be active
 	rng_int = delCut_ntup.cnt
@@ -890,7 +893,7 @@ function deleteCuts!(benders_obj::bendersObj)
 	top_m = benders_obj.top
 
 	# filter cuts to be deleted
-	allAct_arr = map(x -> benders_obj.cuts.allStab[x][1], benders_obj.cuts.active)
+	allAct_arr = map(x -> benders_obj.cuts.all[x][1], benders_obj.cuts.active)
 	delete.(top_m.optModel, filter(x -> !((x.i, x.Ts_dis, x.scr) in allAct_arr), top_m.parts.obj.cns[:bendersCuts])[!,:cns])
 	filter!(x -> (x.i, x.Ts_dis, x.scr) in allAct_arr, top_m.parts.obj.cns[:bendersCuts])
 

@@ -96,6 +96,9 @@ intCol(in_df::DataFrame) = getindex.(filter(x -> eltype(x[2]) <: Int, collect(pa
 intCol(in_df::DataFrame, add_sym::Symbol) = union(intCol(in_df), intersect(namesSym(in_df), [add_sym]))
 intCol(in_df::DataFrame, add_sym::Array) = union(intCol(in_df), intersect(namesSym(in_df), add_sym))
 
+# ! converts an affine expression from original model to copied model
+convertAffExpr(expr::AffExpr, noStab_map::GenericReferenceMap) = sum(map(x -> noStab_map[x] * expr.terms[x], collect(keys(expr.terms)))) + expr.constant
+
 # ! returns the number of different capacity groups of storage from named tuple of carriers
 countStGrp(carGrp_ntup::NamedTuple) = intersect((:stExtIn, :stExtOut, :stIntIn, :stIntOut), collect(keys(carGrp_ntup))) |> (z ->  isempty(z) ? 0 : maximum(map(x -> length(getfield(carGrp_ntup, x)), z)))
 

@@ -156,17 +156,15 @@ end
 mutable struct cutObj
 	active::Array{Int,1}
 	prev::Array{Int,1}
-	allStab::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}
-	allNoStab::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}
+	all::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}
 	slack::Array{Array{Float64,1},1}
 	cnt::Int
 end
 
-
 # overall benders structure
 mutable struct bendersObj
 	top::anyModel
-	topNoStab::anyModel
+	topNoStab::NamedTuple{(:opt,:ref),Tuple{Model,GenericReferenceMap}}
 	sub::Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}
 	cuts::cutObj
 	complVar::Dict{Tuple{Int,Int},Dict{Symbol,DataFrame}}
@@ -183,7 +181,7 @@ mutable struct bendersObj
 
         benders_obj = new()
 		benders_obj.info = info_ntup
-		benders_obj.cuts = cutObj(Int[], Int[], Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}}[], Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}}[], Array{Array{Float64,1},1}(),0)
+		benders_obj.cuts = cutObj(Int[], Int[], Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}}[], Array{Array{Float64,1},1}(),0)
         benders_obj.algOpt = algSetup_obj
 		benders_obj.nearOpt = nearOptObj(0, nearOptSetup_obj)
 
@@ -241,11 +239,6 @@ mutable struct bendersObj
 
 		# write complicating constraints into top problem
 		writeComplCons!(benders_obj)
-
-		# copy to create top problem without stabilization
-		if !isempty(stabSetup_obj.method) 
-			benders_obj.topNoStab = deepcopy(benders_obj.top)
-		end
 
 		# initialize stabilization
 		prepareStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
