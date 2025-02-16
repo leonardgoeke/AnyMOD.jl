@@ -297,13 +297,13 @@ function runTop(benders_obj::bendersObj)
 	#region # * create cuts
 	stab_obj = benders_obj.stab
 	allAct_arr = map(x -> (x.i, x.Ts_dis, x.scr), eachrow(benders_obj.top.parts.obj.cns[:bendersCuts]))
-	addCuts_arr = filter(x -> !(benders_obj.cuts.all[x][1] in allAct_arr), benders_obj.cuts.active)
+	addCuts_arr = filter(x -> !(benders_obj.cuts.allStab[x][1] in allAct_arr), benders_obj.cuts.active)
 
 	if !isempty(addCuts_arr) 
 		# save values of previous cut for proximal method variation 2
 		benders_obj.cuts.prev = !isnothing(stab_obj) && stab_obj.method[stab_obj.actMet] == :prx2 ? copy(benders_obj.cuts.active) : Int[]
 		# add cuts and reset collecting array
-		addCuts!(benders_obj.top, benders_obj.algOpt.rngVio.cut, benders_obj.cuts.all[addCuts_arr], benders_obj.itr.cnt.i) 
+		addCuts!(benders_obj.top, benders_obj.algOpt.rngVio.cut, benders_obj.cuts.allStab[addCuts_arr]) 
 	end
 
 	benders_obj.cuts.cnt = size(benders_obj.top.parts.obj.cns[:bendersCuts], 1)
@@ -686,7 +686,7 @@ getSubString(res_sym::Symbol) = getSubStringWorker(res_sym::Symbol)
 getSubStringWorker(res_sym::Symbol) = "$(sub_m.options.outDir)/results_" * string(res_sym) * "_$(sub_m.options.outStamp).csv"
 
 # ! add all cuts from input dictionary to top problem
-function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}, i::Int)
+function addCuts!(top_m::anyModel, rngVio_fl::Float64, cuts_arr::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1})
 	
 	# create array of expressions with duals for sub-problems
 	cut_df = DataFrame(i = Int[], Ts_dis = Int[], scr = Int[], limCoef = Bool[], cnsExpr = AffExpr[])
@@ -717,18 +717,21 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	end
 
 	# add new cut expressions
-	exExpr_arr = getindex.(getindex.(benders_obj.cuts.all, 2),1)
-	colCuts_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}()
-	for cut in collect(cutData_dic)
-		cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.algOpt.rngVio.cut, benders_obj.top)
-		# add to overall cuts if unique
-		if isempty(findall(cut_expr .== exExpr_arr)) push!(colCuts_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo)) end
+	colCuts_dic = Dict(case => Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() for case in (:stab,:noStab))
+	for case in (:stab,:noStab)
+		exExpr_arr = getindex.(getindex.(getfield(benders_obj.cuts,Symbol(:all, makeUp(case))), 2), 1)
+		for cut in collect(cutData_dic)
+			cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.algOpt.rngVio.cut, case == :stab ? benders_obj.top : benders_obj.topNoStab)
+			# add to overall cuts if unique
+			if isempty(findall(cut_expr .== exExpr_arr)) push!(colCuts_dic[case], (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo)) end
+		end
 	end
 
 	# activate new cuts in next iteration and them
-	append!(benders_obj.cuts.slack, fill(Float64[], length(colCuts_arr)))
-	append!(benders_obj.cuts.active, collect(length(benders_obj.cuts.all) : length(benders_obj.cuts.all) + length(colCuts_arr) - 1) .+ 1)
-	append!(benders_obj.cuts.all, colCuts_arr)
+	append!(benders_obj.cuts.slack, map(x -> Float64[], 1:length(colCuts_dic[:stab])))
+	append!(benders_obj.cuts.active, collect(length(benders_obj.cuts.allStab) : length(benders_obj.cuts.allStab) + length(colCuts_dic[:stab]) - 1) .+ 1)
+	append!(benders_obj.cuts.allStab, colCuts_dic[:stab])
+	append!(benders_obj.cuts.allNoStab, colCuts_dic[:noStab])
 	
 	# get sub-results
 	itr_obj.res[:actSubCost] = sum(map(x -> x.objVal, values(cutData_dic))) # objective of sub-problems
@@ -764,7 +767,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		itr_obj.cnt.null = srsStep_boo ? 0 : itr_obj.cnt.null + 1
 
 		# adjust dynamic parameters of stabilization
-		prx2Aux_fl = stab_obj.method[stab_obj.actMet] == :prx2 ? computePrx2Aux(benders_obj.cuts.all[benders_obj.cuts.prev]) : nothing
+		prx2Aux_fl = stab_obj.method[stab_obj.actMet] == :prx2 ? computePrx2Aux(benders_obj.cuts.allStab[benders_obj.cuts.prev]) : nothing
 		foreach(x -> adjustDynPar!(x, benders_obj.stab, benders_obj.top, itr_obj, srsStep_boo, prx2Aux_fl, benders_obj.nearOpt.cnt != 0, benders_obj.algOpt.gap, benders_obj.report), 1:length(stab_obj.method))
 
 		# update center of stabilization
@@ -892,6 +895,8 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		# top-problem without stabilization
 		strNoStab_time = now()
 		if !isnothing(benders_obj.stab) 
+			# remove stabilization from top problem (to be added again at the end of iteration)
+			removeStab!(benders_obj)
 			# check if top problem without stabilization should be solved again 
 			if benders_obj.itr.cnt.i >= benders_obj.itr.cnt.nextNoStab || benders_obj.stab.crossNoStab
 				runTopWithoutStab!(benders_obj)
@@ -907,9 +912,8 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 			else
 				# use results of last correct solve as lower bound
 				benders_obj.itr.res[:lowLimCost] = benders_obj.itr.res[:estTotCostNoStab]
-				# remove stabilization
-				removeStab!(benders_obj)
 			end
+
 		end
 		elpNoStab_time = now() - strNoStab_time
 	
