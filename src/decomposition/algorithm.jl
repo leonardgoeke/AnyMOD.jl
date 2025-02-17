@@ -333,6 +333,7 @@ function runTop(benders_obj::bendersObj)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
 	end
 	set_optimizer_attribute(benders_obj.top.optModel, "Threads", benders_obj.algOpt.top.threads)	
+	write_to_file(benders_obj.top.optModel, benders_obj.report.mod.options.outDir  * "/my_file.mps")
 	solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[1:1], benders_obj.algOpt.top.check, false)
 	
 	# handle unsolved top problem
