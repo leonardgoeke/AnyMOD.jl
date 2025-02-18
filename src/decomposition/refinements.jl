@@ -271,7 +271,7 @@ end
 # function for proximal bundle method
 function centerStab!(method::Union{Val{:prx1},Val{:prx2}}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 
-	# set dual option according to demands of methos 
+	# set dual option according to demands of method 
 	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# create quadratic expression
@@ -289,7 +289,7 @@ end
 # functions for level bundle methods
 function centerStab!(method::Val{:lvl1}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
-	# set dual option according to demands of methos 
+	# set dual option according to demands of method 
 	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# create quadratic expression
@@ -307,7 +307,7 @@ end
 
 function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
-	# set dual option according to demands of methos 
+	# set dual option according to demands of method 
 	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# create quadratic expression
@@ -329,7 +329,7 @@ end
 # function for box step method
 function centerStab!(method::Val{:box}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 
-	# set dual option according to demands of methos 
+	# set dual option according to demands of method 
 	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
 
 	# match values with variables in model
@@ -407,7 +407,7 @@ end
 # function for doubly stabilized bundle method
 function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
-	# set dual option according to demands of methos 
+	# set dual option according to demands of method 
 	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
 
 	# create quadratic expression
