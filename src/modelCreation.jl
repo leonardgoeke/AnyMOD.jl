@@ -83,7 +83,8 @@ function createOptModel!(anyM::anyModel)
     # loops over array of dictionary with constraint container for each technology to create actual jump constraints
     for (idx,cnsDic) in enumerate(techCnsDic_arr), cnsSym in keys(cnsDic)
         if !isempty(cnsDic[cnsSym].data)
-			anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = createCns(cnsDic[cnsSym], anyM.optModel, anyM.options.holdFixed)
+			cns_df = createCns(cnsDic[cnsSym], anyM.optModel, anyM.options.holdFixed)
+			if !isempty(cns_df) anyM.parts.tech[techSym_arr[idx]].cns[cnsSym] = cns_df end
 		end
 	end
 
