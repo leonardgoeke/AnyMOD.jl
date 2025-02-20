@@ -696,16 +696,24 @@ function createScenarioMapping!(lvl_int::Int, anyM::anyModel)
 		if !isnothing(anyM.options.forceScr)
 			# identify relevant scenario
 			if anyM.options.forceScr == Symbol()
-				avgPropScr_arr = collect(keys(tsScrToProp_dic)) |> (u -> map(z -> (z, maximum(map(y -> tsScrToProp_dic[y], filter(x -> x[2] == z, u)))), unique(getindex.(u, 2))))
-				propScr_int = maximum(getindex.(avgPropScr_arr, 2)) |> (u -> filter(x -> x[2] == u, avgPropScr_arr)[1][1])
+				# filter most likely scenario (for each foresight timestep)
+				maxVal_arr = Tuple{Int64, Int64}[]
+				tsScrPro_arr = collect(keys(tsScrToProp_dic))
+				for x in unique(getindex.(tsScrPro_arr, 1))
+					allTs_arr = filter(z -> x == z[1], tsScrPro_arr)
+					push!(maxVal_arr, map(y -> tsScrToProp_dic[y], allTs_arr) |> (u -> allTs_arr[findall(u .== maximum(u))][1]))
+				end
+				tsScrToProp_dic = Dict((x[1], x[2]) => 1.0 for x in tsScrPro_arr)
+				tsToScr_dic = Dict(x[1] => [x[2]] for x in tsScrPro_arr)
 			else
+				# adjust elements to solve deterministic for one scenario
 				propScr_int = sysInt(anyM.options.forceScr, anyM.sets[:scr])
+				relTs_arr = unique(prop_df[!,:Ts_dis])
+				tsScrToProp_dic = Dict((x, propScr_int) => 1.0 for x in relTs_arr)
+				tsToScr_dic = Dict(x => [propScr_int] for x in relTs_arr)
 			end
-			# adjust elements to solve deterministic for one scenario
-			relTs_arr = unique(prop_df[!,:Ts_dis])
-			tsScrToProp_dic = Dict((x, propScr_int) => 1.0 for x in relTs_arr)
-			tsToScr_dic = Dict(x => [propScr_int] for x in relTs_arr)
 		end
+
 		
 		# check if there are multiple foresight periods 
 		if lvl_int != 0 && length(getNodesLvl(anyM.sets[:Ts], anyM.supTs.lvl)) == length(getNodesLvl(anyM.sets[:Ts], lvl_int)) && anyM.subPro != (0,0)
