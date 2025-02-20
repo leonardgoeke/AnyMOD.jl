@@ -4,7 +4,7 @@ using Gurobi
 function printIIS(anyM::anyModel, noStab_ntup::Union{Nothing,NamedTuple{(:opt,:ref),Tuple{Model,GenericReferenceMap}}} = nothing)
 
     # computes iis
-    opt_mod = isnoting(noStab_ntup) ? anyM.optModel : noStab_ntup.opt
+    opt_mod = isnothing(noStab_ntup) ? anyM.optModel : noStab_ntup.opt
     compute_conflict!(opt_mod)
 
     if MOI.get(opt_mod, MOI.ConflictStatus()) != MOI.ConflictStatusCode(3) return end
