@@ -209,7 +209,10 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 			dem_df[!,:id] .= 0
 			dem_df[!,:variable] .= :demand
 			if wrtSgn dem_df[!,:value] = dem_df[!,:value] .* -1 end
-			append!(allData_df, flatten(select(dem_df, intersect(namesSym(dem_df),namesSym(allData_df))), :R_dis))
+
+			if :Ts_frs in namesSym(allData_df) && !(:Ts_frs in namesSym(dem_df)) dem_df[!,:Ts_frs] .= 0 end
+
+			append!(allData_df, flatten(dem_df, :R_dis))
 		end
 	end
 
