@@ -213,7 +213,9 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 				# get cases where share is fixed
 				if prepSym == :expConv
 					if isempty(fixLim_df) fixLim_df[!,:val] .= Float64[] end
-					fixLim_df = vcat(fixLim_df, matchSetParameter(select(prepSys_dic[sys][sSym][prepSym].var, Not([:Ts_disSup])), anyM.parts.bal.par[:shareExpOutFix], anyM.sets))
+					if :shareExpOutFix in keys(anyM.parts.bal.par)
+						fixLim_df = vcat(fixLim_df, matchSetParameter(select(prepSys_dic[sys][sSym][prepSym].var, Not([:Ts_disSup])), anyM.parts.bal.par[:shareExpOutFix], anyM.sets))
+					end
 				end 
 				
 				# removes cases where variables are fixed to zero 
