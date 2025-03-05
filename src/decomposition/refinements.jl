@@ -167,9 +167,15 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		stabVio_df[!,:i] .= 0
 		append!(benders_obj.report.stabVio, stabVio_df)
 
+		conv_int = length(vcat(vcat(vcat(map(y -> stab_obj.var[:capa][:tech][y] |> (w -> map(z -> w[z][!,:value], filter(p -> occursin("Conv",string(p)), collect(keys(w))))), collect(keys(stab_obj.var[:capa][:tech]))))...)...))
+		st_int = length(vcat(vcat(vcat(map(y -> stab_obj.var[:capa][:tech][y] |> (w -> map(z -> w[z][!,:value], filter(p -> !occursin("Conv",string(p)), collect(keys(w))))), collect(keys(stab_obj.var[:capa][:tech]))))...)...))
+		exc_int = length(vcat(vcat(vcat(map(y -> stab_obj.var[:capa][:exc][y] |> (w -> map(z -> w[z][!,:value], collect(keys(w)))), collect(keys(stab_obj.var[:capa][:exc]))))...)...))
+		stLvl_int = length(vcat(vcat(map(x -> stab_obj.var[:stLvl][x] |> (u -> map(y -> u[y][!,:value], collect(keys(u)))), collect(keys(stab_obj.var[:stLvl])))...)...))
+		lim_int = length(vcat(map(x -> stab_obj.var[:lim][x][!,:value], collect(keys(stab_obj.var[:lim])))...))		
+
 		#endregion
-		
-		produceMessage(report_m.options, report_m.report, 1, " - Initialized stabilization with $eleNum_int variables", testErr = false, printErr = false)
+
+		produceMessage(report_m.options, report_m.report, 1, " - Initialized stabilization with $eleNum_int variables (conversion expansion $conv_int, storage expansion $st_int, exchange expansion $exc_int, storage level $stLvl_int, limits $lim_int)", testErr = false, printErr = false)
 	else
 		stab_obj = nothing
 		startSol_obj = resData()
