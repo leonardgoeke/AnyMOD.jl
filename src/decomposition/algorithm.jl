@@ -1608,7 +1608,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 	end
 
 	for sub in keys(numFoc_dic)
-		if numFoc_dic[sub] != 0 && sub in keys(benders_obj.cuts)
+		if numFoc_dic[sub] != 0
 			produceMessage(report_obj.mod.options, report_obj.mod.report, 1, " - Numeric focus of sub-problem $sub had to be increased to $(numFoc_dic[sub]) for the iteration", testErr = false, printErr = false)
 		end
 	end
