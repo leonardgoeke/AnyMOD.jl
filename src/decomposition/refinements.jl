@@ -581,11 +581,15 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::
 			end
 		end
 	elseif stab_obj.method[x_int] == :qtrLvl
-		# avoid decreasing the level parameter at non-serious step to prevent infeasible top problem
-		low_fl = srsStep_boo ? itr_obj.res[:estTotCostNoStab] : max(itr_obj.res[:estTotCostNoStab], stab_obj.dynPar[stab_obj.actMet][:lvl] * top_m.options.scaFac.obj) 
 		
 		# update level parameter and radius
-		stab_obj.dynPar[x_int][:lvl] = (opt_tup.lam * low_fl + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
+		newLvl_fl = (opt_tup.lam * itr_obj.res[:estTotCostNoStab] + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
+		# avoid decreasing the level parameter at non-serious step to prevent infeasible top problem
+		if srsStep_boo
+			stab_obj.dynPar[x_int][:lvl] = newLvl_fl
+		else
+			stab_obj.dynPar[x_int][:lvl] = max(newLvl_fl, stab_obj.dynPar[x_int][:lvl])
+		end
 		stab_obj.dynPar[x_int][:qtr] = interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.startRad, opt_tup.endRad], Symbol(opt_tup.inter))
 
 	elseif stab_obj.method[x_int] == :dsb # adjust doubly stabilized method, implementation according to doi.org/10.1007/s10107-015-0873-6

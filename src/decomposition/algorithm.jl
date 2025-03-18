@@ -365,12 +365,13 @@ function runTop(benders_obj::bendersObj)
 
 		if stab_obj.method[stab_obj.actMet] == :qtrLvl && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 			
+			# increase level parameter almost until the upper bound
 			low_fl = stab_obj.dynPar[stab_obj.actMet][:lvl]
 			up_fl = stab_obj.objVal / benders_obj.top.options.scaFac.obj
+			upRef_fl = low_fl + (up_fl - low_fl) * (1 - benders_obj.algOpt.gap)
 
-			# increase level parameter almost until the upper bound
-			lvl1_arr = collect(low_fl:((up_fl* (1 - benders_obj.algOpt.gap) - low_fl) / 2):up_fl * (1 - benders_obj.algOpt.gap))[2:end]
-			lvl2_arr = collect(lvl1_arr[end]:((up_fl - lvl1_arr[end]) / 3):up_fl * (1 - benders_obj.algOpt.gap))[2:end]
+			lvl1_arr = collect(low_fl:((upRef_fl - low_fl) / 2):upRef_fl)[2:end]
+			lvl2_arr = collect(lvl1_arr[end]:((up_fl - lvl1_arr[end]) / 3):up_fl)[2:end-1]
 			
 			for lvl_fl in vcat(lvl1_arr, lvl2_arr)
 				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increase level bound to $(lvl_fl)" , testErr = false, printErr = false)
@@ -380,6 +381,11 @@ function runTop(benders_obj::bendersObj)
 				# try to re-solve
 				@suppress optimize!(benders_obj.top.optModel)
 				if termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) break end
+			end
+			
+			if !benders_obj.stab.crossNoStab && benders_obj.algOpt.gap * (1 + benders_obj.algOpt.gap) > benders_obj.itr.gap
+				benders_obj.stab.crossNoStab = true
+				produceMessage(report_m.options, report_m.report, 1, " - Activated crossover when solving without stabilization to verify convergence!", testErr = false, printErr = false)
 			end
 
 			if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
@@ -859,7 +865,7 @@ function checkConvergence(benders_obj::bendersObj, lss_dic::Dict{Tuple{Int64,Int
 			if benders_obj.stab.crossNoStab
 				rtn_boo = true
 				produceMessage(report_m.options, report_m.report, 1, " - Finished iteration!", testErr = false, printErr = false)
-			else
+			elseif !benders_obj.stab.crossNoStab
 				benders_obj.stab.crossNoStab = true
 				produceMessage(report_m.options, report_m.report, 1, " - Activated crossover when solving without stabilization to verify convergence!", testErr = false, printErr = false)
 			end
