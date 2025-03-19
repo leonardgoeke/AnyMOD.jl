@@ -30,7 +30,7 @@ mutable struct stabSetup
 	weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} # weight of variables in stabilization
 	repVio::Bool
 	
-	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_sym::Symbol, lowLimVal_fl::Float64, solveNoStab::NamedTuple{(:upper, :inter, :sub), Tuple{Int64, Symbol, Float64}}, repVio::Bool = false, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 10, avgImp = 1e-5, itrAvg = 5), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
+	function stabSetup(method_tup::Tuple, srsThr_fl::Float64, ini_sym::Symbol, lowLimVal_fl::Float64, solveNoStab::NamedTuple{(:upper, :inter, :sub), Tuple{Int64, Symbol, Float64}}; repVio::Bool = false, switch::NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64, Float64, Int64}} = (itr = 10, avgImp = 1e-5, itrAvg = 5), weight::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), Tuple{Float64, Float64, Float64, Float64}} = (capa = 1e0, capaStSize = 1e0, stLvl = 1e0, lim = 1e0))
 		return new(method_tup, srsThr_fl, ini_sym, lowLimVal_fl, solveNoStab, switch, weight, repVio)
 	end
 end

@@ -331,8 +331,8 @@ function runTop(benders_obj::bendersObj)
 		set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
+		set_optimizer_attribute(benders_obj.top.optModel, "Threads", benders_obj.algOpt.top.threads)	
 	end
-	set_optimizer_attribute(benders_obj.top.optModel, "Threads", benders_obj.algOpt.top.threads)	
 	solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[1:1], benders_obj.algOpt.top.check, false)
 	
 	# handle unsolved top problem
@@ -713,8 +713,6 @@ getSubStringWorker(res_sym::Symbol) = "$(sub_m.options.outDir)/results_" * strin
 # ! add all cuts from input dictionary to top problem
 function addCuts!(top_m::anyModel, opt_mod::Model, rngVio_fl::Float64, cuts_arr::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}, noStab_boo::Bool = false)
 
-	
-	
 	# create array of expressions with duals for sub-problems
 	cut_df = DataFrame(i = Int[], Ts_dis = Int[], scr = Int[], limCoef = Bool[], cnsExpr = AffExpr[])
 	
