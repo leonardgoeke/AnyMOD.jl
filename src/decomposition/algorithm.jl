@@ -366,7 +366,7 @@ function runTop(benders_obj::bendersObj)
 		if stab_obj.method[stab_obj.actMet] == :qtrLvl && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 			
 			# solve with greater numeric focus
-			produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increased numeric focus to $(benders_obj.algOpt.top.numFoc[2:2])" , testErr = false, printErr = false)
+			produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increased numeric focus to $(benders_obj.algOpt.top.numFoc[2])" , testErr = false, printErr = false)
 			solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[2:2], benders_obj.algOpt.top.check, false)
 	
 			if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
@@ -376,13 +376,13 @@ function runTop(benders_obj::bendersObj)
 				up_fl = stab_obj.objVal / benders_obj.top.options.scaFac.obj
 				upRef_fl = low_fl + (up_fl - low_fl) * (1 - benders_obj.algOpt.gap)
 
-				if upRef_fl - low_fl < 1e-4
+				if upRef_fl - low_fl > 1e-4
 					lvl1_arr = collect(low_fl:((upRef_fl - low_fl) / 2):upRef_fl)[2:end]
 				else
 					lvl1_arr = Float64[]
 				end
 				
-				if up_fl - lvl1_arr[end] < 1e-4
+				if !isempty(lvl1_arr) && up_fl - lvl1_arr[end] > 1e-4
 					lvl2_arr = collect(lvl1_arr[end]:((up_fl - lvl1_arr[end]) / 3):up_fl)[2:end-1]
 				else
 					lvl2_arr = Float64[]
