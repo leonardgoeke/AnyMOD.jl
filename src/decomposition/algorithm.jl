@@ -365,56 +365,73 @@ function runTop(benders_obj::bendersObj)
 
 		if stab_obj.method[stab_obj.actMet] == :qtrLvl && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 			
-			# increase level parameter almost until the upper bound
-			low_fl = stab_obj.dynPar[stab_obj.actMet][:lvl]
-			up_fl = stab_obj.objVal / benders_obj.top.options.scaFac.obj
-			upRef_fl = low_fl + (up_fl - low_fl) * (1 - benders_obj.algOpt.gap)
-
-			lvl1_arr = collect(low_fl:((upRef_fl - low_fl) / 2):upRef_fl)[2:end]
-			lvl2_arr = collect(lvl1_arr[end]:((up_fl - lvl1_arr[end]) / 3):up_fl)[2:end-1]
-			
-			for lvl_fl in vcat(lvl1_arr, lvl2_arr)
-				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increase level bound to $(lvl_fl)" , testErr = false, printErr = false)
-				# increase level parameter
-				stab_obj.dynPar[stab_obj.actMet][:lvl] = lvl_fl
-				set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
-				# try to re-solve
-				@suppress optimize!(benders_obj.top.optModel)
-				if termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) break end
-			end
-			
-			if !benders_obj.stab.crossNoStab && benders_obj.algOpt.gap * (1 + benders_obj.algOpt.gap) > benders_obj.itr.gap
-				benders_obj.stab.crossNoStab = true
-				produceMessage(report_m.options, report_m.report, 1, " - Activated crossover when solving without stabilization to verify convergence!", testErr = false, printErr = false)
-			end
-
+			# solve with greater numeric focus
+			produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increased numeric focus to $(benders_obj.algOpt.top.numFoc[2:2])" , testErr = false, printErr = false)
+			solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[2:2], benders_obj.algOpt.top.check, false)
+	
 			if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 
-				# increase radius of trust-region to make feasible
-				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increase radius to $(stab_obj.dynPar[stab_obj.actMet][:qtr])" , testErr = false, printErr = false)
-				removeStab!(benders_obj)
-				stab_obj.dynPar[stab_obj.actMet][:qtr] = stab_obj.dynPar[stab_obj.actMet][:qtr] * 1.5
-				centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, benders_obj.report.mod; forceRad = true)
-				@suppress optimize!(benders_obj.top.optModel)
+				# increase level parameter almost until the upper bound
+				low_fl = stab_obj.dynPar[stab_obj.actMet][:lvl]
+				up_fl = stab_obj.objVal / benders_obj.top.options.scaFac.obj
+				upRef_fl = low_fl + (up_fl - low_fl) * (1 - benders_obj.algOpt.gap)
 
-				# other steps to create feasible model
+				if upRef_fl - low_fl < 1e-4
+					lvl1_arr = collect(low_fl:((upRef_fl - low_fl) / 2):upRef_fl)[2:end]
+				else
+					lvl1_arr = Float64[]
+				end
+				
+				if up_fl - lvl1_arr[end] < 1e-4
+					lvl2_arr = collect(lvl1_arr[end]:((up_fl - lvl1_arr[end]) / 3):up_fl)[2:end-1]
+				else
+					lvl2_arr = Float64[]
+				end
+				
+				for lvl_fl in vcat(lvl1_arr, lvl2_arr)
+					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increase level bound to $(lvl_fl)" , testErr = false, printErr = false)
+					# increase level parameter
+					stab_obj.dynPar[stab_obj.actMet][:lvl] = lvl_fl
+					set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
+					# try to re-solve
+					@suppress optimize!(benders_obj.top.optModel)
+					if termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) break end
+				end
+				
+				if !benders_obj.stab.crossNoStab && benders_obj.algOpt.gap * (1 + benders_obj.algOpt.gap) > benders_obj.itr.gap
+					benders_obj.stab.crossNoStab = true
+					produceMessage(report_m.options, report_m.report, 1, " - Activated crossover when solving without stabilization to verify convergence!", testErr = false, printErr = false)
+				end
+
 				if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 
-					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Deleted trust-region" , testErr = false, printErr = false)
-					delete(benders_obj.top.optModel, stab_obj.cns)
-					solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[2:end], benders_obj.algOpt.top.check, false)
+					# increase radius of trust-region to make feasible
+					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increase radius to $(stab_obj.dynPar[stab_obj.actMet][:qtr])" , testErr = false, printErr = false)
+					removeStab!(benders_obj)
+					stab_obj.dynPar[stab_obj.actMet][:qtr] = stab_obj.dynPar[stab_obj.actMet][:qtr] * 1.5
+					centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, benders_obj.report.mod; forceRad = true)
+					@suppress optimize!(benders_obj.top.optModel)
 
-					# solve without stabilization as last resort
+					# other steps to create feasible model
 					if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
-						produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Removed all stabilization" , testErr = false, printErr = false)
-						@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
-						delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
-						numFoc_int = solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[2:end], false)
-						if numFoc_int != benders_obj.algOpt.top.numFoc[2]
-							produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem solved by increasing numeric focus to $(numFoc_int)" , testErr = false, printErr = false)
+
+						produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Deleted trust-region" , testErr = false, printErr = false)
+						delete(benders_obj.top.optModel, stab_obj.cns)
+						solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[2:end], benders_obj.algOpt.top.check, false)
+
+						# solve without stabilization as last resort
+						if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+							produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Removed all stabilization" , testErr = false, printErr = false)
+							@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
+							delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
+							numFoc_int = solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[2:end], false)
+							if numFoc_int != benders_obj.algOpt.top.numFoc[2]
+								produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Finally solved top problem without stabilization and numeric focus of $(numFoc_int)" , testErr = false, printErr = false)
+							end
 						end
 					end
 				end
+
 			end
         end
 
