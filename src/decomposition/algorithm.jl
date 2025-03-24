@@ -116,7 +116,7 @@ function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,
 	if !isempty(lim_dic) addLinearTrust!(topFeas_m, lim_dic, rngVio_fl) end
 
 	# compute feasible capacites
-	topFeas_m = computeFeas(topFeas_m, fix_dic, zeroThrs_fl, cutSmall = true);
+	topFeas_m = computeFeas(topFeas_m, fix_dic, zeroThrs_fl, cutSmall = false);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
     return writeResult(topFeas_m, [:capa, :exp, :stLvl, :lim]; rmvFix = true), value(topFeas_m.parts.obj.var[:objVar][1,:var]), Dict(x => reportResults(x, topFeas_m, rtnOpt = (:csvDf,)) for x in resTup)
@@ -1820,6 +1820,12 @@ function writeResultsAsInputs!(benders_obj::bendersObj, outDir_str::String)
 				writeParameterFile!(top_m, var_df, par_sym, parDef_dic[par_sym], outDir_str * "par_" * string(sSym,"_",capaSym))
 			end
 		end
+	end
+
+	# write storage levels
+	for sys in keys(benders_obj.itr.best.var.stLvl)
+		par_sym = :stLvlFix
+		writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sys][:stLvl], par_sym, parDef_dic[par_sym], outDir_str * "par_stLvlFix_" * string(sys))
 	end
 
 end

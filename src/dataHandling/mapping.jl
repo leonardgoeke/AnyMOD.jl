@@ -758,9 +758,16 @@ function distributedMapping!(anyM::anyModel, prepSys_dic::Dict{Symbol,Dict{Symbo
 		end
 
 		# prepare removing unrequired time-steps and scenarios
-		rmvTs_arr = collect(setdiff(keys(anyM.sets[:Ts].nodes), vcat(relTsDis_arr, collect(anyM.supTs.step), getAncestors(subPro[1], anyM.sets[:Ts], :int))))
+		if anyM.options.monteCarlo 
+			rmvTs_arr = collect(setdiff(keys(anyM.sets[:Ts].nodes), vcat(relTsDis_arr, exTsDis_arr, collect(anyM.supTs.step), getAncestors(subPro[1], anyM.sets[:Ts], :int))))
+		else
+			rmvTs_arr = collect(setdiff(keys(anyM.sets[:Ts].nodes), vcat(relTsDis_arr, collect(anyM.supTs.step), getAncestors(subPro[1], anyM.sets[:Ts], :int))))
+		end
+		
 		rmvId_tup = (Ts_dis = rmvTs_arr, Ts_exp = rmvTs_arr,
 						scr = filter(x -> x != subPro[2] && x != 0, getfield.(values(anyM.sets[:scr].nodes), :idx)))
+
+		
 
 		# remove unrequired scenarios
 		foreach(y ->  delete!(anyM.sets[:scr].nodes, y), rmvId_tup.scr)
