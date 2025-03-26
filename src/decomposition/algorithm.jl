@@ -116,7 +116,7 @@ function getFeasResult(modOpt_tup::NamedTuple, fix_dic::Dict{Symbol,Dict{Symbol,
 	if !isempty(lim_dic) addLinearTrust!(topFeas_m, lim_dic, rngVio_fl) end
 
 	# compute feasible capacites
-	topFeas_m = computeFeas(topFeas_m, fix_dic, zeroThrs_fl, cutSmall = false);
+	topFeas_m = computeFeas(topFeas_m, fix_dic, zeroThrs_fl, cutSmall = true);
 
     # return capacities and top problem (is sometimes used to compute costs of feasible solution afterward)
     return writeResult(topFeas_m, [:capa, :exp, :stLvl, :lim]; rmvFix = true), value(topFeas_m.parts.obj.var[:objVar][1,:var]), Dict(x => reportResults(x, topFeas_m, rtnOpt = (:csvDf,)) for x in resTup)

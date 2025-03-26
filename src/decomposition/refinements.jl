@@ -25,7 +25,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			startSol_obj = resData()
 			lowBd_fl = 0.0
 				
-			top_m = computeFeas(top_m, heuSol_obj.capa, 0.001, cutSmall = true);
+			top_m = computeFeas(top_m, heuSol_obj.capa, 0.001, cutSmall = false);
 		
 			# write results for heuristic solution
 			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim) = writeResult(top_m, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)
