@@ -189,7 +189,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
-	solveModel!(top_m, top_m.optModel, [0,3], false, false)
+	solveModel!(top_m, top_m.optModel, [0,3], true, false)
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
