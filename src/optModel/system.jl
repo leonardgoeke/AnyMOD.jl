@@ -613,9 +613,13 @@ function createExpCap!(part::AbstractModelPart, prep_dic::Dict{Symbol,NamedTuple
 				return hcat(rem_df, ext_df)
 			end
 			var_df = vcat(allDf_arr...)
-			# replace expansion variables directly with expansion variables if they will be equal
-			var_df = innerjoin(select(var_df, Not([:var])), select(part.var[capa_sym], Not(intersect(intCol(part.var[capa_sym],:dir),[:Ts_expSup, :Ts_disSup, :id,:dir]))), on = exc_boo ? [:R_from, :R_to, :Exc] : [:R_exp, :Te])
-			var_df[!,:var] .= map(x -> sum(map(y -> y * x.terms[y], collect(keys(x.terms)))), var_df[!,:var])
+			
+			if !isempty(allDf_arr)
+				var_df = vcat(allDf_arr...)
+				# replace expansion variables directly with capacity variables if they will be equal
+				var_df = innerjoin(select(var_df, Not([:var])), select(part.var[capa_sym], Not(intersect(intCol(part.var[capa_sym],:dir),[:Ts_expSup, :Ts_disSup, :id,:dir]))), on = exc_boo ? [:R_from, :R_to, :Exc] : [:R_exp, :Te])
+				var_df[!,:var] .= map(x -> sum(map(y -> y * x.terms[y], collect(keys(x.terms)))), var_df[!,:var])
+			end
 		else
 			# determines scaling factor
 			if occursin("exp", string(expVar)) || occursin("insCapa", string(expVar))

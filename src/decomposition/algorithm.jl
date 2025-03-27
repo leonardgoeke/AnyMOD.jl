@@ -1793,7 +1793,7 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 	
 end
 
-# ! write dual values on storage and limits for montecarlo
+# ! write capacity values as fixes
 function writeResultsAsInputs!(benders_obj::bendersObj, outDir_str::String)
 
 	# prepare inputs
