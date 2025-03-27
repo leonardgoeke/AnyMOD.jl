@@ -3,6 +3,7 @@
 
 # ! defines all existing parameters
 function defineParameter(options::modOptions, report::Array{Tuple,1})
+    
     parDef_dic = Dict{Symbol, NamedTuple}()
 
     #region # * expansion and retrofit parameters

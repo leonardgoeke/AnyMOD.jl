@@ -189,7 +189,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
-	solveModel!(top_m, top_m.optModel, [0,3], false, false)
+	solveModel!(top_m, top_m.optModel, [0,3], true, false)
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -1820,6 +1820,12 @@ function writeResultsAsInputs!(benders_obj::bendersObj, outDir_str::String)
 				writeParameterFile!(top_m, var_df, par_sym, parDef_dic[par_sym], outDir_str * "par_" * string(sSym,"_",capaSym))
 			end
 		end
+	end
+
+	# write storage levels
+	for sys in keys(benders_obj.itr.best.var.stLvl)
+		par_sym = :stLvlFix
+		writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sys][:stLvl], par_sym, parDef_dic[par_sym], outDir_str * "par_stLvlFix_" * string(sys))
 	end
 
 end

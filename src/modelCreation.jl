@@ -26,7 +26,7 @@ function createOptModel!(anyM::anyModel)
 	allCapaDf_dic = addRetrofitting!(prepSys_dic, anyM)
 	addInsCapa!(prepSys_dic, anyM) # add entries for installed capacities
 	removeFixed!(prepSys_dic, allCapaDf_dic, anyM) # remove entries were capacities are fixed to zero
-
+	
 	# ! remove unrequired elements in case of distributed model creation
 	if !isempty(anyM.subPro) && !anyM.options.createVI.bal distributedMapping!(anyM, prepSys_dic) end
 
