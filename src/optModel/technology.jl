@@ -1102,7 +1102,7 @@ function stochStRestr(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyMo
 	scaFac_fl = anyM.options.scaFac.dispSt
 	var_df = unique(select(part.var[:stLvlInter], Not([:scr,:var])))
 	upBound_arr = getUpBound(var_df, anyM.options.bound.disp / scaFac_fl, anyM.supTs, anyM.sets[:Ts])
-	
+
 	# create variables itself
 	part.var[:worstCaseStDelta] = createVar(var_df, "worstCaseStDelta", fill(0.0,length(upBound_arr)), anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl, lowBd = -1 * maximum(upBound_arr))
 	part.var[:bestCaseStDelta] = createVar(var_df, "bestCaseStDelta", upBound_arr, anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl, lowBd = 0.0)
@@ -1113,14 +1113,17 @@ function stochStRestr(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyMo
 		conLvl_df = combine(x -> (delta = sum(x.var),), groupby(part.var[Symbol(c,:CaseStDelta)], filter(x -> x != :Ts_dis, intCol(part.var[Symbol(c,:CaseStDelta)]))))
 		conLvl_dic[c] = matchSetParameter(conLvl_df, part.par[Symbol(:rep, makeUp(c),:Case)], anyM.sets, newCol = Symbol(:rep,makeUp(c)))
 	end
-	
-	# create variable for start storage level
+
+	# create variable for start storage level and overshoot
+	part.var[:startStLvl_seas] = createVar(orderDf(select(conLvl_dic[:worst], Not([:repWorst, :delta]))), "startStLvl_seas", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
+	part.var[:startStLvl_res] = createVar(orderDf(select(conLvl_dic[:worst], Not([:repWorst, :delta]))), "startStLvl_res", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
 	part.var[:startStLvl] = createVar(orderDf(select(conLvl_dic[:worst], Not([:repWorst, :delta]))), "startStLvl", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
+
 	part.var[:leewayStLvl] = createVar(orderDf(select(conLvl_dic[:best], Not([:repBest, :delta]))), "leewayStLvl", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets, scaFac = anyM.options.scaFac.capaStSize)
 
 	# ! enforce constraints
 
-    # create constraints to enforce worst-and best-case
+	# create constraints to enforce worst-and best-case
 	for c in (:worst, :best)
 		enExt_df = innerjoin(rename(part.var[:stLvlInter], :var => :delta), rename(part.var[Symbol(c,:CaseStDelta)], :var => c), on = intCol(part.var[Symbol(c,:CaseStDelta)]))
 		enExt_df = matchSetParameter(enExt_df, part.par[Symbol(:secFac,makeUp(c),:Case)], anyM.sets, newCol = :secFac)
@@ -1128,7 +1131,7 @@ function stochStRestr(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyMo
 		cns_dic[Symbol(c,:CaseStDelta)] = cnsCont(select(enExt_df, Not([:delta,c])), c == :worst ? :greater : :smaller)
 	end
 
-	# ! create expression for net-level of each step in worst- and best-case
+	# ! create expression for net-level of reserve in each step of worst- and best-case
 	netLvl_dic = Dict{Symbol,DataFrame}()
 	for c in (:worst, :best)
 		netLvl_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], id = Int[], var = AffExpr[])
@@ -1143,6 +1146,18 @@ function stochStRestr(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyMo
 		netLvl_dic[c] = combine(x -> (Ts_dis = maximum(x.Ts_dis), delta = sum(x.var),), groupby(netLvl_df, intCol(netLvl_df)))
 	end
 
+	# ! create expression for net-level of seasonal in worst-case
+	netLvlSeas_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], id = Int[], delta = AffExpr[])
+	for wc in groupby(part.var[:stLvl] , filter(x -> !(x in (:Ts_dis,:scr)), intCol(part.var[:stLvl])))
+		wcSeas_df = unique(select(wc,Not([:scr])))
+		# substract starting level (= level at end of last time-step)
+		maxTs_int = maximum(collect(wcSeas_df[!,:Ts_dis])) 
+		maxLvl_expr = filter(x -> x.Ts_dis == maxTs_int , wcSeas_df)[1,:var]
+		wcSeas_df[!,:delta]  = maxLvl_expr .- wcSeas_df[!,:var]
+		# remove last entry and add to overall data-frame
+		append!(netLvlSeas_df, filter(x -> x.Ts_dis != maxTs_int, select(wcSeas_df,Not([:var]))))
+	end
+
 	# ! compute net-level for each step in best-case
 	netLvlBest_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], id = Int[], var = AffExpr[])
 
@@ -1155,40 +1170,51 @@ function stochStRestr(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyMo
 	end
 	netLvlBest_df = combine(x -> (Ts_dis = maximum(x.Ts_dis), delta = sum(x.var),), groupby(netLvlBest_df, intCol(netLvlBest_df)))
 
-    # ! control worst-case
-    
-	# create constraint regarding repetition of worst-case
-    worstLvl_df = innerjoin(conLvl_dic[:worst], part.var[:startStLvl], on = intCol(conLvl_dic[:worst]))
-    worstLvl_df[!,:cnsExpr] = map(x -> - x.repWorst * x.delta - x.var, eachrow(worstLvl_df)) 
-    cns_dic[:startStLvl] = cnsCont(orderDf(select(worstLvl_df, Not([:repWorst,:delta,:var]))), :smaller)
+	# ! control worst-case
 
-	# create constraint avoiding "undershoot" in worst-case
-	underLvl_df = innerjoin(netLvl_dic[:worst], part.var[:startStLvl], on = intCol(part.var[:startStLvl]))
-	underLvl_df[!,:cnsExpr] = map(x -> x.delta + x.var, eachrow(underLvl_df)) 
-	cns_dic[:underStLvl] = cnsCont(select(underLvl_df, Not([:delta,:var])), :greater)
+	# create constraint regarding repetition of worst-case
+	worstLvl_df = innerjoin(conLvl_dic[:worst], part.var[:startStLvl], on = intCol(conLvl_dic[:worst]))
+	worstLvl_df[!,:cnsExpr] = map(x -> - x.repWorst * x.delta - x.var, eachrow(worstLvl_df)) 
+	cns_dic[:startStLvl] = cnsCont(orderDf(select(worstLvl_df, Not([:repWorst,:delta,:var]))), :smaller)
+
+	# create constraint avoiding "undershoot" in worst-case for reserve
+	underLvlRes_df = innerjoin(netLvl_dic[:worst], part.var[:startStLvl_res], on = intCol(part.var[:startStLvl_res]))
+	underLvlRes_df[!,:cnsExpr] = map(x -> x.delta + x.var, eachrow(underLvlRes_df)) 
+	cns_dic[:underStLvlRes] = cnsCont(select(underLvlRes_df, Not([:delta,:var])), :greater)
+
+	# create constraint avoiding "undershoot" in worst-case for seasonal component
+	underLvlSeas_df = innerjoin(netLvlSeas_df, part.var[:startStLvl_seas], on = intCol(part.var[:startStLvl_seas]))
+	underLvlSeas_df[!,:cnsExpr] = map(x -> x.delta + x.var, eachrow(underLvlSeas_df)) 
+	cns_dic[:underStLvlSeas] = cnsCont(select(underLvlSeas_df, Not([:delta,:var])), :greater)
+
+	# join both terms to control starting level
+	zeroLvl_df = innerjoin(part.var[:startStLvl], rename(part.var[:startStLvl_seas], :var => :seas), on = intCol(part.var[:startStLvl]))
+	zeroLvl_df = innerjoin(zeroLvl_df, rename(part.var[:startStLvl_res], :var => :res), on = intCol(part.var[:startStLvl_res]))
+	zeroLvl_df[!,:cnsExpr] = map(x -> x.var - x.seas - x.res, eachrow(zeroLvl_df))
+	cns_dic[:zeroStLvl] = cnsCont(select(zeroLvl_df, Not([:var,:res,:seas])), :equal)
 
 	# ! control best-case
 
 	# create constraint regarding repetition of best-case
-    bestLvl_df = innerjoin(conLvl_dic[:best], part.var[:leewayStLvl], on = intCol(conLvl_dic[:best]))
-    bestLvl_df[!,:cnsExpr] = map(x -> x.repBest * x.delta - x.var, eachrow(bestLvl_df)) 
-    cns_dic[:leewayStLvl] = cnsCont(orderDf(select(bestLvl_df, Not([:repBest,:delta,:var]))), :smaller)
+	bestLvl_df = innerjoin(conLvl_dic[:best], part.var[:leewayStLvl], on = intCol(conLvl_dic[:best]))
+	bestLvl_df[!,:cnsExpr] = map(x -> x.repBest * x.delta - x.var, eachrow(bestLvl_df)) 
+	cns_dic[:leewayStLvl] = cnsCont(orderDf(select(bestLvl_df, Not([:repBest,:delta,:var]))), :smaller)
 
-    # create constraint avoiding "overshoot" in best-case
-    overLvl_df = innerjoin(netLvl_dic[:best], part.var[:leewayStLvl], on = intCol(part.var[:leewayStLvl]))
-    overLvl_df[!,:cnsExpr] = map(x -> x.delta - x.var, eachrow(overLvl_df)) 
-    cns_dic[:overStLvl] = cnsCont(select(overLvl_df, Not([:delta,:var])), :smaller)
+	# create constraint avoiding "overshoot" in best-case
+	overLvl_df = innerjoin(netLvl_dic[:best], part.var[:leewayStLvl], on = intCol(part.var[:leewayStLvl]))
+	overLvl_df[!,:cnsExpr] = map(x -> x.delta - x.var, eachrow(overLvl_df)) 
+	cns_dic[:overStLvl] = cnsCont(select(overLvl_df, Not([:delta,:var])), :smaller)
 
-    # ! enforce storage size based on starting level and overshoot
-    # compute lower restriction on storage size
-    enfSize_df = innerjoin(rename(part.var[:startStLvl], :var => :start), rename(part.var[:leewayStLvl], :var => :leeway), on = intCol(part.var[:startStLvl]))
-    enfSize_df[!,:var] = enfSize_df[!,:start] .+ enfSize_df[!,:leeway]
+	# ! enforce reserve size based on starting level and overshoot
+	# compute lower restriction on storage size
+	enfSize_df = innerjoin(rename(part.var[:startStLvl_res], :var => :start), rename(part.var[:leewayStLvl], :var => :leeway), on = intCol(part.var[:startStLvl_res]))
+	enfSize_df[!,:var] = enfSize_df[!,:start] .+ enfSize_df[!,:leeway]
 
-    # create constraint
-    enfSizeCns_df = copy(part.var[:capaStSizeInter])
-    enfSizeCns_df[!,:aggLvl] = aggDivVar(rename(select(enfSize_df,Not([:start,:leeway])), :R_dis => :R_exp), select(part.var[:capaStSizeInter], Not([:var])), (:Ts_expSup, :Ts_disSup, :R_exp, :Te, :id), anyM.sets)
-    enfSizeCns_df[!,:cnsExpr] = map(x -> x.var - x.aggLvl, eachrow(enfSizeCns_df)) 
-    cns_dic[:enfStSize] = cnsCont(select(enfSizeCns_df, Not([:var,:aggLvl])), :greater)
+	# create constraint
+	enfSizeCns_df = copy(part.var[:capaStSizeInter])
+	enfSizeCns_df[!,:aggLvl] = aggDivVar(rename(select(enfSize_df,Not([:start,:leeway])), :R_dis => :R_exp), select(part.var[:capaStSizeInter], Not([:var])), (:Ts_expSup, :Ts_disSup, :R_exp, :Te, :id), anyM.sets)
+	enfSizeCns_df[!,:cnsExpr] = map(x -> x.var - x.aggLvl, eachrow(enfSizeCns_df)) 
+	cns_dic[:enfStSize] = cnsCont(select(enfSizeCns_df, Not([:var,:aggLvl])), :greater)
 
     return cns_dic
 end

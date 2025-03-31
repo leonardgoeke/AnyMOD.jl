@@ -264,7 +264,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 	startStLvl_df = getAllVariables(:startStLvl, anyM)
 	if !isempty(startStLvl_df)
 		startStLvl_df[!,:value] = value.(startStLvl_df[!,:var])
-		startStLvl_df[!,:variable] .= :capaStSizeInterStart
+		startStLvl_df[!,:variable] .= :zeroStLvl
 		startStLvl_df[!,:scr] .= 0
 		# add tech to overall data frame
 		if :Ts_frs in namesSym(allData_df) startStLvl_df[!,:Ts_frs] .= 0 end
