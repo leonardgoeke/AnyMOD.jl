@@ -177,9 +177,12 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 
 		produceMessage(report_m.options, report_m.report, 1, " - Initialized stabilization with $eleNum_int variables (conversion expansion $conv_int, storage expansion $st_int, exchange expansion $exc_int, storage level $stLvl_int, limits $lim_int)", testErr = false, printErr = false)
 	else
+		# create empty stabilization object
 		stab_obj = nothing
 		startSol_obj = resData()
 		startSol_tup = (var = startSol_obj, res = Dict{Symbol,DataFrame}(), startLvl = Dict{Symbol, DataFrame}())
+		# copy reference to non-statablized problem
+		if !isempty(stabSetup_obj.method) benders_obj.topNoStab = (opt = nothing, ref = nothing) end
 	end
 
 	return stab_obj, startSol_tup

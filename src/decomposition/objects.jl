@@ -164,7 +164,7 @@ end
 # overall benders structure
 mutable struct bendersObj
 	top::anyModel
-	topNoStab::NamedTuple{(:opt,:ref),Tuple{Model,GenericReferenceMap}}
+	topNoStab::NamedTuple{(:opt,:ref),Tuple{Union{Model,Nothing},Union{GenericReferenceMap,Nothing}}}
 	sub::Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}
 	cuts::cutObj
 	complVar::Dict{Tuple{Int,Int},Dict{Symbol,DataFrame}}

@@ -759,12 +759,14 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	append!(benders_obj.cuts.all, colCuts_arr)
 
 	# create and directly add cuts for top problem without stabilization
-	colCutsNoStab_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
-	for cut in collect(cutData_dic)
-		cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, benders_obj.top, benders_obj.topNoStab.ref)
-		push!(colCutsNoStab_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
+	if !isnothing(benders_obj.stab) 
+		colCutsNoStab_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
+		for cut in collect(cutData_dic)
+			cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, benders_obj.top, benders_obj.topNoStab.ref)
+			push!(colCutsNoStab_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
+		end
+		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
 	end
-	addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
 
 
 	# get sub-results
@@ -888,7 +890,7 @@ function checkConvergence(benders_obj::bendersObj, lss_dic::Dict{Tuple{Int64,Int
 	elseif Dates.value(floor(now() - report_m.options.startTime, Dates.Minute(1))) > benders_obj.algOpt.timeLim
 		rtn_boo = true
 	else # reset option for solve without stabilization with crossover
-		benders_obj.stab.crossNoStab = false
+		if !isnothing(benders_obj.stab) benders_obj.stab.crossNoStab = false end
 	end
 
 	return rtn_boo
