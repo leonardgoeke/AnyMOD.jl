@@ -672,7 +672,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 end
 
 # ! solves a model increasing the numeric focus from starting value to maximum in infeasible
-function solveModel!(mod_m::anyModel, opt_mod::Model, numFoc_arr::Array{Int, 1}, check_boo::Bool = true, iss_boo::Bool = false, noStab_ntup::Union{Nothing,NamedTuple{(:opt,:ref),Tuple{Model,GenericReferenceMap}}} = nothing)
+function solveModel!(mod_m::anyModel, opt_mod::Model, numFoc_arr::Array{Int, 1}, check_boo::Bool = true, iss_boo::Bool = false, noStab_ntup::Union{Nothing,NamedTuple{(:opt,:ref),Tuple{Union{Model,Nothing},Union{GenericReferenceMap,Nothing}}}} = nothing)
 
 	numFoc_int = 1
 	while true
