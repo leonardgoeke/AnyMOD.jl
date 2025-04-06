@@ -196,7 +196,7 @@ mutable struct bendersObj
 		report_m = benders_obj.report.mod
 		produceMessage(report_m.options, report_m.report, 1, " - Started creation of top-problem", testErr = false, printErr = false)
 
-		top_m = anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel_" * info_ntup.name, frsLvl = info_ntup.frsLvl, supTsLvl = info_ntup.supTsLvl, checkRng = (print = true, all = true), repTsLvl = info_ntup.repTsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, createVI = algSetup_obj.useVI)
+		top_m = anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel_" * info_ntup.name, frsLvl = info_ntup.frsLvl, supTsLvl = info_ntup.supTsLvl, checkRng = (print = true, all = true), repTsLvl = info_ntup.repTsLvl, shortExp = info_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, holdFixed = true, createVI = algSetup_obj.useVI)
 		sub_tup = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(top_m.parts.obj.par[:scrProb].data)])...) # get all time-step/scenario combinations
 
 		# creation of sub-problems

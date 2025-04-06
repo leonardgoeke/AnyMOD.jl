@@ -7,7 +7,7 @@ function heuristicSolve(modOpt_tup::NamedTuple, t_int::Int, opt_obj::DataType; r
 
 	# create and solve model
 	frsLvl_int = solDet ? 0 : modOpt_tup.frsLvl
-	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, objName = "heuristicModel_" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, repTsLvl = modOpt_tup.repTsLvl, frsLvl = frsLvl_int, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), forceScr = solDet ? Symbol() : nothing)
+	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, holdFixed = true, objName = "heuristicModel_" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, repTsLvl = modOpt_tup.repTsLvl, frsLvl = frsLvl_int, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), forceScr = solDet ? Symbol() : nothing)
 	
 	prepareMod!(heu_m, opt_obj, t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
@@ -264,7 +264,7 @@ function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::Nam
 	# filter relevant input folders
 	relIn_arr = filter(x -> (occursin("ini",x) && genSetup_ntup.frsLvl != 0 ? occursin(subStr_tup[1],x) : true) && (occursin("scr",x) ? occursin(subStr_tup[2],x) : true), inputFolderSub_ntup.in)
 	# create sub-problems
-	sub_m = anyModel(relIn_arr, inputFolderSub_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, repTsLvl = genSetup_ntup.repTsLvl, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.sub.dbInf, reportLvl = 1)
+	sub_m = anyModel(relIn_arr, inputFolderSub_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, repTsLvl = genSetup_ntup.repTsLvl, holdFixed =true, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.sub.dbInf, reportLvl = 1)
 	sub_m.subPro = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)])...)[id]
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.sub.threads)
 	
@@ -315,6 +315,7 @@ function runTop(benders_obj::bendersObj)
 
 	# create objects to store results
 	resData_obj = resData()
+	bestData_obj = resData()
 	stabVar_obj = resData()
 
 	# solve model
@@ -481,6 +482,7 @@ function runTop(benders_obj::bendersObj)
 
 	# write technology capacites and level of capacity balance to benders object
 	resData_obj.capa, resData_obj.stLvl, resData_obj.lim = writeResult(benders_obj.top, [:capa, :mustCapa, :stLvl, :lim]; rmvFix = true, fltSt = false)
+	bestData_obj.capa, bestData_obj.stLvl, bestData_obj.lim = writeResult(benders_obj.top, [:capa, :mustCapa, :exp, :mustExp, :stLvl, :lim]; rmvFix = true, fltSt = false, filterExc = false)
 	stabVar_obj.capa, stabVar_obj.stLvl, stabVar_obj.lim = writeResult(benders_obj.top, [:capa, :exp, :stLvl, :lim]; rmvFix = true)
 
 	resData_obj = correctMustCapa(resData_obj)
@@ -526,7 +528,7 @@ function runTop(benders_obj::bendersObj)
 		
 	#endregion
 
-	return resData_obj, stabVar_obj, stLvl_dic
+	return resData_obj, bestData_obj, stabVar_obj, stLvl_dic
 end
 
 # ! run sub-problem
@@ -728,7 +730,7 @@ function addCuts!(top_m::anyModel, opt_mod::Model, rngVio_fl::Float64, cuts_arr:
 end
 
 # ! update results and stabilization
-function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64,Int64},resData}, resData_obj::resData, curRes_dic::Dict{Symbol,DataFrame}, stabVar_obj::resData, stLvl_dic::Dict{Symbol, DataFrame})
+function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64,Int64},resData}, bestData_obj::resData, curRes_dic::Dict{Symbol,DataFrame}, stabVar_obj::resData, stLvl_dic::Dict{Symbol, DataFrame})
 
 	itr_obj = benders_obj.itr
 	best_obj = itr_obj.best
@@ -776,7 +778,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	# update current best
 	if benders_obj.nearOpt.cnt == 0 ? (itr_obj.res[:actTotCost] < best_obj.var.objVal) : (itr_obj.res[:nearObj] <= best_obj.var.objVal && itr_obj.gap <= benders_obj.algOpt.gap)
 		best_obj.var.objVal = benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:actTotCost] : itr_obj.res[:nearObj]
-		best_obj.var.capa, best_obj.var.stLvl, best_obj.var.lim = map(x -> getfield(resData_obj,x), [:capa, :stLvl, :lim])
+		best_obj.var.capa, best_obj.var.stLvl, best_obj.var.lim = map(x -> getfield(bestData_obj,x), [:capa, :stLvl, :lim])
 		@suppress foreach(x -> best_obj.res[x] = curRes_dic[x], benders_obj.report.res.general)
 		itr_obj.res[:curBest] = best_obj.var.objVal
 		foreach(x -> best_obj.startLvl[x] = stLvl_dic[x], keys(stLvl_dic))
@@ -905,7 +907,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 	
 		#region # * solve top-problem and (start) sub-problems
 		str_time = now()
-		resData_obj, stabVar_obj, stLvl_dic = runTop(benders_obj);
+		resData_obj, bestData_obj, stabVar_obj, stLvl_dic = runTop(benders_obj);
 		elpTop_time = now() - str_time
 	
 		# start solving sub-problems
@@ -966,7 +968,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		#region # * analyse results and update refinements
 	
 		# update results and stabilization
-		updateIteration!(benders_obj, cutData_dic, resData_obj, curRes_dic, stabVar_obj, stLvl_dic)
+		updateIteration!(benders_obj, cutData_dic, bestData_obj, curRes_dic, stabVar_obj, stLvl_dic)
 		# report on iteration
 		reportBenders!(benders_obj, resData_obj, elpTop_time, elpNoStab_time, timeSub_dic, lss_dic, numFoc_dic)
 	
@@ -1126,7 +1128,7 @@ function matchValWithVar(var_dic::Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{
 end
 
 # ! write values of entire variables in input model to returned capacity dictionary
-function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = false, fltSt::Bool = true, roundDown::Int = 0)
+function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = false, fltSt::Bool = true, filterExc::Bool = true, roundDown::Int = 0)
 	
 	# write expansion value
 	capa_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
@@ -1185,7 +1187,7 @@ function writeResult(in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = fa
 			end
 
 			# removes redundant variables for undirected exchange capacity
-			if sys == :exc && !part_dic[sSym].dir && :capaExc in keys(capa_dic[sys][sSym])
+			if sys == :exc && !part_dic[sSym].dir && :capaExc in keys(capa_dic[sys][sSym]) && filterExc
 				filter!(x -> x.R_from < x.R_to, capa_dic[sys][sSym][:capaExc])
 			end
 
@@ -1817,6 +1819,12 @@ function writeResultsAsInputs!(benders_obj::bendersObj, outDir_str::String)
 				else
 					var_df = copy(benders_obj.itr.best.var.capa[sys][sSym][capaSym])
 				end
+				# add potentially missing dir column
+				if sys == :exc
+					if getindex(benders_obj.top.parts.exc,sSym).dir && !(:dir in namesSym(var_df))
+						var_df[!, :dir] .= true
+					end
+				end
 				# write parameter fle
 				par_sym = Symbol(capaSym,"Fix")
 				writeParameterFile!(top_m, var_df, par_sym, parDef_dic[par_sym], outDir_str * "par_" * string(sSym,"_",capaSym))
@@ -1824,12 +1832,15 @@ function writeResultsAsInputs!(benders_obj::bendersObj, outDir_str::String)
 		end
 	end
 
+
+
 	# write storage levels
+	#=
 	for sys in keys(benders_obj.itr.best.var.stLvl)
 		par_sym = :stLvlFix
 		writeParameterFile!(top_m, benders_obj.itr.best.var.stLvl[sys][:stLvl], par_sym, parDef_dic[par_sym], outDir_str * "par_stLvlFix_" * string(sys))
 	end
-
+	=#
 end
 
 #endregion

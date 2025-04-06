@@ -20,7 +20,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			
 			produceMessage(report_m.options, report_m.report, 1, " - Started heuristic pre-solve for starting solution", testErr = false, printErr = false)
 			# get heuristic solution and get a close feasible solution
-			heu_m, heuSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.top.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = true, fltSt = false);
+			heu_m, heuSol_obj = heuristicSolve(heuOpt_ntup, benders_obj.algOpt.top.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = true, fltSt = false);
 			top_m = benders_obj.top
 			startSol_obj = resData()
 			lowBd_fl = 0.0

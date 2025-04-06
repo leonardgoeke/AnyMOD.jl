@@ -389,19 +389,33 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 			# ! replace fixed variables with a parameter, if holdFixed is active
 			if anyM.options.holdFixed
 				for prepSym in collect(keys(prepSys_dic[sys][sSym]))
-					# get relevant parameter data
-					limPar_obj = getLimPar(anyM.parts.lim, Symbol(prepSym, :Fix), anyM.sets[sys], sys = sysInt(sSym, anyM.sets[sys]))
-					# get all cases where variables are fixed
-					fixLim_df = getFix(prepSys_dic[sys][sSym][prepSym].var, limPar_obj, anyM)
-					# fixed variables are not created and value is enforced via parameters
-					if !isempty(fixLim_df)
-						fixLim_df[!,:var] .= map(x -> AffExpr(x), fixLim_df[!,:val])
-						resi_df = prepSys_dic[sys][sSym][prepSym].resi
-						resi_df = select(filter(x -> x.val != 0.0, fixLim_df), Not([:val])) |> (w -> isempty(resi_df) ? w : vcat(w, antijoin(resi_df, w, on = intCol(w))))
-						prepSys_dic[sys][sSym][prepSym] = prepSys_dic[sys][sSym][prepSym] |> (x -> (var =  removeEntries([select(fixLim_df, Not([:val, :var]))], x.var), resi = resi_df))
+					# write array of relevant fixing parameters
+					relFix_arr = [Symbol(prepSym, :Fix)]
+					if sys == :Exc push!(relFix_arr, Symbol(prepSym, :FixDir)) end
+					# loop over array to filter
+					for p in relFix_arr
+						# get relevant parameter data
+						limPar_obj = getLimPar(anyM.parts.lim, p, anyM.sets[sys], sys = sysInt(sSym, anyM.sets[sys]))
+						# get all cases where variables are fixed
+						if !isempty(prepSys_dic[sys][sSym][prepSym].resi)
+							var_df = prepSys_dic[sys][sSym][prepSym].var
+							resi_df = select(prepSys_dic[sys][sSym][prepSym].resi, Not([:var]))
+							relCol_arr = intersect(namesSym(var_df), namesSym(resi_df))
+							check_df = outerjoin(resi_df, var_df, on = relCol_arr) 
+						else
+							check_df = prepSys_dic[sys][sSym][prepSym].var
+						end
+						fixLim_df = getFix(check_df, limPar_obj, anyM)
+						# fixed variables are not created and value is enforced via parameters
+						if !isempty(fixLim_df)
+							fixLim_df[!,:var] .= map(x -> AffExpr(x), fixLim_df[!,:val])
+							resi_df = prepSys_dic[sys][sSym][prepSym].resi
+							resi_df = select(filter(x -> x.val != 0.0, fixLim_df), Not([:val])) |> (w -> isempty(resi_df) ? w : vcat(w, antijoin(resi_df, w, on = intCol(w))))
+							prepSys_dic[sys][sSym][prepSym] = prepSys_dic[sys][sSym][prepSym] |> (x -> (var =  removeEntries([select(fixLim_df, Not([:val, :var]))], x.var), resi = resi_df))
+						end
 					end
 				end
-			end
+			end			
 
 			# ! remove expansion variables that become obsolete because no corresponding capacities exist anymore
 			for expVar in filter(x -> occursin("exp", string(x)), keys(prepSys_dic[sys][sSym]))
@@ -599,10 +613,19 @@ function createExpCap!(part::AbstractModelPart, prep_dic::Dict{Symbol,NamedTuple
 
 		varMap_tup = prep_dic[expVar]
 
+		if seasStSize_boo
+			if isempty(varMap_tup.resi)
+				varMap_df = varMap_tup.var
+			else
+				varMap_df = outerjoin(varMap_tup.var, select(varMap_tup.resi ,Not([:var])), on = intersect(namesSym(varMap_tup.var),namesSym(varMap_tup.resi)))
+			end
+			resiMap_df = filter(x -> false, varMap_tup.resi)
+			varMap_tup = (var = varMap_df, resi = resiMap_df)
+		end
+		
 		# check if expansion variable is redundant and can be replaced by capacity variable
 		capa_sym = Symbol(replace(string(expVar), "exp" => "capa"))
-
-		if occursin("exp", string(expVar)) && capa_sym in keys(part.var) && length(anyM.supTs.step) == 1 && !occursin("retro", string(expVar)) && !any(occursin.("insCapa", String.(keys(prep_dic)))) && (!exc_boo || (part.dir && unique(varMap_tup.var[!,:id]) == [0]))
+		if isempty(varMap_tup.resi) && occursin("exp", string(expVar)) && capa_sym in keys(part.var) && length(anyM.supTs.step) == 1 && !occursin("retro", string(expVar)) && !any(occursin.("insCapa", String.(keys(prep_dic)))) && (!exc_boo || (part.dir && unique(varMap_tup.var[!,:id]) == [0]))
 
 			var_df = varMap_tup.var
 
