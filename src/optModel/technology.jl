@@ -1148,8 +1148,15 @@ function stochStRestr(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyMo
 
 	# ! create expression for net-level of seasonal in worst-case
 	netLvlSeas_df = DataFrame(Ts_expSup = Int[], Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], C = Int[], Te = Int[], M = Int[], id = Int[], delta = AffExpr[])
-	for wc in groupby(part.var[:stLvl] , filter(x -> !(x in (:Ts_dis,:scr)), intCol(part.var[:stLvl])))
-		wcSeas_df = unique(select(wc,Not([:scr])))
+
+	# get level at end of foresight period
+	stLvl_df = copy(part.var[:stLvl])
+	stLvl_df[!,:Ts_frs] .= map(x -> getAncestors(x, anyM.sets[:Ts], :int, anyM.scr.frsLvl)[end], stLvl_df[!,:Ts_dis])
+	lvlEnd_df = combine(x -> (Ts_dis = maximum(x.Ts_dis),), groupby(stLvl_df, filter(x -> !(x in (:Ts_dis, :scr)), intCol(stLvl_df))))
+	lvlEnd_df = select(unique(select(innerjoin(lvlEnd_df, stLvl_df, on = intCol(lvlEnd_df)), Not([:scr]))), Not([:Ts_frs]))
+
+	for wc in groupby(lvlEnd_df, filter(x -> !(x in (:Ts_dis,)), intCol(lvlEnd_df)))
+		wcSeas_df = wc
 		# substract starting level (= level at end of last time-step)
 		maxTs_int = maximum(collect(wcSeas_df[!,:Ts_dis])) 
 		maxLvl_expr = filter(x -> x.Ts_dis == maxTs_int , wcSeas_df)[1,:var]
