@@ -124,6 +124,9 @@ makeUp(in::Symbol) = Symbol(uppercase(string(in)[1]), string(in)[2:end])
 makeLow(in::String) = isempty(in) ? "" : string(lowercase(in[1]), in[2:end])
 makeLow(in::Symbol) = Symbol(lowercase(string(in)[1]), string(in)[2:end])
 
+# ! compute average of a vector
+avg(x::Vector) = sum(x) / length(x)
+
 # ! create a directory or empty it if already existing
 function restDir!(outDir_str::String)
 	if isdir(outDir_str) rm(outDir_str; recursive = true) end

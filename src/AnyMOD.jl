@@ -40,7 +40,7 @@ module AnyMOD
     export algSetup, stabSetup, nearOptSetup, bendersObj, resData # objects
     export buildSub, initializeStab!, prepareMod!, runIteration! # low-level processing
     export runSub, runTop, runTopWithoutStab!, checkConvergence, updateIteration!, reportBenders!, writeBendersResults!, getComVar, getSubString, getConvTol # functions for iteration
-    export getSubStringWorker, writeResultsAsInputs! # monte-carlo analysis
+    export getSubStringWorker, writeResultsAsInputs!, analyseBlock # out-of-sample testing
 
     # ! define function to print subset of infeasible constraints, if gurobi can be used (has to be installed separately)
     function __init__()

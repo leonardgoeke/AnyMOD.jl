@@ -172,10 +172,11 @@ mutable struct bendersObj
 	stab::Union{Nothing,stabObj}
     algOpt::algSetup
 	nearOpt::nearOptObj
+	trackCapa::Bool
 	info::NamedTuple{(:name,:frsLvl,:supTsLvl,:repTsLvl,:shortExp), Tuple{String, Int64, Int64, Int64, Int64}}
 	report::NamedTuple{(:itr,:nearOpt,:stabVio,:res,:mod),Tuple{DataFrame,DataFrame,DataFrame,NamedTuple,anyModel}}
 	
-	function bendersObj(info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, getComVarDist::Function, resInfo::NamedTuple, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
+	function bendersObj(info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, getComVarDist::Function, resInfo::NamedTuple; trackCapa::Bool = false, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
 
         #region # * checks and initialization
 
@@ -184,6 +185,7 @@ mutable struct bendersObj
 		benders_obj.cuts = cutObj(Int[], Int[], Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}}[], Array{Array{Float64,1},1}(),0)
         benders_obj.algOpt = algSetup_obj
 		benders_obj.nearOpt = nearOptObj(0, nearOptSetup_obj)
+		benders_obj.trackCapa = trackCapa
 
 		# initialize reporting
 		initializeReporting!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, resInfo)

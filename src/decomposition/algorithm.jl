@@ -897,6 +897,8 @@ end
 # ! run iteration
 function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 
+	allRes_df = DataFrame(i = Int[], Ts_expSup = Int[], Ts_disSup = Int[], Ts_dis = Int[], R_dis = Int[], R_exp = Int[], R_from = Int[], R_to = Int[], C = Int[], Te = Int[], Exc = Int[], M = Int[], scr = Int[], id = Int[], sub = Tuple[], variable = Symbol[], value = Float64[])
+
 	while true
 
 		produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Started iteration $(benders_obj.itr.cnt.i)", testErr = false, printErr = false)
@@ -974,12 +976,24 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		# delete cuts that not were binding for the defined number of iterations
 		deleteCuts!(benders_obj)
 
+		# track capacity over iterations if activated
+		if benders_obj.trackCapa reportComplVar!(allRes_df, resData_obj, benders_obj.itr.cnt.i) end
+
 		#endregion
 
 		benders_obj.itr.cnt.i = benders_obj.itr.cnt.i + 1
 		if rtn_boo break end
 		
 	end
+
+	# apply weights to tracked capacities
+	if benders_obj.trackCapa
+		w_dic = Dict(:capaConv => benders_obj.stab.weight.capa, :mustCapaConv => benders_obj.stab.weight.capa, :capaStSize => benders_obj.stab.weight.capaStSize, :capaStOut => benders_obj.stab.weight.capa, :capaStIn => benders_obj.stab.weight.capa, :capaExc => benders_obj.stab.weight.capa,
+																																						:stLvl => benders_obj.stab.weight.stLvl, :stLvlInter => benders_obj.stab.weight.stLvl, :emissionBendersCom => benders_obj.stab.weight.lim)
+		allRes_df[!,:value] = map(x -> x.value * w_dic[x.variable], eachrow(allRes_df))
+	end
+
+	return allRes_df
 
 end
 
@@ -1549,7 +1563,7 @@ end
 
 #region # * reporting
 
-# report violation of range in quadratic trust-region
+# ! report violation of range in quadratic trust-region
 function reportRngViolations(qtrConsSca_expr::QuadExpr, matRng_tup::Tuple{Float64,Float64}, rngVio_fl::Float64, wrtRep::Bool)
 	
 	# create dataframe for reporting
@@ -1602,7 +1616,7 @@ function reportRngViolations(qtrConsSca_expr::QuadExpr, matRng_tup::Tuple{Float6
 	return repVio_df
 end
 
-# report on benders iteration
+# ! report on benders iteration
 function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_time::Millisecond, elpNoStab_time::Millisecond, timeSub_dic::Dict{Tuple{Int64,Int64},Millisecond}, lss_dic::Dict{Tuple{Int64,Int64},Float64}, numFoc_dic::Dict{Tuple{Int64,Int64},Int64})
 
 	report_obj = benders_obj.report
@@ -1715,7 +1729,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 
 end
 
-# write results for overall algorithm
+# ! write results for overall algorithm
 function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, getSubStringDist::Function)
 
 	res_ntup = benders_obj.report.res
@@ -1830,5 +1844,107 @@ function writeResultsAsInputs!(benders_obj::bendersObj, outDir_str::String)
 
 end
 
+# ! report value of complicating variables
+function reportComplVar!(allRes_df::DataFrame, resData_obj::resData, i::Int64)
+
+	# add capacity variables
+	for sys in (:tech, :exc), sSym in keys(resData_obj.capa[sys]), capaSym in keys(resData_obj.capa[sys][sSym])
+		add_df = copy(resData_obj.capa[sys][sSym][capaSym])
+		if sys == :exc select!(add_df, Not([:dir])) end
+		add_df[!,:i] .= i
+		add_df[!,:variable] .= capaSym
+		add_df[!,:sub] .= fill((0,0),size(add_df,1))
+		foreach(x -> add_df[!,x] .= 0, setdiff(names(allRes_df),names(add_df)))
+		append!(allRes_df, add_df)
+	end
+
+	# add storage levels
+	for sSym in keys(resData_obj.stLvl), lvlSym in keys(resData_obj.stLvl[sSym])
+		add_df = copy(resData_obj.stLvl[sSym][lvlSym])
+		add_df[!,:i] .= i
+		add_df[!,:variable] .= lvlSym
+		add_df[!,:sub] .= fill((0,0),size(add_df,1))
+		foreach(x -> add_df[!,x] .= 0, setdiff(names(allRes_df),names(add_df)))
+		append!(allRes_df, add_df)
+	end
+
+	# add limits
+	for x in keys(resData_obj.lim)
+		add_df = copy(resData_obj.lim[x])
+		add_df[!,:i] .= i
+		add_df[!, :variable] .= x
+		foreach(x -> add_df[!,x] .= 0, setdiff(names(allRes_df),names(add_df)))
+		append!(allRes_df, add_df)
+	end
+
+end
+
+# ! compute euclidean distance within the result dataframe
+function computeDistance(allRes_df::DataFrame, i::Int, j::Int)
+	i_df = select(filter(x -> x.i == i, allRes_df), Not([:i]))
+	j_df = select(filter(x -> x.i == j, rename(allRes_df, :value => :value_2)), Not([:i]))
+	join_df = innerjoin(i_df, j_df, on = filter(x -> !(x in ("value","i")), names(allRes_df)))
+	return sqrt(sum((join_df.value .- join_df.value_2).^2))
+end
+
+# ! analysis of iterations until serious step
+function analyseBlock(allRes_df::DataFrame, benders_obj::bendersObj)
+	repBlocks_df = DataFrame(cntInt = Int[], relImp = Float64[], startGap = Float64[], intDis = Float64[], intCurDis = Float64[], intNxtDis = Float64[], curNxtDis = Float64[])
+
+	# loop over all serious steps to write infos
+	srsStep_arr = filter(x -> x.curCost == x.bestObj && x.i != 1, benders_obj.report.itr)[!,:i]
+
+	for i in eachindex(srsStep_arr)
+		# skip first step
+		if i == 1 continue end
+
+		# compute improvement and gap
+		curStep_df = filter(x -> x.i == srsStep_arr[i], benders_obj.report.itr)
+		preStep_df = filter(x -> x.i == srsStep_arr[i-1], benders_obj.report.itr)
+
+		# compute reference distance
+		if preStep_df[1,:actMethod] == :qtrLvl
+			refDis_fl = preStep_df[1,:dynPar_qtrLvl][1] * sum(abs.(filter(x -> x.i == srsStep_arr[i-1], allRes_df)[!,:value]))
+		else
+			refDis_fl = preStep_df[1,:dynPar_qtr] * sum(abs.(filter(x -> x.i == srsStep_arr[i-1], allRes_df)[!,:value]))
+		end
+
+		# characterize serios step
+		relImp_fl = curStep_df[1,:bestObj] / preStep_df[1,:bestObj]
+		cntStep_int = srsStep_arr[i] - srsStep_arr[i-1]
+		startGap_fl = preStep_df[1,:gap]
+		
+		# compute distances among iteration points
+		intDis_arr = Float64[]
+		for k in collect(srsStep_arr[i-1]+1:srsStep_arr[i]), l in collect(srsStep_arr[i-1]+1:srsStep_arr[i])
+			if k >= l continue end
+			push!(intDis_arr, computeDistance(allRes_df, k, l))
+		end
+		
+		# compute distance between iteration points and current best
+		curBest_arr = Float64[] 
+		for k in collect(srsStep_arr[i-1]+1:srsStep_arr[i])
+			push!(curBest_arr, computeDistance(allRes_df, k, srsStep_arr[i-1]))
+		end
+		
+		# compute distance between iteration points and next best
+		nxtBest_arr = Float64[]
+		for k in collect(srsStep_arr[i-1]+1:srsStep_arr[i])
+			push!(nxtBest_arr, computeDistance(allRes_df, k, srsStep_arr[i]))
+		end
+		
+		# compute distance between current best and next best 
+		bestDis_fl = computeDistance(allRes_df, srsStep_arr[i], srsStep_arr[i-1])
+
+		# add result to data frame
+		push!(repBlocks_df, (cntInt = cntStep_int, relImp = relImp_fl, startGap = startGap_fl, intDis = avg(intDis_arr) / refDis_fl, intCurDis = avg(curBest_arr) / refDis_fl, intNxtDis = avg(nxtBest_arr) / refDis_fl, curNxtDis = bestDis_fl / refDis_fl))
+	end
+
+	repBlocks_df[!,:objName] .= benders_obj.report.mod.options.objName
+	return repBlocks_df
+end
+
 #endregion
+
+
 
