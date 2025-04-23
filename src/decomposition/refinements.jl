@@ -20,7 +20,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			
 			produceMessage(report_m.options, report_m.report, 1, " - Started heuristic pre-solve for starting solution", testErr = false, printErr = false)
 			# get heuristic solution and get a close feasible solution
-			heu_m, heuSol_obj =  @suppress heuristicSolve(heuOpt_ntup, benders_obj.algOpt.top.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = true, fltSt = false);
+			heu_m, heuSol_obj = heuristicSolve(heuOpt_ntup, benders_obj.algOpt.top.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = true, fltSt = false);
 			top_m = benders_obj.top
 			startSol_obj = resData()
 			lowBd_fl = 0.0
@@ -177,9 +177,12 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 
 		produceMessage(report_m.options, report_m.report, 1, " - Initialized stabilization with $eleNum_int variables (conversion expansion $conv_int, storage expansion $st_int, exchange expansion $exc_int, storage level $stLvl_int, limits $lim_int)", testErr = false, printErr = false)
 	else
+		# create empty stabilization object
 		stab_obj = nothing
 		startSol_obj = resData()
 		startSol_tup = (var = startSol_obj, res = Dict{Symbol,DataFrame}(), startLvl = Dict{Symbol, DataFrame}())
+		# copy reference to non-statablized problem
+		if !isempty(stabSetup_obj.method) benders_obj.topNoStab = (opt = nothing, ref = nothing) end
 	end
 
 	return stab_obj, startSol_tup
@@ -201,7 +204,7 @@ function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_
 			error("options provided for proximal bundle do not match the defined options 'start', 'min' and 'a'")
 		elseif key == :prx2 && !isempty(setdiff(keys(val), (:start, :min, :a)))
 			error("options provided for proximal bundle do not match the defined options 'start', 'min' and 'a'")
-		elseif key == :lvl1 && !isempty(setdiff(keys(val), (:lam,)))
+		elseif key in (:lvl1,:lvl3) && !isempty(setdiff(keys(val), (:lam,)))
 			error("options provided for level bundle do not match the defined option 'lam'")
 		elseif key == :lvl2 && !isempty(setdiff(keys(val), (:lam, :myMax)))
 			error("options provided for level bundle do not match the defined options 'lam', 'myMax'")
@@ -229,7 +232,7 @@ function computeDynPar(meth_arr::Array{Symbol, 1}, methOpt_arr::Array{NamedTuple
 	for m in 1:size(meth_arr, 1)
 		if meth_arr[m] in (:prx1, :prx2)
 			dynPar = Dict(:prx => methOpt_arr[m].start, :prxAux => methOpt_arr[m].start) # starting value for penalty
-		elseif meth_arr[m] == :lvl1
+		elseif meth_arr[m] in (:lvl1, :lvl3)
 			dynPar = (methOpt_arr[m].lam * lowBd_fl  + (1 - methOpt_arr[m].lam) * upBd_fl) / top_m.options.scaFac.obj # starting value for level
 			if methOpt_arr[m].lam >= 1 || methOpt_arr[m].lam <= 0 
 				error("lambda for level bundle must be strictly between 0 and 1")
@@ -328,6 +331,18 @@ function centerStab!(method::Val{:lvl2}, stab_obj::stabObj, rngVio_fl::Float64, 
 
 	# report violation
 	repVio_df = reportRngViolations(qtrConsSca_expr, top_m.options.coefRng.mat, rngVio_fl, stab_obj.repVio)
+
+	return repVio_df
+end
+
+function centerStab!(method::Val{:lvl3}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
+	
+	# set dual option according to demands of method 
+	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+
+	# adjust objective function and level set
+	@objective(top_m.optModel, Min, 0.0)
+	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet])
 
 	return repVio_df
 end
@@ -569,7 +584,7 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::
 				stab_obj.dynPar[x_int][:prx] = opt_tup.start
 			end
 		end
-	elseif stab_obj.method[x_int] == :lvl1 # adjust level
+	elseif stab_obj.method[x_int] in (:lvl1,:lvl3) # adjust level, lvl3 uses no objective function as in https://ieeexplore.ieee.org/abstract/document/10829583
 		stab_obj.dynPar[x_int] = (opt_tup.lam * itr_obj.res[:estTotCostNoStab]  + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
 	elseif stab_obj.method[x_int] == :lvl2 # adjust level, implementation according to doi.org/10.1007/s10107-015-0873-6 
 		stab_obj.dynPar[x_int][:my] = 1 - itr_obj.res[:lvlDual]
@@ -740,7 +755,7 @@ function removeStab!(benders_obj::bendersObj)
 		delete(benders_obj.top.optModel, stab_obj.cns) # remove trust-region
 	elseif stab_obj.method[stab_obj.actMet] in (:prx1, :prx2)
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1]) # remove penalty form objective
-	elseif stab_obj.method[stab_obj.actMet] in (:lvl1, :lvl2) && has_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
+	elseif stab_obj.method[stab_obj.actMet] in (:lvl1, :lvl2, :lvl3) && has_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 		delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 	elseif stab_obj.method[stab_obj.actMet] == :qtrLvl

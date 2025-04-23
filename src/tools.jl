@@ -43,7 +43,7 @@ function printObject(print_df::DataFrame, anyM::anyModel; fileName::String = "",
 	
 	# reduce string length of foresight periods to avoid redundance
 	if :timestep_foresight in namesSym(print_df) && rdcFrs
-		print_df[!,:timestep_foresight] = map(x -> split(x, "<")[end], print_df[!,:timestep_foresight])
+		print_df[!,:timestep_foresight] = replace.(map(x -> split(x, "<")[end], print_df[!,:timestep_foresight]), " " => "")
 	end
 	
 	if :csv in rtnDf
