@@ -464,7 +464,7 @@ function computeQuadExp(top_m::anyModel, stab_obj::stabObj, rngVio_fl::Float64; 
 	delta_fl = sum((allVar_df[!,:value] - allVar_df[!,:corValue]).^2)
 
 	# absolute value for rhs of equation
-	abs_fl = sum(allVar_df[!,:corValue] .* allVar_df[!,:scaFac]) |> (x -> x < 0.01 * size(allVar_df, 1) ? sum(allVar_df[!,:scaFac]) : x)
+	abs_fl = sum(max.(allVar_df[!,:corValue], allVar_df[!,:scaFac]) .* allVar_df[!,:scaFac])	
 	
 	# computes constraint expression
 	capaSum_expr = fac * sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> x.scaFac * (z^2 - 2 * x.corValue * z + x.corValue^2)), eachrow(allVar_df)))
