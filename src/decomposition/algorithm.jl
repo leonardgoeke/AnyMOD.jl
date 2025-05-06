@@ -596,6 +596,10 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 			set_optimizer_attribute(sub_m.optModel, "Crossover", crsOver_boo ? 1 : 0)
 			set_optimizer_attribute(sub_m.optModel, "BarOrder", 1)
 			set_optimizer_attribute(sub_m.optModel, "BarConvTol", optTol_fl)
+		elseif sol_sym == :pdhg
+			set_optimizer_attribute(sub_m.optModel, "Crossover", crsOver_boo ? 1 : 0)
+			set_optimizer_attribute(sub_m.optModel, "Method", 6)
+			set_optimizer_attribute(sub_m.optModel, "GURO_PAR_PDHGRELTOL", optTol_fl)
 		elseif sol_sym == :simplex
 			set_optimizer_attribute(sub_m.optModel, "Method", 1)
 			set_optimizer_attribute(sub_m.optModel, "OptimalityTol", optTol_fl)
@@ -827,7 +831,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 			end
 			
 			# update stabilization method
-			stabVio_df = centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, report_m)
+			stabVio_df, benders_obj.cuts.qtrInfo = centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, report_m)
 			stabVio_df[!,:i] .= itr_obj.cnt.i
 			append!(benders_obj.report.stabVio, stabVio_df)
 		end
