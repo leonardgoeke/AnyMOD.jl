@@ -600,6 +600,10 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 			set_optimizer_attribute(sub_m.optModel, "Method", 1)
 			set_optimizer_attribute(sub_m.optModel, "OptimalityTol", optTol_fl)
 			set_optimizer_attribute(sub_m.optModel, "Presolve", 2)
+		elseif sol_sym == :pdhg
+			set_optimizer_attribute(sub_m.optModel, "Method", 6)
+			set_optimizer_attribute(sub_m.optModel, "Crossover", crsOver_boo ? 1 : 0)
+			set_optimizer_attribute(sub_m.optModel, "GURO_PAR_PDHGRELTOL", optTol_fl)
 		end
 	end
 
