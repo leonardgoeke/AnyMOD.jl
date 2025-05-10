@@ -94,13 +94,11 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		numFoc_dic = Dict{Tuple{Int64,Int64},Int64}()
 		
 		# solve sub-problems
-		@suppress begin
-			for (id, s) in enumerate(sort(collect(keys(benders_obj.sub))))
-				if benders_obj.algOpt.dist # distributed case
-					futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
-				else # non-distributed case
-					cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
-				end
+		for (id, s) in enumerate(sort(collect(keys(benders_obj.sub))))
+			if benders_obj.algOpt.dist # distributed case
+				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
+			else # non-distributed case
+				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
 			end
 		end
 		
