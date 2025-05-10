@@ -96,9 +96,9 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# solve sub-problems
 		for (id, s) in enumerate(sort(collect(keys(benders_obj.sub))))
 			if benders_obj.algOpt.dist # distributed case
-				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
+				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
 			else # non-distributed case
-				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
+				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
 			end
 		end
 		
