@@ -189,7 +189,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
-	solveModel!(top_m, top_m.optModel, [0,3], true, false)
+	solveModel!(top_m, top_m.optModel, [0,3], false, false)
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -271,7 +271,6 @@ function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::Nam
 	# set options
 	@suppress  begin
 		set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.sub.threads)
-		if algOpt_obj.timeLim != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", algOpt_obj.sub.timeLim * 60) end # in seconds
 	end
 
 	# collect complicating constraints
@@ -532,7 +531,7 @@ function runTop(benders_obj::bendersObj)
 end
 
 # ! run sub-problem
-function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, check_boo::Bool = false, resultOpt::NamedTuple = NamedTuple())
+function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, timeLim_fl::Float64, optTol_fl::Float64=1e-8, crsOver_boo::Bool=false, check_boo::Bool = false, resultOpt::NamedTuple = NamedTuple())
 
 	str_time = now()
 
@@ -605,6 +604,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 			set_optimizer_attribute(sub_m.optModel, "Crossover", crsOver_boo ? 1 : 0)
 			set_optimizer_attribute(sub_m.optModel, "GURO_PAR_PDHGRELTOL", optTol_fl)
 		end
+		if timeLim_fl != 0.0 set_optimizer_attribute(sub_m.optModel, "TimeLimit", timeLim_fl * 60) end # in seconds
 	end
 
 	# increase numeric focus if model did not solve
@@ -708,8 +708,8 @@ function solveModel!(mod_m::anyModel, opt_mod::Model, numFoc_arr::Array{Int, 1},
 end
 
 # ! run sub-problem on worker (sub_m is a global variable at package scope)
-function runSub(resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, optTol_fl::Float64 = 1e-8, crsOver_boo::Bool = false, check_boo::Bool = false, resultOpt::NamedTuple = NamedTuple())
-	return runSub(sub_m, resData_obj, rngVio_fl, sol_sym, optTol_fl, crsOver_boo, check_boo, resultOpt)
+function runSub(resData_obj::resData, rngVio_fl::Float64, sol_sym::Symbol, timeLim_fl::Float64, optTol_fl::Float64 = 1e-8, crsOver_boo::Bool = false, check_boo::Bool = false, resultOpt::NamedTuple = NamedTuple())
+	return runSub(sub_m, resData_obj, rngVio_fl, sol_sym, timeLim_fl, optTol_fl, crsOver_boo, check_boo, resultOpt)
 end
 
 getComVar() = comVar_dic
@@ -774,9 +774,8 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
 	end
 
-
 	# get sub-results
-	itr_obj.res[:actSubCost] = sum(map(x -> x.objVal, values(cutData_dic))) # objective of sub-problems
+	itr_obj.res[:actSubCost] = isempty(infeasSub_arr) ? sum(map(x -> x.objVal, values(cutData_dic))) : Inf # objective of sub-problems
 	itr_obj.res[:actTotCost] = itr_obj.res[:topCost] + itr_obj.res[:actSubCost]
 
 	# update current best
@@ -927,9 +926,9 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		if benders_obj.algOpt.dist futData_dic = Dict{Tuple{Int64,Int64},Future}() end
 		for (id,s) in enumerate(sort(collect(keys(benders_obj.sub))))
 			if benders_obj.algOpt.dist # distributed case
-				futData_dic[s] = runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
+				futData_dic[s] = runSubDist(id + 1, copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, benders_obj.algOpt.sub.timeLim, acc_fl, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
 			else # non-distributed case
-				cutData_dic[s], timeSub_dic[s], lss_dic[s], numFoc_dic[s] = runSub(benders_obj.sub[s], copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, acc_fl, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
+				cutData_dic[s], timeSub_dic[s], lss_dic[s], numFoc_dic[s] = runSub(benders_obj.sub[s], copy(resData_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, benders_obj.algOpt.sub.timeLim, acc_fl, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
 			end
 		end
 
@@ -1760,9 +1759,9 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 	@suppress begin
 		for (id,s) in enumerate(collect(keys(benders_obj.sub)))
 			if benders_obj.algOpt.dist # distributed case
-				futData_dic[s] = runSubDist(id + 1, copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, benders_obj.algOpt.sub.check, res_ntup)
+				futData_dic[s] = runSubDist(id + 1, copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 0.0, 1e-8, false, benders_obj.algOpt.sub.check, res_ntup)
 			else # non-distributed case
-				runSub(benders_obj.sub[s], copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, false, benders_obj.algOpt.sub.check, res_ntup)
+				runSub(benders_obj.sub[s], copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, 0.0, false, benders_obj.algOpt.sub.check, res_ntup)
 			end
 		end
 	end

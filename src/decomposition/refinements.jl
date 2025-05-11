@@ -29,7 +29,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		
 			# write results for heuristic solution
 			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim) = writeResult(top_m, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)
-			startSol_obj.objVal = value(top_m.parts.obj.var[:objVar][1,:var])
+
 			startRes_dic = Dict(x => reportResults(x, top_m, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
  			
 			# reset objective
@@ -63,11 +63,10 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 				end
 			end	
 		else
-			optimize!(benders_obj.top.optModel)
+			@suppress optimize!(benders_obj.top.optModel)
 			startSol_obj = resData()
-			startSol_obj.objVal = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 			startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim  = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)
-			lowBd_fl = startSol_obj.objVal
+			lowBd_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 
 			startRes_dic = Dict(x => reportResults(x, benders_obj.top, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
 		end
@@ -96,9 +95,9 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# solve sub-problems
 		for (id, s) in enumerate(sort(collect(keys(benders_obj.sub))))
 			if benders_obj.algOpt.dist # distributed case
-				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
+				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 0.0, 1e-8, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
 			else # non-distributed case
-				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
+				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 0.0, 1e-8, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
 			end
 		end
 		
@@ -127,7 +126,6 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		set_optimizer_attribute(noStab_opt, "Threads", benders_obj.algOpt.top.threads)	
 		benders_obj.topNoStab = (opt = noStab_opt, ref = ref_refm)
 
-
 		# create and directly add cuts for top problem without stabilization
 		colCutsNoStab_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
 		for cut in collect(cutData_dic)
@@ -136,15 +134,14 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		end
 		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
 
-
 		# analyse results
-		startSol_obj.objVal = startSol_obj.objVal + sum(map(x -> x.objVal, values(cutData_dic)))
+		startSol_obj.objVal = value(benders_obj.top.parts.obj.var[:objVar][1,:var]) + sum(map(x -> x.objVal, values(cutData_dic)))
 		timeSubTot_fl = Dates.toms(benders_obj.algOpt.dist ? maximum(collect(values(time_dic))) : sum(collect(values(time_dic)))) / Dates.toms(Second(1))
 		timeSub_arr = round.(getindex.(sort(collect(time_dic)),2) |> (ms -> Dates.toms.(ms) / Dates.toms(Second(1)) ./ 60) , sigdigits = 3)
 		numFoc_arr = getindex.(sort(collect(numFoc_dic)),2)
 		
 		# write results for second iteration
-		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_waitNoStab = 0, time_subTot = timeSubTot_fl/60, time_sub = [timeSub_arr], cntCuts = [0], numFoc = [numFoc_arr], objName = benders_obj.info.name)
+		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl / startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_waitNoStab = 0, time_subTot = timeSubTot_fl/60, time_sub = [timeSub_arr], cntCuts = [0], numFoc = [numFoc_arr], objName = benders_obj.info.name)
 		if !isnothing(benders_obj.nearOpt.setup) secItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			secItr_df[!,:actMethod] .= Symbol()
