@@ -70,6 +70,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 
 			startRes_dic = Dict(x => reportResults(x, benders_obj.top, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
 		end
+		topCost_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 
 		# correct capacities, if mustCapa exceeds capa
 		startSol_obj = correctMustCapa(startSol_obj)
@@ -135,7 +136,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
 
 		# analyse results
-		startSol_obj.objVal = value(benders_obj.top.parts.obj.var[:objVar][1,:var]) + sum(map(x -> x.objVal, values(cutData_dic)))
+		startSol_obj.objVal = topCost_fl + sum(map(x -> x.objVal, values(cutData_dic)))
 		timeSubTot_fl = Dates.toms(benders_obj.algOpt.dist ? maximum(collect(values(time_dic))) : sum(collect(values(time_dic)))) / Dates.toms(Second(1))
 		timeSub_arr = round.(getindex.(sort(collect(time_dic)),2) |> (ms -> Dates.toms.(ms) / Dates.toms(Second(1)) ./ 60) , sigdigits = 3)
 		numFoc_arr = getindex.(sort(collect(numFoc_dic)),2)
