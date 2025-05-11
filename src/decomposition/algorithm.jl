@@ -12,7 +12,7 @@ function heuristicSolve(modOpt_tup::NamedTuple, t_int::Int, opt_obj::DataType; r
 	prepareMod!(heu_m, opt_obj, t_int)
 	set_optimizer_attribute(heu_m.optModel, "Method", 2)
 	set_optimizer_attribute(heu_m.optModel, "Crossover", 0)
-	@suppress optimize!(heu_m.optModel)
+	optimize!(heu_m.optModel)
 
 	# write results to benders object
 	heuData_obj = resData()

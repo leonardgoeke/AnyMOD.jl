@@ -29,7 +29,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		
 			# write results for heuristic solution
 			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim) = writeResult(top_m, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)
-
+			topCost_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 			startRes_dic = Dict(x => reportResults(x, top_m, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
  			
 			# reset objective
@@ -67,10 +67,10 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			startSol_obj = resData()
 			startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim  = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)
 			lowBd_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
-
+			topCost_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 			startRes_dic = Dict(x => reportResults(x, benders_obj.top, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
 		end
-		topCost_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
+		
 
 		# correct capacities, if mustCapa exceeds capa
 		startSol_obj = correctMustCapa(startSol_obj)
