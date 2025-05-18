@@ -257,7 +257,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
 		# add tech dataframe to overall data frame
 		if :Ts_frs in namesSym(allData_df) tech_df[!,:Ts_frs] .= 0 end
-		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), tech_df))
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), tech_df))
 	end
 
 	# ! get fill levels of stochastic inter-annual storage
@@ -268,7 +268,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		startStLvl_df[!,:scr] .= 0
 		# add tech to overall data frame
 		if :Ts_frs in namesSym(allData_df) startStLvl_df[!,:Ts_frs] .= 0 end
-		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), select(startStLvl_df, Not([:Ts_expSup, :M, :var]))))
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), select(startStLvl_df, Not([:Ts_expSup, :M, :var]))))
 	end
 
 	# ! get delta of inter-annual storage levels
@@ -279,7 +279,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		deltaInter_df = addExpVal(select(deltaInter_df, Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value)
 		# add tech to overall data frame
 		deltaInter_df[!,:variable] .= :stInterDelta
-		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), select(rename(deltaInter_df, :Ts_dis => :Ts_frs), Not([:Ts_expSup, :M]))))
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), select(rename(deltaInter_df, :Ts_dis => :Ts_frs), Not([:Ts_expSup, :M]))))
 	end
 	
 	# ! get dispatch variables
@@ -336,7 +336,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		# adds region column potentially missing for paramter triggered data
 		if !(:R_dis in namesSym(disp_df)) disp_df[!,:R_dis] .= 0.0 end
 
-		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), disp_df))
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), disp_df))
 	end
 
 	# ! add storage levels for case of reduced foresight
@@ -395,7 +395,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		excFrom_df[!,:id] .= 0
 		excTo_df[!,:id] .= 0
 	
-		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), vcat(excFrom_df, excTo_df)))
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), vcat(excFrom_df, excTo_df)))
 	end
 	
 	# ! comptue full load hours
@@ -600,7 +600,7 @@ function reportResults(objGrp::Val{:cost}, anyM::anyModel; addObjName::Bool=true
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allData_df, anyM, fileName = "results_cost", rtnDf = rtnOpt, filterFunc = rmvZero ? x -> abs(x.value) > 1e-5 : x -> true)
+		csvData_df = printObject(allData_df, anyM, fileName = "results_cost", rtnDf = rtnOpt, filterFunc = rmvZero ? x -> abs(x.value) > 1e-6 : x -> true)
 	end
 
 	if :raw in rtnOpt
@@ -646,7 +646,7 @@ function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=
 		end
 	end
 	# removes small capacity and expansion variables
-	filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), allData_df)
+	filter!((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), allData_df)
 
 	# ! dispatch variables
 	disp_df = getAllVariables(:exc, anyM)
@@ -668,7 +668,7 @@ function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=
 
 		disp_df[!,:variable] .= :exc
 		disp_df[!,:dir] .= 0
-		filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), disp_df)
+		filter!((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), disp_df)
 		append!(allData_df, disp_df)
 
 		# write values for net-exchange
