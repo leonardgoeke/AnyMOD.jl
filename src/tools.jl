@@ -257,7 +257,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 
 		# add tech dataframe to overall data frame
 		if :Ts_frs in namesSym(allData_df) tech_df[!,:Ts_frs] .= 0 end
-		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), tech_df))
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), tech_df))
 	end
 
 	# ! get fill levels of stochastic inter-annual storage
@@ -268,7 +268,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		startStLvl_df[!,:scr] .= 0
 		# add tech to overall data frame
 		if :Ts_frs in namesSym(allData_df) startStLvl_df[!,:Ts_frs] .= 0 end
-		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), select(startStLvl_df, Not([:Ts_expSup, :M, :var]))))
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), select(startStLvl_df, Not([:Ts_expSup, :M, :var]))))
 	end
 
 	# ! get delta of inter-annual storage levels
@@ -279,7 +279,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		deltaInter_df = addExpVal(select(deltaInter_df, Not([:var])), anyM.scr.scrProb, anyM.sets[:Ts], anyM.scr.lvl, :value)
 		# add tech to overall data frame
 		deltaInter_df[!,:variable] .= :stInterDelta
-		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), select(rename(deltaInter_df, :Ts_dis => :Ts_frs), Not([:Ts_expSup, :M]))))
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), select(rename(deltaInter_df, :Ts_dis => :Ts_frs), Not([:Ts_expSup, :M]))))
 	end
 	
 	# ! get dispatch variables
@@ -336,7 +336,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		# adds region column potentially missing for paramter triggered data
 		if !(:R_dis in namesSym(disp_df)) disp_df[!,:R_dis] .= 0.0 end
 
-		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), disp_df))
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), disp_df))
 	end
 
 	# ! add storage levels for case of reduced foresight
@@ -395,7 +395,7 @@ function reportResults(objGrp::Val{:summary}, anyM::anyModel; addObjName::Bool=t
 		excFrom_df[!,:id] .= 0
 		excTo_df[!,:id] .= 0
 	
-		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), vcat(excFrom_df, excTo_df)))
+		append!(allData_df, filter((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), vcat(excFrom_df, excTo_df)))
 	end
 	
 	# ! comptue full load hours
@@ -600,7 +600,7 @@ function reportResults(objGrp::Val{:cost}, anyM::anyModel; addObjName::Bool=true
 
 	# return dataframes and write csv files based on specified inputs
 	if :csv in rtnOpt || :csvDf in rtnOpt
-		csvData_df = printObject(allData_df, anyM, fileName = "results_cost", rtnDf = rtnOpt, filterFunc = rmvZero ? x -> abs(x.value) > 1e-5 : x -> true)
+		csvData_df = printObject(allData_df, anyM, fileName = "results_cost", rtnDf = rtnOpt, filterFunc = rmvZero ? x -> abs(x.value) > 1e-6 : x -> true)
 	end
 
 	if :raw in rtnOpt
@@ -646,7 +646,7 @@ function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=
 		end
 	end
 	# removes small capacity and expansion variables
-	filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), allData_df)
+	filter!((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), allData_df)
 
 	# ! dispatch variables
 	disp_df = getAllVariables(:exc, anyM)
@@ -668,7 +668,7 @@ function reportResults(objGrp::Val{:exchange}, anyM::anyModel; addObjName::Bool=
 
 		disp_df[!,:variable] .= :exc
 		disp_df[!,:dir] .= 0
-		filter!((rmvZero ? x -> abs(x.value) > 1e-5 : x -> true), disp_df)
+		filter!((rmvZero ? x -> abs(x.value) > 1e-6 : x -> true), disp_df)
 		append!(allData_df, disp_df)
 
 		# write values for net-exchange
@@ -1538,7 +1538,7 @@ Plots the Sankey diagram for energy flows in a model.
 
 """
 # ! plot quantitative energy flow sankey diagramm (applies python module plotly via PyCall package)
-function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region, :timestep, :scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false, wrtVal::Bool = true, digVal::Int = 1, sgnVal::String = ";")
+function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", scrCases::Vector = Pair{String,Tuple}[], fontSize::Int = 12, minVal::Float64 = 0.1, filterFunc::Function = x -> true, dropDown::Tuple{Vararg{Symbol,N} where N} = (:region, :timestep, :scenario), rmvNode::Tuple{Vararg{String,N} where N} = tuple(), useTeColor::Bool = false, netExc::Bool = true, name::String = "", ymlFilter::String = "", savaData::Bool = false, wrtVal::Bool = true, digVal::Int = 1, sgnVal::String = ";")
 
 	flowGrap_obj = anyM.graInfo.graph
 	#region # * initialize data
@@ -1577,11 +1577,39 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 		if "scenario" in names(data_df) 
 			data_df[!,:scenario] = map(x -> lookupString(x, anyM.sets[:scr]), data_df[!,:scenario]) 
 		end
-		rename!(data_df, [:timestep_superordinate_dispatch => :Ts_disSup, :region_dispatch => :R_dis, :technology => :Te, :carrier => :C, :scenario => :scr, :value => :value, :variable => :variable, :id => :id])
+		if "timestep_foresight" in names(data_df) 
+			data_df[!,:timestep_foresight] = map(x -> lookupString(x, anyM.sets[:Ts]), data_df[!,:timestep_foresight]) 
+		end
+		rename!(data_df, [:timestep_superordinate_dispatch => :Ts_disSup, :region_dispatch => :R_dis, :technology => :Te, :carrier => :C, :scenario => :scr, :timestep_foresight => :Ts_frs, :value => :value, :variable => :variable, :id => :id])
 	end
 	
 	if savaData 
 		printObject(data_df, anyM, wrtGap = true, fileName = "sankeyData$(name == "" ? "" : "_" * name)")
+	end
+
+	# manipulate data for specific scenario cases
+	if !isempty(scrCases) && "scr" in names(data_df)
+		# add new scenarios for specific cases
+		addScr = getindex.(scrCases, 1)
+		maxScr_int = maximum(keys(anyM.sets[:scr].nodes))
+		newScr_arr = Int[]
+		for x in eachindex(addScr)
+			filter!(y -> y[2].val != addScr[x], anyM.sets[:scr].nodes)
+			anyM.sets[:scr].nodes[maxScr_int + x] = Node(maxScr_int + x, addScr[x], 1, maxScr_int + x, Int64[])
+			push!(newScr_arr, maxScr_int + x)
+		end
+
+		# replace old scenarios with new scenarios
+		for scrSpec in scrCases
+			# map timesteps to scenarios for new scenario case
+			frsCnt_dic = unique(sort(data_df[!,:Ts_frs])) |> (y -> Dict(y[x] => (y[x], lookupString(scrSpec[2][x], anyM.sets[:scr])) for x in eachindex(y)))
+			# replace scenario id with new scenario
+			scr_int = lookupString(scrSpec[1], anyM.sets[:scr])
+			data_df[!,:scr] = map(x -> frsCnt_dic[x.Ts_frs] == (x.Ts_frs, x.scr) ? scr_int : x.scr, eachrow(data_df))
+		end
+
+		# filter now irrelevant data
+		filter!(x -> x.scr == 0 || x.scr in newScr_arr, data_df)
 	end
 	
 	# converts export and import quantities into net values
@@ -1681,7 +1709,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 	if ymlFilter != "" && "removeSankey" in keys(graph_dic)
 		rmvNode = map(x -> collect(x)[1] |> (z -> string(z[1], "; ", z[2])), collect(graph_dic["removeSankey"])) |> (u ->  isempty(rmvNode) ? tuple(u...) : tuple(u..., rmvNode...))
 	end
-	
+
 	# ! loop over potential buttons in dropdown menue
 	for drop in eachrow(unique(data_df[!, intersect(namesSym(data_df), dropDim_arr)]))
 	
@@ -1766,7 +1794,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", fontSize::Int = 
 			return (allFl[1][1], allFl[1][2], sum(getindex.(allFl, 3)))
 		end
 	
-		# removes nodes accoring function input provided
+		# removes nodes according function input provided
 		for rmv in rmvNode
 			# splits remove expression by semicolon and searches for first part
 			rmvStr_arr = split(rmv, "; ")

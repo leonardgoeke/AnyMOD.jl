@@ -29,7 +29,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		
 			# write results for heuristic solution
 			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim) = writeResult(top_m, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)
-			startSol_obj.objVal = value(top_m.parts.obj.var[:objVar][1,:var])
+			topCost_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 			startRes_dic = Dict(x => reportResults(x, top_m, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
  			
 			# reset objective
@@ -63,14 +63,14 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 				end
 			end	
 		else
-			optimize!(benders_obj.top.optModel)
+			@suppress optimize!(benders_obj.top.optModel)
 			startSol_obj = resData()
-			startSol_obj.objVal = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 			startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim  = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)
-			lowBd_fl = startSol_obj.objVal
-
+			lowBd_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
+			topCost_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 			startRes_dic = Dict(x => reportResults(x, benders_obj.top, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
 		end
+		
 
 		# correct capacities, if mustCapa exceeds capa
 		startSol_obj = correctMustCapa(startSol_obj)
@@ -94,13 +94,11 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		numFoc_dic = Dict{Tuple{Int64,Int64},Int64}()
 		
 		# solve sub-problems
-		@suppress begin
-			for (id, s) in enumerate(sort(collect(keys(benders_obj.sub))))
-				if benders_obj.algOpt.dist # distributed case
-					futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
-				else # non-distributed case
-					cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, benders_obj.algOpt.sub.meth, 1e-8)
-				end
+		for (id, s) in enumerate(sort(collect(keys(benders_obj.sub))))
+			if benders_obj.algOpt.dist # distributed case
+				futData_dic[s] = runSubDist(id + 1, copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 0.0, 1e-8, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
+			else # non-distributed case
+				cutData_dic[s], time_dic[s], ~, numFoc_dic[s] = runSub(benders_obj.sub[s], copy(startSol_obj), benders_obj.algOpt.rngVio.fix, :barrier, 0.0, 1e-8, benders_obj.algOpt.sub.crs, benders_obj.algOpt.sub.check)
 			end
 		end
 		
@@ -137,7 +135,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
 
 		# analyse results
-		startSol_obj.objVal = startSol_obj.objVal + sum(map(x -> x.objVal, values(cutData_dic)))
+		startSol_obj.objVal = topCost_fl + sum(map(x -> x.objVal, values(cutData_dic)))
 		timeSubTot_fl = Dates.toms(benders_obj.algOpt.dist ? maximum(collect(values(time_dic))) : sum(collect(values(time_dic)))) / Dates.toms(Second(1))
 		timeSub_arr = round.(getindex.(sort(collect(time_dic)),2) |> (ms -> Dates.toms.(ms) / Dates.toms(Second(1)) ./ 60) , sigdigits = 3)
 		numFoc_arr = getindex.(sort(collect(numFoc_dic)),2)
