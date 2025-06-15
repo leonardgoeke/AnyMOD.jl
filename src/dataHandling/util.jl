@@ -98,6 +98,8 @@ intCol(in_df::DataFrame, add_sym::Array) = union(intCol(in_df), intersect(namesS
 
 # ! converts an affine expression from original model to copied model
 convertAffExpr(expr::AffExpr, noStab_map::GenericReferenceMap) = sum(map(x -> noStab_map[x] * expr.terms[x], collect(keys(expr.terms)))) + expr.constant
+convertAffExpr(expr::AffExpr, noStab1_map::GenericReferenceMap, noStab2_map::GenericReferenceMap) = sum(map(x -> noStab2_map[noStab1_map[x]] * expr.terms[x], collect(keys(expr.terms)))) + expr.constant
+convertQuadExpr(expr::QuadExpr, noStab_map::GenericReferenceMap) = sum(map(x -> noStab_map[x.a] * noStab_map[x.b] * expr.terms[x], collect(keys(expr.terms)))) + sum(map(x -> noStab_map[x] * expr.aff.terms[x], collect(keys(expr.aff.terms)))) + expr.aff.constant
 
 # ! returns the number of different capacity groups of storage from named tuple of carriers
 countStGrp(carGrp_ntup::NamedTuple) = intersect((:stExtIn, :stExtOut, :stIntIn, :stIntOut), collect(keys(carGrp_ntup))) |> (z ->  isempty(z) ? 0 : maximum(map(x -> length(getfield(carGrp_ntup, x)), z)))

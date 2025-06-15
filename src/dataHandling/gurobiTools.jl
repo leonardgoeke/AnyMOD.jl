@@ -1,7 +1,7 @@
 using Gurobi
 
 # ! compute IIS and print constraints in it
-function printIIS(anyM::anyModel, noStab_ntup::Union{Nothing,NamedTuple{(:opt,:ref),Tuple{Model,GenericReferenceMap}}} = nothing)
+function printIIS(anyM::anyModel, noStab_ntup::Union{Nothing,NamedTuple{(:opt,:ref),Tuple{Model,Union{ReferenceMap,GenericReferenceMap}}}} = nothing)
 
     # computes iis
     opt_mod = isnothing(noStab_ntup) ? anyM.optModel : noStab_ntup.opt

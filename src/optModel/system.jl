@@ -208,8 +208,10 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 			for prepSym in collect(keys(prepSys_dic[sys][sSym]))
 				# get relevant parameter data
 				limPar_obj = getLimPar(anyM.parts.lim, Symbol(prepSym, :Fix), anyM.sets[sys], sys = sysInt(sSym, anyM.sets[sys]))
+
 				# get all cases where variables are fixed
 				fixLim_df = getFix(prepSys_dic[sys][sSym][prepSym].var, limPar_obj, anyM)
+				
 				# get cases where share is fixed
 				if prepSym == :expConv
 					if isempty(fixLim_df) fixLim_df[!,:val] .= Float64[] end
@@ -396,6 +398,7 @@ function removeFixed!(prepSys_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,NamedTupl
 					for p in relFix_arr
 						# get relevant parameter data
 						limPar_obj = getLimPar(anyM.parts.lim, p, anyM.sets[sys], sys = sysInt(sSym, anyM.sets[sys]))
+
 						# get all cases where variables are fixed
 						if !isempty(prepSys_dic[sys][sSym][prepSym].resi)
 							var_df = prepSys_dic[sys][sSym][prepSym].var

@@ -22,7 +22,7 @@ function createOptModel!(anyM::anyModel)
     prepSys_dic = Dict(sys => Dict{Symbol,Dict{Symbol,NamedTuple}}() for sys in (:Te,:Exc))
 	prepareTechs!(collect(keys(anyM.parts.tech)), prepSys_dic[:Te], tsYear_dic, anyM)
 	prepareExc!(collect(keys(anyM.parts.exc)), prepSys_dic[:Exc], tsYear_dic, anyM)
-
+	
 	allCapaDf_dic = addRetrofitting!(prepSys_dic, anyM)
 	addInsCapa!(prepSys_dic, anyM) # add entries for installed capacities
 	removeFixed!(prepSys_dic, allCapaDf_dic, anyM) # remove entries were capacities are fixed to zero

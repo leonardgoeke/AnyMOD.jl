@@ -189,7 +189,7 @@ function computeFeas(top_m::anyModel, var_dic::Dict{Symbol,Dict{Symbol,Dict{Symb
 	# solve problem
 	set_optimizer_attribute(top_m.optModel, "MIPGap", 0.001)
 	set_optimizer_attribute(top_m.optModel, "SolutionLimit", 3600)
-	solveModel!(top_m, top_m.optModel, [0,3], true, false)
+	solveModel!(top_m, top_m.optModel, [0,3], false, false)
 	checkIIS(top_m)
 
 	# write results into files (only used once optimum is obtained)
@@ -308,7 +308,8 @@ function runTop(benders_obj::bendersObj)
 		addCuts!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.rngVio.cut, benders_obj.cuts.all[addCuts_arr]) 
 	end
 
-	benders_obj.cuts.cnt = size(benders_obj.top.parts.obj.cns[:bendersCuts], 1)
+	benders_obj.cuts.cnt = (length(benders_obj.cuts.active), length(benders_obj.cuts.all)) 
+	
 	#endregion
 
 	#region # * solve problem
@@ -364,45 +365,44 @@ function runTop(benders_obj::bendersObj)
 			@suppress optimize!(benders_obj.top.optModel)
         end
 
-		if stab_obj.method[stab_obj.actMet] == :qtrLvl && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+		if stab_obj.method[stab_obj.actMet] in (:qtrLvl,:qtrLvlBox) && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 			
-			# solve with greater numeric focus
-			produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increased numeric focus to $(benders_obj.algOpt.top.numFoc[2])" , testErr = false, printErr = false)
-			solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[2:2], benders_obj.algOpt.top.check, false)
-	
+			# increase level parameter almost until the upper bound
+			low_fl = stab_obj.dynPar[stab_obj.actMet][:lvl]
+			up_fl = stab_obj.objVal / benders_obj.top.options.scaFac.obj
+			upRef_fl = low_fl + (up_fl - low_fl) * (1 - benders_obj.algOpt.gap)
+
+			if upRef_fl - low_fl > 1e-4
+				lvl1_arr = collect(low_fl:((upRef_fl - low_fl) / 2):upRef_fl)[2:end]
+			else
+				lvl1_arr = Float64[]
+			end
+			
+			if !isempty(lvl1_arr) && up_fl - lvl1_arr[end] > 1e-4
+				lvl2_arr = collect(lvl1_arr[end]:((up_fl - lvl1_arr[end]) / 3):up_fl)[2:end-1]
+			else
+				lvl2_arr = Float64[]
+			end
+			
+			for lvl_fl in vcat(lvl1_arr, lvl2_arr)
+				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increase level bound to $(lvl_fl)" , testErr = false, printErr = false)
+				# increase level parameter
+				stab_obj.dynPar[stab_obj.actMet][:lvl] = lvl_fl
+				set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
+				# try to re-solve
+				@suppress optimize!(benders_obj.top.optModel)
+				if termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) 
+					break 
+				else
+					benders_obj.itr.res[:infeasLvlVal] = lvl_fl
+				end
+			end
+
 			if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 
-				# increase level parameter almost until the upper bound
-				low_fl = stab_obj.dynPar[stab_obj.actMet][:lvl]
-				up_fl = stab_obj.objVal / benders_obj.top.options.scaFac.obj
-				upRef_fl = low_fl + (up_fl - low_fl) * (1 - benders_obj.algOpt.gap)
-
-				if upRef_fl - low_fl > 1e-4
-					lvl1_arr = collect(low_fl:((upRef_fl - low_fl) / 2):upRef_fl)[2:end]
-				else
-					lvl1_arr = Float64[]
-				end
-				
-				if !isempty(lvl1_arr) && up_fl - lvl1_arr[end] > 1e-4
-					lvl2_arr = collect(lvl1_arr[end]:((up_fl - lvl1_arr[end]) / 3):up_fl)[2:end-1]
-				else
-					lvl2_arr = Float64[]
-				end
-				
-				for lvl_fl in vcat(lvl1_arr, lvl2_arr)
-					produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increase level bound to $(lvl_fl)" , testErr = false, printErr = false)
-					# increase level parameter
-					stab_obj.dynPar[stab_obj.actMet][:lvl] = lvl_fl
-					set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
-					# try to re-solve
-					@suppress optimize!(benders_obj.top.optModel)
-					if termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED) break end
-				end
-				
-				if !benders_obj.stab.crossNoStab && benders_obj.algOpt.gap * (1 + benders_obj.algOpt.gap) > benders_obj.itr.gap
-					benders_obj.stab.crossNoStab = true
-					produceMessage(report_m.options, report_m.report, 1, " - Activated crossover when solving without stabilization to verify convergence!", testErr = false, printErr = false)
-				end
+				# solve with greater numeric focus
+				produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Top problem reported infeasible - Increased numeric focus to $(benders_obj.algOpt.top.numFoc[2])" , testErr = false, printErr = false)
+				solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[2:2], benders_obj.algOpt.top.check, false)
 
 				if !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 
@@ -512,9 +512,6 @@ function runTop(benders_obj::bendersObj)
 		benders_obj.itr.res[:nearObj] = objective_value(benders_obj.top.optModel) 
 		if !isnothing(benders_obj.stab) benders_obj.itr.res[:thrStab] = 1 - normalized_rhs(benders_obj.stab.cns) / value(benders_obj.stab.cns) end
 	end
-
-	# track cuts there were not binding for a certain number of iterations
-	trackCuts(benders_obj)
 
 	# write starting levels for storage
 	stLvl_dic = Dict{Symbol,DataFrame}()
@@ -738,7 +735,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 
 	itr_obj = benders_obj.itr
 	best_obj = itr_obj.best
-	nameStab_dic = Dict(:lvl1 => "level bundle", :lvl2 => "level bundle", :qtr => "quadratic trust-region", :prx => "proximal bundle", :box => "box-step", :qtrLvl => "level bundle with trust-region")
+	nameStab_dic = Dict(:lvl1 => "level bundle", :lvl2 => "level bundle", :qtr => "quadratic trust-region", :prx => "proximal bundle", :box => "box-step", :qtrLvl => "level bundle with trust-region", :qtrLvlBox => "level bundle with trust-region and box-step")
 
 	# filter unsolved SPs
 	infeasSub_arr = getindex.(filter(x -> x[2].objVal == Inf, collect(cutData_dic)),1)
@@ -747,63 +744,37 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		produceMessage(benders_obj.report.mod.options, benders_obj.report.mod.report, 1, " - Could not solve sub-problem $sub and did not add a cut!", testErr = false, printErr = false) 
 	end
 
-	# create cuts for top problem with stabilization
-	colCuts_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
-	exExpr_arr = getindex.(getindex.(benders_obj.cuts.all, 2), 1)
-	for cut in collect(cutData_dic)
-		cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.top.optModel, benders_obj.algOpt.rngVio.cut, benders_obj.top)
-		
-		if isempty(findall(cut_expr .== exExpr_arr)) # add to overall cuts if unique
-			push!(colCuts_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
-		else # otherwise remove to prevent addition problem without stabilization
-			delete!(cutData_dic, cut[1])
-		end
-	end
-
-	append!(benders_obj.cuts.slack, map(x -> Float64[], 1:length(colCuts_arr)))
-	append!(benders_obj.cuts.active, collect(length(benders_obj.cuts.all) : length(benders_obj.cuts.all) + length(colCuts_arr) - 1) .+ 1)
-	append!(benders_obj.cuts.all, colCuts_arr)
-
-	# create and directly add cuts for top problem without stabilization
-	if !isnothing(benders_obj.stab) 
-		colCutsNoStab_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
-		for cut in collect(cutData_dic)
-			cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, benders_obj.top, benders_obj.topNoStab.ref)
-			push!(colCutsNoStab_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
-		end
-		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
-	end
-
-
 	# get sub-results
 	itr_obj.res[:actSubCost] = sum(map(x -> x.objVal, values(cutData_dic))) # objective of sub-problems
 	itr_obj.res[:actTotCost] = itr_obj.res[:topCost] + itr_obj.res[:actSubCost]
 
 	# update current best
+	srsStep_boo = false
 	if benders_obj.nearOpt.cnt == 0 ? (itr_obj.res[:actTotCost] < best_obj.var.objVal) : (itr_obj.res[:nearObj] <= best_obj.var.objVal && itr_obj.gap <= benders_obj.algOpt.gap)
 		best_obj.var.objVal = benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:actTotCost] : itr_obj.res[:nearObj]
 		best_obj.var.capa, best_obj.var.stLvl, best_obj.var.lim = map(x -> getfield(bestData_obj,x), [:capa, :stLvl, :lim])
 		@suppress foreach(x -> best_obj.res[x] = curRes_dic[x], benders_obj.report.res.general)
 		itr_obj.res[:curBest] = best_obj.var.objVal
 		foreach(x -> best_obj.startLvl[x] = stLvl_dic[x], keys(stLvl_dic))
+		if :infeasLvlVal in keys(itr_obj.res) delete!(:infeasLvlVal, itr_obj.res) end # reset level value that cause infeasible top problem
 	end
 
 	# computes optimality gap for cost minimization and feasibility gap for near-optimal
 	itr_obj.gap = benders_obj.nearOpt.cnt == 0 ? (1 - itr_obj.res[:lowLimCost] / itr_obj.res[:curBest]) : abs((itr_obj.res[:actSubCost] - itr_obj.res[:estSubCost]) / itr_obj.res[:optCost])
 
+	# determine if serious step 
+	expStep_fl = best_obj.var.objVal - (benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:estTotCost] : 0.0) # expected step size
+	
 	# adapt center and parameter for stabilization
 	if !isnothing(benders_obj.stab)
+		
 		stab_obj = benders_obj.stab
 		report_m = benders_obj.report.mod
-		
-		# determine if serious step 
-		expStep_fl = best_obj.var.objVal - (benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:estTotCost] : 0.0) # expected step size
-		srsStep_boo = false
 
 		if best_obj.var.objVal < stab_obj.objVal - stab_obj.srsThr * expStep_fl
 			srsStep_boo = true
 		end
-
+		
 		# initialize counters
 		itr_obj.cnt.srs = srsStep_boo ? itr_obj.cnt.srs + 1 : 0
 		itr_obj.cnt.null = srsStep_boo ? 0 : itr_obj.cnt.null + 1
@@ -831,11 +802,42 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 			end
 			
 			# update stabilization method
-			stabVio_df, benders_obj.cuts.qtrInfo = centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, report_m)
+			stabVio_df = centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, report_m)
 			stabVio_df[!,:i] .= itr_obj.cnt.i
 			append!(benders_obj.report.stabVio, stabVio_df)
 		end
 	end
+
+	# cut management
+ 	manageCuts!(benders_obj, srsStep_boo)
+
+	# create cuts for top problem with stabilization
+	colCuts_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
+	exExpr_arr = getindex.(getindex.(benders_obj.cuts.all, 2), 1)
+	for cut in collect(cutData_dic)
+		cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.top.optModel, benders_obj.algOpt.rngVio.cut, benders_obj.top)
+		
+		if isempty(findall(cut_expr .== exExpr_arr)) # add to overall cuts if unique
+			push!(colCuts_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
+		else # otherwise remove to prevent addition problem without stabilization
+			delete!(cutData_dic, cut[1])
+		end
+	end
+
+	append!(benders_obj.cuts.active, collect(length(benders_obj.cuts.all) : length(benders_obj.cuts.all) + length(colCuts_arr) - 1) .+ 1)
+	append!(benders_obj.cuts.all, colCuts_arr)
+
+	# create and directly add cuts for top problem without stabilization
+	if !isnothing(benders_obj.stab) 
+		colCutsNoStab_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
+		for cut in collect(cutData_dic)
+			cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, benders_obj.top, benders_obj.topNoStab.ref)
+			push!(colCutsNoStab_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
+		end
+		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
+	end
+
+	return srsStep_boo
 	
 end
 
@@ -915,7 +917,11 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		str_time = now()
 		resData_obj, bestData_obj, stabVar_obj, stLvl_dic = runTop(benders_obj);
 		elpTop_time = now() - str_time
-	
+
+		str_time = now()
+		trackCuts!(benders_obj)
+		println(now() - str_time)
+
 		# start solving sub-problems
 		cutData_dic = Dict{Tuple{Int64,Int64},resData}()
 		timeSub_dic = Dict{Tuple{Int64,Int64},Millisecond}()
@@ -972,18 +978,15 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		#endregion
 	
 		#region # * analyse results and update refinements
-	
+
 		# update results and stabilization
-		updateIteration!(benders_obj, cutData_dic, bestData_obj, curRes_dic, stabVar_obj, stLvl_dic)
+		srsStep_boo = updateIteration!(benders_obj, cutData_dic, bestData_obj, curRes_dic, stabVar_obj, stLvl_dic)
 		# report on iteration
 		reportBenders!(benders_obj, resData_obj, elpTop_time, elpNoStab_time, timeSub_dic, lss_dic, numFoc_dic)
 	
 		# check convergence and finish
 		rtn_boo = checkConvergence(benders_obj, lss_dic)
-
-		# delete cuts that not were binding for the defined number of iterations
-		deleteCuts!(benders_obj)
-
+		
 		# track capacity over iterations if activated
 		if benders_obj.trackCapa reportComplVar!(allRes_df, resData_obj, benders_obj.itr.cnt.i) end
 
@@ -1009,7 +1012,7 @@ end
 function prepareStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, scale_dic::Dict{Symbol, NamedTuple}, runSubDist::Function)
 
 	benders_obj.stab, curBest_tup = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
-	benders_obj.itr = itrStatus(curBest_tup, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0, 0), 1.0, Dict{Symbol,Float64}())
+	benders_obj.itr = itrStatus(curBest_tup, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0, 0, 0), 1.0, Dict{Symbol,Float64}())
 	benders_obj.itr.res[:curBest] = curBest_tup.var.objVal
 end
 
@@ -1035,7 +1038,7 @@ end
 function initializeReporting!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp), Tuple{String, Int64, Int64, Int64, Int64}}, resInfo::NamedTuple)
 
 	# dataframe for reporting during iteration
-	itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_waitNoStab = Float64[], time_subTot = Float64[], time_sub = Array{Float64,1}[], cntCuts = Int[], numFoc = Array{Int,1}[], objName = String[])
+	itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_waitNoStab = Float64[], time_subTot = Float64[], time_sub = Array{Float64,1}[], activeCuts = Int[], totalCuts = Int[], numFoc = Array{Int,1}[], objName = String[])
 	nearOpt_df = DataFrame(i = Int[], timestep = String[], region = String[], system = String[], id = String[], variable = Symbol[], value = Float64[], objName = String[])
 	stabVio_df = DataFrame(i = Int[], var = String[], fac = Float64[], type = Symbol[])
 
@@ -1379,13 +1382,21 @@ function createCutExpr(cut::Pair{Tuple{Int64,Int64},resData}, opt_mod::Model, rn
 	if !isnothing(noStab_map) cut_var = convertAffExpr(cut_var, noStab_map) end
 	cut_expr = @expression(opt_mod, subCut.objVal + sum(cutExpr_arr[x] for x in 1:length(cutExpr_arr)))
 
-	#region # * remove extremely small terms and limit the coefficient of extremely large terms
+	# remove extremely small terms and limit the coefficient of extremely large terms
+	cut_expr, limCoef_boo = prescaleCut(cut_expr, cut_var, top_m, rngVio_fl)
+
+	return cut_expr - cut_var, limCoef_boo
+end
+
+# prescale cut by limiting coefficients
+function prescaleCut(cut_expr::Union{AffExpr,Float64}, cut_var::AffExpr, top_m::anyModel, rngVio_fl::Float64)
+
 	limCoef_boo = false
 
 	if typeof(cut_expr) == AffExpr && !isempty(cut_expr.terms)
 
 		# ! ensure cut variable complies with limits on rhs
-		cutFac_fl = abs(collect(values(cut_var.terms))[1]) # get scaling factor of cut variable
+		cutFac_fl = cut_var != AffExpr(0.0) ? abs(collect(values(cut_var.terms))[1]) : 1.0 # get scaling factor of cut variable
 		scaRng_tup = (top_m.options.coefRng.rhs[1], top_m.options.coefRng.rhs[2] * rngVio_fl) ./ abs(cut_expr.constant) # get smallest and biggest scaling factors where rhs is still in range
 			
 		# adjust rhs to avoid violation of range only from cut variable and rhs
@@ -1463,9 +1474,8 @@ function createCutExpr(cut::Pair{Tuple{Int64,Int64},resData}, opt_mod::Model, rn
 		end
 	end
 
-	#endregion
+	return cut_expr, limCoef_boo
 
-	return cut_expr - cut_var, limCoef_boo
 end
 
 # ! computes the capacity variable dependant expression of the benders cut from variables in the second datframe (using the dual and current value)
@@ -1662,7 +1672,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 
 	# ! iteration reporting
 	etr_arr = Pair{Symbol,Any}[:i => itr_obj.cnt.i, :lowCost => itr_obj.res[:lowLimCost], :bestObj => itr_obj.res[:curBest], :gap => benders_obj.itr.gap, :curCost => itr_obj.res[:actTotCost],
-					:time_ges => Dates.value(floor(now() - report_obj.mod.options.startTime, Dates.Second(1)))/60, :time_top => timeTop_fl/60, :time_waitNoStab => timeWaitNoStab_fl/60, :time_subTot => timeSubTot_fl/60, :time_sub => timeSub_arr, :cntCuts => benders_obj.cuts.cnt, :numFoc => numFoc_arr, :objName => benders_obj.info.name]
+					:time_ges => Dates.value(floor(now() - report_obj.mod.options.startTime, Dates.Second(1)))/60, :time_top => timeTop_fl/60, :time_waitNoStab => timeWaitNoStab_fl/60, :time_subTot => timeSubTot_fl/60, :time_sub => timeSub_arr, :activeCuts => benders_obj.cuts.cnt[1], :totalCuts => benders_obj.cuts.cnt[2], :numFoc => numFoc_arr, :objName => benders_obj.info.name]
 	# add info about stabilization
 	if !isnothing(benders_obj.stab) 
 		stab_obj = benders_obj.stab
@@ -1724,6 +1734,11 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 			newRes_df[!,:objName] .= benders_obj.info.name
 			append!(report_obj.nearOpt, newRes_df)
 		end
+	end
+
+	# ! cut management reporting
+	if !isnothing(benders_obj.cuts.mgmt) && benders_obj.cuts.mgmt.report
+		CSV.write(report_obj.mod.options.outDir * "/cutManagment_$(benders_obj.info.name).csv", benders_obj.cuts.report)
 	end
 
 	# ! write reports

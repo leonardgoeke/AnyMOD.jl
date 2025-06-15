@@ -4,7 +4,7 @@
 # setup for benders computation
 mutable struct algSetup
 	gap::Float64 # target gap
-	delCut::NamedTuple{(:cnt, :thres), Tuple{Int, Float64}}  # number of iterations since cut creation or last binding before cut is deleted
+	cutMgmt::NamedTuple  # options for cut management
 	useVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}} # use vaild inequalities
 	reportFreq::Int # number of iterations report files are written
 	timeLim::Float64 # tuple with objectives
@@ -14,7 +14,7 @@ mutable struct algSetup
 	sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf, :threads, :check), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool, Int, Bool}} # range and interpolation method for convergence criteria of subproblems, use of crossover for sub-problems when using barrier
 	top::NamedTuple{(:numFoc, :dnsThrs, :crs, :stabTol, :stabTolQ, :noStabTol, :stabMeth, :noStabMeth, :threads, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Int, Int, Int, Bool}} # infeasible variable at start of foresight period, numeric focus for top-problem, factor by which quadratic trust-region is allowed to violate paramete range
 
-	function algSetup(gap_fl::Float64, delCut_ntup::NamedTuple{(:cnt, :thres), Tuple{Int, Float64}}, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf, :threads, :check), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool, Int, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false, meth = :barrier, timeLim = 0.0, dbInf = true, threads = 1, check = false), top::NamedTuple{(:numFoc, :dnsThrs, :crs, :stabTol, :stabTolQ, :noStabTol, :stabMeth, :noStabMeth, :threads, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Int, Int, Int, Bool}} = (numFoc = [1,3], dnsThrs = 200, crs = true, stabTol = (:lin, [1e-6, 1e-6]), stabTolQ = (:lin, [1e-4, 1e-6]), noStabTol = (:lin, [1e-6, 1e-6]), stabMeth = -1, noStabMeth = -1, threads = 1, check = false))
+	function algSetup(gap_fl::Float64, delCut_ntup::NamedTuple, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf, :threads, :check), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool, Int, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false, meth = :barrier, timeLim = 0.0, dbInf = true, threads = 1, check = false), top::NamedTuple{(:numFoc, :dnsThrs, :crs, :stabTol, :stabTolQ, :noStabTol, :stabMeth, :noStabMeth, :threads, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Int, Int, Int, Bool}} = (numFoc = [1,3], dnsThrs = 200, crs = true, stabTol = (:lin, [1e-6, 1e-6]), stabTolQ = (:lin, [1e-4, 1e-6]), noStabTol = (:lin, [1e-6, 1e-6]), stabMeth = -1, noStabMeth = -1, threads = 1, check = false))
 		return new(gap_fl, delCut_ntup, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, opt_type, rngVio, sub, top)
 	end
 end
@@ -143,6 +143,7 @@ mutable struct countItr
 	i::Int
 	srs::Int
 	nextNoStab::Int
+	nextCutMgmt::Int
 	null::Int
 end
 
@@ -154,11 +155,12 @@ mutable struct itrStatus
 end
 
 mutable struct cutObj
+	mgmt::Union{Nothing,NamedTuple{(:meth,:opt,:freq,:report), Tuple{Symbol, NamedTuple, Int64, Bool}}} # management of cuts
 	active::Array{Int,1}
 	prev::Array{Int,1}
 	all::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}
-	slack::Array{Array{Float64,1},1}
-	cnt::Int
+	report::DataFrame
+	cnt::Tuple{Int,Int}
 end
 
 # overall benders structure
@@ -182,7 +184,7 @@ mutable struct bendersObj
 
         benders_obj = new()
 		benders_obj.info = info_ntup
-		benders_obj.cuts = cutObj(Int[], Int[], Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}}[], Array{Array{Float64,1},1}(),0)
+		benders_obj.cuts = cutObj(algSetup_obj.cutMgmt, Int[], Int[], Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}}[], DataFrame(i = Int[], cut = Tuple[], maxErrAbs = Float64[], slackAbs = Float64[], maxErrRel = Float64[], slackRel = Float64[]),(0,0))
         benders_obj.algOpt = algSetup_obj
 		benders_obj.nearOpt = nearOptObj(0, nearOptSetup_obj)
 		benders_obj.trackCapa = trackCapa

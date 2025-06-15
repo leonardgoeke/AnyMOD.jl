@@ -24,7 +24,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			top_m = benders_obj.top
 			startSol_obj = resData()
 			lowBd_fl = 0.0
-				
+
 			top_m = computeFeas(top_m, heuSol_obj.capa, 0.001, cutSmall = false);
 		
 			# write results for heuristic solution
@@ -80,7 +80,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		#region # * evaluate heuristic solution
 	
 		# first result for first iteration
-		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_waitNoStab = 0, time_subTot = 0, cntCuts = 0, time_sub = Float64[], numFoc = Int[], objName = benders_obj.info.name)
+		firstItr_df = DataFrame(i = 0, lowCost = 0, bestObj = Inf, gap = 1.0, curCost = Inf, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_waitNoStab = 0, time_subTot = 0, activeCuts = 0, totalCuts = 0, time_sub = Float64[], numFoc = Int[], objName = benders_obj.info.name)
 		if !isnothing(benders_obj.nearOpt.setup) firstItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			firstItr_df[!,:actMethod] .= Symbol()
@@ -120,7 +120,6 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		end
 
 		benders_obj.cuts.all = colCuts_arr
-		benders_obj.cuts.slack = map(x -> Float64[], 1:length(benders_obj.cuts.all))
 		benders_obj.cuts.active = collect(1:length(benders_obj.cuts.all))
 
 		# create copy for problem without stabilization
@@ -128,7 +127,6 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		set_optimizer(noStab_opt, benders_obj.algOpt.opt)
 		set_optimizer_attribute(noStab_opt, "Threads", benders_obj.algOpt.top.threads)	
 		benders_obj.topNoStab = (opt = noStab_opt, ref = ref_refm)
-
 
 		# create and directly add cuts for top problem without stabilization
 		colCutsNoStab_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
@@ -138,7 +136,6 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		end
 		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
 
-
 		# analyse results
 		startSol_obj.objVal = startSol_obj.objVal + sum(map(x -> x.objVal, values(cutData_dic)))
 		timeSubTot_fl = Dates.toms(benders_obj.algOpt.dist ? maximum(collect(values(time_dic))) : sum(collect(values(time_dic)))) / Dates.toms(Second(1))
@@ -146,7 +143,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		numFoc_arr = getindex.(sort(collect(numFoc_dic)),2)
 		
 		# write results for second iteration
-		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_waitNoStab = 0, time_subTot = timeSubTot_fl/60, time_sub = [timeSub_arr], cntCuts = [0], numFoc = [numFoc_arr], objName = benders_obj.info.name)
+		secItr_df = DataFrame(i = 1, lowCost = lowBd_fl, bestObj = startSol_obj.objVal, gap = 1 - lowBd_fl/startSol_obj.objVal, curCost = startSol_obj.objVal, time_ges = Dates.value(floor(now() - report_m.options.startTime, Dates.Second(1)))/60, time_top = 0, time_waitNoStab = 0, time_subTot = timeSubTot_fl/60, time_sub = [timeSub_arr], activeCuts = [0], totalCuts = [0], numFoc = [numFoc_arr], objName = benders_obj.info.name)
 		if !isnothing(benders_obj.nearOpt.setup) secItr_df[!,:objective] .= "cost" end
 		if !isempty(stabSetup_obj.method) 
 			secItr_df[!,:actMethod] .= Symbol()
@@ -210,6 +207,8 @@ function writeStabOpt(meth_tup::Tuple, lowBd_fl::Float64, upBd_fl::Float64, top_
 			error("options provided for level bundle do not match the defined options 'lam', 'myMax'")
 		elseif key == :qtrLvl && !isempty(setdiff(keys(val), (:startRad, :endRad, :inter, :lam)))
 			error("options provided for trust-region level bundle do not match the defined options 'startRad', 'endRad', 'inter', and 'lam'")
+		elseif key == :qtrLvlBox && !isempty(setdiff(keys(val), (:startRad, :endRad, :interRad, :lam, :startBoxRel, :endBoxRel, :interBoxRel, :startBoxAbs, :endBoxAbs, :interBoxAbs, :scaLvl, :scaLim)))
+			error("options provided for trust-region level bundle with box-step do not match the defined options 'startRad', 'endRad', 'interRad', 'lam', 'startBoxRel', 'endBoxRel', 'interBoxRel', 'startBoxAbs', 'endBoxAbs', 'interBoxAbs', 'scaLvl', and 'scaLim'")
 		elseif key == :box && !isempty(setdiff(keys(val), (:low, :up, :minDelta, :thr, :fac, :scaLvl, :scaLim)))
 			error("options provided for trust-region do not match the defined options 'low', 'up', 'minDelta', 'thr', 'fac', 'scaLvl', and 'scaLim'")
 		elseif key == :dsb && !isempty(setdiff(keys(val), (:start, :min, :lam, :myMax)))
@@ -248,6 +247,8 @@ function computeDynPar(meth_arr::Array{Symbol, 1}, methOpt_arr::Array{NamedTuple
 			dynPar = 1.0
 		elseif meth_arr[m] == :qtrLvl
 			dynPar = Dict(:lvl  => (methOpt_arr[m].lam * lowBd_fl  + (1 - methOpt_arr[m].lam) * upBd_fl) / top_m.options.scaFac.obj, :qtr => methOpt_arr[m].startRad)
+		elseif meth_arr[m] == :qtrLvlBox
+			dynPar = Dict(:lvl  => (methOpt_arr[m].lam * lowBd_fl  + (1 - methOpt_arr[m].lam) * upBd_fl) / top_m.options.scaFac.obj, :qtr => methOpt_arr[m].startRad, :boxRel => methOpt_arr[m].startBoxRel, :boxAbs => methOpt_arr[m].startBoxAbs)
 		elseif meth_arr[m] == :dsb
 			dynPar = Dict(:yps=>(1  -methOpt_arr[m].lam) * (upBd_fl - lowBd_fl) / top_m.options.scaFac.obj, :prx => methOpt_arr[m].start, :my => 1.0)
 		else
@@ -344,7 +345,7 @@ function centerStab!(method::Val{:lvl3}, stab_obj::stabObj, rngVio_fl::Float64, 
 	@objective(top_m.optModel, Min, 0.0)
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet])
 
-	return repVio_df
+	return repVio_df, DataFrame()
 end
 
 # function for box step method
@@ -402,6 +403,7 @@ function getUpperBound(value_fl::Float64, minDelta_fl::Float64, perUp_fl::Float6
     return corMax_fl
 end
 
+
 # function for level paired with quadratic trust region 
 function centerStab!(method::Val{:qtrLvl}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
@@ -425,6 +427,53 @@ function centerStab!(method::Val{:qtrLvl}, stab_obj::stabObj, rngVio_fl::Float64
 	return repVio_df
 end
 
+# function for level paired with quadratic trust region and box step
+function centerStab!(method::Val{:qtrLvlBox}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
+	
+	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 0)
+
+	# create quadratic constraint
+	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, relRhs = stab_obj.dynPar[stab_obj.actMet][:qtr])
+	stab_obj.cns = @constraint(top_m.optModel,  qtrConsSca_expr <= 0.0)
+
+	# adjust objective function and level set
+	if objective_sense(top_m.optModel) == MOI.MIN_SENSE 
+		@objective(top_m.optModel, Max, 0.0)
+	else
+		@objective(top_m.optModel, Min, 0.0)
+	end
+	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet][:lvl])
+
+	# report violation
+	repVio_df = reportRngViolations(qtrConsSca_expr, top_m.options.coefRng.mat, rngVio_fl, stab_obj.repVio)
+
+	# compute box parameters
+	expExpr_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
+	
+	allCapa_df = vcat(vcat(vcat(map(x -> expExpr_dic[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!, [:var, :value, :scaFac]], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
+	allCapa_df[!,:negPos] .= false
+	allCapa_df[!,:scalBox] .= 1.0 
+
+	empty_df = DataFrame(var = AffExpr[], value = Float64[], scaFac = Float64[], negPos = Bool[])
+
+	allStLvl_df = vcat(vcat(map(x -> expExpr_dic[:stLvl][x] |> (u -> map(y -> u[y], collect(keys(u)))), collect(keys(expExpr_dic[:stLvl])))...)...) |> (z -> isempty(z) ? empty_df : z)
+	allStLvl_df[!,:negPos] .= occursin.("stLvlInter", string.(allStLvl_df[!,:var]))
+	allStLvl_df[!,:scalBox] .=  stab_obj.methodOpt[stab_obj.actMet].scaLvl
+
+	allLim_df = vcat(map(x -> expExpr_dic[:lim][x], collect(keys(expExpr_dic[:lim])))...) |> (z -> isempty(z) ? empty_df : select(z, [:var, :value, :scaFac]))
+	allLim_df[!,:negPos] .= true
+	allLim_df[!,:scalBox] .= stab_obj.methodOpt[stab_obj.actMet].scaLim
+
+	allVar_df = filter(x -> x.scaFac != 0.0, vcat(allCapa_df, allStLvl_df, allLim_df))
+
+	# set lower and upper bound
+	minDelta_fl = stab_obj.dynPar[stab_obj.actMet][:boxAbs]
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_lower_bound(z[1], getLowerBound(x.value, minDelta_fl * x.scalBox, x.negPos, stab_obj.dynPar[stab_obj.actMet][:boxRel] * x.scalBox, top_m.options.coefRng.rhs[1]))), eachrow(allVar_df))
+	foreach(x -> collect(x.var.terms)[1] |> (z -> set_upper_bound(z[1], getUpperBound(x.value, minDelta_fl * x.scalBox, stab_obj.dynPar[stab_obj.actMet][:boxRel] * x.scalBox))), eachrow(allVar_df))
+
+	return repVio_df
+end
+
 # function for doubly stabilized bundle method
 function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, top_m::anyModel, report_m::anyModel, forceRad::Bool)
 	
@@ -432,7 +481,7 @@ function centerStab!(method::Val{:dsb}, stab_obj::stabObj, rngVio_fl::Float64, t
 	@suppress set_optimizer_attribute(top_m.optModel, "QCPDual", 1)
 
 	# create quadratic expression
-	qtrConsSca_expr = computeQuadExp(top_m, stab_obj, rngVio_fl, fac =  0.5 * stab_obj.dynPar[stab_obj.actMet][:prx])
+	qtrConsSca_expr  = computeQuadExp(top_m, stab_obj, rngVio_fl, fac =  0.5 * stab_obj.dynPar[stab_obj.actMet][:prx])
 
 	# compute level set constraint
 	ell_fl = stab_obj.objVal/ top_m.options.scaFac.obj - stab_obj.dynPar[stab_obj.actMet][:yps]
@@ -469,20 +518,25 @@ function computeQuadExp(top_m::anyModel, stab_obj::stabObj, rngVio_fl::Float64; 
 	# computes constraint expression
 	capaSum_expr = fac * sum(map(x -> sum(collect(keys(x.var.terms))) |> (z -> x.scaFac * (z^2 - 2 * x.corValue * z + x.corValue^2)), eachrow(allVar_df)))
 	qtrCons_expr = capaSum_expr - (delta_fl + relRhs * abs_fl)
-	
+
 	# scaling factors
 	coefRng_tup = (top_m.options.coefRng.mat[1], top_m.options.coefRng.mat[2] * rngVio_fl)
-	matRng_tup = abs.(values(qtrCons_expr.aff.terms)) |> (y -> isempty(y) ? (1.0, 1.0) : (minimum(y), maximum(y)))
+	matRng_tup = abs.(vcat(collect(values(qtrCons_expr.terms)),collect(values(qtrCons_expr.aff.terms)))) |> (y -> isempty(y) ? (1.0, 1.0) : (minimum(y), maximum(y)))
 	qtrConsSca_expr = scaleRng([qtrCons_expr], [matRng_tup], coefRng_tup, false)[1]
+	scaFac_fl = qtrConsSca_expr.aff.constant / qtrCons_expr.aff.constant
 
 	# scaling rhs
 	rhsRange_arr = (top_m.options.coefRng.rhs[1], top_m.options.coefRng.rhs[2] * rngVio_fl)
-	
+	rngFac_arr = abs.(vcat(collect(values(qtrConsSca_expr.terms)),collect(values(qtrConsSca_expr.aff.terms))))
+
 	if abs(qtrConsSca_expr.aff.constant) < rhsRange_arr[1] # upscaling rhs
-		qtrConsSca_expr = qtrConsSca_expr * rhsRange_arr[1] / abs(qtrConsSca_expr.aff.constant)
+		scaRhs_fl = min(rhsRange_arr[1] / abs(qtrConsSca_expr.aff.constant), top_m.options.coefRng.mat[2] * rngVio_fl / maximum(rngFac_arr))
 	elseif abs(qtrConsSca_expr.aff.constant) > rhsRange_arr[2] # downscaling rhs
-		qtrConsSca_expr = qtrConsSca_expr * rhsRange_arr[2] / abs(qtrConsSca_expr.aff.constant)
+		scaRhs_fl =  max(rhsRange_arr[2] / abs(qtrConsSca_expr.aff.constant), top_m.options.coefRng.mat[1] / minimum(rngFac_arr))
+	else
+		scaRhs_fl =  1.0 
 	end
+	qtrConsSca_expr = qtrConsSca_expr * scaRhs_fl
 
 	return qtrConsSca_expr
 
@@ -595,17 +649,25 @@ function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::
 				stab_obj.dynPar[x_int][:yps] = opt_tup.lam*stab_obj.dynPar[x_int][:yps]
 			end
 		end
-	elseif stab_obj.method[x_int] == :qtrLvl
+	elseif stab_obj.method[x_int] in (:qtrLvl,:qtrLvlBox)
 		
-		# update level parameter and radius
-		newLvl_fl = (opt_tup.lam * itr_obj.res[:estTotCostNoStab] + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
-		# avoid decreasing the level parameter at non-serious step to prevent infeasible top problem
-		if srsStep_boo
-			stab_obj.dynPar[x_int][:lvl] = newLvl_fl
+		# avoid decreasing the level parameter at non-serious step too much to prevent infeasible top problem
+		if srsStep_boo || !(:infeasLvlVal in keys(itr_obj.res))
+			stab_obj.dynPar[x_int][:lvl] = (opt_tup.lam * itr_obj.res[:estTotCostNoStab] + (1 - opt_tup.lam) * itr_obj.res[:curBest]) / top_m.options.scaFac.obj
 		else
-			stab_obj.dynPar[x_int][:lvl] = max(newLvl_fl, stab_obj.dynPar[x_int][:lvl])
+			stab_obj.dynPar[x_int][:lvl] = opt_tup.lam * itr_obj.res[:infeasLvlVal] + (1 - opt_tup.lam) * stab_obj.dynPar[x_int][:lvl]
 		end
-		stab_obj.dynPar[x_int][:qtr] = interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.startRad, opt_tup.endRad], Symbol(opt_tup.inter))
+
+		if stab_obj.method[x_int]  == :qtrLvlBox
+			stab_obj.dynPar[x_int][:qtr] = interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.startRad, opt_tup.endRad], Symbol(opt_tup.interRad))
+		else
+			stab_obj.dynPar[x_int][:qtr] = interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.startRad, opt_tup.endRad], Symbol(opt_tup.inter))
+		end
+
+		if stab_obj.method[x_int]  == :qtrLvlBox
+			stab_obj.dynPar[x_int][:boxRel] = interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.startBoxRel, opt_tup.endBoxRel], Symbol(opt_tup.interBoxRel))
+			stab_obj.dynPar[x_int][:boxAbs] = interItrPar(itr_obj.gap, tarGap_fl, [opt_tup.startBoxAbs, opt_tup.endBoxAbs], Symbol(opt_tup.interBoxAbs))
+		end
 
 	elseif stab_obj.method[x_int] == :dsb # adjust doubly stabilized method, implementation according to doi.org/10.1007/s10107-015-0873-6
 		stab_obj.dynPar[x_int][:my] = min(1 - itr_obj.res[:lvlDual], opt_tup.myMax + 1.0)
@@ -709,6 +771,9 @@ end
 
 # solves top problem without trust region and obtains lower limits
 function runTopWithoutStab!(benders_obj::bendersObj)
+	
+	stab_obj = benders_obj.stab
+	stabVar_dic = matchValWithVar(stab_obj.var, stab_obj.weight, benders_obj.top)
 
 	# solve problem
 	@suppress begin
@@ -758,7 +823,7 @@ function removeStab!(benders_obj::bendersObj)
 	elseif stab_obj.method[stab_obj.actMet] in (:lvl1, :lvl2, :lvl3) && has_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 		delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
-	elseif stab_obj.method[stab_obj.actMet] == :qtrLvl
+	elseif stab_obj.method[stab_obj.actMet] in (:qtrLvl,:qtrLvlBox)
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 		# remove level bound
 		if has_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
@@ -768,38 +833,45 @@ function removeStab!(benders_obj::bendersObj)
 		if is_valid(benders_obj.top.optModel, stab_obj.cns) 
 			delete(benders_obj.top.optModel, stab_obj.cns) 
 		end
+		# removes bounds of boxstep method
+		#if stab_obj.method[stab_obj.actMet] == :qtrLvlBox removeBoxstep!(stab_obj, benders_obj.top) end
 	elseif stab_obj.method[stab_obj.actMet] == :dsb
 		@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 		delete(benders_obj.top.optModel, stab_obj.cns)
 		delete(benders_obj.top.optModel, stab_obj.helper_var)
 		unregister(benders_obj.top.optModel, :r)
 	elseif stab_obj.method[stab_obj.actMet] == :box
-		stabVar_dic = matchValWithVar(stab_obj.var, stab_obj.weight, benders_obj.top)
-	
-		# delete limits on capacity
-		for sys in keys(stabVar_dic[:capa]), sSym in keys(stabVar_dic[:capa][sys]), capaSym in keys(stabVar_dic[:capa][sys][sSym])
-			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:capa][sys][sSym][capaSym][!,:var])
-			delete_lower_bound.(rmvLim_arr)
-			set_lower_bound.(rmvLim_arr, 0.0)
-			delete_upper_bound.(rmvLim_arr)
-		end
-		
-		# delete limits on storage level
-		for sSym in keys(stabVar_dic[:stLvl]), stType in keys(stabVar_dic[:stLvl][sSym])
-			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:stLvl][sSym][stType][!,:var])
-			delete_lower_bound.(rmvLim_arr)
-			if stType != :stLvlInter set_lower_bound.(rmvLim_arr, 0.0) end
-			delete_upper_bound.(rmvLim_arr)
-		end
-		
-		# delete limits on complicating limits
-		for limSym in keys(stabVar_dic[:lim])
-			rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:lim][limSym][!,:var])
-			delete_lower_bound.(rmvLim_arr)
-			delete_upper_bound.(rmvLim_arr)
-		end
-	
+		removeBoxstep!(stab_obj,benders_obj.top)
 	end
+end
+
+# removes bounds of boxtep method
+function removeBoxstep!(stab_obj::stabObj, top_m::anyModel)
+
+	stabVar_dic = matchValWithVar(stab_obj.var, stab_obj.weight, top_m)
+
+	# delete limits on capacity
+	for sys in keys(stabVar_dic[:capa]), sSym in keys(stabVar_dic[:capa][sys]), capaSym in keys(stabVar_dic[:capa][sys][sSym])
+		rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:capa][sys][sSym][capaSym][!,:var])
+		delete_lower_bound.(rmvLim_arr)
+		delete_upper_bound.(rmvLim_arr)
+	end
+	
+	# delete limits on storage level
+	for sSym in keys(stabVar_dic[:stLvl]), stType in keys(stabVar_dic[:stLvl][sSym])
+		rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:stLvl][sSym][stType][!,:var])
+		delete_lower_bound.(rmvLim_arr)
+		if stType != :stLvlInter set_lower_bound.(rmvLim_arr, 0.0) end
+		delete_upper_bound.(rmvLim_arr)
+	end
+	
+	# delete limits on complicating limits
+	for limSym in keys(stabVar_dic[:lim])
+		rmvLim_arr = map(x -> collect(x.terms)[1][1], stabVar_dic[:lim][limSym][!,:var])
+		delete_lower_bound.(rmvLim_arr)
+		delete_upper_bound.(rmvLim_arr)
+	end
+
 end
 
 #endregion
@@ -895,33 +967,210 @@ end
 
 #region # * other refinements
 
-# ! track and delete cuts that were not binding for a certain number of iterations
-function trackCuts(benders_obj::bendersObj)
-	
-	delCut_ntup = benders_obj.nearOpt.cnt == 0 ? benders_obj.algOpt.delCut : benders_obj.nearOpt.setup.delCut
+# ! track cuts for later management
+function trackCuts!(benders_obj::bendersObj)
 
-	# add current slack to data
-	# foreach(x ->  push!(benders_obj.cuts.slack[x[1]], abs(value(x[2][2][1]) / x[2][2][1].constant - 1)), enumerate(benders_obj.cuts.all))
-	absGap_fl = benders_obj.itr.res[:curBest] - benders_obj.itr.res[:lowLimCost]
-	foreach(x ->  push!(benders_obj.cuts.slack[x[1]], -value(x[2][2][1]) / absGap_fl), enumerate(benders_obj.cuts.all))
+	top_m = benders_obj.top
 
-	# determine cuts that should be active
-	rng_int = delCut_ntup.cnt
-	thrs_fl = delCut_ntup.thres
-	
-	benders_obj.cuts.active = findall(map(x -> length(x) < rng_int || any(x[end-rng_int+1:end] .< thrs_fl), benders_obj.cuts.slack))
+	if length(benders_obj.cuts.all) > length(benders_obj.sub)
+
+		#region # * analyse slack
+
+		trackSlack_arr = Pair[]
+		for s in keys(benders_obj.sub)
+
+			# get all cuts and variables
+			allCuts_arr = filter(x -> x[1][2] == s[1] && x[1][3] == s[2], benders_obj.cuts.all)
+			if isempty(allCuts_arr) continue end # skip if no cuts for this subproblem
+			for i in eachindex(allCuts_arr)
+				# compute slack
+				push!(trackSlack_arr, allCuts_arr[i][1] => - value(allCuts_arr[i][2][1]))
+			end
+		end
+
+		#endregion
+
+		#region # * adjust start problem for maximum error screening
+
+		# create copy of top problem for cut screening
+		scr_opt, scr_refm = copy_model(benders_obj.top.optModel)
+		delete(scr_opt, scr_refm[benders_obj.stab.cns])
+
+
+		for x in filter(x -> x != :obj, keys(benders_obj.top.parts.obj.var))
+			if x == :objVar
+				var_arr = filter(y -> y.name == :benders, benders_obj.top.parts.obj.var[x])[!,:var]
+			else
+				var_arr = benders_obj.top.parts.obj.var[x][!,:var]
+			end
+			foreach(x -> delete(scr_opt, scr_refm[x]), typeof(var_arr) <: Vector{AffExpr} ? vcat(collect.(keys.(getfield.(var_arr,:terms)))...) : var_arr)
+		end
+
+		for x in filter(x -> !(x in (:obj, :bendersCutsNoStab)), keys(benders_obj.top.parts.obj.cns))
+			if x == :objEqn
+				cns_df = filter!(y -> y.name == :aggCut, benders_obj.top.parts.obj.cns[x])
+			else
+				cns_df = benders_obj.top.parts.obj.cns[x]
+			end
+			foreach(x -> delete(scr_opt, scr_refm[x]), cns_df[!,:cns])
+		end
+
+		stab_obj = benders_obj.stab
+		qtrConsSca_expr = computeQuadExp(benders_obj.top, stab_obj, benders_obj.algOpt.rngVio.stab, relRhs = stab_obj.dynPar[stab_obj.actMet][:qtr])
+		qtrConsConvSca_expr = convertQuadExpr(qtrConsSca_expr, scr_refm)
+		qtr_cns = @constraint(scr_opt,  qtrConsConvSca_expr <= 0.0)
+
+		#endregion
+
+		#region # * loop over all cuts to peform maximum error screening
+
+		trackP_arr = Pair[]
+		for s in keys(benders_obj.sub)
+
+			# get all cuts and variables
+			allCuts_arr = filter(x -> x[1][2] == s[1] && x[1][3] == s[2], benders_obj.cuts.all)
+			if isempty(allCuts_arr) continue end # skip if no cuts for this subproblem
+			for i in eachindex(allCuts_arr)
+
+				# create specific problem for checking
+				scrSpec_opt, scrSpec_refm = copy_model(scr_opt)
+				@suppress begin
+					set_optimizer(scrSpec_opt, benders_obj.algOpt.opt)
+					set_optimizer_attribute(scrSpec_opt, "NumericFocus", 1)
+					set_optimizer_attribute(scrSpec_opt, "Crossover", 0)
+				end
+
+				# compute slack variable
+				p = @variable(scrSpec_opt, p)	 
+
+				# compute constraints for cut difference
+				rngVio_fl = benders_obj.algOpt.rngVio.cut
+				cutDelta_arr = AffExpr[]
+
+				for j in 1:length(allCuts_arr)
+					if j == i continue end # skip same cuts
+					# create expression and convert to screening problem
+					cutDelta_expr = allCuts_arr[i][2][1]  - allCuts_arr[j][2][1]
+					cutDelta_expr.terms = filter(x -> x[2] != 0.0, cutDelta_expr.terms)
+					push!(cutDelta_arr, convertAffExpr(cutDelta_expr, scr_refm, scrSpec_refm)) 
+				end
+
+				if isempty(cutDelta_arr) continue end
+
+				# extract scaling factor for p-variable and add to expressions
+				pFac_fl = maximum(map(x -> maximum(abs.(collect(values(x.terms)))), cutDelta_arr)) / (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1]) * 10
+				cutDeltaP_arr = cutDelta_arr .+ pFac_fl * p
+
+				# create pre-scaled constraints
+				cns_df = DataFrame(cnsExpr = AffExpr[])
+				for c in cutDeltaP_arr
+					# check if range of coefficients prevent scaling into range
+					rngVal_arr = abs.(collect(values(c.terms))) |> (x -> (min(minimum(x),abs(c.constant)),max(maximum(x),abs(c.constant))))
+
+					if rngVal_arr[2] / rngVal_arr[1] > top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1]
+						minFac_fl = rngVal_arr[2] / top_m.options.coefRng.mat[2] * top_m.options.coefRng.mat[1]
+
+						# change small factors to prevent violation
+						for x in keys(c.terms)
+							if abs(c.terms[x]) < minFac_fl
+								# set to zero or minimum value, whatever is closer
+								if  minFac_fl - abs(c.terms[x]) < abs(c.terms[x]) 
+									c.terms[x] = (c.terms[x] > 0 ? 1 : -1) * minFac_fl
+								else
+									c.terms[x] = 0.0
+								end	
+							end
+						end
+					end
+					# filter zero coefficients
+					filter!(x -> x[2] != 0.0, c.terms)
+					# pre-scale and add to dataframe
+					cutDeltaConv_expr, ~  = prescaleCut(c, AffExpr(0.0), top_m, rngVio_fl)
+					push!(cns_df, (cnsExpr = cutDeltaConv_expr,))
+				end
+
+				# add scaled cuts to model
+				coefRng_tup = (mat = (top_m.options.coefRng.mat[1], top_m.options.coefRng.mat[2] * rngVio_fl), rhs = (top_m.options.coefRng.rhs[1], top_m.options.coefRng.rhs[2] * rngVio_fl))
+				scaleCnsExpr!(cns_df, coefRng_tup, top_m.options.checkRng)
+				createCns(cnsCont(cns_df, :greater), scrSpec_opt, false)
+
+				# set objective and solver
+				@objective(scrSpec_opt, Min, p)
+				@suppress optimize!(scrSpec_opt)
+
+				#println(sum(value.(map(z -> scrSpec_refm[scr_refm[z]], benders_obj.top.parts.cost.var[:costExpConv][!,:var]))))
+				
+				# store result
+				if termination_status(scrSpec_opt) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED)
+					push!(trackP_arr, allCuts_arr[i][1] => value(p) * pFac_fl)
+				else
+					push!(trackP_arr, allCuts_arr[i][1] => - Inf)
+				end
+
+			end
+
+		end
+
+		#endregion
+
+		#region # * report on cuts
+
+		addMaxEr_df = DataFrame(cut = getindex.(trackP_arr,1), maxErrAbs = -1 .* getindex.(trackP_arr,2), slackAbs =  getindex.(trackSlack_arr,2), maxErrRel = fill(0.0,length(trackP_arr)), slackRel = fill(0.0,length(trackSlack_arr)))
+		addMaxEr_df[!,:i] .= benders_obj.itr.cnt.i
+		append!(benders_obj.cuts.report, addMaxEr_df)
+
+		#endregion
+	end
 
 end
 
-function deleteCuts!(benders_obj::bendersObj)
-	
+# ! filter cuts for removal
+function manageCuts!(benders_obj::bendersObj, srsStep_boo::Bool)
+
+	gap_fl = benders_obj.itr.res[:curBest] - benders_obj.itr.res[:lowLimCost]
 	top_m = benders_obj.top
 
-	# filter cuts to be deleted
-	allAct_arr = map(x -> benders_obj.cuts.all[x][1], benders_obj.cuts.active)
-	delete.(top_m.optModel, filter(x -> !((x.i, x.Ts_dis, x.scr) in allAct_arr), top_m.parts.obj.cns[:bendersCuts])[!,:cns])
-	filter!(x -> (x.i, x.Ts_dis, x.scr) in allAct_arr, top_m.parts.obj.cns[:bendersCuts])
+	if (srsStep_boo || benders_obj.itr.cnt.i  >= benders_obj.itr.cnt.nextCutMgmt) && !isempty(benders_obj.cuts.report)
 
+		cutMgmt_ntup = benders_obj.algOpt.cutMgmt
+	
+		if cutMgmt_ntup.meth == :slack
+
+			rng_int = cutMgmt_ntup.opt.cnt
+			thrs_fl = cutMgmt_ntup.opt.thres
+
+			# removes cuts with slack below threshold in all of the last n-th iterations
+			act_arr = getindex.(filter(y -> y[2], [x.cut[1] => (x.slackAbs |> (y -> length(y) < rng_int || any(y[end-rng_int+1:end] ./ gap_fl .< thrs_fl ))) for x in  groupby(benders_obj.cuts.report, [:cut])]),1)
+
+			benders_obj.cuts.active = findall(map(x -> x[1] in act_arr, benders_obj.cuts.all))
+
+		elseif cutMgmt_ntup.meth == :redundant
+
+			trackP_arr = map(x -> x.cut => x.maxErrAbs, eachrow(filter(x -> x.i == benders_obj.itr.cnt.i, benders_obj.cuts.report)))
+			# get all cuts with a positive value
+			pos_arr = filter(x -> x[2] < 0.0, trackP_arr)
+
+			# get all with above the threshold
+			gap_fl = benders_obj.itr.res[:curBest] - benders_obj.itr.res[:lowLimCost]
+			thresFac_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, [cutMgmt_ntup.opt.startFac, cutMgmt_ntup.opt.endFac], cutMgmt_ntup.opt.inter)
+			thres_arr = filter(x -> x[2] > 0.0 && x[2] < thresFac_fl * gap_fl, trackP_arr)
+
+			# set active cuts
+			benders_obj.cuts.active = findall(map(x -> !(x in getindex.(vcat(pos_arr, thres_arr),1)), getindex.(benders_obj.cuts.all,1)))
+		end
+
+		# set next iteration for active cut management
+		benders_obj.itr.cnt.nextCutMgmt = benders_obj.itr.cnt.i + cutMgmt_ntup.freq
+		# filter cuts to be deleted
+		allAct_arr = map(x -> benders_obj.cuts.all[x][1], benders_obj.cuts.active)
+		delete.(top_m.optModel, filter(x -> !((x.i, x.Ts_dis, x.scr) in allAct_arr), top_m.parts.obj.cns[:bendersCuts])[!,:cns])
+		filter!(x -> (x.i, x.Ts_dis, x.scr) in allAct_arr, top_m.parts.obj.cns[:bendersCuts])
+	end
+
+	# write correct relative metrics now
+	benders_obj.cuts.report[!,:maxErrRel] = map(x -> x.i == benders_obj.itr.cnt.i ? x.maxErrAbs / gap_fl : x.maxErrRel, eachrow(benders_obj.cuts.report)) 
+	benders_obj.cuts.report[!,:slackRel] = map(x -> x.i == benders_obj.itr.cnt.i ? x.slackAbs / gap_fl : x.slackRel, eachrow(benders_obj.cuts.report)) 
+	
 end
 
 # ! interpolate iteration parameter based on current gap (used for convergence tolerance of subproblems or radius in qtrLvl stabilization)
@@ -936,11 +1185,11 @@ function interItrPar(gapCur_fl::Float64, gapEnd_fl::Float64, rng_arr::Union{Arra
 			m = (rng_arr[1] -rng_arr[2])/(1-gapEnd_fl)
 			b =rng_arr[1] - m
 			return b + m * gapCur_fl - cons_fl
-		elseif int_sym == :exp
+		elseif int_sym == :exp # = faster reduction than lineaer
 			m = log(rng_arr[1]/rng_arr[2])/(1-gapEnd_fl)
 			b = log(rng_arr[1]) - m
 			return exp(b + m * gapCur_fl) - cons_fl
-		elseif int_sym == :log
+		elseif int_sym == :log # slower reduction than linear
 			b = rng_arr[1]
 			m = (rng_arr[2] - b ) / log(gapEnd_fl)
 			return b + m * log(gapCur_fl) - cons_fl
