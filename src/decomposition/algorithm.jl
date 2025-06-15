@@ -1742,7 +1742,7 @@ function reportBenders!(benders_obj::bendersObj, resData_obj::resData, elpTop_ti
 
 	# ! cut management reporting
 	if !isnothing(benders_obj.cuts.mgmt) && benders_obj.cuts.mgmt.report
-		CSV.write(report_obj.mod.options.outDir * "/cutManagment_$(benders_obj.info.name).csv", benders_obj.cuts.report)
+		CSV.write(report_obj.mod.options.outDir * "/cutManagement_$(benders_obj.info.name).csv", benders_obj.cuts.report)
 	end
 
 	# ! write reports
