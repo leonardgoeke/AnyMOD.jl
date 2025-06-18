@@ -994,7 +994,6 @@ function trackCuts!(benders_obj::bendersObj)
 		scr_opt, scr_refm = copy_model(benders_obj.top.optModel)
 		delete(scr_opt, scr_refm[benders_obj.stab.cns])
 
-
 		for x in filter(x -> x != :obj, keys(benders_obj.top.parts.obj.var))
 			if x == :objVar
 				var_arr = filter(y -> y.name == :benders, benders_obj.top.parts.obj.var[x])[!,:var]
@@ -1130,7 +1129,7 @@ function manageCuts!(benders_obj::bendersObj, srsStep_boo::Bool)
 
 	if (srsStep_boo || benders_obj.itr.cnt.i  >= benders_obj.itr.cnt.nextCutMgmt) && !isempty(benders_obj.cuts.report)
 
-		cutMgmt_ntup = benders_obj.algOpt.cutMgmt
+		cutMgmt_ntup = benders_obj.cuts.mgmt
 	
 		if cutMgmt_ntup.meth == :slack
 
