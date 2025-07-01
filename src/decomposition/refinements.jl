@@ -970,58 +970,65 @@ function trackCuts!(benders_obj::bendersObj)
 
 	top_m = benders_obj.top
 
+	cutMgmt_ntup = benders_obj.algOpt.cutMgmt
+
 	if length(benders_obj.cuts.all) > length(benders_obj.sub)
 
 		#region # * analyse slack
 
 		trackSlack_arr = Pair[]
 		for s in keys(benders_obj.sub)
-
 			# get all cuts and variables
 			allCuts_arr = filter(x -> x[1][2] == s[1] && x[1][3] == s[2], benders_obj.cuts.all)
 			if isempty(allCuts_arr) continue end # skip if no cuts for this subproblem
+			
 			for i in eachindex(allCuts_arr)
 				# compute slack
-				push!(trackSlack_arr, allCuts_arr[i][1] => - value(allCuts_arr[i][2][1]))
+				if cutMgmt_ntup.meth == :slack || cutMgmt_ntup.report
+					push!(trackSlack_arr, allCuts_arr[i][1] => - value(allCuts_arr[i][2][1]))
+				else
+					push!(trackSlack_arr, allCuts_arr[i][1] => 0.0)
+				end
 			end
 		end
 
 		#endregion
 
-		#region # * adjust start problem for maximum error screening
+		#region # * analyse redundancy
 
-		# create copy of top problem for cut screening
-		scr_opt, scr_refm = copy_model(benders_obj.top.optModel)
-		delete(scr_opt, scr_refm[benders_obj.stab.cns])
+		# adjust start problem for maximum error screening
+		if cutMgmt_ntup.meth == :redundant || cutMgmt_ntup.report
 
+			# create copy of top problem for cut screening
+			scr_opt, scr_refm = copy_model(benders_obj.top.optModel)
+			delete(scr_opt, scr_refm[benders_obj.stab.cns])
 
-		for x in filter(x -> x != :obj, keys(benders_obj.top.parts.obj.var))
-			if x == :objVar
-				var_arr = filter(y -> y.name == :benders, benders_obj.top.parts.obj.var[x])[!,:var]
-			else
-				var_arr = benders_obj.top.parts.obj.var[x][!,:var]
+			for x in filter(x -> x != :obj, keys(benders_obj.top.parts.obj.var))
+				if x == :objVar
+					var_arr = filter(y -> y.name == :benders, benders_obj.top.parts.obj.var[x])[!,:var]
+				else
+					var_arr = benders_obj.top.parts.obj.var[x][!,:var]
+				end
+				foreach(x -> delete(scr_opt, scr_refm[x]), typeof(var_arr) <: Vector{AffExpr} ? vcat(collect.(keys.(getfield.(var_arr,:terms)))...) : var_arr)
 			end
-			foreach(x -> delete(scr_opt, scr_refm[x]), typeof(var_arr) <: Vector{AffExpr} ? vcat(collect.(keys.(getfield.(var_arr,:terms)))...) : var_arr)
+
+			for x in filter(x -> !(x in (:obj, :bendersCutsNoStab)), keys(benders_obj.top.parts.obj.cns))
+				if x == :objEqn
+					cns_df = filter!(y -> y.name == :aggCut, benders_obj.top.parts.obj.cns[x])
+				else
+					cns_df = benders_obj.top.parts.obj.cns[x]
+				end
+				foreach(x -> delete(scr_opt, scr_refm[x]), cns_df[!,:cns])
+			end
+
+			stab_obj = benders_obj.stab
+			qtrConsSca_expr = computeQuadExp(benders_obj.top, stab_obj, benders_obj.algOpt.rngVio.stab, relRhs = stab_obj.dynPar[stab_obj.actMet][:qtr])
+			qtrConsConvSca_expr = convertQuadExpr(qtrConsSca_expr, scr_refm)
+			qtr_cns = @constraint(scr_opt,  qtrConsConvSca_expr <= 0.0)
+
 		end
 
-		for x in filter(x -> !(x in (:obj, :bendersCutsNoStab)), keys(benders_obj.top.parts.obj.cns))
-			if x == :objEqn
-				cns_df = filter!(y -> y.name == :aggCut, benders_obj.top.parts.obj.cns[x])
-			else
-				cns_df = benders_obj.top.parts.obj.cns[x]
-			end
-			foreach(x -> delete(scr_opt, scr_refm[x]), cns_df[!,:cns])
-		end
-
-		stab_obj = benders_obj.stab
-		qtrConsSca_expr = computeQuadExp(benders_obj.top, stab_obj, benders_obj.algOpt.rngVio.stab, relRhs = stab_obj.dynPar[stab_obj.actMet][:qtr])
-		qtrConsConvSca_expr = convertQuadExpr(qtrConsSca_expr, scr_refm)
-		qtr_cns = @constraint(scr_opt,  qtrConsConvSca_expr <= 0.0)
-
-		#endregion
-
-		#region # * loop over all cuts to peform maximum error screening
-
+		# loop over all cuts to peform maximum error screening
 		trackP_arr = Pair[]
 		for s in keys(benders_obj.sub)
 
@@ -1030,79 +1037,81 @@ function trackCuts!(benders_obj::bendersObj)
 			if isempty(allCuts_arr) continue end # skip if no cuts for this subproblem
 			for i in eachindex(allCuts_arr)
 
-				# create specific problem for checking
-				scrSpec_opt, scrSpec_refm = copy_model(scr_opt)
-				@suppress begin
-					set_optimizer(scrSpec_opt, benders_obj.algOpt.opt)
-					set_optimizer_attribute(scrSpec_opt, "NumericFocus", 1)
-					set_optimizer_attribute(scrSpec_opt, "Crossover", 0)
-				end
+				if cutMgmt_ntup.meth == :redundant || cutMgmt_ntup.report
+					# create specific problem for checking
+					scrSpec_opt, scrSpec_refm = copy_model(scr_opt)
+					@suppress begin
+						set_optimizer(scrSpec_opt, benders_obj.algOpt.opt)
+						set_optimizer_attribute(scrSpec_opt, "NumericFocus", 1)
+						set_optimizer_attribute(scrSpec_opt, "Crossover", 0)
+					end
 
-				# compute slack variable
-				p = @variable(scrSpec_opt, p)	 
+					# compute slack variable
+					p = @variable(scrSpec_opt, p)	 
 
-				# compute constraints for cut difference
-				rngVio_fl = benders_obj.algOpt.rngVio.cut
-				cutDelta_arr = AffExpr[]
+					# compute constraints for cut difference
+					rngVio_fl = benders_obj.algOpt.rngVio.cut
+					cutDelta_arr = AffExpr[]
 
-				for j in 1:length(allCuts_arr)
-					if j == i continue end # skip same cuts
-					# create expression and convert to screening problem
-					cutDelta_expr = allCuts_arr[i][2][1]  - allCuts_arr[j][2][1]
-					cutDelta_expr.terms = filter(x -> x[2] != 0.0, cutDelta_expr.terms)
-					push!(cutDelta_arr, convertAffExpr(cutDelta_expr, scr_refm, scrSpec_refm)) 
-				end
+					for j in 1:length(allCuts_arr)
+						if j == i continue end # skip same cuts
+						# create expression and convert to screening problem
+						cutDelta_expr = allCuts_arr[i][2][1]  - allCuts_arr[j][2][1]
+						cutDelta_expr.terms = filter(x -> x[2] != 0.0, cutDelta_expr.terms)
+						push!(cutDelta_arr, convertAffExpr(cutDelta_expr, scr_refm, scrSpec_refm)) 
+					end
 
-				if isempty(cutDelta_arr) continue end
+					if isempty(cutDelta_arr) continue end
 
-				# extract scaling factor for p-variable and add to expressions
-				pFac_fl = maximum(map(x -> maximum(abs.(collect(values(x.terms)))), cutDelta_arr)) / (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1]) * 10
-				cutDeltaP_arr = cutDelta_arr .+ pFac_fl * p
+					# extract scaling factor for p-variable and add to expressions
+					pFac_fl = maximum(map(x -> maximum(abs.(collect(values(x.terms)))), cutDelta_arr)) / (top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1]) * 10
+					cutDeltaP_arr = cutDelta_arr .+ pFac_fl * p
 
-				# create pre-scaled constraints
-				cns_df = DataFrame(cnsExpr = AffExpr[])
-				for c in cutDeltaP_arr
-					# check if range of coefficients prevent scaling into range
-					rngVal_arr = abs.(collect(values(c.terms))) |> (x -> (min(minimum(x),abs(c.constant)),max(maximum(x),abs(c.constant))))
+					# create pre-scaled constraints
+					cns_df = DataFrame(cnsExpr = AffExpr[])
+					for c in cutDeltaP_arr
+						# check if range of coefficients prevent scaling into range
+						rngVal_arr = abs.(collect(values(c.terms))) |> (x -> (min(minimum(x),abs(c.constant)),max(maximum(x),abs(c.constant))))
 
-					if rngVal_arr[2] / rngVal_arr[1] > top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1]
-						minFac_fl = rngVal_arr[2] / top_m.options.coefRng.mat[2] * top_m.options.coefRng.mat[1]
+						if rngVal_arr[2] / rngVal_arr[1] > top_m.options.coefRng.mat[2] / top_m.options.coefRng.mat[1]
+							minFac_fl = rngVal_arr[2] / top_m.options.coefRng.mat[2] * top_m.options.coefRng.mat[1]
 
-						# change small factors to prevent violation
-						for x in keys(c.terms)
-							if abs(c.terms[x]) < minFac_fl
-								# set to zero or minimum value, whatever is closer
-								if  minFac_fl - abs(c.terms[x]) < abs(c.terms[x]) 
-									c.terms[x] = (c.terms[x] > 0 ? 1 : -1) * minFac_fl
-								else
-									c.terms[x] = 0.0
-								end	
+							# change small factors to prevent violation
+							for x in keys(c.terms)
+								if abs(c.terms[x]) < minFac_fl
+									# set to zero or minimum value, whatever is closer
+									if  minFac_fl - abs(c.terms[x]) < abs(c.terms[x]) 
+										c.terms[x] = (c.terms[x] > 0 ? 1 : -1) * minFac_fl
+									else
+										c.terms[x] = 0.0
+									end	
+								end
 							end
 						end
+						# filter zero coefficients
+						filter!(x -> x[2] != 0.0, c.terms)
+						# pre-scale and add to dataframe
+						cutDeltaConv_expr, ~  = prescaleCut(c, AffExpr(0.0), top_m, rngVio_fl)
+						push!(cns_df, (cnsExpr = cutDeltaConv_expr,))
 					end
-					# filter zero coefficients
-					filter!(x -> x[2] != 0.0, c.terms)
-					# pre-scale and add to dataframe
-					cutDeltaConv_expr, ~  = prescaleCut(c, AffExpr(0.0), top_m, rngVio_fl)
-					push!(cns_df, (cnsExpr = cutDeltaConv_expr,))
-				end
 
-				# add scaled cuts to model
-				coefRng_tup = (mat = (top_m.options.coefRng.mat[1], top_m.options.coefRng.mat[2] * rngVio_fl), rhs = (top_m.options.coefRng.rhs[1], top_m.options.coefRng.rhs[2] * rngVio_fl))
-				scaleCnsExpr!(cns_df, coefRng_tup, top_m.options.checkRng)
-				createCns(cnsCont(cns_df, :greater), scrSpec_opt, false)
+					# add scaled cuts to model
+					coefRng_tup = (mat = (top_m.options.coefRng.mat[1], top_m.options.coefRng.mat[2] * rngVio_fl), rhs = (top_m.options.coefRng.rhs[1], top_m.options.coefRng.rhs[2] * rngVio_fl))
+					scaleCnsExpr!(cns_df, coefRng_tup, top_m.options.checkRng)
+					createCns(cnsCont(cns_df, :greater), scrSpec_opt, false)
 
-				# set objective and solver
-				@objective(scrSpec_opt, Min, p)
-				@suppress optimize!(scrSpec_opt)
-
-				#println(sum(value.(map(z -> scrSpec_refm[scr_refm[z]], benders_obj.top.parts.cost.var[:costExpConv][!,:var]))))
-				
-				# store result
-				if termination_status(scrSpec_opt) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED)
-					push!(trackP_arr, allCuts_arr[i][1] => value(p) * pFac_fl)
+					# set objective and solver
+					@objective(scrSpec_opt, Min, p)
+					@suppress optimize!(scrSpec_opt)
+					
+					# store result
+					if termination_status(scrSpec_opt) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED)
+						push!(trackP_arr, allCuts_arr[i][1] => value(p) * pFac_fl)
+					else
+						push!(trackP_arr, allCuts_arr[i][1] => - Inf)
+					end
 				else
-					push!(trackP_arr, allCuts_arr[i][1] => - Inf)
+					push!(trackP_arr, allCuts_arr[i][1] => 0.0)
 				end
 
 			end
@@ -1118,6 +1127,7 @@ function trackCuts!(benders_obj::bendersObj)
 		append!(benders_obj.cuts.report, addMaxEr_df)
 
 		#endregion
+
 	end
 
 end

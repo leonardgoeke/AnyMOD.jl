@@ -8,11 +8,12 @@ function heuristicSolve(modOpt_tup::NamedTuple, t_int::Int, opt_obj::DataType; r
 	# create and solve model
 	frsLvl_int = solDet ? 0 : modOpt_tup.frsLvl
 	heu_m = anyModel(modOpt_tup.inputDir, modOpt_tup.resultDir, holdFixed = true, objName = "heuristicModel_" * modOpt_tup.suffix, supTsLvl = modOpt_tup.supTsLvl, repTsLvl = modOpt_tup.repTsLvl, frsLvl = frsLvl_int, reportLvl = 2, shortExp = modOpt_tup.shortExp, coefRng = modOpt_tup.coefRng, scaFac = modOpt_tup.scaFac, checkRng = (print = true, all = false), forceScr = solDet ? Symbol() : nothing)
-	
-	prepareMod!(heu_m, opt_obj, t_int)
-	set_optimizer_attribute(heu_m.optModel, "Method", 2)
-	set_optimizer_attribute(heu_m.optModel, "Crossover", 0)
-	optimize!(heu_m.optModel)
+	@suppress begin
+		prepareMod!(heu_m, opt_obj, t_int)
+		set_optimizer_attribute(heu_m.optModel, "Method", 2)
+		set_optimizer_attribute(heu_m.optModel, "Crossover", 0)
+		optimize!(heu_m.optModel)
+	end
 
 	# write results to benders object
 	heuData_obj = resData()
@@ -326,10 +327,12 @@ function runTop(benders_obj::bendersObj)
 		# compute tolerances
 		stabTol_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.stabTol[2], benders_obj.algOpt.top.stabTol[1])
 		stabTolQ_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.stabTolQ[2], benders_obj.algOpt.top.stabTolQ[1])
+		stabTolFeas_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.stabTolFeas[2], benders_obj.algOpt.top.stabTolFeas[1])
 		# set options
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", benders_obj.algOpt.top.stabMeth)
+		set_optimizer_attribute(benders_obj.top.optModel, "BarQCPConvTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "BarQCPConvTol", max(stabTolQ_fl, benders_obj.algOpt.top.stabTolQ[2][2]))
-		set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
+		set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", max(stabTolFeas_fl, benders_obj.algOpt.top.stabTolFeas[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
 		set_optimizer_attribute(benders_obj.top.optModel, "Threads", benders_obj.algOpt.top.threads)	
@@ -920,11 +923,8 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		#region # * solve top-problem and (start) sub-problems
 		str_time = now()
 		resData_obj, bestData_obj, stabVar_obj, stLvl_dic = runTop(benders_obj);
-		elpTop_time = now() - str_time
-
-		str_time = now()
 		trackCuts!(benders_obj)
-		println(now() - str_time)
+		elpTop_time = now() - str_time
 
 		# start solving sub-problems
 		cutData_dic = Dict{Tuple{Int64,Int64},resData}()
