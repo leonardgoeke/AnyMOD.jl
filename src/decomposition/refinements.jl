@@ -1140,7 +1140,7 @@ function manageCuts!(benders_obj::bendersObj, srsStep_boo::Bool)
 
 	if (srsStep_boo || benders_obj.itr.cnt.i  >= benders_obj.itr.cnt.nextCutMgmt) && !isempty(benders_obj.cuts.report)
 
-		cutMgmt_ntup = benders_obj.algOpt.cutMgmt
+		cutMgmt_ntup = benders_obj.cuts.mgmt
 	
 		if cutMgmt_ntup.meth == :slack
 
