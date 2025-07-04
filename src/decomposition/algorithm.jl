@@ -320,7 +320,7 @@ function runTop(benders_obj::bendersObj)
 	stabVar_obj = resData()
 
 	# solve model
-	@suppress begin 
+	#@suppress begin 
 		if benders_obj.algOpt.top.dnsThrs != 0 && benders_obj.algOpt.top.dnsThrs != 0.0
 			set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.top.dnsThrs)
 		end
@@ -330,13 +330,13 @@ function runTop(benders_obj::bendersObj)
 		stabTolFeas_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.stabTolFeas[2], benders_obj.algOpt.top.stabTolFeas[1])
 		# set options
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", benders_obj.algOpt.top.stabMeth)
-		set_optimizer_attribute(benders_obj.top.optModel, "BarQCPConvTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
+		set_optimizer_attribute(benders_obj.top.optModel, "BarConvTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "BarQCPConvTol", max(stabTolQ_fl, benders_obj.algOpt.top.stabTolQ[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "FeasibilityTol", max(stabTolFeas_fl, benders_obj.algOpt.top.stabTolFeas[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
 		set_optimizer_attribute(benders_obj.top.optModel, "Threads", benders_obj.algOpt.top.threads)	
-	end
+	#end
 	solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[1:1], benders_obj.algOpt.top.check, false)
 	
 	# handle unsolved top problem
