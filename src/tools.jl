@@ -1579,6 +1579,8 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", scrCases::Vector
 		end
 		if "timestep_foresight" in names(data_df) 
 			data_df[!,:timestep_foresight] = map(x -> lookupString(x, anyM.sets[:Ts]), data_df[!,:timestep_foresight]) 
+		else
+			data_df[!,:timestep_foresight] .= 0
 		end
 		rename!(data_df, [:timestep_superordinate_dispatch => :Ts_disSup, :region_dispatch => :R_dis, :technology => :Te, :carrier => :C, :scenario => :scr, :timestep_foresight => :Ts_frs, :value => :value, :variable => :variable, :id => :id])
 	end
