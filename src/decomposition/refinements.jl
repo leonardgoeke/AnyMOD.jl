@@ -1155,7 +1155,7 @@ function manageCuts!(benders_obj::bendersObj, srsStep_boo::Bool)
 		elseif cutMgmt_ntup.meth == :redundant
 
 			trackP_arr = map(x -> x.cut => x.maxErrAbs, eachrow(filter(x -> x.i == benders_obj.itr.cnt.i, benders_obj.cuts.report)))
-			# get all cuts with a positive value
+			# filter all cuts with a positive d-value (= sign is reversed above)
 			pos_arr = filter(x -> x[2] < 0.0, trackP_arr)
 
 			# get all with above the threshold
