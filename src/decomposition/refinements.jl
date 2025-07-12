@@ -1021,10 +1021,14 @@ function trackCuts!(benders_obj::bendersObj)
 				foreach(x -> delete(scr_opt, scr_refm[x]), cns_df[!,:cns])
 			end
 
+			# add quadratic trust-region
+			if benders_obj.stab.method[stab_obj.actMet] in (:qtr,:qtrLvl,:qtrLvlBox) 
 			stab_obj = benders_obj.stab
-			qtrConsSca_expr = computeQuadExp(benders_obj.top, stab_obj, benders_obj.algOpt.rngVio.stab, relRhs = stab_obj.dynPar[stab_obj.actMet][:qtr])
+				dynPar_fl = stab_obj.method[stab_obj.actMet] == :qtr ? stab_obj.dynPar[stab_obj.actMet] : stab_obj.dynPar[stab_obj.actMet][:qtr]
+				qtrConsSca_expr = computeQuadExp(benders_obj.top, stab_obj, benders_obj.algOpt.rngVio.stab, relRhs = dynPar_fl)
 			qtrConsConvSca_expr = convertQuadExpr(qtrConsSca_expr, scr_refm)
-			qtr_cns = @constraint(scr_opt,  qtrConsConvSca_expr <= 0.0)
+				@constraint(scr_opt,  qtrConsConvSca_expr <= 0.0)
+			end
 
 		end
 
@@ -1165,6 +1169,8 @@ function manageCuts!(benders_obj::bendersObj, srsStep_boo::Bool)
 
 			# set active cuts
 			benders_obj.cuts.active = findall(map(x -> !(x in getindex.(vcat(pos_arr, thres_arr),1)), getindex.(benders_obj.cuts.all,1)))
+		else
+			benders_obj.cuts.active = collect(1:length( benders_obj.cuts.all))
 		end
 
 		# set next iteration for active cut management
