@@ -371,6 +371,7 @@ function runTop(benders_obj::bendersObj)
 			
 			# increase level parameter almost until the upper bound
 			low_fl = stab_obj.dynPar[stab_obj.actMet][:lvl]
+
 			up_fl = stab_obj.objVal / benders_obj.top.options.scaFac.obj
 			upRef_fl = low_fl + (up_fl - low_fl) * (1 - benders_obj.algOpt.gap)
 
@@ -763,7 +764,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		@suppress foreach(x -> best_obj.res[x] = curRes_dic[x], benders_obj.report.res.general)
 		itr_obj.res[:curBest] = best_obj.var.objVal
 		foreach(x -> best_obj.startLvl[x] = stLvl_dic[x], keys(stLvl_dic))
-		if :infeasLvlVal in keys(itr_obj.res) delete!(:infeasLvlVal, itr_obj.res) end # reset level value that cause infeasible top problem
+		if :infeasLvlVal in keys(itr_obj.res) delete!(itr_obj.res, :infeasLvlVal) end # reset level value that cause infeasible top problem
 	end
 
 	# computes optimality gap for cost minimization and feasibility gap for near-optimal

@@ -1200,8 +1200,9 @@ end
 
 #endregion
 
-#region # * create miscellaneous contraints
+#region # * create miscellaneous constraints
 
+# ! create constraint on ratios of capacity and expansion variables
 function createRatioCns!(part::AbstractModelPart, cns_dic::Dict{Symbol,cnsCont}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, anyM::anyModel)
 
 	# creates dictionary assigning first part of parameter name to the corresponding limits enforced
@@ -1356,6 +1357,12 @@ function createRatioCns!(part::AbstractModelPart, cns_dic::Dict{Symbol,cnsCont},
 			# name column back again
 			if !capaRatio_boo cns_df = rename(cns_df, :Ts_dis => :Ts_disSup) end
 
+			# add infeasibility variable
+			if Symbol(par,:Inf) in keys(anyM.parts.cost.par)
+				if lim in (:Up, :Fix) cns_df = addInfeasRatio(cns_df, part, par, :Up, anyM) end
+				if lim in (:Low, :Fix) cns_df = addInfeasRatio(cns_df, part, par, :Low, anyM) end
+			end
+
 			# create constraint
 			cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:val] .* cns_df[!,:denom] .- cns_df[!,:num])
 
@@ -1365,6 +1372,23 @@ function createRatioCns!(part::AbstractModelPart, cns_dic::Dict{Symbol,cnsCont},
 		end
 	end
 
+end
+
+# ! add infeasibility variable to ratio constraints
+function addInfeasRatio(cns_df::DataFrame, part::Union{OthPart,TechPart}, par::Symbol, slack_sym::Symbol, anyM::anyModel)
+	# get infeasibility paramater and create variable
+	var_sym = Symbol(par,:Inf, slack_sym)
+	var_df = matchSetParameter(cns_df, anyM.parts.cost.par[Symbol(par,:Inf)], anyM.sets)
+	part.var[var_sym] = createVar(select(var_df, Not([:denom, :num, :val])), string(var_sym), anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets)	
+	cns_df = innerjoin(cns_df, rename(part.var[var_sym], :var => :inf), on = intCol(cns_df))
+	# extend constraint
+	if slack_sym == :Up
+		cns_df[!,:num] = cns_df[!,:num] .- cns_df[!,:inf]
+	else
+		cns_df[!,:num] = cns_df[!,:num] .+ cns_df[!,:inf]
+	end
+	select!(cns_df, Not([:inf]))
+	return cns_df
 end
 
 #endregion

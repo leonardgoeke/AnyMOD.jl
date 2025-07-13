@@ -444,14 +444,18 @@ function createExpShareCns!(anyM::anyModel)
 		allExp_df = unique(innerjoin(allExp_df, allMustOut_df, on = intCol(allMustOut_df)))
 		allExp_df[!,:var] .= allExp_df[!,:var] .* allExp_df[!,:val]
 
-    	# ! loop to create actual constraints
-
         # match all capacity balances with existing shares on parameters
         cns_df = orderDf(matchSetParameter(capaBal, anyM.parts.bal.par[share_sym], anyM.sets, newCol = :share))
 		
         # add denominator and numerator to dataframe
         cns_df[!,:denom] = aggDivVar(rename(select(allExp_df, Not([:Ts_disSup])), :Ts_expSup => :Ts_disSup), cns_df, (:Ts_disSup, :R_exp, :C), anyM.sets)
         cns_df[!,:num] = aggDivVar(rename(select(allExp_df, Not([:Ts_disSup])), :Ts_expSup => :Ts_disSup), cns_df, (:Ts_disSup, :R_exp, :C, :Te), anyM.sets)
+
+		# add infeasibility variable
+		if :shareExpOutInf in keys(anyM.parts.cost.par)
+			if lim in (:Up, :Fix) cns_df = addInfeasRatio(cns_df, anyM.parts.bal, :shareExpOut, :Up, anyM) end
+			if lim in (:Low, :Fix) cns_df = addInfeasRatio(cns_df, anyM.parts.bal, :shareExpOut, :Low, anyM) end
+		end
 
         cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,:denom] .* cns_df[!,:share] .- cns_df[!,:num])
 	

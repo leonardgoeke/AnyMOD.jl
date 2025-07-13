@@ -1087,8 +1087,18 @@ function enforceStExpc(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyM
 	# aggregate into expression for constaint, add start level with share, and create constraint
 	startLvl_df = rename(matchSetParameter(part.var[:startStLvl], part.par[:expcStStartLvl], anyM.sets, newCol = :expcLvlShare), :var => :expcLvl)
 	cns_df = combine(x -> (sumProb = sum(x.probDelta),), groupby(cns_df, intCol(startLvl_df))) |> (x -> innerjoin(x, startLvl_df, on = intCol(startLvl_df)))
+
+	# add infeasibility variable
+	if :costStLvlLss in keys(anyM.parts.cost.par)
+		var_df = matchSetParameter(cns_df, anyM.parts.cost.par[:costStLvlLss], anyM.sets, newCol = :expcStStartLvl)
+		part.var[:stLvlInfeas] = createVar(select(var_df, Not([:sumProb, :expcLvl, :expcLvlShare, :expcStStartLvl])), "stLvlInfeas", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets)	
+		cns_df = innerjoin(cns_df, rename(part.var[:stLvlInfeas], :var => :inf), on = intCol(cns_df))
+		cns_df[!,:expcLvl] = cns_df[!,:expcLvl] - cns_df[!,:inf] 
+		select!(cns_df, Not([:inf]))
+	end
+
+	# create constraint
 	cns_df[!,:cnsExpr] = map(x -> x.sumProb - x.expcLvl * x.expcLvlShare, eachrow(cns_df))
-	
 	cns_dic[:expcStLvl] = cnsCont(select(cns_df, Not([:sumProb, :expcLvl, :expcLvlShare])), :greater)
 
 	return cns_dic
