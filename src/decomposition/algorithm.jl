@@ -270,7 +270,7 @@ function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::Nam
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.sub.threads)
 	
 	# set options
-	@suppress  begin
+	@suppress begin
 		set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.sub.threads)
 	end
 
@@ -301,7 +301,7 @@ function runTop(benders_obj::bendersObj)
 	allAct_arr = map(x -> (x.i, x.Ts_dis, x.scr), eachrow(benders_obj.top.parts.obj.cns[:bendersCuts]))
 	addCuts_arr = filter(x -> !(benders_obj.cuts.all[x][1] in allAct_arr), benders_obj.cuts.active)
 
-	if !isempty(addCuts_arr) 
+	if !isempty(addCuts_arr)
 		# save values of previous cut for proximal method variation 2
 		benders_obj.cuts.prev = !isnothing(stab_obj) && stab_obj.method[stab_obj.actMet] == :prx2 ? copy(benders_obj.cuts.active) : Int[]
 		# add cuts and reset collecting array
@@ -309,7 +309,7 @@ function runTop(benders_obj::bendersObj)
 	end
 
 	benders_obj.cuts.cnt = (length(benders_obj.cuts.active), length(benders_obj.cuts.all)) 
-	
+
 	#endregion
 
 	#region # * solve problem
@@ -320,7 +320,7 @@ function runTop(benders_obj::bendersObj)
 	stabVar_obj = resData()
 
 	# solve model
-	#@suppress begin 
+	@suppress begin 
 		if benders_obj.algOpt.top.dnsThrs != 0 && benders_obj.algOpt.top.dnsThrs != 0.0
 			set_optimizer_attribute(benders_obj.top.optModel, "GURO_PAR_BARDENSETHRESH", benders_obj.algOpt.top.dnsThrs)
 		end
@@ -336,7 +336,7 @@ function runTop(benders_obj::bendersObj)
 		set_optimizer_attribute(benders_obj.top.optModel, "Crossover", benders_obj.algOpt.top.crs ? 1 : 0)
 		set_optimizer_attribute(benders_obj.top.optModel, "NumericFocus", benders_obj.algOpt.top.numFoc[1])
 		set_optimizer_attribute(benders_obj.top.optModel, "Threads", benders_obj.algOpt.top.threads)	
-	#end
+	end
 	solveModel!(benders_obj.top, benders_obj.top.optModel, benders_obj.algOpt.top.numFoc[1:1], benders_obj.algOpt.top.check, false)
 	
 	# handle unsolved top problem
@@ -763,7 +763,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		@suppress foreach(x -> best_obj.res[x] = curRes_dic[x], benders_obj.report.res.general)
 		itr_obj.res[:curBest] = best_obj.var.objVal
 		foreach(x -> best_obj.startLvl[x] = stLvl_dic[x], keys(stLvl_dic))
-		if :infeasLvlVal in keys(itr_obj.res) delete!(itr_obj.res, :infeasLvlVal) end # reset level value that cause infeasible top problem
+		if :infeasLvlVal in keys(itr_obj.res) delete!(:infeasLvlVal, itr_obj.res) end # reset level value that cause infeasible top problem
 	end
 
 	# computes optimality gap for cost minimization and feasibility gap for near-optimal
@@ -821,6 +821,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	# create cuts for top problem with stabilization
 	colCuts_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
 	exExpr_arr = getindex.(getindex.(benders_obj.cuts.all, 2), 1)
+	
 	for cut in collect(cutData_dic)
 		cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.top.optModel, benders_obj.algOpt.rngVio.cut, benders_obj.top)
 		
@@ -830,7 +831,6 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 			delete!(cutData_dic, cut[1])
 		end
 	end
-
 	append!(benders_obj.cuts.active, collect(length(benders_obj.cuts.all) : length(benders_obj.cuts.all) + length(colCuts_arr) - 1) .+ 1)
 	append!(benders_obj.cuts.all, colCuts_arr)
 
@@ -841,6 +841,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 			cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, benders_obj.top, benders_obj.topNoStab.ref)
 			push!(colCutsNoStab_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
 		end
+		
 		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
 	end
 
@@ -1267,7 +1268,7 @@ function getResult(res_df::DataFrame; pos_boo::Bool = true)
 	end
 
 	# write value of variable dataframe
-	res_df[!,:value] = map(x -> (pos_boo ? max(0, value(x) - x.constant) : (value(x) - x.constant)) |> (y -> round(y, digits = 12)), res_df[!,:var])
+		res_df[!,:value] = map(x -> (pos_boo ? max(0, value(x) - x.constant) : (value(x) - x.constant)) |> (y -> round(y, digits = 12)), res_df[!,:var])
 
 	return select(res_df, Not([:var]))
 end
@@ -1571,6 +1572,25 @@ function addComplCns!(top_m::anyModel, relVar_arr::Vector{Symbol}, complCns_dic:
 		topVar_df[!,:var] = map(x -> x.var * ((!(:scr in keys(x)) || x.scr == 0) ? top_m.scr.scrProb[x.sub] : 1.0), eachrow(topVar_df))
 		allCompl_df = unique(select(allCompl_df, Not([:sub])))
 		allCompl_df[!,:var] = aggDivVar(topVar_df, allCompl_df, tuple(intCol(allCompl_df)...), top_m.sets)
+
+		# add infeasibility variables for limits
+		var_sym = Symbol(replace(string(compl), "BendersCom" => ""))
+		if Symbol(var_sym,:Inf) in keys(top_m.parts.lim.par) 
+			if isempty(intCol(allCompl_df)) foreach(x -> allCompl_df[!,x] .= 0, top_m.parts.lim.par[Symbol(var_sym,:Inf)].dim) end
+			infVar_df = matchSetParameter(select(allCompl_df, intCol(allCompl_df)), top_m.parts.lim.par[Symbol(var_sym,:Inf)], top_m.sets)
+
+			for x in intersect(namesSym(allCompl_df),(:Up,:Low,:Fix))
+				# add infeasibility variables for limits
+				if x in (:Up,:Fix) allCompl_df = addInfeas!(var_sym, allCompl_df, infVar_df, x, :Up, top_m.parts.lim, top_m) end
+				if x in (:Low,:Fix) allCompl_df = addInfeas!(var_sym, allCompl_df, infVar_df, x, :Low, top_m.parts.lim, top_m) end	
+			end
+		end
+
+		# merge infeasibility variables with constant
+		for x in filter(x -> Symbol(:Inf,x) in namesSym(allCompl_df), [:Up, :Low])
+			allCompl_df[!,x] = allCompl_df[!,Symbol(:Inf,x)]
+			select!(allCompl_df, Not([Symbol(:Inf,x)]))
+		end
 
 		cns_dic = Dict{Symbol,cnsCont}()
 		cns_dic = createLimitCont(allCompl_df, compl, cns_dic, top_m)

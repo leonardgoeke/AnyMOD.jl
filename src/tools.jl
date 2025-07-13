@@ -583,7 +583,7 @@ function reportResults(objGrp::Val{:cost}, anyM::anyModel; addObjName::Bool=true
 		cost_df[:,:value] = value.(cost_df[:,:var])
         if :Ts_exp in namesSym(cost_df) cost_df = rename(cost_df, :Ts_exp => :Ts_disSup) end
 
-		if !(:Ts_disSup in names(cost_df)) && cst == :costEmInf # add superordinate dispatch time-step if non-existing
+		if !(:Ts_disSup in names(cost_df)) # add superordinate dispatch time-step if non-existing
 			cost_df[!,:Ts_disSup] .= 0
 		end
 

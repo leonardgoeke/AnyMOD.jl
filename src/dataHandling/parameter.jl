@@ -109,23 +109,28 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     # limits on expansion for conversion, storage and exchange
     parDef_dic[:expConvUp]  = (dim = (:Ts_exp, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_exp => :sum_full, :Te => :sum_full), part = :lim)
     parDef_dic[:expConvLow] = (dim = (:Ts_exp, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_any,  :R_exp => :sum_any,  :Te => :sum_any),  part = :lim)
-    parDef_dic[:expConvFix] = (dim = (:Ts_exp, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_exp => :sum_full, :Te => :sum_full),  part = :lim)
+    parDef_dic[:expConvFix] = (dim = (:Ts_exp, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_exp => :sum_full, :Te => :sum_full), part = :lim)
+    parDef_dic[:expConvInf] = (dim = (:Ts_exp, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:Ts_exp => :avg_any, :R_exp => :avg_any, :Te => :avg_any), part = :lim)
 
     parDef_dic[:expStInUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_exp => :sum_full, :Te => :sum_full, :id => :sum_full), part = :lim)
     parDef_dic[:expStInLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_any,  :R_exp => :sum_any,  :Te => :sum_any,  :id => :sum_any),  part = :lim)
     parDef_dic[:expStInFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_exp => :sum_full, :Te => :sum_full, :id => :sum_full), part = :lim)
+    parDef_dic[:expStInInf] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :avg_any, :R_exp => :avg_any, :Te => :avg_any, :id => :avg_any),     part = :lim)
 
     parDef_dic[:expStOutUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_exp => :sum_full, :Te => :sum_full, :id => :sum_full), part = :lim)
     parDef_dic[:expStOutLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_any,  :R_exp => :sum_any,  :Te => :sum_any,  :id => :sum_any),  part = :lim)
     parDef_dic[:expStOutFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_exp => :sum_full, :Te => :sum_full, :id => :sum_full), part = :lim)
+    parDef_dic[:expStOutInf] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :avg_any, :R_exp => :avg_any, :Te => :avg_any, :id => :avg_any),     part = :lim)
 
     parDef_dic[:expStSizeUp]  = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_exp => :sum_full, :Te => :sum_full, :id => :sum_full), part = :lim)
     parDef_dic[:expStSizeLow] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_any,  :R_exp => :sum_any,  :Te => :sum_any,  :id => :sum_any),  part = :lim)
     parDef_dic[:expStSizeFix] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_exp => :sum_full, :Te => :sum_full, :id => :sum_full), part = :lim)
+    parDef_dic[:expStSizeInf] = (dim = (:Ts_exp, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :avg_any, :R_exp => :avg_any, :Te => :avg_any, :id => :avg_any),     part = :lim)
 
     parDef_dic[:expExcUp]  = (dim = (:Ts_exp, :R_from, :R_to, :Exc, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :Exc => :sum_full, :id => :sum_full), part = :lim)
     parDef_dic[:expExcLow] = (dim = (:Ts_exp, :R_from, :R_to, :Exc, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :Exc => :sum_any,  :id => :sum_any),  part = :lim)
     parDef_dic[:expExcFix] = (dim = (:Ts_exp, :R_from, :R_to, :Exc, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :Exc => :sum_full, :id => :sum_full), part = :lim)
+    parDef_dic[:expExcInf] = (dim = (:Ts_exp, :R_from, :R_to, :Exc, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :avg_any, :R_from => :avg_any, :R_to => :avg_any, :Exc => :avg_any, :id => :avg_any),      part = :lim)
 
     parDef_dic[:expExcUpDir]  = (dim = (:Ts_exp, :R_from, :R_to, :Exc, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_full, :R_from => :sum_full, :R_to => :sum_full, :Exc => :sum_full, :id => :sum_full), part = :lim)
     parDef_dic[:expExcLowDir] = (dim = (:Ts_exp, :R_from, :R_to, :Exc, :id), problem = :top, defVal = nothing, herit = (:Ts_exp => :sum_any,  :R_from => :sum_any,  :R_to => :sum_any,  :Exc => :sum_any,  :id => :sum_any),  part = :lim)
@@ -160,48 +165,58 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     # limits on operated capacity for conversion, storage and exchange
     parDef_dic[:capaConvUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
     parDef_dic[:capaConvLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :Ts_expSup => :sum_any),  part = :lim)
-    parDef_dic[:capaConvFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full),  part = :lim)
-
+    parDef_dic[:capaConvFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:capaConvInf] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:R_exp => :avg_any, :Te => :avg_any, :Ts_disSup => :avg_any, :Ts_expSup => :avg_any),    part = :lim)
+    
     parDef_dic[:capaStInUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
     parDef_dic[:capaStInLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :id => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
     parDef_dic[:capaStInFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:capaStInInf] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :avg_any, :Te => :avg_any, :Ts_disSup => :avg_any, :id => :avg_any, :Ts_expSup => :avg_any),     part = :lim)
 
     parDef_dic[:capaStOutUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
     parDef_dic[:capaStOutLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :id => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
     parDef_dic[:capaStOutFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:capaStOutInf] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :avg_any, :Te => :avg_any, :Ts_disSup => :avg_any, :id => :avg_any, :Ts_expSup => :avg_any),     part = :lim)
 
     parDef_dic[:capaStSizeUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
     parDef_dic[:capaStSizeLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :id => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
     parDef_dic[:capaStSizeFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full,  :Ts_disSup =>:avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:capaStSizeInf] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :avg_any, :Te => :avg_any,  :Ts_disSup =>:avg_any, :id => :avg_any, :Ts_expSup => :avg_any),     part = :lim)
 
-    parDef_dic[:capaExcUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), defVal = nothing, problem = :top, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
-    parDef_dic[:capaExcLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), defVal = nothing, problem = :top, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_any,  :Ts_disSup => :avg_any, :Ts_expSup => :sum_any),  part = :lim)
-    parDef_dic[:capaExcFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), defVal = nothing, problem = :top, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:capaExcUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:capaExcLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_any,  :Ts_disSup => :avg_any, :Ts_expSup => :sum_any),  part = :lim)
+    parDef_dic[:capaExcFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:capaExcInf] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:R_from => :avg_any, :R_to => :avg_any, :Exc => :avg_any, :Ts_disSup => :avg_any, :Ts_expSup => :avg_any),   part = :lim)
 
-    parDef_dic[:capaExcUpDir]  = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), defVal = nothing, problem = :top, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
-    parDef_dic[:capaExcLowDir] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), defVal = nothing, problem = :top, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_any,  :Ts_disSup => :avg_any, :Ts_expSup => :sum_any),  part = :lim)
-    parDef_dic[:capaExcFixDir] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), defVal = nothing, problem = :top, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
-
+    parDef_dic[:capaExcUpDir]  = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:capaExcLowDir] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_any,  :Ts_disSup => :avg_any, :Ts_expSup => :sum_any),  part = :lim)
+    parDef_dic[:capaExcFixDir] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
+    
     # limits on installed capacity for conversion, storage and exchange
     parDef_dic[:insCapaConvUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
     parDef_dic[:insCapaConvLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :Ts_expSup => :sum_any),  part = :lim)
     parDef_dic[:insCapaConvFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:insCapaConvInf] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te), problem = :top, defVal = nothing, herit = (:R_exp => :avg_any, :Te => :avg_any, :Ts_disSup => :avg_any, :Ts_expSup => :avg_any), 	part = :lim)
 
     parDef_dic[:insCapaStInUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
     parDef_dic[:insCapaStInLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :id => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
     parDef_dic[:insCapaStInFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:insCapaStInInf] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :avg_any, :Te => :avg_any, :Ts_disSup => :avg_any, :id => :avg_any, :Ts_expSup => :avg_any), 	   part = :lim)
 
     parDef_dic[:insCapaStOutUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
     parDef_dic[:insCapaStOutLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :id => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
     parDef_dic[:insCapaStOutFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:insCapaStOutInf] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :avg_any, :Te => :avg_any, :Ts_disSup => :avg_any, :id => :avg_any, :Ts_expSup => :avg_any), 	part = :lim)
 
     parDef_dic[:insCapaStSizeUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
     parDef_dic[:insCapaStSizeLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_any,  :Te => :sum_any,  :Ts_disSup => :avg_any, :id => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
     parDef_dic[:insCapaStSizeFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :sum_full, :Te => :sum_full, :Ts_disSup => :avg_any, :id => :sum_full, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:insCapaStSizeInf] = (dim = (:Ts_disSup, :Ts_expSup, :R_exp, :Te, :id), problem = :top, defVal = nothing, herit = (:R_exp => :avg_any, :Te => :avg_any, :Ts_disSup => :avg_any, :id => :avg_any, :Ts_expSup => :avg_any), 	 part = :lim)
 
     parDef_dic[:insCapaExcUp]  = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_full, :Ts_expSup => :sum_full), part = :lim)
     parDef_dic[:insCapaExcLow] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
     parDef_dic[:insCapaExcFix] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_full, :Ts_expSup => :sum_full), part = :lim)
+    parDef_dic[:insCapaExcInf] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_from => :avg_any, :R_to => :avg_any, :Exc => :avg_any, :Ts_expSup => :avg_any),   part = :lim)
 
     parDef_dic[:insCapaExcUpDir]  = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_full, :Ts_expSup => :sum_full), part = :lim)
     parDef_dic[:insCapaExcLowDir] = (dim = (:Ts_disSup, :Ts_expSup, :R_from, :R_to, :Exc), problem = :top, defVal = nothing, herit = (:Ts_disSup => :avg_any, :R_from => :sum_any, :R_to => :sum_any, :Exc => :sum_any,  :Ts_expSup => :sum_any),  part = :lim)
@@ -352,10 +367,10 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     parDef_dic[:trdSellFix]  =  (dim = (:Ts_dis, :R_dis, :C, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :R_dis => :sum_full, :C => :sum_full, :scr => :up), part = :lim)
 
     # emission limits and factors (are computed as net values of trade and exchange)
-    parDef_dic[:emissionUp]    =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_dis => :sum_full, :C => :sum_full, :Te => :sum_full, :Exc => :sum_full, :M => :sum_full, :id => :sum_full, :scr => :up), part = :lim)
-    parDef_dic[:emissionInf]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_dis => :up, :Ts_expSup => :up, :R_dis => :up, :C => :up, :Te => :up, :Exc => :up, :M => :up, :id => :up, :scr => :up), part = :lim)
-    parDef_dic[:emissionFac]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Exc => :up, :M => :up, :id => :up, :scr => :up), part = :lim)
-    parDef_dic[:emissionPrc]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :sub, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Exc => :up, :M => :up, :id => :up, :scr => :up), part = :cost)
+    parDef_dic[:emissionUp]    =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :sub, defVal = nothing,  herit = (:Ts_dis => :sum_full, :Ts_expSup => :sum_full, :R_dis => :sum_full, :C => :sum_full, :Te => :sum_full, :Exc => :sum_full, :M => :sum_full, :id => :sum_full, :scr => :up), part = :lim)
+    parDef_dic[:emissionFac]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :sub, defVal = nothing,  herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Exc => :up, :M => :up, :id => :up, :scr => :up), part = :lim)
+    parDef_dic[:emissionPrc]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :sub, defVal = nothing,  herit = (:Ts_expSup => :up, :Ts_dis => :up, :R_dis => :up, :C => :up, :Te => :up, :Exc => :up, :M => :up, :id => :up, :scr => :up), part = :cost)
+    parDef_dic[:emissionInf]   =  (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :Exc, :M, :id, :scr), problem = :both, defVal = nothing, herit = (:Ts_dis => :up, :Ts_expSup => :up, :R_dis => :up, :C => :up, :Te => :up, :Exc => :up, :M => :up, :id => :up, :scr => :up), part = :lim)
 
     #endregion
 

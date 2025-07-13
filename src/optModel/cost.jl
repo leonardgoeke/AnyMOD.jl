@@ -263,6 +263,17 @@ function createCost!(partCost::OthPart, anyM::anyModel)
 		transferCostEle!(allVar_df, partCost, :costMissCapa, anyM.optModel, anyM.lock, anyM.sets, anyM.options.coefRng, anyM.options.scaFac.costCapa, anyM.options.checkRng, anyM, 0.0)
 	end
 
+	# costs of infeasibility variables
+	for infVar in filter(x -> occursin("Inf",string(x)), keys(anyM.parts.lim.var))
+		allVar_df = matchSetParameter(anyM.parts.lim.var[infVar], anyM.parts.lim.par[Symbol(replace(replace(string(infVar),"Up" => ""), "Low" => ""))], anyM.sets, newCol = :cost)
+		# adds discount factor
+		allVar_df = (:R_dis in intCol(allVar_df) ? rename(allVar_df, :R_dis => :R_exp) : allVar_df) |> (z -> :Ts_dis in intCol(z) ? rename(z, :Ts_dis => :Ts_disSup) : z)
+		allVar_df = matchSetParameter(allVar_df, partCost.par[:disFac], anyM.sets, newCol = :disFac)
+		# create cost expression
+		allVar_df = combine(x -> (expr = sum(x.disFac .* x.var .* x.cost),), groupby(allVar_df, intersect([:Ts_disSup, :R_exp], intCol(allVar_df))))
+		transferCostEle!(allVar_df, partCost, Symbol(:cost,makeUp(infVar)), anyM.optModel, anyM.lock, anyM.sets, anyM.options.coefRng, anyM.options.scaFac.costDisp, anyM.options.checkRng, anyM, 0.0)
+	end
+
 	produceMessage(anyM.options, anyM.report, 2, " - Created all variables and constraints for expansion related costs")
 
 	#endregion

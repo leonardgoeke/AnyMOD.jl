@@ -7,7 +7,7 @@ createOptModel!(model_object::anyModel)
 
 Create all elements of the model's underlying optimization problem except for the objective function.
 """
-function createOptModel!(anyM::anyModel)
+function createOptModel!(anyM::anyModel; exclCost::Bool=false)
 
 	if (anyM.options.createVI.bal || anyM.options.createVI.st)  && anyM.subPro != tuple(0,0)
 		push!(anyM.report,(3, "scenario", "", "valid inequalities are only supported for the investment part of a decomposed problem"))
@@ -129,7 +129,7 @@ function createOptModel!(anyM::anyModel)
 	end
 	
 	createLimitCns!(anyM.parts.lim, anyM)
-	createCost!(anyM.parts.cost, anyM)
+	if !exclCost createCost!(anyM.parts.cost, anyM) end
 
 	#endregion
 

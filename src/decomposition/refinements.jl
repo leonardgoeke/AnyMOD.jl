@@ -343,7 +343,7 @@ function centerStab!(method::Val{:lvl3}, stab_obj::stabObj, rngVio_fl::Float64, 
 	@objective(top_m.optModel, Min, 0.0)
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet])
 
-	return DataFrame(var = String[], fac = Float64[], type = Symbol[])
+	return DataFrame()
 end
 
 # function for box step method
@@ -1023,10 +1023,10 @@ function trackCuts!(benders_obj::bendersObj)
 
 			# add quadratic trust-region
 			if benders_obj.stab.method[stab_obj.actMet] in (:qtr,:qtrLvl,:qtrLvlBox) 
-			stab_obj = benders_obj.stab
+				stab_obj = benders_obj.stab
 				dynPar_fl = stab_obj.method[stab_obj.actMet] == :qtr ? stab_obj.dynPar[stab_obj.actMet] : stab_obj.dynPar[stab_obj.actMet][:qtr]
 				qtrConsSca_expr = computeQuadExp(benders_obj.top, stab_obj, benders_obj.algOpt.rngVio.stab, relRhs = dynPar_fl)
-			qtrConsConvSca_expr = convertQuadExpr(qtrConsSca_expr, scr_refm)
+				qtrConsConvSca_expr = convertQuadExpr(qtrConsSca_expr, scr_refm)
 				@constraint(scr_opt,  qtrConsConvSca_expr <= 0.0)
 			end
 
@@ -1159,7 +1159,7 @@ function manageCuts!(benders_obj::bendersObj, srsStep_boo::Bool)
 		elseif cutMgmt_ntup.meth == :redundant
 
 			trackP_arr = map(x -> x.cut => x.maxErrAbs, eachrow(filter(x -> x.i == benders_obj.itr.cnt.i, benders_obj.cuts.report)))
-			# filter all cuts with a positive d-value (= sign is reversed above)
+			# get all cuts with a positive value
 			pos_arr = filter(x -> x[2] < 0.0, trackP_arr)
 
 			# get all with above the threshold

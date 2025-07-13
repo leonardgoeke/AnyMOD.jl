@@ -534,7 +534,6 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 			end
 		end
 	
-		
 		# hold cases where undirected capacity is fixed for later error checking
 		if va == :capaExc && :FixDir in namesSym(allLimit_df)
 			allLimit_df[!,:dirFix] .= map(x -> isnothing(x), allLimit_df[!,:FixDir])
@@ -549,19 +548,17 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 			select!(allLimit_df, Not([dirLim]))
 		end
 
-		# ! infeas variables for emissions
-		if va == :emission && :emissionInf in keys(partLim.par) && !anyM.options.createVI.bal
-			# check if corresponding parameter is defined
-			if isempty(intCol(allLimit_df)) foreach(x -> allLimit_df[!,x] .= 0, partLim.par[:emissionInf].dim) end
-			infVar_df = matchSetParameter(select(allLimit_df, intCol(allLimit_df)), partLim.par[:emissionInf], anyM.sets)
-			if !isempty(infVar_df)
-				infVar_df = select(createVar(infVar_df, "emissionInf", NaN, anyM.optModel, anyM.lock, anyM.sets), Not([:val]))
-				allLimit_df = joinMissing(allLimit_df, rename(infVar_df, :var => :inf), intCol(infVar_df), :left, Dict(:var => AffExpr()))
-				allLimit_df[!,:var] = allLimit_df[!,:var] .- allLimit_df[!,:inf]
-				select!(allLimit_df, Not([:inf]))
-				partLim.var[:emissionInf] = infVar_df
+		# add infeasibility variables for limits
+        if Symbol(va,:Inf) in keys(partLim.par) 
+            if isempty(intCol(allLimit_df)) foreach(x -> allLimit_df[!,x] .= 0, partLim.par[Symbol(va,:Inf)].dim) end
+            infVar_df = matchSetParameter(select(allLimit_df, intCol(allLimit_df)), partLim.par[Symbol(va,:Inf)], anyM.sets)
+        
+			for x in intersect(namesSym(allLimit_df),(:Up,:Low,:Fix))
+				# add infeasibility variables for limits
+				if x in (:Up,:Fix) allLimit_df = addInfeas!(va,allLimit_df, infVar_df, x, :Up, partLim, anyM) end
+				if x in (:Low,:Fix) allLimit_df = addInfeas!(va,allLimit_df, infVar_df, x, :Low, partLim, anyM) end	
 			end
-		end
+        end
 
 		# ! check for contradicting values
 		limitCol_arr = intersect(namesSym(allLimit_df), (:Fix, :Up, :Low))
@@ -673,7 +670,7 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 		stochVar_boo = !any(occursin.(["capa","Capa","exp","Exp","retro"],string(va)))
 		if !isempty(anyM.subPro) && anyM.subPro != (0,0) && stochVar_boo && !anyM.options.monteCarlo 
 			
-			comLimit_df = filter(x -> true, allLimit_df)
+			comLimit_df = select(filter(x -> true, allLimit_df), Not(intersect(namesSym(allLimit_df), (:InfUp, :InfLow))))
 			
 			# covering several subproblems due to scenario resolution
 			if :scr in intCol(allLimit_df)
@@ -691,7 +688,7 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 		
 			if !isempty(comLimit_df) 
 				comLimit_df = unique(comLimit_df) 
-			
+
 				# remove complicating limits from all limits (filter case that there is only single column in the dataframe)
 				allLimit_df = isempty(intCol(allLimit_df)) ? filter(x -> false, allLimit_df) : antijoin(allLimit_df, comLimit_df, on = intCol(allLimit_df))
 				if isempty(intCol(allLimit_df)) comLimit_df[!,:scr] .= 0 end
@@ -705,17 +702,33 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 				if :Up in namesSym(comLimit_df)
 					select!(comLimit_df, Not(nonSupLim_arr)) 
 				else
+					select!(comLimit_df, Not([:InfUp,:InfLow]))
 					continue
 				end
 		
-				# create complicatint variable and constraint
+				# create complicating variable
 				lock(anyM.lock)
 				partLim.var[Symbol(va,:BendersCom)] = createVar(orderDf(select(comLimit_df, filter(x -> x != :var, namesSym(comLimit_df)))),string(va,:BendersCom), NaN, anyM.optModel, anyM.lock, anyM.sets; scaFac = anyM.options.scaFac.dispConv, lowBd = va == :emission ? NaN : 0.0)
 				unlock(anyM.lock)
+
+				# merge with infeasibility variable
+				if :InfUp in namesSym(comLimit_df)
+					comLimit_df[!,:var] = comLimit_df[!,:var] .- comLimit_df[!,:InfUp]
+					select!(comLimit_df, Not([:InfUp]))
+					select!(partLim.var[Symbol(va,:BendersCom)], Not([:InfUp]))
+				end
+
+				# create constraint
 				comLimitCns_df = innerjoin(partLim.var[Symbol(va,:BendersCom)], rename(select(comLimit_df, intCol(comLimit_df,:var)), :var => :limVar), on = intCol(comLimit_df))
 				comLimitCns_df[!,:cnsExpr] = map(x -> x.var - x.limVar, eachrow(comLimitCns_df))
 				cns_dic[Symbol(va,:BendersCom)] = cnsCont(select(comLimitCns_df, intCol(comLimitCns_df,:cnsExpr)), :greater)
 			end
+		end
+
+		# ! merge infeasibility variables with constant
+		for x in filter(x -> Symbol(:Inf,x) in namesSym(allLimit_df), [:Up, :Low])
+			allLimit_df[!,x] = allLimit_df[!,Symbol(:Inf,x)]
+			select!(allLimit_df, Not([Symbol(:Inf,x)]))
 		end
 
 		# ! write constraint containers
@@ -758,6 +771,20 @@ function createLimitCont(allLimit_df::DataFrame, va::Symbol, cns_dic::Dict{Symbo
 
 	return cns_dic
 
+end
+
+# ! add specifc infeas variables to limit dataframe
+function addInfeas!(va::Symbol, allLimit_df::DataFrame, infVar_df::DataFrame, lim_sym::Symbol, check_sym::Symbol, partLim::OthPart, anyM::anyModel)
+	infeas_sym = Symbol(:Inf,check_sym)
+	# create variable where limits is not thing
+	infVar_df = createVar(innerjoin(select(infVar_df,Not([:val])), select(filter(y -> !isnothing(getindex(y,lim_sym)), allLimit_df), intCol(allLimit_df)), on = intCol(infVar_df)), string(Symbol(va,infeas_sym)), NaN, anyM.optModel, anyM.lock, anyM.sets)
+	# match with limits and add to limit value
+	allLimit_df = joinMissing(allLimit_df, rename(infVar_df, :var => :inf), intCol(infVar_df), :left, Dict(:var => AffExpr(), :inf => nothing))
+	allLimit_df[!,infeas_sym] = map(y -> isnothing(y.inf) ? nothing : getindex(y,lim_sym) + (check_sym == :Up ? y.inf : - y.inf), eachrow(allLimit_df))
+	select!(allLimit_df, Not([:inf]))
+	# save resutls
+	partLim.var[Symbol(va,infeas_sym)] = infVar_df
+	return allLimit_df
 end
 
 #endregion

@@ -126,7 +126,7 @@ mutable struct stabObj
 		stab_obj.objVal = resData_obj.objVal
 		stab_obj.repVio = repVio_boo
 		stab_obj.var = filterStabVar(resData_obj.capa, resData_obj.stLvl, resData_obj.lim, weight_ntup, top_m)
-		
+
 		# compute number of variables subject to stabilization
 		stabCapa_arr = vcat(vcat(vcat(map(x -> stab_obj.var[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)
 		stLvl_arr = vcat(vcat(map(x -> stab_obj.var[:stLvl][x] |> (u -> map(y -> u[y][!,:value], collect(keys(u)))), collect(keys(stab_obj.var[:stLvl])))...)...)
@@ -224,13 +224,11 @@ mutable struct bendersObj
 
 		# finish creation of top-problems
 		top_m.subPro = tuple(0, 0)
-		prepareMod!(top_m, benders_obj.algOpt.opt, benders_obj.algOpt.top.threads)
-
-		# create separate variables for costs of subproblems
-		top_m.parts.obj.var[:cut] = map(y -> map(x -> y == 1 ? sub_tup[x][1] : sub_tup[x][2], 1:length(sub_tup)), 1:2) |> (z -> createVar(DataFrame(Ts_dis = z[1], scr = z[2]), "subCut", NaN, top_m.optModel, top_m.lock, top_m.sets, scaFac = 1e2))
-		push!(top_m.parts.obj.cns[:objEqn], (name = :aggCut, cns = @constraint(top_m.optModel, sum(top_m.parts.obj.var[:cut][!,:var]) == filter(x -> x.name == :benders, top_m.parts.obj.var[:objVar])[1,:var])))
+		createOptModel!(top_m; exclCost = true)
+		set_optimizer(top_m.optModel, benders_obj.algOpt.opt)
+		set_optimizer_attribute(top_m.optModel, "Threads", benders_obj.algOpt.top.threads)
 		benders_obj.top = top_m
-		
+
 		if benders_obj.algOpt.dist 
 			# wait for construction of sub-problems
 			wait.(collect(values(benders_obj.sub)))
@@ -244,6 +242,15 @@ mutable struct bendersObj
 		# write complicating constraints into top problem
 		writeComplCons!(benders_obj)
 
+		# set costs for top-problem (must be after writing of complicating constraints to account for infeasibiltiy costs)
+		top_m = benders_obj.top
+		createCost!(top_m.parts.cost, top_m)
+		setObjective!(:cost, top_m)
+
+		# create separate variables for costs of subproblems
+		top_m.parts.obj.var[:cut] = map(y -> map(x -> y == 1 ? sub_tup[x][1] : sub_tup[x][2], 1:length(sub_tup)), 1:2) |> (z -> createVar(DataFrame(Ts_dis = z[1], scr = z[2]), "subCut", NaN, top_m.optModel, top_m.lock, top_m.sets, scaFac = 1e2))
+		push!(top_m.parts.obj.cns[:objEqn], (name = :aggCut, cns = @constraint(top_m.optModel, sum(top_m.parts.obj.var[:cut][!,:var]) == filter(x -> x.name == :benders, top_m.parts.obj.var[:objVar])[1,:var])))
+
 		# initialize stabilization
 		prepareStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
 
@@ -253,4 +260,6 @@ mutable struct bendersObj
 end
 
 #endregion
+
+
 
