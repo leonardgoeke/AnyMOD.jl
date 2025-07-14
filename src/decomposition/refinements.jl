@@ -343,7 +343,7 @@ function centerStab!(method::Val{:lvl3}, stab_obj::stabObj, rngVio_fl::Float64, 
 	@objective(top_m.optModel, Min, 0.0)
 	set_upper_bound(top_m.parts.obj.var[:obj][1, 1], stab_obj.dynPar[stab_obj.actMet])
 
-	return DataFrame()
+	return DataFrame(var = String[], fac = Float64[], type = Symbol[])
 end
 
 # function for box step method
