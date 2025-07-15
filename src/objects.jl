@@ -339,6 +339,7 @@ mutable struct modOptions
 	createVI::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}
 	frsLvl::Int
 	dbInf::Bool
+	infeasTop::Bool
 	# reporting related options
 	reportLvl::Int
 	errCheckLvl::Int
@@ -515,7 +516,7 @@ mutable struct anyModel <: AbstractModel
 	function anyModel(inDir::Union{String,Array{String,1}}, outDir::String; objName = "", csvDelim = ",", interCapa = :linear, supTsLvl = 0, shortExp = 10, stepLen = 1.0, repTsLvl = 0, holdFixed = false, onlyDesFac = false, monteCarlo = false, emissionLoss = false,
 																										reportLvl = 2, errCheckLvl = 1, errWrtLvl = 1, coefRng = (mat = (1e-2, 1e4), rhs = (1e-2, 1e2)),
 																											scaFac = (capa = 1e2,  capaStSize = 1e3, insCapa = 1e1, dispConv = 1e3, dispSt = 1e3, dispExc = 1e3, dispTrd = 1e1, costDisp = 1e1, costCapa = 1e2, obj = 1e0),
-																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true), forceScr = nothing, frsLvl = 0, createVI = (bal = false, st = false), dbInf = false)
+																												bound = (capa = NaN, disp = NaN, obj = NaN), avaMin = 0.01, checkRng = (print = false, all = true), forceScr = nothing, frsLvl = 0, createVI = (bal = false, st = false), dbInf = false, infeasTop = true)
 		anyM = new()
 
 		if frsLvl != 0 && createVI.bal
@@ -534,7 +535,7 @@ mutable struct anyModel <: AbstractModel
 		outStamp_str = string(objName, "_", Dates.format(now(), "yyyymmddHHMM"))
 		defOpt_ntup = (inDir = typeof(inDir) == String ? [inDir] : inDir, outDir = outDir, objName = objName, csvDelim = csvDelim, outStamp = outStamp_str, interCapa = interCapa, supTsLvl = supTsLvl, shortExp = shortExp, 
 																										stepLen = stepLen, repTsLvl = repTsLvl, holdFixed = holdFixed, onlyDesFac = onlyDesFac, monteCarlo = monteCarlo, emissionLoss = emissionLoss, coefRng = coefRng, scaFac = scaFac, bound = bound,
-																											avaMin = avaMin, checkRng = checkRng, forceScr = forceScr, createVI = createVI, frsLvl = frsLvl, dbInf = dbInf, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
+																											avaMin = avaMin, checkRng = checkRng, forceScr = forceScr, createVI = createVI, frsLvl = frsLvl, dbInf = dbInf, infeasTop = infeasTop, reportLvl = reportLvl, errCheckLvl = errCheckLvl, errWrtLvl = errWrtLvl, startTime = now())
 
 		anyM.options = modOptions(defOpt_ntup...)
 

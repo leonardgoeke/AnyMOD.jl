@@ -1089,7 +1089,7 @@ function enforceStExpc(part::TechPart, cns_dic::Dict{Symbol,cnsCont}, anyM::anyM
 	cns_df = combine(x -> (sumProb = sum(x.probDelta),), groupby(cns_df, intCol(startLvl_df))) |> (x -> innerjoin(x, startLvl_df, on = intCol(startLvl_df)))
 
 	# add infeasibility variable
-	if :costStLvlLss in keys(anyM.parts.cost.par)
+	if :costStLvlLss in keys(anyM.parts.cost.par) && anyM.options.infeasTop
 		var_df = matchSetParameter(cns_df, anyM.parts.cost.par[:costStLvlLss], anyM.sets, newCol = :expcStStartLvl)
 		part.var[:stLvlInfeas] = createVar(select(var_df, Not([:sumProb, :expcLvl, :expcLvlShare, :expcStStartLvl])), "stLvlInfeas", anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets)	
 		cns_df = innerjoin(cns_df, rename(part.var[:stLvlInfeas], :var => :inf), on = intCol(cns_df))

@@ -70,7 +70,7 @@ function createOptModel!(anyM::anyModel; exclCost::Bool=false)
 	techCnsDic_arr = Array{Dict{Symbol,cnsCont}}(undef, length(techSym_arr))
 	tech_itr = collect(enumerate(techSym_arr))
 
-	@threads for (idx,tSym) in tech_itr
+	for (idx,tSym) in tech_itr 
 		techCnsDic_arr[idx] = createTech!(sysInt(tSym, anyM.sets[:Te]), anyM.parts.tech[tSym], prepSys_dic[:Te][tSym], copy(parDef_dic), ts_dic, yTs_dic, r_dic, anyM)
 	end
 
