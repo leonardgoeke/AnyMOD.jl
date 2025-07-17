@@ -1022,7 +1022,8 @@ function trackCuts!(benders_obj::bendersObj)
 			end
 
 			# add quadratic trust-region
-			if benders_obj.stab.method[stab_obj.actMet] in (:qtr,:qtrLvl,:qtrLvlBox) 
+			stab_obj = benders_obj.stab
+			if stab_obj.method[stab_obj.actMet] in (:qtr,:qtrLvl,:qtrLvlBox) 
 				stab_obj = benders_obj.stab
 				dynPar_fl = stab_obj.method[stab_obj.actMet] == :qtr ? stab_obj.dynPar[stab_obj.actMet] : stab_obj.dynPar[stab_obj.actMet][:qtr]
 				qtrConsSca_expr = computeQuadExp(benders_obj.top, stab_obj, benders_obj.algOpt.rngVio.stab, relRhs = dynPar_fl)
