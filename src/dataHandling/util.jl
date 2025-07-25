@@ -503,7 +503,7 @@ function getAllVariables(va::Symbol, anyM::anyModel; filterFunc::Function = x ->
 	sys_dic = getfield(anyM.parts, exc_boo ? :exc : :tech)
 	sysSym_arr = collect(keys(sys_dic))
 	
-	if !(va in (:crt, :lss, :trdBuy, :trdSell, :emission, :emissionInf)) && !occursin("cost", string(va)) # get all variables for systems
+	if !(va in (:crt, :lss, :trdBuy, :trdSell, :emission, :emissionInf, :shareExpOutInfLow, :shareExpOutInfUp)) && !occursin("cost", string(va)) # get all variables for systems
 		va_dic = Dict(:stIn => (:stExtIn, :stIntIn), :stOut => (:stExtOut, :stIntOut), :convIn => (:use, :stIntOut), :convOut => (:gen, :stIntIn))
 		sysType_arr = filter(x -> !isempty(x[2]), [(vaSpec, filter(y -> vaSpec in keys(sys_dic[y].var), sysSym_arr)) for vaSpec in (va in keys(va_dic) ? va_dic[va] : (va,))])
 
@@ -518,7 +518,7 @@ function getAllVariables(va::Symbol, anyM::anyModel; filterFunc::Function = x ->
 			allVar_df = combine(groupby(allVar_df, intCol(allVar_df)), :var => (x -> sum(x)) => :var)
 		end
 
-	elseif va in (:crt, :lss, :trdBuy, :trdSell) # get variables from balance part
+	elseif va in (:crt, :lss, :trdBuy, :trdSell, :shareExpOutInfLow, :shareExpOutInfUp) # get variables from balance part
 		if va in keys(anyM.parts.bal.var)
 			allVar_df = copy(anyM.parts.bal.var[va])
 		else

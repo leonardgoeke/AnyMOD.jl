@@ -537,7 +537,9 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 				allLimit_df = joinMissing(allLimit_df, limit_df, join_arr, :outer, merge(Dict(z => 0 for z in miss_arr), Dict(:Up => nothing, :Low => nothing, :Fix => nothing, :UpDir => nothing, :LowDir => nothing, :FixDir=> nothing)))
 			end
 		end
-	
+		# remove pure nothing columns
+    	foreach(x -> unique(allLimit_df[!,x]) == [nothing] ? select!(allLimit_df, Not(x)) : nothing, intersect(namesSym(allLimit_df),(:Up,:Low,:Fix)))
+
 		# hold cases where undirected capacity is fixed for later error checking
 		if va == :capaExc && :FixDir in namesSym(allLimit_df)
 			allLimit_df[!,:dirFix] .= map(x -> isnothing(x), allLimit_df[!,:FixDir])
@@ -552,17 +554,18 @@ function createLimitCns!(partLim::OthPart, anyM::anyModel)
 			select!(allLimit_df, Not([dirLim]))
 		end
 
-		# add infeasibility variables for limits
-        if Symbol(va,:Inf) in keys(partLim.par) 
-            if isempty(intCol(allLimit_df)) foreach(x -> allLimit_df[!,x] .= 0, partLim.par[Symbol(va,:Inf)].dim) end
-            infVar_df = matchSetParameter(select(allLimit_df, intCol(allLimit_df)), partLim.par[Symbol(va,:Inf)], anyM.sets)
-        
-			for x in intersect(namesSym(allLimit_df),(:Up,:Low,:Fix))
+		# add infeasibility slack
+		if Symbol(va,:Inf) in keys(partLim.par) 
+			if isempty(intCol(allLimit_df)) foreach(x -> allLimit_df[!,x] .= 0, partLim.par[Symbol(va,:Inf)].dim) end
+			infVar_df = matchSetParameter(select(allLimit_df, intCol(allLimit_df)), partLim.par[Symbol(va,:Inf)], anyM.sets)
+		
+			relLim_arr = intersect(namesSym(allLimit_df),(:Up,:Low,:Fix))
+			for x in relLim_arr
 				# add infeasibility variables for limits
-				if x in (:Up,:Fix) allLimit_df = addInfeas!(va,allLimit_df, infVar_df, x, :Up, partLim, anyM) end
-				if x in (:Low,:Fix) allLimit_df = addInfeas!(va,allLimit_df, infVar_df, x, :Low, partLim, anyM) end	
+				if x in (:Up,:Fix) && !(:InfUp in namesSym(allLimit_df)) allLimit_df = addInfeas!(va,allLimit_df, infVar_df, x, :Up, partLim, anyM) end
+				if x in (:Low,:Fix) && !(:InfLow in namesSym(allLimit_df)) allLimit_df = addInfeas!(va,allLimit_df, infVar_df, x, :Low, partLim, anyM) end
 			end
-        end
+		end
 
 		# ! check for contradicting values
 		limitCol_arr = intersect(namesSym(allLimit_df), (:Fix, :Up, :Low))
@@ -780,14 +783,14 @@ end
 # ! add specifc infeas variables to limit dataframe
 function addInfeas!(va::Symbol, allLimit_df::DataFrame, infVar_df::DataFrame, lim_sym::Symbol, check_sym::Symbol, partLim::OthPart, anyM::anyModel)
 	infeas_sym = Symbol(:Inf,check_sym)
-	# create variable where limits is not thing
+	# create variable where limits is not nothing
 	infVar_df = createVar(innerjoin(select(infVar_df,Not([:val])), select(filter(y -> !isnothing(getindex(y,lim_sym)), allLimit_df), intCol(allLimit_df)), on = intCol(infVar_df)), string(Symbol(va,infeas_sym)), NaN, anyM.optModel, anyM.lock, anyM.sets)
 	# match with limits and add to limit value
 	allLimit_df = joinMissing(allLimit_df, rename(infVar_df, :var => :inf), intCol(infVar_df), :left, Dict(:var => AffExpr(), :inf => nothing))
 	allLimit_df[!,infeas_sym] = map(y -> isnothing(y.inf) ? nothing : getindex(y,lim_sym) + (check_sym == :Up ? y.inf : - y.inf), eachrow(allLimit_df))
 	select!(allLimit_df, Not([:inf]))
-	# save resutls
-	partLim.var[Symbol(va,infeas_sym)] = infVar_df
+	# save results
+	if !isempty(infVar_df) partLim.var[Symbol(va,infeas_sym)] = infVar_df end
 	return allLimit_df
 end
 

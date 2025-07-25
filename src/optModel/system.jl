@@ -1379,7 +1379,15 @@ function addInfeasRatio(cns_df::DataFrame, part::Union{OthPart,TechPart}, par::S
 	# get infeasibility paramater and create variable
 	var_sym = Symbol(par,:Inf, slack_sym)
 	var_df = matchSetParameter(cns_df, anyM.parts.cost.par[Symbol(par,:Inf)], anyM.sets)
-	part.var[var_sym] = createVar(select(var_df, Not(intersect(namesSym(var_df), [:denom, :num, :val, :share]))), string(var_sym), anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets)	
+	
+	# create infeas variable and store in object
+	var_df = createVar(select(var_df, Not(intersect(namesSym(var_df), [:denom, :num, :val, :share]))), string(var_sym), anyM.options.bound.capa, anyM.optModel, anyM.lock, anyM.sets)	
+	if var_sym in keys(part.var)
+		append!(part.var[var_sym], var_df)
+	else
+		part.var[var_sym] = var_df
+	end
+	
 	cns_df = innerjoin(cns_df, rename(part.var[var_sym], :var => :inf), on = intCol(cns_df))
 	# extend constraint
 	if slack_sym == :Up
