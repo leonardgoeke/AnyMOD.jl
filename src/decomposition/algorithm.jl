@@ -1801,7 +1801,7 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 			if benders_obj.algOpt.dist # distributed case
 				futData_dic[s] = runSubDist(id + 1, copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 0.0, 1e-8, false, benders_obj.algOpt.sub.check, res_ntup)
 			else # non-distributed case
-				runSub(benders_obj.sub[s], copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 1e-8, 0.0, false, benders_obj.algOpt.sub.check, res_ntup)
+				runSub(benders_obj.sub[s], copy(benders_obj.itr.best.var), benders_obj.algOpt.rngVio.fix, :barrier, 0.0, 1e-8, false, true, res_ntup)
 			end
 		end
 	end
@@ -1827,6 +1827,8 @@ function writeBendersResults!(benders_obj::bendersObj, runSubDist::Function, get
 		elseif "timestep_foresight" in names(merged_df)
 			merged_df[!,:timestep_foresight] = replace.(merged_df[!,:timestep_foresight], " " => "")
 		end
+
+		merged_df[!,:scenario] .= "none"
 	
 		for file in mergFile_arr[2:end]
 			add_df = CSV.read(file, DataFrame, stringtype = String)
