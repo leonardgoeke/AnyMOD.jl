@@ -632,7 +632,7 @@ function getScrLvl(anyM::anyModel)
 
 	# checks if actually any scenarios are defined
 	if !(isempty(allScr_arr))
-
+		println(anyM.options.frsLvl)
 		minDis_int = minimum(map(x -> getfield(x, :tsDis), values(anyM.cInfo)))
 		if anyM.options.frsLvl != 0 
 			if anyM.options.supTsLvl > anyM.options.frsLvl
@@ -640,9 +640,10 @@ function getScrLvl(anyM::anyModel)
 				push!(anyM.report, (2, "scenario mapping", "", "specified foresight level is less detailed than superordinate dispatch level, therefore model uses yearly foresight"))
 			elseif minDis_int < anyM.options.frsLvl 
 				anyM.options.frsLvl = minDis_int
-				push!(anyM.report, (1, "scenario mapping", "", "specified foresight level exceeds least detailed dispatch resolution, model uses level $(minDis_int) instead"))
+				push!(anyM.report, (2, "scenario mapping", "", "specified foresight level exceeds least detailed dispatch resolution, model uses level $(minDis_int) instead, this will cause an error, if this is also the superordinate dispatch level"))
 			end
 		end
+
 		# gets level for scenarios
 		lvl_int = anyM.options.frsLvl
 	else
@@ -714,7 +715,6 @@ function createScenarioMapping!(lvl_int::Int, anyM::anyModel)
 			end
 		end
 
-		
 		# check if there are multiple foresight periods 
 		if lvl_int != 0 && length(getNodesLvl(anyM.sets[:Ts], anyM.supTs.lvl)) == length(getNodesLvl(anyM.sets[:Ts], lvl_int)) && anyM.subPro != (0,0)
 			for x in anyM.supTs.step
