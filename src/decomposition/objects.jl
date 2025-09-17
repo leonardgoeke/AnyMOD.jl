@@ -66,6 +66,66 @@ mutable struct resData
 	stLvl::Dict{Symbol,Dict{Symbol,DataFrame}}
 	lim::Dict{Symbol,DataFrame}
 	resData() = new(Inf, Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}(), Dict{Symbol,DataFrame}(), Dict{Symbol,DataFrame}())
+
+	function resData(in_m::anyModel)
+
+		var_arr = [:capa, :mustCapa, :exp, :mustExp, :stLvl, :lim]
+
+		# write expansion value
+		capa_dic = Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}}()
+		
+		for sys in (:tech, :exc)
+			capa_dic[sys] = Dict{Symbol,Dict{Symbol,DataFrame}}()
+			part_dic = getfield(in_m.parts, sys)
+			for sSym in filter(x -> part_dic[x].type in (:stock, :mature, :emerging), keys(part_dic))
+				
+				# continue in case of technology without changing capacites
+				if part_dic[sSym].type == :stock && part_dic[sSym].decomm == :none && !(:capaStSizeSeason in keys(part_dic[sSym].var)) continue end	
+
+				varSym_arr = filter(x -> any(occursin.(string.(var_arr), string(x))) && !(x in (:stLvl, :stLvlInter, :capaStSizeInter)), keys(part_dic[sSym].var))
+
+				# get relevant capcities filtering fixed ones in case option is active
+				capa_dic[sys][sSym] = Dict{Symbol, DataFrame}()
+				for varSym in varSym_arr
+					relVar_df = filter(x -> !isempty(x.var.terms), copy(part_dic[sSym].var[varSym]))
+					if isempty(relVar_df) continue end
+					capa_dic[sys][sSym][varSym] = getResult(relVar_df)
+				end
+
+				# remove empty fields
+				filter!(x -> !isempty(x[2]), capa_dic[sys][sSym])
+				removeEmptyDic!(capa_dic[sys], sSym)	
+			end
+		end
+
+		# write storage levels in case of reduced foresight
+		stLvl_dic = Dict{Symbol,Dict{Symbol,DataFrame}}()
+
+		if :stLvl in var_arr && in_m.options.frsLvl != 0
+			for sSym in keys(in_m.parts.tech)
+				stLvl_dic[sSym] = Dict{Symbol,DataFrame}()
+				for stType in (:stLvl, :stLvlInter)
+					if stType in keys(in_m.parts.tech[sSym].var)
+						stLvl_dic[sSym][stType] = getResult(copy(in_m.parts.tech[sSym].var[stType]); pos_boo = stType == :stLvl)
+						removeEmptyDic!(stLvl_dic[sSym], stType)
+					end
+				end
+				removeEmptyDic!(stLvl_dic, sSym)
+			end
+			
+		end
+
+		comLim_dic = Dict{Symbol,DataFrame}()
+
+		# write limits
+		if :lim in var_arr
+			for lim in filter(x -> occursin("BendersCom", string(x)), keys(in_m.parts.lim.var))
+				comLim_dic[lim] = getResult(copy(in_m.parts.lim.var[lim]); pos_boo = false)
+			end
+		end
+
+		return new(Inf, capa_dic, stLvl_dic, comLim_dic)
+	end
 end
 
 # copy functions for model results
@@ -103,6 +163,7 @@ mutable struct stabObj
 	
 	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, lowLimVal_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, solveNoStab_ntup::NamedTuple{(:upper, :inter, :sub), Tuple{Int64, Symbol, Float64}}, repVio_boo::Bool, top_m::anyModel)
 		stab_obj = new()
+		resDataStab_obj = filterResData(resData_obj, top_m, [:capa, :exp, :stLvl, :lim]; rmvFix = true)
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64,Float64,Int64}})
 			error("rule for switching stabilization method must be empty or have the fields 'itr', 'avgImp', and 'itrAvg'")
@@ -112,7 +173,7 @@ mutable struct stabObj
 			error("parameter 'itr' for  minimum iterations before switching stabilization method must be at least 2")
 		end
 
-		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup, lowBd_fl, resData_obj.objVal, top_m)
+		stab_obj.method, stab_obj.methodOpt, stab_obj.dynPar = writeStabOpt(meth_tup, lowBd_fl, resDataStab_obj.objVal, top_m)
 		stab_obj.solveNoStab = solveNoStab_ntup 
 
 		# set other fields
@@ -123,9 +184,9 @@ mutable struct stabObj
 		stab_obj.actMet = 1
 		stab_obj.lastSw = 0
 		stab_obj.crossNoStab = false
-		stab_obj.objVal = resData_obj.objVal
+		stab_obj.objVal = resDataStab_obj.objVal
 		stab_obj.repVio = repVio_boo
-		stab_obj.var = filterStabVar(resData_obj.capa, resData_obj.stLvl, resData_obj.lim, weight_ntup, top_m)
+		stab_obj.var = filterStabVar(resDataStab_obj.capa, resDataStab_obj.stLvl, resDataStab_obj.lim, weight_ntup, top_m)
 
 		# compute number of variables subject to stabilization
 		stabCapa_arr = vcat(vcat(vcat(map(x -> stab_obj.var[:capa][x] |> (u -> map(y -> u[y] |> (w -> map(z -> w[z][!,:value], collect(keys(w)))), collect(keys(u)))), [:tech, :exc])...)...)...)

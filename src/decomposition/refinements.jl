@@ -28,7 +28,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			top_m = computeFeas(top_m, heuSol_obj.capa, 0.001, cutSmall = false);
 		
 			# write results for heuristic solution
-			(startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim) = writeResult(top_m, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)
+			startSol_obj = resData(benders_obj.top)
 			topCost_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 			startRes_dic = Dict(x => reportResults(x, top_m, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
  			
@@ -64,8 +64,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			end	
 		else
 			@suppress optimize!(benders_obj.top.optModel)
-			startSol_obj = resData()
-			startSol_obj.capa, startSol_obj.stLvl, startSol_obj.lim  = writeResult(benders_obj.top, [:capa, :exp, :mustCapa, :stLvl, :lim]; rmvFix = true)
+			startSol_obj = resData(benders_obj.top)
 			lowBd_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 			topCost_fl = value(benders_obj.top.parts.obj.var[:objVar][1,:var])
 			startRes_dic = Dict(x => reportResults(x, benders_obj.top, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
