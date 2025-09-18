@@ -1081,7 +1081,6 @@ function filterResData(in_res::resData, in_m::anyModel, var_arr::Array{Symbol,1}
 			# check if storage expansion is fixed to storage output and removes variables in these cases
 			if sys == :tech && fltSt
 				for stVar in collect(keys(in_res.capa[sys][sSym]))
-					println(stVar)
 					in_res.capa[sys][sSym][stVar] = removeFixStorage(stVar, in_res.capa[sys][sSym][stVar], part_dic[sSym])
 					if isempty(in_res.capa[sys][sSym][stVar]) delete!(in_res.capa[sys][sSym], stVar) end
 				end
@@ -1089,7 +1088,7 @@ function filterResData(in_res::resData, in_m::anyModel, var_arr::Array{Symbol,1}
 
 			# removes variables that are fixed from output
 			if rmvFix
-				for varSym in var_arr
+				for varSym in keys(in_res.capa[sys][sSym])
 					must_boo = occursin("must", string(varSym))
 					fixVar_sym = part_dic[sSym].decomm == :none ? Symbol(replace(string(varSym), must_boo ? "Capa" => "Exp" : "capa" => "exp")) : varSym
 					if Symbol(fixVar_sym, "BendersFix") in collect(keys(part_dic[sSym].cns))
@@ -1125,14 +1124,18 @@ function filterResData(in_res::resData, in_m::anyModel, var_arr::Array{Symbol,1}
 			end
 
 			# remove empty fields or not needed variables
-			filter!(x -> !isempty(x[2]) && x[1] in var_arr, in_res.capa[sys][sSym])
+			filter!(x -> !isempty(x[2]) && any(occursin.(string.(var_arr), string(x[1]))), in_res.capa[sys][sSym])
 			removeEmptyDic!(in_res.capa[sys], sSym)
 		end
 	end
 
 	# filter storage levels and limits
-	filter!(x -> x[1] in var_arr, in_res.stLvl)
-	filter!(x -> x[1] in var_arr, in_res.lim)
+	for sSym in keys(in_res.stLvl)
+		filter!(x -> any(occursin.(string.(var_arr), string(x[1]))), in_res.stLvl[sSym])
+		removeEmptyDic!(in_res.stLvl, sSym)
+	end
+	
+	filter!(x -> any(occursin.(string.(var_arr), string(x[1]))), in_res.lim)
 
 	return in_res
 end
@@ -1236,7 +1239,7 @@ function getResult(res_df::DataFrame; pos_boo::Bool = true)
 end
 
 # ! create constraint fixing capacity (or setting a lower limits)
-function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part_obj::AbstractModelPart, rngVio_fl::Float64, fix_m::anyModel, lim_sym::Symbol=:Fix)
+function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part_obj::AbstractModelPart, rngVio_fl::Float64, fix_m::anyModel, lim_sym::Symbol=:Fix, cnsName_str::String = "")
 
 	# compute smallest and biggest capacity that can be enforced
 	rngMat_tup = fix_m.options.coefRng.mat
@@ -1287,6 +1290,11 @@ function limitVar!(value_df::DataFrame, var_df::DataFrame, var_sym::Symbol, part
 		fix_df = innerjoin(select(part_obj.cns[Symbol(var_sym, cns_sym)], Not([:fac])), select(fix_df, intersect(namesSym(fix_df),vcat(intCol(fix_df,:dir),[:var,:value,:setZero,:fac,:rhs]))), on = intCol(fix_df, :dir))
 		set_normalized_rhs.(fix_df[!,:cns], fix_df[!,:rhs])
 		set_normalized_coefficient.(fix_df[!,:cns], fix_df[!,:var], fix_df[!,:fac])	
+	end
+
+	# set name for the constraint if provided
+	if cnsName_str != ""
+		JuMP.set_name.(fix_df[!,:cns], [cnsName_str * "_" * string(i) for i in 1:size(fix_df, 1)])
 	end
 	
 	part_obj.cns[Symbol(var_sym, cns_sym)] = select(fix_df, Not([:var, :value, :rhs, :setZero]))
