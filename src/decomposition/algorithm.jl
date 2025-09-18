@@ -1014,6 +1014,7 @@ end
 # ! prepare stabilization
 function prepareStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Bool}}, scale_dic::Dict{Symbol, NamedTuple}, runSubDist::Function)
 	benders_obj.stab, curBest_tup = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
+	# println(curBest_tup.var.capa[:tech][:h2Cavern])
 	benders_obj.itr = itrStatus(curBest_tup, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0, 0, 0), 1.0, Dict{Symbol,Float64}())
 	benders_obj.itr.res[:curBest] = curBest_tup.var.objVal
 end
@@ -1072,7 +1073,6 @@ mergeVar(var_dic::Dict{Symbol,Dict{Symbol,Union{Dict{Symbol,DataFrame},Dict{Symb
 function filterResData(in_res::resData, in_m::anyModel, var_arr::Array{Symbol,1}; rmvFix::Bool = false, fltSt::Bool = true, filterExc::Bool = true, roundDown::Int = 0)
 	
 	# filter expansion variables
-
 	for sys in (:tech, :exc)
 
 		part_dic = getfield(in_m.parts, sys)

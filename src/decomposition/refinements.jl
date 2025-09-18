@@ -22,7 +22,6 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			# get heuristic solution and get a close feasible solution
 			heu_m, heuSol_obj = heuristicSolve(heuOpt_ntup, benders_obj.algOpt.top.threads, benders_obj.algOpt.opt, rtrnMod = true, solDet = true, fltSt = false);
 			top_m = benders_obj.top
-			startSol_obj = resData()
 			lowBd_fl = 0.0
 
 			top_m = computeFeas(top_m, heuSol_obj.capa, 0.001, cutSmall = false);
@@ -148,14 +147,13 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		end
 
 		append!(benders_obj.report.itr, secItr_df)
-
 		startSol_tup = (var = startSol_obj, res = startRes_dic, startLvl = Dict{Symbol, DataFrame}())
 
 		#endregion
 
 		#region # * initialize stabilization 
 
-		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.srsThr, stabSetup_obj.lowLimVal, stabSetup_obj.switch, stabSetup_obj.weight, startSol_obj, lowBd_fl, stabSetup_obj.solveNoStab, stabSetup_obj.repVio, benders_obj.top);
+		stab_obj, eleNum_int = stabObj(stabSetup_obj.method, stabSetup_obj.srsThr, stabSetup_obj.lowLimVal, stabSetup_obj.switch, stabSetup_obj.weight, copy(startSol_obj), lowBd_fl, stabSetup_obj.solveNoStab, stabSetup_obj.repVio, benders_obj.top);
 
 		stabVio_df = centerStab!(stab_obj.method[stab_obj.actMet], stab_obj, benders_obj.algOpt.rngVio.stab, benders_obj.top, report_m);
 		stabVio_df[!,:i] .= 0
@@ -180,7 +178,6 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 	end
 
 	return stab_obj, startSol_tup
-
 end
 
 # write options of stabilization method

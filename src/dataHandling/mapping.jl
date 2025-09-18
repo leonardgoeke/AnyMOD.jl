@@ -632,7 +632,6 @@ function getScrLvl(anyM::anyModel)
 
 	# checks if actually any scenarios are defined
 	if !(isempty(allScr_arr))
-		println(anyM.options.frsLvl)
 		minDis_int = minimum(map(x -> getfield(x, :tsDis), values(anyM.cInfo)))
 		if anyM.options.frsLvl != 0 
 			if anyM.options.supTsLvl > anyM.options.frsLvl
