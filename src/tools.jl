@@ -1837,6 +1837,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", scrCases::Vector
 		#region # * create dictionaries for later plotting
 	
 		# collect data for drop in a dictionary
+		filter!(x -> x[3] >= minVal, flow_arr)
 	
 		linkColor_arr = map(x -> collect(x[1] in keys(cColor_dic) ? cColor_dic[x[1]] : cColor_dic[x[2]]) |>
 			(z -> replace(string("rgba", string(tuple([255.0 .*z..., (x[1] in keys(cColor_dic) && x[2] in keys(cColor_dic) ? 0.8 : 0.5)]...))), " " => "")), flow_arr)
@@ -1863,7 +1864,7 @@ function plotSankeyDiagram(anyM::anyModel; dataIn::String = "", scrCases::Vector
 	
 		# pushes dictionary to overall array
 		label_str = string("<b>", join(map(y -> anyM.sets[Symbol(split(String(y), "_")[1])].nodes[drop[y]].val, intersect(namesSym(data_df), dropDim_arr)), ", "), "</b>")
-		
+
 		push!(dropData_arr, attr(args = fullData_arr, label = label_str, method = "restyle"))
 	
 		#endregion
