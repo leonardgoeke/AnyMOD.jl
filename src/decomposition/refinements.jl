@@ -501,7 +501,7 @@ function computeQuadExp(top_m::anyModel, stab_obj::stabObj, rngVio_fl::Float64; 
 
 	# set small capacity values to zero or smallest possible value within range, whatever is more accurate
 	lowerLimTrust_fl = stab_obj.lowLimVal
-	allVar_df[!,:corValue] = map(x -> x != 0.0 && abs(x) < lowerLimTrust_fl ? (x < lowerLimTrust_fl / 2 ? 0.0 : lowerLimTrust_fl) : x, allVar_df[!,:value])
+	allVar_df[!,:corValue] = map(x -> x.value != 0.0 && abs(x.value) * collect(values(x.var.terms))[1] < lowerLimTrust_fl ? (x.value < lowerLimTrust_fl / 2 ? 0.0 : lowerLimTrust_fl) : x.value, eachrow(allVar_df))
 	
 	# compute minimum size of rhs to ensure that correction of capacity does not exclude current best from the trust region
 	delta_fl = sum((allVar_df[!,:value] - allVar_df[!,:corValue]).^2)
