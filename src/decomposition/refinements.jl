@@ -147,7 +147,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		end
 
 		append!(benders_obj.report.itr, secItr_df)
-		startSol_tup = (var = startSol_obj, res = startRes_dic, startLvl = Dict{Symbol, DataFrame}())
+		startSol_tup = (var = startSol_obj, res = startRes_dic, startLvl = Dict{Symbol, DataFrame}(), bestDic = Dict{Tuple{Int64,Int64},resData}())
 
 		#endregion
 
@@ -172,7 +172,7 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 		# create empty stabilization object
 		stab_obj = nothing
 		startSol_obj = resData()
-		startSol_tup = (var = startSol_obj, res = Dict{Symbol,DataFrame}(), startLvl = Dict{Symbol, DataFrame}())
+		startSol_tup = (var = startSol_obj, res = Dict{Symbol,DataFrame}(), startLvl = Dict{Symbol, DataFrame}(), bestDic = Dict())
 		# copy reference to non-statablized problem
 		if !isempty(stabSetup_obj.method) benders_obj.topNoStab = (opt = nothing, ref = nothing) end
 	end

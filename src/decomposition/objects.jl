@@ -209,7 +209,7 @@ mutable struct countItr
 end
 
 mutable struct itrStatus
-	best::NamedTuple{(:var,:res,:startLvl),Tuple{resData,Dict{Symbol,DataFrame},Dict{Symbol,DataFrame}}}
+	best::NamedTuple{(:var,:res,:startLvl,:bestDic),Tuple{resData,Dict{Symbol,DataFrame},Dict{Symbol,DataFrame},Dict}}
 	cnt::countItr
 	gap::Float64
 	res::Dict{Symbol,Float64} # store different results here

@@ -736,7 +736,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 
 	# filter relevant result data
 	bestData_obj = filterResData(resData_obj, benders_obj.top, [:capa, :mustCapa, :exp, :mustExp, :stLvl, :lim]; rmvFix = true, fltSt = false, filterExc = false)
-	stabVar_obj = filterResData(resData_obj, benders_obj.top, [:capa, :exp, :stLvl, :lim]; rmvFix = true)
+	stabVar_obj = filterResData(copy(resData_obj), benders_obj.top, [:capa, :exp, :stLvl, :lim]; rmvFix = true)
 
 	itr_obj = benders_obj.itr
 	best_obj = itr_obj.best
@@ -758,10 +758,12 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	if benders_obj.nearOpt.cnt == 0 ? (itr_obj.res[:actTotCost] < best_obj.var.objVal) : (itr_obj.res[:nearObj] <= best_obj.var.objVal && itr_obj.gap <= benders_obj.algOpt.gap)
 		best_obj.var.objVal = benders_obj.nearOpt.cnt == 0 ? itr_obj.res[:actTotCost] : itr_obj.res[:nearObj]
 		best_obj.var.capa, best_obj.var.stLvl, best_obj.var.lim = map(x -> getfield(bestData_obj,x), [:capa, :stLvl, :lim])
+		best_obj = (var = best_obj.var, res = best_obj.res, startLvl = best_obj.startLvl, bestDic = copy(cutData_dic)) 
 		@suppress foreach(x -> best_obj.res[x] = curRes_dic[x], benders_obj.report.res.general)
 		itr_obj.res[:curBest] = best_obj.var.objVal
 		foreach(x -> best_obj.startLvl[x] = stLvl_dic[x], keys(stLvl_dic))
 		if :infeasLvlVal in keys(itr_obj.res) delete!(itr_obj.res, :infeasLvlVal) end # reset level value that cause infeasible top problem
+		benders_obj.itr.best = best_obj
 	end
 
 	# computes optimality gap for cost minimization and feasibility gap for near-optimal
@@ -1399,6 +1401,7 @@ function prescaleCut(cut_expr::Union{AffExpr,Float64}, cut_var::AffExpr, top_m::
 			end
 		end
 
+		if !isempty(cut_expr.terms)
 		# ! adjust small rhs based on range of updated factors
 		reqScaRhs_tup = top_m.options.coefRng.rhs ./ abs(cut_expr.constant) # range of scaling required to move rhs in range
 		upFacRng_tup = abs.(collect(values(cut_expr.terms))) |> (w -> (min(minimum(w), cutFac_fl), max(maximum(w), cutFac_fl))) 
@@ -1425,6 +1428,10 @@ function prescaleCut(cut_expr::Union{AffExpr,Float64}, cut_var::AffExpr, top_m::
 					limCoef_boo = true
 				end
 			end
+			end	
+		else
+			cut_expr = AffExpr()
+			limCoef_boo = false
 		end	
 
 	else # check if cut without variables can be scaled into range
