@@ -4,7 +4,7 @@ module AnyMOD
     using Pkg
 
     using Base.Threads, CSV, Dates, LinearAlgebra, Requires, DelimitedFiles, YAML, CategoricalArrays, Plotly
-    using MathOptInterface, Reexport, Statistics, SparseArrays, Suppressor
+    using MathOptInterface, Reexport, Statistics, SparseArrays, Suppressor, Dualization
     @reexport using DataFrames, JuMP, Dates, Suppressor, Distributed, ParallelDataTransfer
 
     include("objects.jl")
@@ -26,6 +26,7 @@ module AnyMOD
 
     include("decomposition/objects.jl")
     include("decomposition/algorithm.jl")
+    include("decomposition/mw.jl")
     include("decomposition/refinements.jl")
 
 
@@ -38,7 +39,7 @@ module AnyMOD
     
     # stochastic optimization
     export algSetup, stabSetup, nearOptSetup, bendersObj, resData # objects
-    export buildSub, initializeStab!, prepareMod!, runIteration! # low-level processing
+    export buildSub, initializeStab!, prepareMod!, runIteration!, runIterationMW! # low-level processing
     export runSub, runTop, runTopWithoutStab!, checkConvergence, updateIteration!, reportBenders!, writeBendersResults!, getComVar, getSubString, getConvTol # functions for iteration
     export getSubStringWorker, writeResultsAsInputs!, analyseBlock # out-of-sample testing
 

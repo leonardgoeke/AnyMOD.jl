@@ -501,6 +501,7 @@ mutable struct anyModel <: AbstractModel
 	options::modOptions
 	report::Array{Tuple,1}
 	optModel::Model
+	dual::NamedTuple{(:mod,:obj,:slack),Tuple{Model,ConstraintRef,VariableRef}}
 	lock::ReentrantLock
 
 	supTs::NamedTuple{(:lvl, :step, :sca, :redFac),Tuple{Int64,Tuple,Dict{Int64,Float64},Dict{Int64, Float64}}}

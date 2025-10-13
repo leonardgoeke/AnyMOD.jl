@@ -732,7 +732,7 @@ function addCuts!(top_m::anyModel, opt_mod::Model, rngVio_fl::Float64, cuts_arr:
 end
 
 # ! update results and stabilization
-function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64,Int64},resData}, resData_obj::resData, curRes_dic::Dict{Symbol,DataFrame}, stLvl_dic::Dict{Symbol, DataFrame})
+function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64,Int64},resData}, resData_obj::resData, curRes_dic::Dict{Symbol,DataFrame}, stLvl_dic::Dict{Symbol, DataFrame}, cutDual::Dict{Tuple{Int64,Int64},resData} = Dict{Tuple{Int64,Int64},resData}())
 
 	# filter relevant result data
 	bestData_obj = filterResData(resData_obj, benders_obj.top, [:capa, :mustCapa, :exp, :mustExp, :stLvl, :lim]; rmvFix = true, fltSt = false, filterExc = false)
@@ -831,19 +831,34 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 			delete!(cutData_dic, cut[1])
 		end
 	end
+
+	# TODO wrap
+	for cut in collect(cutDual)
+		cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.top.optModel, benders_obj.algOpt.rngVio.cut, benders_obj.top)
+		
+		if isempty(findall(cut_expr .== exExpr_arr)) # add to overall cuts if unique
+			push!(colCuts_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
+		else # otherwise remove to prevent addition problem without stabilization
+			delete!(cutDual, cut[1])
+		end
+	end
+
+
 	append!(benders_obj.cuts.active, collect(length(benders_obj.cuts.all) : length(benders_obj.cuts.all) + length(colCuts_arr) - 1) .+ 1)
 	append!(benders_obj.cuts.all, colCuts_arr)
 
 	# create and directly add cuts for top problem without stabilization
 	if !isnothing(benders_obj.stab) 
 		colCutsNoStab_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
-		for cut in collect(cutData_dic)
+		for cut in vcat(collect(cutData_dic), collect(cutDual))
 			cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, benders_obj.top, benders_obj.topNoStab.ref)
 			push!(colCutsNoStab_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
 		end
 		
 		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
 	end
+	
+	
 
 	return srsStep_boo
 	
