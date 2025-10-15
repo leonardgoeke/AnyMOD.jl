@@ -77,7 +77,8 @@ function runSubMW(sub_m::anyModel, benders_obj::bendersObj, resData_obj::resData
     end
 
     # increase numeric focus if model did not solve
-    numFoc_int = solveModel!(sub_m, sub_m.optModel, [0,3], false, check_boo)
+	println("Solve primal model! - ", Dates.toms(now() - str_time) / Dates.toms(Second(1)))
+    numFoc_int = solveModel!(sub_m, sub_m.optModel, [0,3], true, check_boo)
 
     # write primal duals
     resPrimal_obj = writeDualPrimal(sub_m, copy(resDataFix_obj)) 
@@ -126,23 +127,23 @@ function runSubMW(sub_m::anyModel, benders_obj::bendersObj, resData_obj::resData
     #noDual_arr = filter(x -> !occursin("dual", string(x[1])), collect(oldObj_expr.terms))
     #set_objective_function(sub_m.dual.mod, coreVar_expr / scaObj_fl + sum(map(x -> x[1] * x[2], noDual_arr)))
 
-    set_optimizer(sub_m.dual.mod, Gurobi.Optimizer)
-
     # solve dual model
+	println("Solve dual model! - ", Dates.toms(now() - str_time) / Dates.toms(Second(1)))
     set_optimizer(sub_m.dual.mod, Gurobi.Optimizer)
-    @suppress optimize!(sub_m.dual.mod)
-    compute_conflict!(sub_m.dual.mod)
+    optimize!(sub_m.dual.mod)
+    #compute_conflict!(sub_m.dual.mod)
 
     # write dual duals
     resDual_obj = writeDualDual(sub_m, copy(resDataFix_obj), value(sub_m.dual.obj)) 
 
     #endregion
 
-    println("cut primal current:", computeCutValue(resPrimal_obj, resDataFix_obj, resDataFix_obj))
-    println("cut dual current:", computeCutValue(resDual_obj, resDataFix_obj, resDataFix_obj))
+	println("Report results! - ", Dates.toms(now() - str_time) / Dates.toms(Second(1)))
+    println("Primal cut - current iterate:", computeCutValue(resPrimal_obj, resDataFix_obj, resDataFix_obj))
+    println("Dual cut - current iterate:", computeCutValue(resDual_obj, resDataFix_obj, resDataFix_obj))
 
-    println("cut primal best:", computeCutValue(resPrimal_obj, benders_obj.itr.best.var, resDataFix_obj))
-    println("cut dual best:", computeCutValue(resDual_obj, benders_obj.itr.best.var, resDataFix_obj))
+    println("Primal cut - current best:", computeCutValue(resPrimal_obj, benders_obj.itr.best.var, resDataFix_obj))
+    println("Dual cut - current best:", computeCutValue(resDual_obj, benders_obj.itr.best.var, resDataFix_obj))
 
     elpSub_time = now() - str_time
 
@@ -336,7 +337,6 @@ function computeCutValue(cutRes_obj::resData, pointRes_obj::resData, pointCut_ob
 	end
 
 	return val_fl
-
 end 
 
 # update capacity fix in dual problem
