@@ -129,7 +129,25 @@ function runSubMW(sub_m::anyModel, benders_obj::bendersObj, resData_obj::resData
 
     # solve dual model
 	println("Solve dual model! - ", Dates.toms(now() - str_time) / Dates.toms(Second(1)))
-    set_optimizer(sub_m.dual.mod, Gurobi.Optimizer)
+
+	# set optimizer attributes and solves
+    @suppress begin
+		set_optimizer(sub_m.dual.mod, Gurobi.Optimizer)
+        if sol_sym == :barrier
+            set_optimizer_attribute(sub_m.dual.mod, "Method", 2)
+            set_optimizer_attribute(sub_m.dual.mod, "Crossover", crsOver_boo ? 1 : 0)
+            set_optimizer_attribute(sub_m.dual.mod, "BarOrder", 1)
+            set_optimizer_attribute(sub_m.dual.mod, "BarConvTol", optTol_fl)
+        elseif sol_sym == :simplex
+            set_optimizer_attribute(sub_m.dual.mod, "Method", 1)
+            set_optimizer_attribute(sub_m.dual.mod, "OptimalityTol", optTol_fl)
+            set_optimizer_attribute(sub_m.dual.mod, "Presolve", 2)
+            set_optimizer_attribute(sub_m.dual.mod, "NumericFocus", 3)
+        end
+        if timeLim_fl != 0.0 set_optimizer_attribute(sub_m.dual.mod, "TimeLimit", timeLim_fl * 60) end # in seconds
+    end
+
+
     optimize!(sub_m.dual.mod)
     #compute_conflict!(sub_m.dual.mod)
 
