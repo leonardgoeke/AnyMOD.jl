@@ -97,7 +97,7 @@ function runSubMW(sub_m::anyModel, benders_obj::bendersObj, resData_obj::resData
         objVal_fl = objective_value(sub_m.optModel) # TODO make ratio flexible
         slack_var = @variable(dual_mod, lower_bound = 0.0, base_name = "slackMW")
         cns_obj = @constraint(dual_mod, objective_function(dual_mod) + slack_var == objVal_fl)
-
+		set_optimizer_attribute(dual_mod, "Threads", benders_obj.algOpt.sub.threads)	
         sub_m.dual = (mod = dual_mod, obj = cns_obj, slack = slack_var)
     else # update capacity fix in dual model
 
@@ -121,7 +121,7 @@ function runSubMW(sub_m::anyModel, benders_obj::bendersObj, resData_obj::resData
     scaObj_fl = sub_m.options.scaFac.obj
 
     # enforce new objective
-    set_objective_function(sub_m.dual.mod, coreVar_expr / scaObj_fl - sub_m.dual.slack * sub_m.options.coefRng.mat[2])
+    set_objective_function(sub_m.dual.mod, coreVar_expr / scaObj_fl - sub_m.dual.slack * sub_m.options.coefRng.mat[2] / 100)
 
     # TODO old for for single step method
     #noDual_arr = filter(x -> !occursin("dual", string(x[1])), collect(oldObj_expr.terms))
@@ -146,6 +146,7 @@ function runSubMW(sub_m::anyModel, benders_obj::bendersObj, resData_obj::resData
         end
         if timeLim_fl != 0.0 set_optimizer_attribute(sub_m.dual.mod, "TimeLimit", timeLim_fl * 60) end # in seconds
     end
+	
 
 
     optimize!(sub_m.dual.mod)
@@ -199,10 +200,16 @@ function createDualCoreExp(sub_m::anyModel, curSol_obj::resData, mw_obj::resData
                 primalCns_df[!,:valueCurSol] = round.(primalCns_df[!,:valueCurSol] ./ getfield(sub_m.options.scaFac, scaFac_sym), sigdigits = 10)
                 # create dual expression
                 primalCns_df[!,:dualVar] = map(x -> sub_m.dual.mod.obj_dict[Symbol(:dualVar_,name(x))], primalCns_df[!,:cns])
-                push!(expExpr_arr, sum(primalCns_df[!,:dualVar] .* ((1 - interMW_fl) .* primalCns_df[!,:valueMW] .- (1 + interMW_fl) .* primalCns_df[!,:valueCurSol])))
+				# compute factor from weights
+				primalCns_df[!,:fac] = ((1 - interMW_fl) .* primalCns_df[!,:valueMW] .- (1 + interMW_fl) .* primalCns_df[!,:valueCurSol])
+				# set small factors to zero or smallest possible value within range, whatever is more accurate
+				lowVal_fl =  sub_m.options.coefRng.mat[1] * sub_m.options.scaFac.obj
+				allVar_df[!,:fac] = map(x -> x != 0.0 && abs(x) < lowVal_fl ? (x < lowVal_fl / 2 ? 0.0 : lowVal_fl) : x, primalCns_df[!,:fac])
+                push!(expExpr_arr, sum(primalCns_df[!,:dualVar] .* primalCns_df[!,:fac]))
             end
         end
 	end
+
 
 	# match limits
     for limSym in filter(x -> occursin("BendersFix",string(x)), keys(sub_m.parts.lim.cns))
