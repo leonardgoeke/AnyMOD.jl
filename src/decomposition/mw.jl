@@ -176,6 +176,7 @@ end
 function createDualCoreExp(sub_m::anyModel, curSol_obj::resData, mw_obj::resData, interMW_fl::Float64)
 	
 	expExpr_arr = AffExpr[]
+	lowVal_fl =  sub_m.options.coefRng.mat[1] * sub_m.options.scaFac.obj
 	
 	# match capacity and storage levels
 	for sys in (:tech, :exc)
@@ -202,9 +203,8 @@ function createDualCoreExp(sub_m::anyModel, curSol_obj::resData, mw_obj::resData
                 primalCns_df[!,:dualVar] = map(x -> sub_m.dual.mod.obj_dict[Symbol(:dualVar_,name(x))], primalCns_df[!,:cns])
 				# compute factor from weights
 				primalCns_df[!,:fac] = ((1 - interMW_fl) .* primalCns_df[!,:valueMW] .- (1 + interMW_fl) .* primalCns_df[!,:valueCurSol])
-				# set small factors to zero or smallest possible value within range, whatever is more accurate
-				lowVal_fl =  sub_m.options.coefRng.mat[1] * sub_m.options.scaFac.obj
-				allVar_df[!,:fac] = map(x -> x != 0.0 && abs(x) < lowVal_fl ? (x < lowVal_fl / 2 ? 0.0 : lowVal_fl) : x, primalCns_df[!,:fac])
+				# set small factors to zero or smallest possible value within range, whatever is more accurate	
+				primalCns_df[!,:fac] = map(x -> x != 0.0 && abs(x) < lowVal_fl ? (x < lowVal_fl / 2 ? 0.0 : lowVal_fl) : x, primalCns_df[!,:fac])
                 push!(expExpr_arr, sum(primalCns_df[!,:dualVar] .* primalCns_df[!,:fac]))
             end
         end
@@ -224,8 +224,11 @@ function createDualCoreExp(sub_m::anyModel, curSol_obj::resData, mw_obj::resData
         scaFac_sym = occursin.(getindex.(mapScaFac_arr,1), lowercase(string(var_sym)))|> (z -> any(z) ? getindex.(mapScaFac_arr,2)[findall(z)[1]] : :capa)
         primalCns_df[!,:valueMW] = round.(primalCns_df[!,:valueMW] ./ getfield(sub_m.options.scaFac, scaFac_sym), sigdigits = 10)
         primalCns_df[!,:valueCurSol] = round.(primalCns_df[!,:valueCurSol] ./ getfield(sub_m.options.scaFac, scaFac_sym), sigdigits = 10)
-         # create dual expression
-        push!(expExpr_arr, sum(primalCns_df[!,:dualVar] .* (primalCns_df[!,:valueMW] .- primalCns_df[!,:valueCurSol])))
+		# compute factor from weights
+		primalCns_df[!,:fac] = ((1 - interMW_fl) .* primalCns_df[!,:valueMW] .- (1 + interMW_fl) .* primalCns_df[!,:valueCurSol])
+		# set small factors to zero or smallest possible value within range, whatever is more accurate	
+		primalCns_df[!,:fac] = map(x -> x != 0.0 && abs(x) < lowVal_fl ? (x < lowVal_fl / 2 ? 0.0 : lowVal_fl) : x, primalCns_df[!,:fac])
+		push!(expExpr_arr, sum(primalCns_df[!,:dualVar] .* primalCns_df[!,:fac]))
     end
 
 	return sum(expExpr_arr)
