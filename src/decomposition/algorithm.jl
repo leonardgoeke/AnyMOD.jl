@@ -1502,8 +1502,7 @@ function checkTopStatus(top_m::anyModel)
 
 	if termination_status(top_m.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED)
 		# get results
-		checkData_obj = resData()
-		checkData_obj.capa, ~, ~ = filterResData(resData(top_m), top_m, [:capa, :mustCapa]; rmvFix = true, fltSt = false)
+		checkData_obj = filterResData(resData(top_m), top_m, [:capa, :mustCapa]; rmvFix = true, fltSt = false)
 
 		# check for error
 		for sSym in keys(checkData_obj.capa[:tech])
