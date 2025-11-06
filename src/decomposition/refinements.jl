@@ -501,7 +501,7 @@ function computeQuadExp(top_m::anyModel, stab_obj::stabObj, rngVio_fl::Float64; 
 
 	# set small capacity values to zero or smallest possible value within range, whatever is more accurate
 	lowerLimTrust_fl = stab_obj.lowLimVal
-	allVar_df[!,:corValue] = map(x -> x.value != 0.0 && abs(x.value) * collect(values(x.var.terms))[1] < lowerLimTrust_fl ? (x.value < lowerLimTrust_fl / 2 ? 0.0 : lowerLimTrust_fl) : x.value, eachrow(allVar_df))
+	allVar_df[!,:corValue] = map(x -> x != 0.0 && abs(x) < lowerLimTrust_fl ? (x < lowerLimTrust_fl / 2 ? 0.0 : lowerLimTrust_fl) : x, allVar_df[!,:value])
 	
 	# compute minimum size of rhs to ensure that correction of capacity does not exclude current best from the trust region
 	delta_fl = sum((allVar_df[!,:value] - allVar_df[!,:corValue]).^2)
@@ -592,7 +592,7 @@ function computePrx2Aux(prevCuts_arr::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExp
 end
 
 # update dynamic parameter of stabilization method
-function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::itrStatus, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, tarGap_fl::Float64, report_ntup::NamedTuple{(:itr,:nearOpt,:stabVio,:res,:mod),Tuple{DataFrame,DataFrame,DataFrame,NamedTuple,anyModel}})
+function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::itrStatus, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, tarGap_fl::Float64, report_ntup::NamedTuple{(:itr,:nearOpt,:stabVio,:res,:mod,:mwTime),Tuple{DataFrame,DataFrame,DataFrame,NamedTuple,anyModel,DataFrame}})
 
 	opt_tup = stab_obj.methodOpt[x_int]
 	if stab_obj.method[x_int] == :qtr # adjust radius of quadratic trust-region

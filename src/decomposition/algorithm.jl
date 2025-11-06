@@ -346,7 +346,7 @@ function runTop(benders_obj::bendersObj)
 			@suppress optimize!(benders_obj.top.optModel)
         end
 
-		while stab_obj.method[stab_obj.actMet] == :lvl1 && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
+		while stab_obj.method[stab_obj.actMet] in (:lvl1, :lvl3) && !(termination_status(benders_obj.top.optModel) in (MOI.OPTIMAL, MOI.LOCALLY_SOLVED))
 			
 			# increase upper bound
 			lvl_fl = stab_obj.dynPar[stab_obj.actMet]
@@ -354,7 +354,7 @@ function runTop(benders_obj::bendersObj)
 			set_upper_bound(benders_obj.top.parts.obj.var[:obj][1,1], lvl_fl)
 			
             # remove stabilization if difference below optimality threshold
-			if (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap
+			if stab_obj.method[stab_obj.actMet] != :lvl3 && (stab_obj.objVal / benders_obj.top.options.scaFac.obj) /  lvl_fl - 1 < benders_obj.algOpt.gap
 				@objective(benders_obj.top.optModel, Min, benders_obj.top.parts.obj.var[:obj][1, 1])
 				delete_upper_bound(benders_obj.top.parts.obj.var[:obj][1, 1])
 			end
@@ -834,6 +834,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 
 	# TODO wrap
 	for cut in collect(cutDual)
+		if cut[2].objVal == Inf continue end
 		cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.top.optModel, benders_obj.algOpt.rngVio.cut, benders_obj.top)
 		
 		if isempty(findall(cut_expr .== exExpr_arr)) # add to overall cuts if unique
@@ -843,7 +844,6 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		end
 	end
 
-
 	append!(benders_obj.cuts.active, collect(length(benders_obj.cuts.all) : length(benders_obj.cuts.all) + length(colCuts_arr) - 1) .+ 1)
 	append!(benders_obj.cuts.all, colCuts_arr)
 
@@ -851,6 +851,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	if !isnothing(benders_obj.stab) 
 		colCutsNoStab_arr = Array{Pair{Tuple{Int,Int,Int},Tuple{AffExpr,Bool}},1}() 
 		for cut in vcat(collect(cutData_dic), collect(cutDual))
+			if cut[2].objVal == Inf continue end
 			cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, benders_obj.top, benders_obj.topNoStab.ref)
 			push!(colCutsNoStab_arr, (benders_obj.itr.cnt.i, cut[1][1], cut[1][2])  => (cut_expr, limCoef_boo))
 		end
@@ -858,8 +859,6 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 		addCuts!(benders_obj.top, benders_obj.topNoStab.opt, benders_obj.algOpt.rngVio.cut, colCutsNoStab_arr, true)
 	end
 	
-	
-
 	return srsStep_boo
 	
 end
@@ -1074,7 +1073,7 @@ function initializeReporting!(benders_obj::bendersObj, stabSetup_obj::stabSetup,
 	# extend reporting dataframe in case of near-optimal
 	if !isnothing(benders_obj.nearOpt.setup) itrReport_df[!,:objective] = fill("", size(itrReport_df, 1)) end
 
-	benders_obj.report = (itr = itrReport_df, nearOpt = nearOpt_df, stabVio = stabVio_df, res = resInfo, mod = report_m)
+	benders_obj.report = (itr = itrReport_df, nearOpt = nearOpt_df, stabVio = stabVio_df, res = resInfo, mod = report_m, mwTime = DataFrame(i = Int[], scrFrs = Tuple{Int,Int}[], timeMW = Float64[], timeSub = Float64[]))
 
 end
 
