@@ -1073,7 +1073,7 @@ function initializeReporting!(benders_obj::bendersObj, stabSetup_obj::stabSetup,
 	# extend reporting dataframe in case of near-optimal
 	if !isnothing(benders_obj.nearOpt.setup) itrReport_df[!,:objective] = fill("", size(itrReport_df, 1)) end
 
-	benders_obj.report = (itr = itrReport_df, nearOpt = nearOpt_df, stabVio = stabVio_df, res = resInfo, mod = report_m, mwTime = DataFrame(i = Int[], scrFrs = Tuple{Int,Int}[], timeMW = Float64[], timeSub = Float64[]))
+	benders_obj.report = (itr = itrReport_df, nearOpt = nearOpt_df, stabVio = stabVio_df, res = resInfo, mod = report_m)
 
 end
 

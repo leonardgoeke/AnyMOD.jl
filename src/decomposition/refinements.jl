@@ -592,7 +592,7 @@ function computePrx2Aux(prevCuts_arr::Array{Pair{Tuple{Int,Int,Int},Tuple{AffExp
 end
 
 # update dynamic parameter of stabilization method
-function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::itrStatus, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, tarGap_fl::Float64, report_ntup::NamedTuple{(:itr,:nearOpt,:stabVio,:res,:mod,:mwTime),Tuple{DataFrame,DataFrame,DataFrame,NamedTuple,anyModel,DataFrame}})
+function adjustDynPar!(x_int::Int, stab_obj::stabObj, top_m::anyModel, itr_obj::itrStatus, srsStep_boo::Bool, prx2Aux_fl::Union{Float64,Nothing}, nearOpt_boo::Bool, tarGap_fl::Float64, report_ntup::NamedTuple{(:itr,:nearOpt,:stabVio,:res,:mod),Tuple{DataFrame,DataFrame,DataFrame,NamedTuple,anyModel}})
 
 	opt_tup = stab_obj.methodOpt[x_int]
 	if stab_obj.method[x_int] == :qtr # adjust radius of quadratic trust-region
