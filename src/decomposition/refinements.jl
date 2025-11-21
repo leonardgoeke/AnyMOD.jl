@@ -69,7 +69,6 @@ function initializeStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inpu
 			startRes_dic = Dict(x => reportResults(x, benders_obj.top, rtnOpt = (:csvDf,)) for x in benders_obj.report.res.general)
 		end
 		
-
 		# correct capacities, if mustCapa exceeds capa
 		startSol_obj = correctMustCapa(startSol_obj)
 	
@@ -501,7 +500,7 @@ function computeQuadExp(top_m::anyModel, stab_obj::stabObj, rngVio_fl::Float64; 
 
 	# set small capacity values to zero or smallest possible value within range, whatever is more accurate
 	lowerLimTrust_fl = stab_obj.lowLimVal
-	allVar_df[!,:corValue] = map(x -> x != 0.0 && abs(x) < lowerLimTrust_fl ? (x < lowerLimTrust_fl / 2 ? 0.0 : lowerLimTrust_fl) : x, allVar_df[!,:value])
+	allVar_df[!,:corValue] = map(x -> x != 0.0 && abs(x) < lowerLimTrust_fl ? (abs(x) < sign(x) * lowerLimTrust_fl / 2 ? 0.0 : lowerLimTrust_fl) : x, allVar_df[!,:value])
 
 	# compute minimum size of rhs to ensure that correction of capacity does not exclude current best from the trust region
 	delta_fl = sum((allVar_df[!,:value] - allVar_df[!,:corValue]).^2)
