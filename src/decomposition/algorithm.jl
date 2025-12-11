@@ -1016,13 +1016,6 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		
 	end
 
-	# apply weights to tracked capacities
-	if benders_obj.trackCapa
-		w_dic = Dict(:capaConv => benders_obj.stab.weight.capa, :mustCapaConv => benders_obj.stab.weight.capa, :capaStSize => benders_obj.stab.weight.capaStSize, :capaStOut => benders_obj.stab.weight.capa, :capaStIn => benders_obj.stab.weight.capa, :capaExc => benders_obj.stab.weight.capa,
-																																						:stLvl => benders_obj.stab.weight.stLvl, :stLvlInter => benders_obj.stab.weight.stLvl, :emissionBendersCom => benders_obj.stab.weight.lim)
-		allRes_df[!,:value] = map(x -> x.value * w_dic[x.variable], eachrow(allRes_df))
-	end
-
 	return allRes_df
 
 end
