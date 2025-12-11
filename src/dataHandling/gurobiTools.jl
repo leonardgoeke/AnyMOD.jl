@@ -10,6 +10,7 @@ function printIIS(anyM::anyModel, noStab_ntup::Union{Nothing,NamedTuple{(:opt,:r
     if MOI.get(opt_mod, MOI.ConflictStatus()) != MOI.ConflictStatusCode(3) return end
     # loops over constraint tables to find constraints within iis
     allCns_pair = vcat(collect.(vcat(anyM.parts.obj.cns, anyM.parts.bal.cns, anyM.parts.cost.cns, anyM.parts.lim.cns, map(x -> x.cns, values(anyM.parts.exc))..., map(x -> x.cns, values(anyM.parts.tech))...))...)
+    println("The following constraints are in the IIS:")
 
     for cns in allCns_pair
         if cns[1] == :objEqn continue end

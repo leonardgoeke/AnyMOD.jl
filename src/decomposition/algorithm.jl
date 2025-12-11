@@ -1007,7 +1007,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		rtn_boo = checkConvergence(benders_obj, lss_dic)
 		
 		# track capacity over iterations if activated
-		if benders_obj.trackCapa reportComplVar!(allRes_df, resData_obj, benders_obj.itr.cnt.i) end
+		if benders_obj.trackCapa reportComplVar!(allRes_df, resData_obj, benders_obj.top, benders_obj.itr.cnt.i) end
 
 		#endregion
 
@@ -1891,9 +1891,9 @@ function writeResultsAsInputs!(benders_obj::bendersObj, outDir_str::String)
 end
 
 # ! report value of complicating variables
-function reportComplVar!(allRes_df::DataFrame, resData_obj::resData, i::Int64)
+function reportComplVar!(allRes_df::DataFrame, resData_obj::resData, top_m::anyModel, i::Int64)
 
-	resDataCompl_obj = filterResData(resData_obj, sub_m, [:capa, :mustCapa, :stLvl, :lim]; rmvFix = true, fltSt = false)
+	resDataCompl_obj = filterResData(resData_obj, top_m, [:capa, :mustCapa, :stLvl, :lim]; rmvFix = true, fltSt = false)
 
 	# add capacity variables
 	for sys in (:tech, :exc), sSym in keys(resDataCompl_obj.capa[sys]), capaSym in keys(resDataCompl_obj.capa[sys][sSym])
