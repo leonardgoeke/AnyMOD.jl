@@ -323,6 +323,7 @@ function runTop(benders_obj::bendersObj)
 		stabTolQ_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.stabTolQ[2], benders_obj.algOpt.top.stabTolQ[1])
 		stabTolFeas_fl = interItrPar(benders_obj.itr.gap, benders_obj.algOpt.gap, benders_obj.algOpt.top.stabTolFeas[2], benders_obj.algOpt.top.stabTolFeas[1])
 		# set options
+		set_optimizer_attribute(benders_obj.top.optModel, "Presolve", benders_obj.algOpt.top.presolve)
 		set_optimizer_attribute(benders_obj.top.optModel, "Method", benders_obj.algOpt.top.stabMeth)
 		set_optimizer_attribute(benders_obj.top.optModel, "BarConvTol", max(stabTol_fl, benders_obj.algOpt.top.stabTol[2][2]))
 		set_optimizer_attribute(benders_obj.top.optModel, "BarQCPConvTol", max(stabTolQ_fl, benders_obj.algOpt.top.stabTolQ[2][2]))

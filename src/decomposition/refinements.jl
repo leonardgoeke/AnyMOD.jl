@@ -771,6 +771,7 @@ function runTopWithoutStab!(benders_obj::bendersObj)
 	# solve problem
 	@suppress begin
 		set_optimizer_attribute(benders_obj.topNoStab.opt, "Method", benders_obj.algOpt.top.noStabMeth)
+		set_optimizer_attribute(benders_obj.topNoStab.opt, "Presolve", -1)
 		# solve only to optimality for fully accurate lower bound when close to optimum
 		if benders_obj.stab.crossNoStab
 			set_optimizer_attribute(benders_obj.topNoStab.opt, "Crossover", 1)
