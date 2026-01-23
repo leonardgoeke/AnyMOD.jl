@@ -633,6 +633,7 @@ function getScrLvl(anyM::anyModel)
 	# checks if actually any scenarios are defined
 	if !(isempty(allScr_arr))
 		minDis_int = minimum(map(x -> getfield(x, :tsDis), values(anyM.cInfo)))
+		# sanity check on foresight level
 		if anyM.options.frsLvl != 0 
 			if anyM.options.supTsLvl > anyM.options.frsLvl
 				anyM.options.frsLvl = anyM.supTs.lvl
@@ -643,22 +644,38 @@ function getScrLvl(anyM::anyModel)
 			end
 		end
 
-		# gets level for scenarios
-		lvl_int = anyM.options.frsLvl
+		frsLvl_int = anyM.options.frsLvl
+
+		# sanity check on decomposition level
+		if anyM.options.frsLvl > anyM.options.decompLvl
+			anyM.options.decompLvl = anyM.options.frsLvl
+			push!(anyM.report, (2, "scenario mapping", "", "specified decomposition level is less detailed than the foresight level, therefore model decomposes at foresight level"))
+		elseif minDis_int < anyM.options.decompLvl 
+			anyM.options.decompLvl = minDis_int
+			push!(anyM.report, (2, "scenario mapping", "", "specified decomposition level exceeds least detailed dispatch resolution, model uses level $(minDis_int) instead, this will cause an error, if this is also the superordinate dispatch level"))
+		end
+
+		decompLvl_int = anyM.options.decompLvl
+	
 	else
-		lvl_int = 0
+		frsLvl_int = 0
+		decompLvl_int = 0
 	end
 
-	return lvl_int
+
+
+	return frsLvl_int, decompLvl_int
 
 end
 
 # ! create scenario mappings
-function createScenarioMapping!(lvl_int::Int, anyM::anyModel)
+function createScenarioMapping!(frsLvl_int::Int, decompLvl_int::Int, anyM::anyModel)
 
 	if length(anyM.sets[:scr].nodes) > 1
 		allScr_arr = filter(x -> x != 0, getfield.(collect(values(anyM.sets[:scr].nodes)), :idx))
-		prop_df = flatten(flatten(DataFrame(Ts_dis  = [getfield.(getNodesLvl(anyM.sets[:Ts], lvl_int == 0 ? anyM.supTs.lvl : lvl_int), :idx)], scr = [allScr_arr]), :Ts_dis), :scr)
+		prop_df = flatten(flatten(DataFrame(Ts_dis  = [getfield.(getNodesLvl(anyM.sets[:Ts], decompLvl_int == 0 ? anyM.supTs.lvl : decompLvl_int), :idx)], scr = [allScr_arr]), :Ts_dis), :scr)
+
+		#Main.@infiltrate
 
 		# assigns probabilities defined as parameters
 		if :scrProb in collectKeys(keys(anyM.parts.obj.par))
@@ -715,9 +732,9 @@ function createScenarioMapping!(lvl_int::Int, anyM::anyModel)
 		end
 
 		# check if there are multiple foresight periods 
-		if lvl_int != 0 && length(getNodesLvl(anyM.sets[:Ts], anyM.supTs.lvl)) == length(getNodesLvl(anyM.sets[:Ts], lvl_int)) && anyM.subPro != (0,0)
+		if frsLvl_int != 0 && length(getNodesLvl(anyM.sets[:Ts], anyM.supTs.lvl)) == length(getNodesLvl(anyM.sets[:Ts], frsLvl_int)) && anyM.subPro != (0,0)
 			for x in anyM.supTs.step
-				if length(getDescendants(x, anyM.sets[:Ts], false, lvl_int)) == 1
+				if length(getDescendants(x, anyM.sets[:Ts], false, frsLvl_int)) == 1
 					push!(anyM.report, (3, "scenario", "foresight", "for superordinate dispatch timestep '$(createFullString(x, anyM.sets[:Ts]))', there is only a single foresight step, this is not supported"))
 				end
 			end
@@ -729,7 +746,7 @@ function createScenarioMapping!(lvl_int::Int, anyM::anyModel)
 	end
 
 	# assigns mappings to final object
-	anyM.scr = (lvl = lvl_int == 0 ? anyM.supTs.lvl : lvl_int, frsLvl = lvl_int, scr = tsToScr_dic, scrProb = tsScrToProp_dic)
+	anyM.scr = (lvl = frsLvl_int == 0 ? anyM.supTs.lvl : frsLvl_int, frsLvl = frsLvl_int, scr = tsToScr_dic, scrProb = tsScrToProp_dic)
 end
 
 # ! adjusts model object according to distributed generation

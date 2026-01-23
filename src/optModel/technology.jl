@@ -300,6 +300,7 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 	
 		# adjust table for case of reduced foresight and stochastic storage
 		if va == :stLvl && part.stCyc < anyM.scr.frsLvl && anyM.scr.frsLvl != 0
+
 		
 			# get time-steps that are at the start of a foresight period
 			frsStep_arr = [getDescendants(x, anyM.sets[:Ts], false, y) for x in getfield.(getNodesLvl(anyM.sets[:Ts], anyM.scr.frsLvl), :idx), y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x], :lvl), allVar_df[!,:Ts_dis]))]

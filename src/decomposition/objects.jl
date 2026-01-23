@@ -13,7 +13,7 @@ mutable struct algSetup
 	rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}} # acceptable violation of target range for stabilization, cut, and fix of variables
 	sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf, :threads, :check), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool, Int, Bool}} # range and interpolation method for convergence criteria of subproblems, use of crossover for sub-problems when using barrier
 	top::NamedTuple{(:numFoc, :dnsThrs, :crs, :stabTol, :stabTolQ, :stabTolFeas,  :noStabTol, :presolve, :stabMeth, :noStabMeth, :threads, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Int, Int, Int, Int, Bool}} # infeasible variable at start of foresight period, numeric focus for top-problem, factor by which quadratic trust-region is allowed to violate paramete range
-
+			
 	function algSetup(gap_fl::Float64, delCut_ntup::NamedTuple, useVI_ntup::NamedTuple{(:bal, :st), Tuple{Bool, Bool}}, repFreq_int::Int, timeLim_fl::Float64, dist_boo::Bool, opt_type::DataType, rngVio::NamedTuple{(:stab, :cut, :fix), Tuple{Float64, Float64, Float64}}, sub::NamedTuple{(:rng, :int, :crs, :meth, :timeLim, :dbInf, :threads, :check), Tuple{Vector{Float64}, Symbol, Bool, Symbol, Float64, Bool, Int, Bool}} = (rng = [1e-8, 1e-8], int = :log, crs = false, meth = :barrier, timeLim = 0.0, dbInf = true, threads = 1, check = false), top::NamedTuple{(:numFoc, :dnsThrs, :crs, :stabTol, :stabTolQ, :stabTolFeas, :noStabTol, :presolve, :stabMeth, :noStabMeth, :threads, :check), Tuple{Array{Int64, 1}, Int64, Bool, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Tuple{Symbol, Vector{Float64}}, Int, Int, Int, Int, Bool}} = (numFoc = [1,3], dnsThrs = 200, crs = true, stabTol = (:lin, [1e-6, 1e-6]), stabTolQ = (:lin, [1e-4, 1e-6]), noStabTol = (:lin, [1e-6, 1e-6]), presolve = -1, stabMeth = -1, noStabMeth = -1, threads = 1, check = false))
 		return new(gap_fl, delCut_ntup, useVI_ntup, repFreq_int, timeLim_fl, dist_boo, opt_type, rngVio, sub, top)
 	end
@@ -236,10 +236,10 @@ mutable struct bendersObj
     algOpt::algSetup
 	nearOpt::nearOptObj
 	trackCapa::Bool
-	info::NamedTuple{(:name,:frsLvl,:supTsLvl,:repTsLvl,:shortExp,:infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Bool}}
+	info::NamedTuple{(:name,:frsLvl,:decompLvl,:supTsLvl,:repTsLvl,:shortExp,:infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Int64, Bool}}
 	report::NamedTuple{(:itr,:nearOpt,:stabVio,:res,:mod),Tuple{DataFrame,DataFrame,DataFrame,NamedTuple,anyModel}}
 	
-	function bendersObj(info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Bool}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, getComVarDist::Function, resInfo::NamedTuple; trackCapa::Bool = false, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
+	function bendersObj(info_ntup::NamedTuple{(:name, :frsLvl, :decompLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Int64, Bool}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, getComVarDist::Function, resInfo::NamedTuple; trackCapa::Bool = false, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
 
         #region # * checks and initialization
 
@@ -269,6 +269,8 @@ mutable struct bendersObj
 		inputFolderSub_ntup = (in = inputFolder_ntup.in, heu = inputFolder_ntup.heu, results = inputFolder_ntup.results * "/sub")
 		produceMessage(report_m.options, report_m.report, 1, " - Started creation of sub-problems", testErr = false, printErr = false)
 		benders_obj.sub = Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}()
+
+		#Main.@infiltrate
 		
 		complCns_dic = Dict{Tuple{Int,Int},Dict{Symbol,DataFrame}}()
 		for (id, s) in enumerate(sub_tup)

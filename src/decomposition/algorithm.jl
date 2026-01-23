@@ -260,7 +260,7 @@ end
 #region # * basic benders algorithm
 
 # build sub-problems
-function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Bool}}, inputFolderSub_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
+function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::NamedTuple{(:name, :frsLvl, :decompLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Int64, Bool}}, inputFolderSub_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
 	# filter relevant input folders
 	relIn_arr = filter(x -> (occursin("ini",x) && genSetup_ntup.frsLvl != 0 ? occursin(subStr_tup[1],x) : true) && (occursin("scr",x) ? occursin(subStr_tup[2],x) : true), inputFolderSub_ntup.in)
 	# create sub-problems
@@ -1022,7 +1022,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 end
 
 # ! prepare stabilization
-function prepareStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Bool}}, scale_dic::Dict{Symbol, NamedTuple}, runSubDist::Function)
+function prepareStab!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :decompLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64,Int64, Int64, Int64, Bool}}, scale_dic::Dict{Symbol, NamedTuple}, runSubDist::Function)
 	benders_obj.stab, curBest_tup = initializeStab!(benders_obj, stabSetup_obj, inputFolder_ntup, info_ntup, scale_dic, runSubDist)
 	benders_obj.itr = itrStatus(curBest_tup, countItr(isempty(benders_obj.report.itr) ? 0 : maximum(benders_obj.report.itr[!,:i]) + 1, 0, 0, 0, 0), 1.0, Dict{Symbol,Float64}())
 	benders_obj.itr.res[:curBest] = curBest_tup.var.objVal
@@ -1047,7 +1047,7 @@ function writeComplCons!(benders_obj::bendersObj)
 end
 
 # ! initialize reporting objects
-function initializeReporting!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Bool}}, resInfo::NamedTuple)
+function initializeReporting!(benders_obj::bendersObj, stabSetup_obj::stabSetup, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, info_ntup::NamedTuple{(:name, :frsLvl, :decompLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64,Int64, Int64, Int64, Int64, Bool}}, resInfo::NamedTuple)
 
 	# dataframe for reporting during iteration
 	itrReport_df = DataFrame(i = Int[], lowCost = Float64[], bestObj = Float64[], gap = Float64[], curCost = Float64[], time_ges = Float64[], time_top = Float64[], time_waitNoStab = Float64[], time_subTot = Float64[], time_sub = Array{Float64,1}[], activeCuts = Int[], totalCuts = Int[], numFoc = Array{Int,1}[], objName = String[])

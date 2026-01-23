@@ -29,7 +29,6 @@ module AnyMOD
     include("decomposition/mw.jl")
     include("decomposition/refinements.jl")
 
-
     # general functions and objects
     export anyModel, initializeModel, createOptModel!, setObjective! # basic model functions
     export reportResults, reportTimeSeries, printObject, printDuals, computeResults, writeParameterFile!, plotGraphYML, convertYAML2GEXF, reportStorageLevel # write results
