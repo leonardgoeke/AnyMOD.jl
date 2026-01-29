@@ -1066,7 +1066,7 @@ function createCapaRestr!(part::AbstractModelPart, ts_dic::Dict{Tuple{Int64,Int6
 		# check special cases relevant for reduced foresight and storage level
 		if typeof(part) == TechPart
 			topFrs_boo = anyM.subPro == (0,0) && anyM.scr.frsLvl != 0
-			subFrs_boo = anyM.subPro != (0,0) && !isempty(anyM.subPro) && (anyM.scr.frsLvl != 0 || anyM.options.decompLvl != 0) && max(anyM.scr.frsLvl,anyM.options.decompLvl) <= part.stCyc && !anyM.options.monteCarlo
+			subFrs_boo = anyM.subPro != (0,0) && !isempty(anyM.subPro) && (anyM.scr.frsLvl != 0 || anyM.options.decompLvl != 0) && max(anyM.scr.frsLvl,anyM.options.decompLvl) > part.stCyc && !anyM.options.monteCarlo
 		else
 			topFrs_boo = false
 			subFrs_boo = false
@@ -1136,7 +1136,6 @@ function createRestr(part::AbstractModelPart, capaVar_df::DataFrame, restr::Data
 
 	# delete benders cases where storage variable will be fixed anyway
 	if subFrs_boo && occursin("stSize", restr.cnstrType)
-		Main.@infiltrate
 		rmvTs_df = combine(x -> (Ts_dis = maximum(x.Ts_dis),), groupby(capaDim_df, filter(x -> x != :Ts_dis, intCol(capaDim_df))))
 		capaDim_df = antijoin(capaDim_df, rmvTs_df, on = intCol(rmvTs_df))
 		if isempty(capaDim_df) return DataFrame() end

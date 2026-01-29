@@ -630,6 +630,10 @@ function getScrLvl(anyM::anyModel)
 
 	allScr_arr = filter(x -> x != 0, getfield.(collect(values(anyM.sets[:scr].nodes)), :idx))
 
+	if anyM.options.decompLvl != 0 && anyM.options.frsLvl != 0 && anyM.options.decompLvl < anyM.options.frsLvl
+		push!(anyM.report, (3, "scenario mapping", "", "decomposition level and foresight level set, so far, only one of the two options is supported"))
+	end
+
 	# checks if actually any scenarios are defined
 	if !(isempty(allScr_arr))
 		minDis_int = minimum(map(x -> getfield(x, :tsDis), values(anyM.cInfo)))

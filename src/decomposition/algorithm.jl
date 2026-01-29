@@ -1017,11 +1017,7 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 
 		benders_obj.itr.cnt.i = benders_obj.itr.cnt.i + 1
 		if rtn_boo break end
-		
-		if benders_obj.itr.cnt.i  > 150
-			break
-		end
-
+	
 	end
 
 	return allRes_df
@@ -1350,11 +1346,7 @@ function createCutExpr(cut::Pair{Tuple{Int64,Int64},resData}, opt_mod::Model, rn
 			if sSym in keys(top_m.parts.tech)
 				part_obj = top_m.parts.tech[sSym]
 				for stType in keys(subCut.stLvl[sSym])
-					if :scr in namesSym(part_obj.var[stType])
-						var_df = filter(x -> x.scr == cut[1][2], part_obj.var[stType])
-					else
-						var_df = part_obj.var[stType]
-					end
+					var_df = filter(x -> x.scr == cut[1][2] || x.scr == 0, part_obj.var[stType])
 					push!(cutExpr_arr, getBendersCut(subCut.stLvl[sSym][stType], var_df, top_m.options.scaFac.dispSt, noStab_map))
 				end
 			end
