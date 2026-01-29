@@ -264,7 +264,7 @@ function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::Nam
 	# filter relevant input folders
 	relIn_arr = filter(x -> (occursin("ini",x) && genSetup_ntup.frsLvl != 0 ? occursin(subStr_tup[1],x) : true) && (occursin("scr",x) ? occursin(subStr_tup[2],x) : true), inputFolderSub_ntup.in)
 	# create sub-problems
-	sub_m = anyModel(relIn_arr, inputFolderSub_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, repTsLvl = genSetup_ntup.repTsLvl, holdFixed =true, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.sub.dbInf, reportLvl = 1)
+	sub_m = anyModel(relIn_arr, inputFolderSub_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, decompLvl = genSetup_ntup.decompLvl, repTsLvl = genSetup_ntup.repTsLvl, holdFixed =true, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.sub.dbInf, reportLvl = 1)
 	sub_m.subPro = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)])...)[id]
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.sub.threads)
 	
@@ -550,14 +550,15 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 			removeEmptyDic!(resDataFix_obj.capa[sys], sSym)
 		end
 	end
-
+	
 	# fixing storage levels
 	if !isempty(resDataFix_obj.stLvl)
 		for sSym in keys(resDataFix_obj.stLvl)
 			if sSym in keys(sub_m.parts.tech)
 				part_obj = sub_m.parts.tech[sSym]
 				for stType in keys(resDataFix_obj.stLvl[sSym])
-					fix_df = select(filter(x -> stType == :stLvl ? true : x.scr == sub_m.subPro[2], resDataFix_obj.stLvl[sSym][stType]), Not([:scr]))
+					scr_arr = unique(resDataFix_obj.stLvl[sSym][stType][!,:scr])
+					fix_df = select(filter(x -> (stType == :stLvl && scr_arr == [0]) ? true : x.scr == sub_m.subPro[2], resDataFix_obj.stLvl[sSym][stType]), Not([:scr]))					
 					resDataFix_obj.stLvl[sSym][stType] = limitVar!(fix_df, select(part_obj.var[stType], Not([:scr])), stType, part_obj, rngVio_fl, sub_m)
 					removeEmptyDic!(resDataFix_obj.stLvl[sSym], stType)
 				end
@@ -566,6 +567,7 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 			end
 		end
 	end
+
 
 	# fixing limiting variables
 	if !isempty(resDataFix_obj.lim)
@@ -640,10 +642,10 @@ function runSub(sub_m::anyModel, resData_obj::resData, rngVio_fl::Float64, sol_s
 
 		# get duals on storage levels
 		if !isempty(resDataFix_obj.stLvl)
-			for sSym in keys(resDataFix_obj.stLvl)
+			for sSym in keys(resDataFix_obj.stLvl)				
 				if sSym in keys(sub_m.parts.tech)
 					part_obj = sub_m.parts.tech[sSym]
-					for stType in keys(resDataFix_obj.stLvl[sSym])
+					for stType in keys(resDataFix_obj.stLvl[sSym])					
 						resDataFix_obj.stLvl[sSym][stType] = addDual(resDataFix_obj.stLvl[sSym][stType], part_obj.cns[Symbol(stType,:BendersFix)], scaObj_fl / sub_m.options.scaFac.dispSt)
 						removeEmptyDic!(resDataFix_obj.stLvl[sSym], stType)
 					end
@@ -824,6 +826,7 @@ function updateIteration!(benders_obj::bendersObj, cutData_dic::Dict{Tuple{Int64
 	exExpr_arr = getindex.(getindex.(benders_obj.cuts.all, 2), 1)
 	
 	for cut in collect(cutData_dic)
+						
 		cut_expr, limCoef_boo = createCutExpr(cut, benders_obj.top.optModel, benders_obj.algOpt.rngVio.cut, benders_obj.top)
 		
 		if isempty(findall(cut_expr .== exExpr_arr)) # add to overall cuts if unique
@@ -1015,6 +1018,10 @@ function runIteration!(benders_obj::bendersObj, runSubDist::Function)
 		benders_obj.itr.cnt.i = benders_obj.itr.cnt.i + 1
 		if rtn_boo break end
 		
+		if benders_obj.itr.cnt.i  > 150
+			break
+		end
+
 	end
 
 	return allRes_df
@@ -1343,7 +1350,7 @@ function createCutExpr(cut::Pair{Tuple{Int64,Int64},resData}, opt_mod::Model, rn
 			if sSym in keys(top_m.parts.tech)
 				part_obj = top_m.parts.tech[sSym]
 				for stType in keys(subCut.stLvl[sSym])
-					if stType == :stLvlInter
+					if :scr in namesSym(part_obj.var[stType])
 						var_df = filter(x -> x.scr == cut[1][2], part_obj.var[stType])
 					else
 						var_df = part_obj.var[stType]

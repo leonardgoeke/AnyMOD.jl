@@ -742,7 +742,6 @@ function filterStabVar(capa_dic::Dict{Symbol,Dict{Symbol,Dict{Symbol,DataFrame}}
 				var_dic[:stLvl][sSym] = Dict{Symbol,DataFrame}()
 				for stType in intersect(keys(part_obj.var), keys(stLvl_dic[sSym]))
 					var_df = stLvl_dic[sSym][stType]
-
 					var_dic[:stLvl][sSym][stType] = intCol(var_df) |> (w -> innerjoin(var_df, unique(select(filter(x -> !isempty(x.var.terms), part_obj.var[stType]), w)), on = w))
 				end
 				removeEmptyDic!(var_dic[:stLvl], sSym)

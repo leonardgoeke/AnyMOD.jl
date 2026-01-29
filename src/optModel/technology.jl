@@ -58,7 +58,7 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 		produceMessage(anyM.options, anyM.report, 3, " - Created all variables and prepared all constraints related to expansion and capacity for technology $(tech_str)")
 
 		# create dispatch variables and constraints
-		if isempty(anyM.subPro) || anyM.subPro != (0,0) || anyM.options.createVI.bal || anyM.scr.frsLvl != 0 || part.stCyc == -1
+		if isempty(anyM.subPro) || anyM.subPro != (0,0) || anyM.options.createVI.bal || anyM.scr.frsLvl !=  0|| anyM.options.decompLvl != 0 || part.stCyc == -1
 			
 			createDispVar!(part, modeDep_dic, ts_dic, r_dic, prepTech_dic, anyM)
 			produceMessage(anyM.options, anyM.report, 3, " - Created all dispatch variables for technology $(tech_str)")
@@ -87,7 +87,7 @@ function createTech!(tInt::Int, part::TechPart, prepTech_dic::Dict{Symbol,NamedT
 			end
 
 			# create capacity restrictions
-			sizeRestr_boo = (anyM.scr.frsLvl != 0 && :stLvl in keys(part.var) && anyM.subPro == (0,0))
+			sizeRestr_boo = ((anyM.scr.frsLvl != 0 || anyM.options.decompLvl != 0) && :stLvl in keys(part.var) && anyM.subPro == (0,0))
 			if part.type != :unrestricted && (anyM.subPro != (0,0) || anyM.options.createVI.bal || sizeRestr_boo)
 				if sizeRestr_boo filter!(x -> occursin("stSize", x.cnstrType), part.capaRestr) end
 				createCapaRestr!(part, ts_dic, r_dic, cns_dic, anyM, yTs_dic, rmvOutC_arr)
@@ -222,6 +222,7 @@ end
 # ! create all dispatch variables
 function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, r_dic::Dict{Tuple{Int64,Int64},Array{Int64,1}}, prepTech_dic::Dict{Symbol,NamedTuple}, anyM::anyModel)
 	
+
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,), :stLvlInter => (:avaStSize,))
 	hasSt_boo = :capaStSize in keys(prepTech_dic) && (!anyM.options.createVI.bal || anyM.scr.frsLvl != 0 || part.stCyc == -1)
@@ -241,9 +242,9 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 		if (va in (:stExtOut, :stExtIn, :stLvl) || (va == :stIntIn && :gen in dispVar_arr) || (va == :stIntOut && :use in dispVar_arr)) && anyM.options.createVI.bal && anyM.scr.frsLvl == 0
 			continue 
 		end
-	
-		# dont create storage level for top problem if cycling is within foresight level
-		if va == :stLvl && anyM.subPro == (0,0) && anyM.scr.frsLvl != 0 && anyM.scr.frsLvl <= part.stCyc continue end
+
+		# don't create storage level for top problem if cycling is within foresight or decomposition level
+		if va == :stLvl && anyM.subPro == (0,0) && (anyM.scr.frsLvl != 0 || anyM.options.decompLvl != 0) && max(anyM.scr.frsLvl,anyM.options.decompLvl) <= part.stCyc continue end
 	
 		# obtains relevant capacity variable
 		if conv_boo
@@ -280,6 +281,8 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 		
 		# adds spatial level to dataframe
 		basis_df[!,:lvlR] = map(x -> cToLvl_dic[x][2], basis_df[!,:C])
+
+		# get relevant scenarios
 		defScr_arr = va == :stLvl && anyM.scr.frsLvl != 0 && !isempty(anyM.subPro) && anyM.scr.frsLvl > part.stCyc ? [anyM.subPro[2]] : Int[] 
 		allVar_df = orderDf(expandExpToDisp(basis_df, ts_dic, r_dic, anyM.sets[:Ts], anyM.scr, true, defScr_arr))
 
@@ -297,32 +300,43 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 		else
 			allVar_df[!,:M] .= 0
 		end
-	
-		# adjust table for case of reduced foresight and stochastic storage
-		if va == :stLvl && part.stCyc < anyM.scr.frsLvl && anyM.scr.frsLvl != 0
-
 		
-			# get time-steps that are at the start of a foresight period
-			frsStep_arr = [getDescendants(x, anyM.sets[:Ts], false, y) for x in getfield.(getNodesLvl(anyM.sets[:Ts], anyM.scr.frsLvl), :idx), y in unique(map(x -> getfield(anyM.sets[:Ts].nodes[x], :lvl), allVar_df[!,:Ts_dis]))]
-			frsStart_arr = vec(maximum.(frsStep_arr))
+		# adjust table for case of reduced foresight and stochastic storage
+		if va == :stLvl && part.stCyc < max(anyM.scr.frsLvl, anyM.options.decompLvl)
 			
-			# save copy of variable table with all periods
-			if anyM.subPro != (0,0)	allVarFull_df = copy(allVar_df) end
-			# set scenario to zero for all time-steps at the end of a foresight period
-			allVar_df[!,:scr] = map(x ->  x.Ts_dis in frsStart_arr ? 0 : x.scr, eachrow(allVar_df))
-			allVar_df = unique(allVar_df)
-			
-			# extend table with storage levels needed but not existing yet since scenario does not exist for previous period
-			if isempty(anyM.subPro)
-				allVarFull_df = combine(x -> (scr = x.Ts_dis[end] in frsStart_arr ? [getStScr(x.Ts_dis[end], part.stCyc == -1 ? anyM.supTs.lvl : part.stCyc, anyM.sets[:Ts], anyM.scr)] :  [x.scr],), groupby(allVarFull_df, filter(x -> x != :scr, intCol(allVarFull_df))))
-				allVarFull_df = flatten(allVarFull_df, :scr)
-			elseif anyM.subPro == (0,0)
-				filter!(x -> x.scr == 0, allVar_df)
+			if anyM.scr.frsLvl != 0
+
+				# get time-steps that are at the start of a foresight period
+				frsStart_arr = getStartPeriod(anyM.sets[:Ts], allVar_df[!,:Ts_dis], anyM.scr.frsLvl)		
+
+				# save copy of variable table with all periods
+				if anyM.subPro != (0,0)	allVarFull_df = copy(allVar_df) end
+				# set scenario to zero for all time-steps at the end of a foresight period
+				allVar_df[!,:scr] = map(x ->  x.Ts_dis in frsStart_arr ? 0 : x.scr, eachrow(allVar_df))
+				allVar_df = unique(allVar_df)
+
+				# extend table with storage levels needed but not existing yet since scenario does not exist for previous period
+				if isempty(anyM.subPro)
+					allVarFull_df = combine(x -> (scr = x.Ts_dis[end] in frsStart_arr ? [getStScr(x.Ts_dis[end], part.stCyc == -1 ? anyM.supTs.lvl : part.stCyc, anyM.sets[:Ts], anyM.scr)] :  [x.scr],), groupby(allVarFull_df, filter(x -> x != :scr, intCol(allVarFull_df))))
+					allVarFull_df = flatten(allVarFull_df, :scr)
+				end
+
+			elseif anyM.options.decompLvl != 0 && anyM.subPro != (0,0) && !isempty(anyM.subPro)
+				decompStart_arr = getStartPeriod(anyM.sets[:Ts], allVar_df[!,:Ts_dis], anyM.options.decompLvl)	
+				allVar_df[!,:Ts_dis] = map(x -> x.Ts_dis in decompStart_arr ? decompStart_arr : [x.Ts_dis], eachrow(allVar_df))
+				allVar_df = flatten(allVar_df, :Ts_dis)
 			end
+
 		elseif va == :stLvlInter && !isempty(anyM.subPro) && anyM.subPro != (0,0) 
 			allDes_arr = vcat([anyM.subPro[1]], getDescendants(anyM.subPro[1], anyM.sets[:Ts], true))
 			filter!(x -> x.Ts_dis in allDes_arr, allVar_df)
 		end 
+
+		# get time-steps that are at the start of a decomposition period (for top-problem)
+		if anyM.subPro == (0,0)
+			decompStart_arr = getStartPeriod(anyM.sets[:Ts], allVar_df[!,:Ts_dis], anyM.options.decompLvl)	
+			filter!(x -> x.Ts_dis in decompStart_arr, allVar_df)
+		end
 	
 		# filter entries where availability is zero
 		if va in keys(relAva_dic)
@@ -368,7 +382,7 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 		else
 			allVar_df = createVar(allVar_df, string(va), getUpBound(allVar_df, anyM.options.bound.disp / scaFac_fl, anyM.supTs, anyM.sets[:Ts]), anyM.optModel, anyM.lock, anyM.sets, scaFac = scaFac_fl)
 		end
-	
+
 		# extend table again for case of reduced foresight 
 		if anyM.scr.frsLvl != 0 && va == :stLvl && anyM.subPro != (0,0) && part.stCyc < anyM.scr.frsLvl
 			# create entries for all conceivable scenarios for start of each period again
@@ -450,8 +464,10 @@ function createStBal(part::TechPart, anyM::anyModel)
 	cns_df = rename(part.var[:stLvl], :var => :stLvl)
 
 	# filter cases where storage level variable just exists to formulate balance
-	if anyM.scr.frsLvl != 0 
+	if anyM.scr.frsLvl != 0
 		filter!(x -> getAncestors(x.Ts_dis, anyM.sets[:Ts], :int, anyM.scr.frsLvl)[end] in keys(anyM.scr.scr), cns_df)
+	elseif anyM.options.decompLvl != 0
+		filter!(x -> getAncestors(x.Ts_dis, anyM.sets[:Ts], :int, anyM.options.decompLvl)[end] in keys(anyM.scr.scr), cns_df)
 	end
 	cnsDim_arr = filter(x -> x != :Ts_disSup, intCol(cns_df))
 
@@ -553,11 +569,12 @@ function createStBal(part::TechPart, anyM::anyModel)
 			cnsC_df[!,:stInflow] .= 0.0
 		end
 
-		# add infeasibility variables for reduced foresight with cutting plane algorithm
-		if anyM.scr.frsLvl != 0 && !isempty(anyM.subPro) && anyM.scr.frsLvl > part.stCyc && :costStLvlLss in keys(anyM.parts.cost.par)
+		# add infeasibility variables for reduced foresight or decomposed operation with cutting plane algorithm
+		if (anyM.scr.frsLvl != 0 || anyM.options.decompLvl != 0) && !isempty(anyM.subPro) && max(anyM.options.decompLvl, anyM.scr.frsLvl) > part.stCyc && :costStLvlLss in keys(anyM.parts.cost.par)
 			# get time-steps at end of foresight period
 			endTs_df = combine(x -> (Ts_dis = maximum(x.Ts_dis),), groupby(cnsC_df, filter(x -> !(x in (:Ts_dis, :Ts_disPrev)), intCol(cnsC_df))))
 			# add times-steps at start of foresight period, if option is set
+
 			if anyM.options.dbInf
 				startTs_df = combine(x -> (Ts_dis = minimum(x.Ts_dis),), groupby(cnsC_df, filter(x -> !(x in (:Ts_dis, :Ts_disPrev)), intCol(cnsC_df))))
 				endTs_df = unique(vcat(startTs_df, endTs_df))

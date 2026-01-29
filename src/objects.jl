@@ -590,8 +590,6 @@ mutable struct anyModel <: AbstractModel
 		# ! assign parameters to model parts
 		parameterToParts!(paraTemp_dic, sysArr_dic, anyM)
 		produceMessage(anyM.options, anyM.report, 2, " - Assigned parameter data to model parts")
-		
-		#Main.@infiltrate
 
 		# ! add scenario mappings
 		createScenarioMapping!(frsLvl_int,decompLvl_int,anyM)

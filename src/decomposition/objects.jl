@@ -100,8 +100,7 @@ mutable struct resData
 
 		# write storage levels in case of reduced foresight
 		stLvl_dic = Dict{Symbol,Dict{Symbol,DataFrame}}()
-
-		if :stLvl in var_arr && in_m.options.frsLvl != 0
+		if :stLvl in var_arr && (in_m.options.frsLvl != 0 || in_m.options.decompLvl != 0)
 			for sSym in keys(in_m.parts.tech)
 				stLvl_dic[sSym] = Dict{Symbol,DataFrame}()
 				for stType in (:stLvl, :stLvlInter)
@@ -111,8 +110,7 @@ mutable struct resData
 					end
 				end
 				removeEmptyDic!(stLvl_dic, sSym)
-			end
-			
+			end	
 		end
 
 		comLim_dic = Dict{Symbol,DataFrame}()
@@ -163,7 +161,9 @@ mutable struct stabObj
 	
 	function stabObj(meth_tup::Tuple, srsThr_fl::Float64, lowLimVal_fl::Float64, ruleSw_ntup::NamedTuple, weight_ntup::NamedTuple{(:capa, :capaStSize, :stLvl, :lim), NTuple{4, Float64}}, resData_obj::resData, lowBd_fl::Float64, solveNoStab_ntup::NamedTuple{(:upper, :inter, :sub), Tuple{Int64, Symbol, Float64}}, repVio_boo::Bool, top_m::anyModel)
 		stab_obj = new()
+
 		resDataStab_obj = filterResData(resData_obj, top_m, [:capa, :exp, :stLvl, :lim]; rmvFix = true)
+
 
 		if !(isempty(ruleSw_ntup) || typeof(ruleSw_ntup) == NamedTuple{(:itr, :avgImp, :itrAvg), Tuple{Int64,Float64,Int64}})
 			error("rule for switching stabilization method must be empty or have the fields 'itr', 'avgImp', and 'itrAvg'")
@@ -261,7 +261,7 @@ mutable struct bendersObj
 		report_m = benders_obj.report.mod
 		produceMessage(report_m.options, report_m.report, 1, " - Started creation of top-problem", testErr = false, printErr = false)
 
-		top_m = anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel_" * info_ntup.name, frsLvl = info_ntup.frsLvl, supTsLvl = info_ntup.supTsLvl, checkRng = (print = true, all = true), repTsLvl = info_ntup.repTsLvl, shortExp = info_ntup.shortExp, infeasTop = info_ntup.infeasTop, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, holdFixed = true, createVI = algSetup_obj.useVI)
+		top_m = anyModel(inputFolder_ntup.in, inputFolder_ntup.results, objName = "topModel_" * info_ntup.name, frsLvl = info_ntup.frsLvl, decompLvl = info_ntup.decompLvl, supTsLvl = info_ntup.supTsLvl, checkRng = (print = true, all = true), repTsLvl = info_ntup.repTsLvl, shortExp = info_ntup.shortExp, infeasTop = info_ntup.infeasTop, coefRng = scale_dic[:rng], scaFac = scale_dic[:facTop], reportLvl = 1, holdFixed = true, createVI = algSetup_obj.useVI)
 		sub_tup = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(top_m.parts.obj.par[:scrProb].data)])...) # get all time-step/scenario combinations
 
 		# creation of sub-problems
@@ -269,8 +269,6 @@ mutable struct bendersObj
 		inputFolderSub_ntup = (in = inputFolder_ntup.in, heu = inputFolder_ntup.heu, results = inputFolder_ntup.results * "/sub")
 		produceMessage(report_m.options, report_m.report, 1, " - Started creation of sub-problems", testErr = false, printErr = false)
 		benders_obj.sub = Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}()
-
-		#Main.@infiltrate
 		
 		complCns_dic = Dict{Tuple{Int,Int},Dict{Symbol,DataFrame}}()
 		for (id, s) in enumerate(sub_tup)

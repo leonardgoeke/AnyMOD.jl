@@ -471,7 +471,6 @@ function expandExpToDisp(inData_df::DataFrame, ts_dic::Dict{Tuple{Int,Int},Array
 	# adds regional timesteps and check if this causes non-unique values (because spatial expansion level can be below dispatch level)
 	expR_df = unique(combine(x -> (R_dis = r_dic[(x.R_exp[1], x.lvlR[1])],), groupby(inData_df, namesSym(inData_df)))[!,Not([:R_exp,:lvlR])])
 	expTs_df = combine(x -> (Ts_dis = ts_dic[(x.Ts_disSup[1], x.lvlTs[1])],), groupby(expR_df, namesSym(expR_df)))[!,Not(:lvlTs)]
-
 	expTs_df = addScenarios(expTs_df, ts_tr, scr_ntup, defScr_arr)
 	
 	if !preserveTsSupTs select!(expTs_df, Not(:Ts_disSup)) end
@@ -734,4 +733,11 @@ function getStScr(ts::Int, syCyc_int::Int, ts_tr::Tree, scr_ntup::NamedTuple)
 	return sort(union(map(x -> scr_ntup.scr[getAncestors(x, ts_tr, :int, scr_ntup.lvl)[end]], [ts, presTs_int])...))
 end
 
+# ! get timestep at the start of a period
+function getStartPeriod(ts_tree::Tree, ts_arr::Array{Int,1}, lvl_int::Int)
+	frsStep_arr = [getDescendants(x, ts_tree, false, y) for x in getfield.(getNodesLvl(ts_tree, lvl_int), :idx), y in unique(map(x -> getfield(ts_tree.nodes[x], :lvl), ts_arr))]
+	return vec(maximum.(frsStep_arr))
+end
+
 #endregion
+

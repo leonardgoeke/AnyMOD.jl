@@ -662,8 +662,6 @@ function getScrLvl(anyM::anyModel)
 		decompLvl_int = 0
 	end
 
-
-
 	return frsLvl_int, decompLvl_int
 
 end
@@ -674,8 +672,6 @@ function createScenarioMapping!(frsLvl_int::Int, decompLvl_int::Int, anyM::anyMo
 	if length(anyM.sets[:scr].nodes) > 1
 		allScr_arr = filter(x -> x != 0, getfield.(collect(values(anyM.sets[:scr].nodes)), :idx))
 		prop_df = flatten(flatten(DataFrame(Ts_dis  = [getfield.(getNodesLvl(anyM.sets[:Ts], decompLvl_int == 0 ? anyM.supTs.lvl : decompLvl_int), :idx)], scr = [allScr_arr]), :Ts_dis), :scr)
-
-		#Main.@infiltrate
 
 		# assigns probabilities defined as parameters
 		if :scrProb in collectKeys(keys(anyM.parts.obj.par))
@@ -746,7 +742,8 @@ function createScenarioMapping!(frsLvl_int::Int, decompLvl_int::Int, anyM::anyMo
 	end
 
 	# assigns mappings to final object
-	anyM.scr = (lvl = frsLvl_int == 0 ? anyM.supTs.lvl : frsLvl_int, frsLvl = frsLvl_int, scr = tsToScr_dic, scrProb = tsScrToProp_dic)
+	scrLvl_int = max(frsLvl_int,decompLvl_int)
+	anyM.scr = (lvl = scrLvl_int == 0 ? anyM.supTs.lvl : scrLvl_int, frsLvl = frsLvl_int, scr = tsToScr_dic, scrProb = tsScrToProp_dic)
 end
 
 # ! adjusts model object according to distributed generation
@@ -765,7 +762,7 @@ function distributedMapping!(anyM::anyModel, prepSys_dic::Dict{Symbol,Dict{Symbo
 			relLvl_arr = getDescendants(subPro[1], anyM.sets[:Ts], false, i)
 			append!(relTsDis_arr, relLvl_arr)
 			# gathers time-steps only relevant with limited foresight 
-			if anyM.scr.frsLvl != 0
+			if anyM.scr.frsLvl != 0 || anyM.options.decompLvl != 0
 				allLvl_arr = getDescendants(supTs_int, anyM.sets[:Ts], false, i)
 				nonRelLvl_arr = setdiff(allLvl_arr, relLvl_arr)
 				exRel_int = minimum(relLvl_arr) - 1 in allLvl_arr ? minimum(relLvl_arr) - 1 : maximum(nonRelLvl_arr)
