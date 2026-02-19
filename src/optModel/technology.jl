@@ -912,7 +912,6 @@ function computeDesFac!(part::TechPart, yTs_dic::Dict{Int64,Int64}, anyM::anyMod
 	allFac_df[!,:Ts_disSup] = map(x -> yTs_dic[x], allFac_df[!,:Ts_dis])
 	allFac_df = combine(x -> (desFac = minimum(x.run) * maximum(x.mustOut),), groupby(allFac_df, filter(x -> !(x in [:Ts_dis,:scr]), intCol(allFac_df))))
 
-
 	# check for pre-defined capacity factors and use them instead of computed values
 	if :desFac in keys(part.par)
 		preDefFac_df = matchSetParameter(select(allFac_df,Not([:desFac])), part.par[:desFac], anyM.sets, newCol = :desFac)

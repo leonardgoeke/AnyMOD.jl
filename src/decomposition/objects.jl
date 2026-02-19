@@ -239,7 +239,7 @@ mutable struct bendersObj
 	info::NamedTuple{(:name,:frsLvl,:decompLvl,:supTsLvl,:repTsLvl,:shortExp,:infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Int64, Bool}}
 	report::NamedTuple{(:itr,:nearOpt,:stabVio,:res,:mod),Tuple{DataFrame,DataFrame,DataFrame,NamedTuple,anyModel}}
 	
-	function bendersObj(info_ntup::NamedTuple{(:name, :frsLvl, :decompLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Int64, Bool}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, getComVarDist::Function, resInfo::NamedTuple; trackCapa::Bool = false, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
+	function bendersObj(info_ntup::NamedTuple{(:name, :frsLvl, :decompLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Int64, Bool}}, inputFolder_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algSetup_obj::algSetup, stabSetup_obj::stabSetup, runSubDist::Function, getComVarDist::Function, resInfo::NamedTuple; mapFolders::NamedTuple = NamedTuple(), trackCapa::Bool = false, nearOptSetup_obj::Union{Nothing,nearOptSetup} = nothing)
 
         #region # * checks and initialization
 
@@ -265,7 +265,6 @@ mutable struct bendersObj
 		sub_tup = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(top_m.parts.obj.par[:scrProb].data)])...) # get all time-step/scenario combinations
 
 		# creation of sub-problems
-
 		inputFolderSub_ntup = (in = inputFolder_ntup.in, heu = inputFolder_ntup.heu, results = inputFolder_ntup.results * "/sub")
 		produceMessage(report_m.options, report_m.report, 1, " - Started creation of sub-problems", testErr = false, printErr = false)
 		benders_obj.sub = Dict{Tuple{Int,Int},Union{Future,Task,anyModel}}()
@@ -275,10 +274,10 @@ mutable struct bendersObj
 			subStr_tup = (top_m.sets[:Ts].nodes[s[1]].val, top_m.sets[:scr].nodes[s[2]].val)
 			if benders_obj.algOpt.dist # distributed case
 				benders_obj.sub[s] = @spawnat id + 1 begin
-					global sub_m, comVar_dic = buildSub(myid() - 1, subStr_tup, info_ntup, inputFolderSub_ntup, scale_dic, algSetup_obj)
+					global sub_m, comVar_dic = buildSub(myid() - 1, subStr_tup, info_ntup, inputFolderSub_ntup, scale_dic, algSetup_obj, mapFolders)
 				end
 			else # non-distributed case
-				benders_obj.sub[s], complCns_dic[s] = buildSub(id, subStr_tup, info_ntup, inputFolderSub_ntup, scale_dic, algSetup_obj)
+				benders_obj.sub[s], complCns_dic[s] = buildSub(id, subStr_tup, info_ntup, inputFolderSub_ntup, scale_dic, algSetup_obj, mapFolders)
 			end
 		end
 		benders_obj.complVar = complCns_dic

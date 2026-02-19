@@ -260,14 +260,15 @@ end
 #region # * basic benders algorithm
 
 # build sub-problems
-function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::NamedTuple{(:name, :frsLvl, :decompLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Int64, Bool}}, inputFolderSub_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup)
+function buildSub(id::Int, subStr_tup::Tuple{String, String}, genSetup_ntup::NamedTuple{(:name, :frsLvl, :decompLvl, :supTsLvl, :repTsLvl, :shortExp, :infeasTop), Tuple{String, Int64, Int64, Int64, Int64, Int64, Bool}}, inputFolderSub_ntup::NamedTuple{(:in, :heu, :results), Tuple{Vector{String}, Vector{String}, String}}, scale_dic::Dict{Symbol,NamedTuple}, algOpt_obj::algSetup, mapFolders::NamedTuple)
+	
 	# filter relevant input folders
-	relIn_arr = filter(x -> (occursin("ini",x) && genSetup_ntup.frsLvl != 0 ? occursin(subStr_tup[1],x) : true) && (occursin("scr",x) ? occursin(subStr_tup[2],x) : true), inputFolderSub_ntup.in)
+	relIn_arr = filter(x -> (occursin("ini",x) && genSetup_ntup.frsLvl != 0 ? any(occursin.(mapFolders.ts[subStr_tup[1]],x)) : true) && (occursin("scr",x) ? any(occursin.(mapFolders.scr[subStr_tup[2]],x)) : true), inputFolderSub_ntup.in)
 	# create sub-problems
 	sub_m = anyModel(relIn_arr, inputFolderSub_ntup.results, checkRng = (print = true, all = false), objName = "subModel_" * string(id) * "_" * genSetup_ntup.name, frsLvl = genSetup_ntup.frsLvl, decompLvl = genSetup_ntup.decompLvl, repTsLvl = genSetup_ntup.repTsLvl, holdFixed =true, supTsLvl = genSetup_ntup.supTsLvl, shortExp = genSetup_ntup.shortExp, coefRng = scale_dic[:rng], scaFac = scale_dic[:facSub], dbInf = algOpt_obj.sub.dbInf, reportLvl = 1)
-	sub_m.subPro = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)])...)[id]
+	sub_m.subPro = tuple(sort([(x.Ts_dis, x.scr) for x in eachrow(sub_m.parts.obj.par[:scrProb].data)])...)[id]	
 	prepareMod!(sub_m, algOpt_obj.opt, algOpt_obj.sub.threads)
-	
+
 	# set options
 	@suppress begin
 		set_optimizer_attribute(sub_m.optModel, "Threads", algOpt_obj.sub.threads)

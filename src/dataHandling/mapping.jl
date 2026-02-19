@@ -784,7 +784,6 @@ function distributedMapping!(anyM::anyModel, prepSys_dic::Dict{Symbol,Dict{Symbo
 		rmvId_tup = (Ts_dis = rmvTs_arr, Ts_exp = rmvTs_arr,
 						scr = filter(x -> x != subPro[2] && x != 0, getfield.(values(anyM.sets[:scr].nodes), :idx)))
 
-		
 
 		# remove unrequired scenarios
 		foreach(y ->  delete!(anyM.sets[:scr].nodes, y), rmvId_tup.scr)
