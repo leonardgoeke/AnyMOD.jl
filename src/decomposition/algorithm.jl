@@ -1148,7 +1148,9 @@ function filterResData(in_res::resData, in_m::anyModel, var_arr::Array{Symbol,1}
 		removeEmptyDic!(in_res.stLvl, sSym)
 	end
 	
-	filter!(x -> any(occursin.(string.(var_arr), string(x[1]))), in_res.lim)
+	if !(:lim in var_arr)
+		filter!(x -> any(occursin.(string.(var_arr), string(x[1]))), in_res.lim)
+	end
 
 	return in_res
 end
@@ -1246,7 +1248,7 @@ function getResult(res_df::DataFrame; pos_boo::Bool = true)
 	end
 
 	# write value of variable dataframe
-		res_df[!,:value] = map(x -> (pos_boo ? max(0, value(x) - x.constant) : (value(x) - x.constant)) |> (y -> round(y, digits = 12)), res_df[!,:var])
+	res_df[!,:value] = map(x -> (pos_boo ? max(0, value(x) - x.constant) : (value(x) - x.constant)) |> (y -> round(y, digits = 12)), res_df[!,:var])
 
 	return select(res_df, Not([:var]))
 end
