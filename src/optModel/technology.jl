@@ -225,6 +225,7 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 
 	# assign relevant availability parameters to each type of variable
 	relAva_dic = Dict(:gen => (:avaConv,), :use => (:avaConv,), :stIntIn => (:avaConv, :avaStIn), :stIntOut => (:avaConv, :avaStOut), :stExtIn => (:avaStIn,), :stExtOut => (:avaStOut,), :stLvl => (:avaStSize,), :stLvlInter => (:avaStSize,))
+	multiSt_boo = anyM.sets[:scr].height > 1 && anyM.scr.frsLvl != 0
 	hasSt_boo = :capaStSize in keys(prepTech_dic) && (!anyM.options.createVI.bal || anyM.scr.frsLvl != 0 || part.stCyc == -1)
 	dispVar_arr = collectKeys(keys(part.carrier)) |> (x -> hasSt_boo  ? [:stLvl, x...]  : x)  |> (x -> part.stCyc == -1 && !anyM.options.monteCarlo  ? [:stLvlInter, :stInterOut, :stInterIn, x...]  : x)
 	if anyM.subPro == (0,0) && !anyM.options.createVI.bal filter!(x -> x in (:stLvl, :stLvlInter), dispVar_arr) end # case of top problem and reduced foresight
@@ -304,10 +305,10 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 		# adjust table for case of reduced foresight and stochastic storage
 		if va == :stLvl && part.stCyc < max(anyM.scr.frsLvl, anyM.options.decompLvl)
 			
-			if anyM.scr.frsLvl != 0
+			if anyM.scr.frsLvl != 0 && !multiSt_boo
 
 				# get time-steps that are at the start of a foresight period
-				frsStart_arr = getStartPeriod(anyM.sets[:Ts], allVar_df[!,:Ts_dis], anyM.scr.frsLvl)		
+				frsStart_arr = getStartPeriod(anyM.sets[:Ts], allVar_df[!,:Ts_dis], anyM.scr.frsLvl)
 
 				# save copy of variable table with all periods
 				if anyM.subPro != (0,0)	allVarFull_df = copy(allVar_df) end
@@ -385,12 +386,20 @@ function createDispVar!(part::TechPart, modeDep_dic::Dict{Symbol,DataFrame}, ts_
 
 		# extend table again for case of reduced foresight 
 		if anyM.scr.frsLvl != 0 && va == :stLvl && anyM.subPro != (0,0) && part.stCyc < anyM.scr.frsLvl
-			# create entries for all conceivable scenarios for start of each period again
-			allScr_arr = filter(x -> x != 0, collect(keys(anyM.sets[:scr].nodes)))
-			allVar_df[!,:scr] = map(x ->  x.scr == 0 ? allScr_arr : [x.scr], eachrow(allVar_df))
-			allVar_df = flatten(allVar_df,:scr)
-			# joins with stored dataframe of all entries that sould exist 
-			allVar_df = innerjoin(allVarFull_df, allVar_df, on = intCol(allVarFull_df))
+			if multiSt_boo
+				# get time-steps that are at the start of a foresight period
+				frsStart_arr = getStartPeriod(anyM.sets[:Ts], allVar_df[!,:Ts_dis], anyM.scr.frsLvl)
+				# if at end of a foresight period, replace scenario with nodes further down in tree 
+				allVar_df[!,:scr] = map(x -> x.Ts_dis in frsStart_arr ? vcat([x.scr],anyM.sets[:scr].nodes[x.scr].down) : [x.scr], eachrow(allVar_df))
+				allVar_df = flatten(allVar_df,:scr)
+			else
+				# create entries for all conceivable scenarios for start of each period again
+				allScr_arr = filter(x -> x != 0, collect(keys(anyM.sets[:scr].nodes)))
+				allVar_df[!,:scr] = map(x ->  x.scr == 0 ? allScr_arr : [x.scr], eachrow(allVar_df))
+				allVar_df = flatten(allVar_df,:scr)
+				# joins with stored dataframe of all entries that sould exist
+				allVar_df = innerjoin(allVarFull_df, allVar_df, on = intCol(allVarFull_df))
+			end
 		end
 		
 		part.var[va] = orderDf(allVar_df)
@@ -567,6 +576,13 @@ function createStBal(part::TechPart, anyM::anyModel)
 			end
 		else
 			cnsC_df[!,:stInflow] .= 0.0
+		end
+
+		# allow set a starting level in case of muli-stage dispatch with a tree
+		Main.@infiltrate
+		if anyM.sets[:scr].height > 1 && anyM.scr.frsLvl != 0 && :stLvlStart in keys(part.par)
+			startTs_df = matchSetParameter(select(filter(x -> x.stLvlPrev == AffExpr(), cnsC_df),Not([:stLvlPrev])), part.par[:stLvlStart], anyM.sets, newCol = :stLvlPrev)
+			cnsC_df = vcat(startTs_df, antijoin(cnsC_df, startTs_df, on = intCol(startTs_df)))
 		end
 
 		# add infeasibility variables for reduced foresight or decomposed operation with cutting plane algorithm

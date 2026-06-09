@@ -464,6 +464,9 @@ function createSysInfo!(sys::Symbol, sSym::Symbol, setData_dic::Dict, lvlScr_int
 				stCyc_int = anyM.supTs.lvl
 				push!(anyM.report, (2, "technology mapping", "storage cycling", "specific storage cycling provided for technology '$(string(sSym))' could not parsed into a integer or used keyword 'inter', value was ignored"))
 			elseif row_df[:timestep_cyclic] == "inter"
+
+				if anyM.sets[:scr].height > 1 error("Scenarios are defined as a tree, resulting in multi-strage dispatch does not supporting inter-annual storage") end
+					
 				if !isnothing(anyM.options.forceScr) || length(anyM.sets[:scr].nodes) == 1 || lvlScr_int == 0
 					stCyc_int = anyM.supTs.lvl
 					push!(anyM.report, (1, "technology mapping", "storage cycling", "detected keyword 'inter' for storage cycling of technology '$(string(sSym))', but model is deterministic, storage operates as yearly storage"))
@@ -675,7 +678,24 @@ function createScenarioMapping!(frsLvl_int::Int, decompLvl_int::Int, anyM::anyMo
 
 	if length(anyM.sets[:scr].nodes) > 1
 		allScr_arr = filter(x -> x != 0, getfield.(collect(values(anyM.sets[:scr].nodes)), :idx))
-		prop_df = flatten(flatten(DataFrame(Ts_dis  = [getfield.(getNodesLvl(anyM.sets[:Ts], decompLvl_int == 0 ? anyM.supTs.lvl : decompLvl_int), :idx)], scr = [allScr_arr]), :Ts_dis), :scr)
+		prop_df = flatten(flatten(DataFrame(Ts_dis = [getfield.(getNodesLvl(anyM.sets[:Ts], decompLvl_int == 0 ? anyM.supTs.lvl : decompLvl_int), :idx)], scr = [allScr_arr]), :Ts_dis), :scr)
+		
+		# create dataframe of relevant scenario-timestep combinations
+		scrH_int = anyM.sets[:scr].height
+		if scrH_int > 1 && frsLvl_int != 0 # tree dispatch: each scenario tree level covers one foresight timesteps
+
+			frsTs_arr = sort(getfield.(getNodesLvl(anyM.sets[:Ts], frsLvl_int), :idx))
+			propTup_arr = Tuple{Int,Int}[]
+			for (k, ts) in enumerate(frsTs_arr)
+				activeLvl_int = min(k, scrH_int)
+				for n in getfield.(getNodesLvl(anyM.sets[:scr], activeLvl_int), :idx)
+					push!(propTup_arr, (ts, n))
+				end
+			end
+			prop_df = DataFrame(Ts_dis = getindex.(propTup_arr, 1), scr = getindex.(propTup_arr, 2))
+		else # lattice dispatch: all leaf scenarios for every foresight timestep (may filter those with zero probability later)
+			prop_df = flatten(flatten(DataFrame(Ts_dis = [getfield.(getNodesLvl(anyM.sets[:Ts], decompLvl_int == 0 ? anyM.supTs.lvl : decompLvl_int), :idx)], scr = [allScr_arr]), :Ts_dis), :scr)
+		end
 
 		# assigns probabilities defined as parameters
 		if :scrProb in collectKeys(keys(anyM.parts.obj.par))
@@ -683,9 +703,14 @@ function createScenarioMapping!(frsLvl_int::Int, decompLvl_int::Int, anyM::anyMo
 		else
 			propPar_df = filter(x -> false, prop_df)
 			propPar_df[!,:val] = Float64[]
-			# compute default values in other cases
+			# compute default values in other cases; for multi-stage weight equally by active nodes per stage
 			prop_df = antijoin(prop_df, propPar_df, on = [:scr, :Ts_dis])
-			prop_df[!,:val] .= 1/length(allScr_arr)
+			if scrH_int > 1 && frsLvl_int != 0
+				nPerTs_dic = Dict(ts => count(x -> x.Ts_dis == ts, eachrow(prop_df)) for ts in unique(prop_df[!,:Ts_dis]))
+				prop_df[!,:val] = map(x -> 1.0 / nPerTs_dic[x.Ts_dis], eachrow(prop_df))
+			else
+				prop_df[!,:val] .= 1/length(allScr_arr)
+			end
 		end
 
 		# controls sum of probabilities
@@ -724,6 +749,9 @@ function createScenarioMapping!(frsLvl_int::Int, decompLvl_int::Int, anyM::anyMo
 				tsToScr_dic = Dict(x[1] => [x[2]] for x in tsScrPro_arr)
 			else
 				# adjust elements to solve deterministic for one scenario
+				if scrH_int > 1 && frsLvl_int != 0
+					error("Deterministic casec cannot be forced for multi-stage tree")
+				end
 				propScr_int = sysInt(anyM.options.forceScr, anyM.sets[:scr])
 				relTs_arr = unique(prop_df[!,:Ts_dis])
 				tsScrToProp_dic = Dict((x, propScr_int) => 1.0 for x in relTs_arr)

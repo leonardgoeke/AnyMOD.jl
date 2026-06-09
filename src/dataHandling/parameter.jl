@@ -536,7 +536,8 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     # specific storage parameters
     parDef_dic[:stDis]        = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :M, :id, :scr), problem = :both, defVal = nothing, herit = (:Ts_expSup => :up, :Ts_dis => :up, :C => :up, :R_dis => :up, :Te => :up, :Ts_dis => :avg_any, :R_dis => :avg_any, :scr => :up, :id => :up), part = :techSt, techPre = (preset = :carrierSt, mode = (:stIn, :stOut, :stLvl)))
     parDef_dic[:stInflow]     = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id, :scr),     problem = :both, defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :avg_any, :R_dis => :sum_any, :Te => :up, :scr => :up, :id => :up),                                part = :techSt, techPre = (preset = :carrierSt, mode = tuple()))
-    parDef_dic[:costStLvlLss] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id),           problem = :both, defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :avg_any, :R_dis => :sum_any, :Te => :up, :id => :up),                                             part = :cost, techPre = (preset = :carrierSt, mode = tuple()))
+    parDef_dic[:stLvlStart]   = (dim = (:Ts_disSup, :Ts_expSup, :R_dis, :C, :Te, :id),        problem = :both, defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_disSup => :up, :R_dis => :sum_any, :Te => :up, :id => :up),                                               part = :techSt)
+    parDef_dic[:costStLvlLss] = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id),           problem = :both, defVal = nothing, herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :avg_any, :R_dis => :sum_any, :Te => :up, :id => :up),                                             part = :cost,   techPre = (preset = :carrierSt, mode = tuple()))
 
     # reference storage level and deviation costs
     parDef_dic[:stLvlRefMonte]     = (dim = (:Ts_dis, :Ts_expSup, :R_dis, :C, :Te, :id),      problem = :sub,  defVal = 0.0     , herit = (:Ts_expSup => :up, :C => :up, :Ts_dis => :up, :R_dis => :sum_any, :Te => :up, :id => :up),                                             part = :cost, techPre = (preset = :carrierSt, mode = tuple()))
@@ -595,7 +596,7 @@ function defineParameter(options::modOptions, report::Array{Tuple,1})
     # ! further dispatch parameters
 
     # probability of dispatch scenarios
-    parDef_dic[:scrProb] = (dim = (:Ts_dis, :scr), problem = :both, defVal = nothing, herit = (:scr => :up, :Ts_dis => :up, :Ts_dis => :avg_any), part = :obj)
+    parDef_dic[:scrProb] = (dim = (:Ts_dis, :scr), problem = :both, defVal = nothing, herit = (:scr => :sum_any, :Ts_dis => :up, :Ts_dis => :avg_any), part = :obj)
 
     # output capacity related parameters
     parDef_dic[:capaDem] =      (dim = (:Ts_disSup, :R_dis, :C), problem = :both, defVal = nothing, herit = (:R_dis => :sum_any, :Ts_disSup => :avg_any), part = :bal)

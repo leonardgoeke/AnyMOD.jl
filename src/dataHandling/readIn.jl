@@ -27,20 +27,11 @@ function readSets!(files_dic::Dict{String,Array{String,1}}, anyM::anyModel)
 			continue
 		end
 
-		if setShort_sym == :scr
-			# exception for scenario file, checks column naming and manipulates tree
-			if namesSym(setData_dic[setShort_sym]) != [:scenario]
-				push!(anyM.report, (3, "set read-in", string(setLong_sym), "only one column named 'scenario' allowed in set file defining scenarios"))
-			else
-				setData_dic[setShort_sym] = rename(setData_dic[setShort_sym], :scenario => :scenario_1)
-			end
-		else
-			# reporting on wrong column naming
-			colNames_arr = map(x -> x[end], split.(names(setData_dic[setShort_sym]), "_"))
-			if filter(x -> !isnothing(x), tryparse.(Int, colNames_arr)) |> (y -> y != collect(1:maximum(y)))
-				push!(anyM.report, (3, "set read-in", string(setLong_sym), "wrong column naming detected, columns to define set have to be named: " * join(map(x -> string(setLong_sym, "_", x), 1:2), ", ") * "..."))
-				continue
-			end
+		# reporting on wrong column naming
+		colNames_arr = map(x -> x[end], split.(names(setData_dic[setShort_sym]), "_"))
+		if filter(x -> !isnothing(x), tryparse.(Int, colNames_arr)) |> (y -> y != collect(1:maximum(y)))
+			push!(anyM.report, (3, "set read-in", string(setLong_sym), "wrong column naming detected, columns to define set have to be named: " * join(map(x -> string(setLong_sym, "_", x), 1:2), ", ") * "..."))
+			continue
 		end
 
 		# write tree
