@@ -173,7 +173,6 @@ function createEnergyBal!(techSym_arr::Array{Symbol,1}, ts_dic::Dict{Tuple{Int64
 		aggCol!(cns_df, negVar_arr)
 		cns_df[!,:cnsExpr] = @expression(anyM.optModel, cns_df[!,posVar_arr[1]] .- cns_df[!,negVar_arr[1]])
 		filter!(x -> x.cnsExpr != AffExpr(), cns_df)
-		
 		cns_df = orderDf(cns_df[!,[intCol(cns_df)...,:cnsExpr]])
 		scaleCnsExpr!(cns_df, anyM.options.coefRng, anyM.options.checkRng)
 		cns_arr[idx] = Symbol(c_str) => cnsCont(cns_df, anyM.cInfo[c].balSign == :eq && !anyM.options.createVI.bal ? :equal : :greater)

@@ -326,10 +326,11 @@ function createCost!(partCost::OthPart, anyM::anyModel)
 		end
 
 		# ! add elements for variable costs of systems
-		for va in (:use, :gen, :stIn, :stOut, :in, :out, :exc, :stLvlInfeasIn, :stLvlInfeasOut)
+		for va in (:use, :gen, :stIn, :stOut, :in, :out, :exc, :stLvl, :stLvlInfeasIn, :stLvlInfeasOut)
 
 			costPar_sym = string(va) |> (x -> va in (:stLvlInfeasIn, :stLvlInfeasOut) ? :costStLvlLss : Symbol(:costVar, uppercase(x[1]), x[2:end]))
-
+			
+			if va == :stLvl Main.@infiltrate end
 			if !(costPar_sym in parObj_arr) continue end
 
 			# obtain all variables
