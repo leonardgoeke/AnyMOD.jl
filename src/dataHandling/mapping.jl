@@ -770,7 +770,7 @@ function createScenarioMapping!(frsLvl_int::Int, decompLvl_int::Int, anyM::anyMo
 	else
 		tsToScr_dic = Dict{Int64, Vector{Int64}}()
 		tsScrToProp_dic = Dict{Tuple{Int64, Int64}, Float64}()
-		if lvl_int != 0 push!(anyM.report, (2, "scenario mapping", "", "foresight level set but not scenarios specified")) end
+		if frsLvl_int != 0 push!(anyM.report, (2, "scenario mapping", "", "foresight level set but not scenarios specified")) end
 	end
 
 	# assigns mappings to final object
