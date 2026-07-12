@@ -579,7 +579,7 @@ function createStBal(part::TechPart, anyM::anyModel)
 		end
 
 		# allow set a starting level in case of muli-stage dispatch with a tree
-		if anyM.sets[:scr].height > 1 && anyM.scr.frsLvl != 0 && :stLvlStart in keys(part.par)
+		if :stLvlStart in keys(part.par)
 			startTs_df = matchSetParameter(select(filter(x -> x.stLvlPrev == AffExpr(), cnsC_df),Not([:stLvlPrev])), part.par[:stLvlStart], anyM.sets, newCol = :stLvlPrev)
 			startTs_df[!,:stLvlPrev] .= startTs_df[!,:stLvlPrev] .* (-1)
 			cnsC_df = vcat(startTs_df, antijoin(cnsC_df, startTs_df, on = intCol(startTs_df)))
