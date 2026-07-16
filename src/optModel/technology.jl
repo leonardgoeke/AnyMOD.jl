@@ -485,7 +485,6 @@ function createStBal(part::TechPart, anyM::anyModel)
 	filter!(x -> !isempty(x[2]), tsChildren_dic)
 	firstLastTs_dic::Dict{Int,Int} = Dict(minimum(tsChildren_dic[z]) => maximum(tsChildren_dic[z]) for z in keys(tsChildren_dic))
 	firstTs_arr = collect(keys(firstLastTs_dic))
-
 	cns_df[!,:Ts_disPrev] = map(x -> x in firstTs_arr ? firstLastTs_dic[x] : x - 1, cns_df[!,:Ts_dis])
 	cns_df = rename(joinMissing(cns_df, part.var[:stLvl], intCol(part.var[:stLvl]) |> (x -> Pair.(replace(x, :Ts_dis => :Ts_disPrev), x)), :left, Dict(:var => AffExpr())), :var => :stLvlPrev)
 
@@ -579,6 +578,7 @@ function createStBal(part::TechPart, anyM::anyModel)
 		end
 
 		# allow set a starting level in case of muli-stage dispatch with a tree
+		Main.@infiltrate
 		if :stLvlStart in keys(part.par)
 			startTs_df = matchSetParameter(select(filter(x -> x.stLvlPrev == AffExpr(), cnsC_df),Not([:stLvlPrev])), part.par[:stLvlStart], anyM.sets, newCol = :stLvlPrev)
 			startTs_df[!,:stLvlPrev] .= startTs_df[!,:stLvlPrev] .* (-1)

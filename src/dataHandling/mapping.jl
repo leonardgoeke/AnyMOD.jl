@@ -151,7 +151,7 @@ function createTimestepMapping!(anyM::anyModel)
 	for sup in supTs_tup
 		tsBase_arr = getDescendants(sup, anyM.sets[:Ts], false, ts_tr.height)
 		# compute correction factor on non-continous levels
-		redFac_dic[sup] = 8760/(length(tsBase_arr))
+		redFac_dic[sup] = 8760*anyM.options.numYears/(length(tsBase_arr))
 		# compute scaling factors on lowest level
 		foreach(x -> scaSupTs_dic[x] = anyM.options.stepLen * redFac_dic[sup], tsBase_arr)
 
