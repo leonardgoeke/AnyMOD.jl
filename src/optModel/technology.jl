@@ -578,7 +578,6 @@ function createStBal(part::TechPart, anyM::anyModel)
 		end
 
 		# allow set a starting level in case of muli-stage dispatch with a tree
-		Main.@infiltrate
 		if :stLvlStart in keys(part.par)
 			startTs_df = matchSetParameter(select(filter(x -> x.stLvlPrev == AffExpr(), cnsC_df),Not([:stLvlPrev])), part.par[:stLvlStart], anyM.sets, newCol = :stLvlPrev)
 			startTs_df[!,:stLvlPrev] .= startTs_df[!,:stLvlPrev] .* (-1)
