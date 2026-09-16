@@ -694,7 +694,7 @@ function parameterToParts!(paraTemp_dic::Dict{String,Dict{Symbol,DataFrame}}, sy
     sysPart_dic[:exc] = sysArr_dic[:Exc]
 
     # ! loop over all actual parameters to assign them to parts of the model
-    @threads for parIt in allPar_arr
+    for parIt in allPar_arr
 
         # ensures all dataframes with data from single files have the same columns so they can be merged
         relFiles_arr = collect(filter(y -> parIt in parToFile_dic[y], keys(paraTemp_dic)))
